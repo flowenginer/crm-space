@@ -68,11 +68,11 @@ export function LoginForm() {
   }
 
   return (
-    <div className="w-full max-w-md space-y-8 animate-fade-in">
+    <div className="w-full max-w-md space-y-8 animate-scale-in">
       {/* Logo */}
       <div className="flex flex-col items-center space-y-4">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl gradient-primary shadow-lg">
-          <Shirt className="h-8 w-8 text-primary-foreground" />
+        <div className="flex h-20 w-20 items-center justify-center rounded-2xl icon-gradient shadow-2xl">
+          <Shirt className="h-10 w-10 text-white" />
         </div>
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
@@ -84,8 +84,8 @@ export function LoginForm() {
         </div>
       </div>
 
-      {/* Form */}
-      <div className="rounded-2xl border bg-card p-8 shadow-card">
+      {/* Form Card */}
+      <div className="rounded-2xl border border-border/50 bg-card p-8 shadow-elevated">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
@@ -93,15 +93,15 @@ export function LoginForm() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel className="text-foreground font-medium">Email</FormLabel>
                   <FormControl>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         {...field}
                         type="email"
                         placeholder="seu@email.com"
-                        className="pl-10"
+                        className="pl-11 h-12 rounded-xl bg-muted/50 border-border/50 focus:bg-card focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                         disabled={isLoading}
                       />
                     </div>
@@ -116,15 +116,15 @@ export function LoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Senha</FormLabel>
+                  <FormLabel className="text-foreground font-medium">Senha</FormLabel>
                   <FormControl>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         {...field}
                         type="password"
                         placeholder="••••••••"
-                        className="pl-10"
+                        className="pl-11 h-12 rounded-xl bg-muted/50 border-border/50 focus:bg-card focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
                         disabled={isLoading}
                       />
                     </div>
@@ -136,12 +136,12 @@ export function LoginForm() {
 
             <Button
               type="submit"
-              className="w-full gradient-primary hover:opacity-90 transition-opacity"
+              className="w-full h-12 rounded-xl btn-gradient text-white font-semibold shadow-lg hover:shadow-xl transition-all"
               disabled={isLoading}
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                   Entrando...
                 </>
               ) : (
@@ -154,7 +154,7 @@ export function LoginForm() {
         <div className="mt-6 text-center">
           <Link
             to="/auth/forgot-password"
-            className="text-sm text-primary hover:underline"
+            className="text-sm text-primary hover:text-primary-dark hover:underline transition-colors"
           >
             Esqueceu a senha?
           </Link>
@@ -164,7 +164,7 @@ export function LoginForm() {
       {/* Register link */}
       <p className="text-center text-sm text-muted-foreground">
         Não tem uma conta?{' '}
-        <Link to="/auth/register" className="font-medium text-primary hover:underline">
+        <Link to="/auth/register" className="font-semibold text-primary hover:text-primary-dark hover:underline transition-colors">
           Criar conta
         </Link>
       </p>

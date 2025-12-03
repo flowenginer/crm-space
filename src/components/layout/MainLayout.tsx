@@ -42,10 +42,13 @@ export function MainLayout() {
   // Show loading state
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center gradient-background">
+      <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Carregando...</p>
+          <div className="relative">
+            <div className="h-16 w-16 rounded-2xl icon-gradient animate-pulse"></div>
+            <Loader2 className="absolute inset-0 m-auto h-8 w-8 animate-spin text-white" />
+          </div>
+          <p className="text-muted-foreground font-medium">Carregando...</p>
         </div>
       </div>
     );
@@ -59,7 +62,7 @@ export function MainLayout() {
   const pageTitle = pageTitles[location.pathname] || 'Space Sports CRM';
 
   return (
-    <div className="min-h-screen gradient-background">
+    <div className="flex h-screen bg-background overflow-hidden">
       {/* Sidebar */}
       <Sidebar
         isCollapsed={sidebarCollapsed}
@@ -69,7 +72,7 @@ export function MainLayout() {
       {/* Mobile overlay */}
       {isMobile && !sidebarCollapsed && (
         <div
-          className="fixed inset-0 z-30 bg-background/80 backdrop-blur-sm"
+          className="fixed inset-0 z-30 bg-foreground/50 backdrop-blur-sm transition-opacity"
           onClick={() => setSidebarCollapsed(true)}
         />
       )}
@@ -77,17 +80,19 @@ export function MainLayout() {
       {/* Main content */}
       <div
         className={cn(
-          'min-h-screen transition-all duration-300',
-          sidebarCollapsed ? 'md:pl-16' : 'md:pl-64',
-          isMobile && 'pl-0'
+          'flex-1 flex flex-col overflow-hidden transition-all duration-300',
+          sidebarCollapsed ? 'md:ml-20' : 'md:ml-[280px]',
+          isMobile && 'ml-0'
         )}
       >
         <Header
           title={pageTitle}
           onMenuClick={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
-        <main className="p-4 md:p-6">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto p-6 md:p-8">
+          <div className="animate-fade-in">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
