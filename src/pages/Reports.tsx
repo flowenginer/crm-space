@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import {
-  Calendar,
+  Calendar as CalendarIcon,
   ChevronDown,
   Download,
   FileText,
@@ -23,6 +25,7 @@ import {
   Headphones,
   Truck,
   Receipt,
+  GitCompare,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -31,6 +34,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   AreaChart,
   Area,
@@ -54,6 +65,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { DateRange } from 'react-day-picker';
 
 // Mock data
 const slaTimelineData = [
@@ -210,8 +222,52 @@ const recentActivities = [
 
 const COLORS = ['#8B5CF6', '#EC4899', '#3B82F6', '#10B981', '#6B7280'];
 
+// Date presets
+const datePresets = [
+  { label: 'Hoje', getValue: () => ({ from: new Date(), to: new Date() }) },
+  { label: 'Últimos 7 dias', getValue: () => ({ from: subDays(new Date(), 6), to: new Date() }) },
+  { label: 'Últimos 30 dias', getValue: () => ({ from: subDays(new Date(), 29), to: new Date() }) },
+  { label: 'Este mês', getValue: () => ({ from: startOfMonth(new Date()), to: new Date() }) },
+  { label: 'Mês passado', getValue: () => ({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) }) },
+];
+
 export default function Reports() {
   const [selectedAgent, setSelectedAgent] = useState('Diego');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 6),
+    to: new Date(),
+  });
+  const [compareDateRange, setCompareDateRange] = useState<DateRange | undefined>(undefined);
+  const [showComparison, setShowComparison] = useState(false);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [isComparePickerOpen, setIsComparePickerOpen] = useState(false);
+
+  const formatDateRange = (range: DateRange | undefined) => {
+    if (!range?.from) return 'Selecionar período';
+    if (!range.to) return format(range.from, 'dd/MM/yyyy', { locale: ptBR });
+    return `${format(range.from, 'dd/MM/yyyy', { locale: ptBR })} - ${format(range.to, 'dd/MM/yyyy', { locale: ptBR })}`;
+  };
+
+  const handlePresetClick = (preset: typeof datePresets[0]) => {
+    setDateRange(preset.getValue());
+    setIsDatePickerOpen(false);
+  };
+
+  const toggleComparison = () => {
+    setShowComparison(!showComparison);
+    if (!showComparison) {
+      // Set comparison to previous period by default
+      if (dateRange?.from && dateRange?.to) {
+        const daysDiff = Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24));
+        setCompareDateRange({
+          from: subDays(dateRange.from, daysDiff + 1),
+          to: subDays(dateRange.from, 1),
+        });
+      }
+    } else {
+      setCompareDateRange(undefined);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -226,11 +282,88 @@ export default function Reports() {
 
         <div className="flex items-center gap-3">
           {/* Date Range Picker */}
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl shadow-sm">
-            <Calendar size={18} className="text-muted-foreground" />
-            <span className="text-sm text-foreground">01/12/2025 - 03/12/2025</span>
-            <ChevronDown size={16} className="text-muted-foreground" />
-          </div>
+          <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "justify-start text-left font-normal px-4 py-2.5 h-auto rounded-xl border-border",
+                  !dateRange && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon size={18} className="mr-2 text-muted-foreground" />
+                <span className="text-sm">{formatDateRange(dateRange)}</span>
+                <ChevronDown size={16} className="ml-2 text-muted-foreground" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <div className="flex">
+                {/* Presets */}
+                <div className="border-r border-border p-3 space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground mb-2 px-2">Atalhos</p>
+                  {datePresets.map((preset) => (
+                    <button
+                      key={preset.label}
+                      onClick={() => handlePresetClick(preset)}
+                      className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-muted transition-colors"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                {/* Calendar */}
+                <div className="p-3">
+                  <Calendar
+                    mode="range"
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    numberOfMonths={2}
+                    locale={ptBR}
+                    className="pointer-events-auto"
+                  />
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Compare Period Button */}
+          <Button
+            variant={showComparison ? "default" : "outline"}
+            onClick={toggleComparison}
+            className={cn(
+              "px-4 py-2.5 h-auto rounded-xl",
+              showComparison && "bg-primary text-primary-foreground"
+            )}
+          >
+            <GitCompare size={18} className="mr-2" />
+            <span className="text-sm font-medium">Comparar</span>
+          </Button>
+
+          {/* Comparison Date Picker (shown when comparison is active) */}
+          {showComparison && (
+            <Popover open={isComparePickerOpen} onOpenChange={setIsComparePickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="justify-start text-left font-normal px-4 py-2.5 h-auto rounded-xl border-dashed border-primary/50"
+                >
+                  <CalendarIcon size={18} className="mr-2 text-primary" />
+                  <span className="text-sm text-primary">{formatDateRange(compareDateRange)}</span>
+                  <ChevronDown size={16} className="ml-2 text-primary" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-3" align="end">
+                <Calendar
+                  mode="range"
+                  selected={compareDateRange}
+                  onSelect={setCompareDateRange}
+                  numberOfMonths={2}
+                  locale={ptBR}
+                  className="pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+          )}
 
           {/* Export Button */}
           <DropdownMenu>
