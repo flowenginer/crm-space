@@ -1,0 +1,244 @@
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Loader2, Mail, Lock, User, Shirt } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
+
+const registerSchema = z.object({
+  fullName: z.string().trim().min(2, 'Nome deve ter no mínimo 2 caracteres').max(100, 'Nome muito longo'),
+  email: z.string().trim().email('Email inválido').max(255, 'Email muito longo'),
+  password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres').max(100, 'Senha muito longa'),
+  confirmPassword: z.string(),
+  acceptTerms: z.boolean().refine(val => val === true, 'Você deve aceitar os termos'),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Senhas não conferem',
+  path: ['confirmPassword'],
+});
+
+type RegisterFormValues = z.infer<typeof registerSchema>;
+
+export function RegisterForm() {
+  const [isLoading, setIsLoading] = useState(false);
+  const { signUp } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  const form = useForm<RegisterFormValues>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      fullName: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      acceptTerms: false,
+    },
+  });
+
+  async function onSubmit(values: RegisterFormValues) {
+    setIsLoading(true);
+    
+    const { error } = await signUp(values.email, values.password, values.fullName);
+
+    if (error) {
+      let message = 'Erro ao criar conta';
+      if (error.message.includes('User already registered')) {
+        message = 'Este email já está cadastrado';
+      } else if (error.message.includes('Password should be')) {
+        message = 'Senha muito fraca. Use letras e números.';
+      }
+      
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: message,
+      });
+    } else {
+      toast({
+        title: 'Conta criada!',
+        description: 'Verifique seu email para confirmar o cadastro',
+      });
+      navigate('/auth');
+    }
+    
+    setIsLoading(false);
+  }
+
+  return (
+    <div className="w-full max-w-md space-y-8 animate-fade-in">
+      {/* Logo */}
+      <div className="flex flex-col items-center space-y-4">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl gradient-primary shadow-lg">
+          <Shirt className="h-8 w-8 text-primary-foreground" />
+        </div>
+        <div className="text-center">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            Criar Conta
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            Preencha os dados para se cadastrar
+          </p>
+        </div>
+      </div>
+
+      {/* Form */}
+      <div className="rounded-2xl border bg-card p-8 shadow-card">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+            <FormField
+              control={form.control}
+              name="fullName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nome completo</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        {...field}
+                        placeholder="Seu nome"
+                        className="pl-10"
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        {...field}
+                        type="email"
+                        placeholder="seu@email.com"
+                        className="pl-10"
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Senha</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        {...field}
+                        type="password"
+                        placeholder="••••••••"
+                        className="pl-10"
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Confirmar senha</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        {...field}
+                        type="password"
+                        placeholder="••••••••"
+                        className="pl-10"
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="acceptTerms"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={isLoading}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel className="text-sm font-normal">
+                      Aceito os{' '}
+                      <Link to="/terms" className="text-primary hover:underline">
+                        termos de uso
+                      </Link>
+                    </FormLabel>
+                    <FormMessage />
+                  </div>
+                </FormItem>
+              )}
+            />
+
+            <Button
+              type="submit"
+              className="w-full gradient-primary hover:opacity-90 transition-opacity"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Criando conta...
+                </>
+              ) : (
+                'Criar conta'
+              )}
+            </Button>
+          </form>
+        </Form>
+      </div>
+
+      {/* Login link */}
+      <p className="text-center text-sm text-muted-foreground">
+        Já tem uma conta?{' '}
+        <Link to="/auth" className="font-medium text-primary hover:underline">
+          Fazer login
+        </Link>
+      </p>
+    </div>
+  );
+}
