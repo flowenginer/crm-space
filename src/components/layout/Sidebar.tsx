@@ -14,7 +14,10 @@ import {
   ChevronLeft,
   Menu,
   LucideIcon,
+  CalendarClock,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { NavLink } from '@/components/NavLink';
 import { Button } from '@/components/ui/button';
@@ -35,6 +38,7 @@ const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard },
   { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.read' },
   { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.read' },
+  { title: 'Agendamentos', href: '/agendamentos', icon: CalendarClock, permission: 'templates.read' },
   { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.read' },
   { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.read' },
   { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.read' },
@@ -54,6 +58,20 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const { hasPermission, isAdmin, role: userRole } = usePermissions();
+
+  // Fetch pending scheduled messages count
+  const { data: pendingCount } = useQuery({
+    queryKey: ['pending-scheduled-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('scheduled_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'scheduled');
+      if (error) throw error;
+      return count || 0;
+    },
+    refetchInterval: 30000
+  });
 
   // Filter nav items based on permissions
   const filteredNavItems = navItems.filter((item) => {
@@ -158,6 +176,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             const isActive = location.pathname === item.href;
             const Icon = item.icon;
 
+            const showBadge = item.href === '/agendamentos' && pendingCount && pendingCount > 0;
+
             return (
               <NavLink
                 key={item.href}
@@ -182,7 +202,16 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                       ? 'text-muted-foreground group-hover:text-foreground' 
                       : 'text-purple-200 group-hover:text-white'
                 )} />
-                {!isCollapsed && <span>{item.title}</span>}
+                {!isCollapsed && (
+                  <span className="flex-1 flex items-center justify-between">
+                    {item.title}
+                    {showBadge && (
+                      <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
+                        {pendingCount > 99 ? '99+' : pendingCount}
+                      </span>
+                    )}
+                  </span>
+                )}
               </NavLink>
             );
           })}

@@ -22,6 +22,7 @@ import WhatsAppChannels from "@/pages/WhatsAppChannels";
 import Contacts from "@/pages/Contacts";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
+import ScheduledMessages from "@/pages/ScheduledMessages";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -74,6 +75,11 @@ const App = () => (
               <Route path="/settings" element={
                 <ProtectedRoute permission="settings.view">
                   <Settings />
+                </ProtectedRoute>
+              } />
+              <Route path="/agendamentos" element={
+                <ProtectedRoute permission="templates.read">
+                  <ScheduledMessages />
                 </ProtectedRoute>
               } />
             </Route>
