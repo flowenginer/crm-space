@@ -328,3 +328,105 @@ export async function fetchContactProfile(
     return { success: false, error: error.message || 'Erro ao buscar perfil' };
   }
 }
+
+// =====================================================
+// FUNÇÃO - BUSCAR CONFIGURAÇÃO ATUAL DO WEBHOOK
+// =====================================================
+export async function fetchChannelWebhook(
+  providerCode: 'zapi' | 'uazapi' | 'evolution',
+  instanceId: string
+): Promise<{ success: boolean; enabled?: boolean; url?: string; events?: string[]; error?: string }> {
+  try {
+    console.log('[Instance Creator] Fetching webhook config:', { providerCode, instanceId });
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'fetchWebhook',
+        providerCode,
+        instanceId,
+      },
+    });
+
+    console.log('[Instance Creator] FetchWebhook Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao buscar webhook' };
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error('[Instance Creator] FetchWebhook Error:', error);
+    return { success: false, error: error.message || 'Erro ao buscar webhook' };
+  }
+}
+
+// =====================================================
+// FUNÇÃO - REINICIAR INSTÂNCIA
+// =====================================================
+export async function restartChannelInstance(
+  providerCode: 'zapi' | 'uazapi' | 'evolution',
+  instanceId: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    console.log('[Instance Creator] Restarting instance:', { providerCode, instanceId });
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'restartInstance',
+        providerCode,
+        instanceId,
+      },
+    });
+
+    console.log('[Instance Creator] RestartInstance Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao reiniciar instância' };
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error('[Instance Creator] RestartInstance Error:', error);
+    return { success: false, error: error.message || 'Erro ao reiniciar instância' };
+  }
+}
+
+// =====================================================
+// FUNÇÃO - CONFIGURAÇÃO COMPLETA DO CANAL
+// =====================================================
+export async function configureChannelFull(
+  providerCode: 'zapi' | 'uazapi' | 'evolution',
+  instanceId: string
+): Promise<{ 
+  success: boolean; 
+  message?: string; 
+  steps?: any[]; 
+  webhookEnabled?: boolean;
+  webhookUrl?: string;
+  webhookEvents?: string[];
+  messagesUpsertActive?: boolean;
+  error?: string 
+}> {
+  try {
+    console.log('[Instance Creator] Full channel configuration:', { providerCode, instanceId });
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'configureChannel',
+        providerCode,
+        instanceId,
+      },
+    });
+
+    console.log('[Instance Creator] ConfigureChannel Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao configurar canal' };
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error('[Instance Creator] ConfigureChannel Error:', error);
+    return { success: false, error: error.message || 'Erro ao configurar canal' };
+  }
+}
