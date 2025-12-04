@@ -24,6 +24,7 @@ import {
   FileIcon,
   Image,
   FileText,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -437,10 +438,12 @@ export default function Conversations() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const dragCounterRef = useRef(0);
   const isMobile = useIsMobile();
 
   // Fetch real conversations from database with filter
@@ -588,6 +591,49 @@ export default function Conversations() {
     setSelectedFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      // Check file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('Arquivo muito grande. Máximo: 10MB');
+        return;
+      }
+      setSelectedFile(file);
+      toast.success(`Arquivo "${file.name}" selecionado`);
     }
   };
 
@@ -818,8 +864,24 @@ export default function Conversations() {
               </div>
             </div>
 
-            {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+            {/* Messages Area with Drag & Drop */}
+            <div 
+              className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 relative"
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+            >
+              {/* Drag Overlay */}
+              {isDragging && (
+                <div className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm border-2 border-dashed border-primary rounded-lg flex flex-col items-center justify-center">
+                  <div className="bg-primary/20 p-6 rounded-full mb-4">
+                    <Upload size={48} className="text-primary" />
+                  </div>
+                  <p className="text-lg font-semibold text-primary">Solte o arquivo aqui</p>
+                  <p className="text-sm text-muted-foreground mt-1">Máximo: 10MB</p>
+                </div>
+              )}
               {(messagesLoading || notesLoading) ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
