@@ -463,27 +463,41 @@ async function handleMessageStatusEvent(
   provider: WhatsAppProvider,
   payload: any
 ): Promise<void> {
+  console.log(`[Webhook] handleMessageStatusEvent - Provider: ${provider}, Payload:`, JSON.stringify(payload).substring(0, 500));
+  
   const statusUpdates = extractStatusUpdates(provider, payload);
+  console.log(`[Webhook] Extracted ${statusUpdates.length} status updates:`, statusUpdates);
   
   for (const update of statusUpdates) {
-    if (!update.messageId || !update.status) continue;
+    if (!update.messageId) {
+      console.log(`[Webhook] Skipping update - no messageId`);
+      continue;
+    }
     
-    console.log(`[Webhook] Updating message status: ${update.messageId} -> ${update.status}`);
+    console.log(`[Webhook] Processing status update: messageId=${update.messageId}, rawStatus=${update.status}`);
     
     // Map provider status to our status
     const newStatus = mapProviderStatus(update.status);
-    if (!newStatus) continue;
+    console.log(`[Webhook] Mapped status: ${update.status} -> ${newStatus}`);
+    
+    if (!newStatus) {
+      console.log(`[Webhook] Could not map status, skipping`);
+      continue;
+    }
     
     // Update message status by whatsapp_message_id
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("messages")
       .update({ status: newStatus })
-      .eq("whatsapp_message_id", update.messageId);
+      .eq("whatsapp_message_id", update.messageId)
+      .select("id");
     
     if (error) {
       console.error(`[Webhook] Error updating message status:`, error);
+    } else if (data?.length > 0) {
+      console.log(`[Webhook] Message ${update.messageId} status updated to ${newStatus} (${data.length} rows)`);
     } else {
-      console.log(`[Webhook] Message ${update.messageId} status updated to ${newStatus}`);
+      console.log(`[Webhook] No message found with whatsapp_message_id: ${update.messageId}`);
     }
   }
 }
@@ -517,11 +531,23 @@ function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusU
       }];
     
     case "evolution":
-      // Evolution sends array in data
+      // Evolution sends different formats:
+      // 1. messages.update event with data object containing keyId and status
+      // 2. Array format
       const evolutionData = payload.data;
+      console.log(`[Webhook] Evolution status data:`, JSON.stringify(evolutionData));
+      
+      // Format: { keyId, remoteJid, status, messageId }
+      if (evolutionData?.keyId) {
+        return [{
+          messageId: evolutionData.keyId,
+          status: evolutionData.status || ""
+        }];
+      }
+      
       if (Array.isArray(evolutionData)) {
         return evolutionData.map((item: any) => ({
-          messageId: item.key?.id || item.id || "",
+          messageId: item.keyId || item.key?.id || item.id || "",
           status: item.status || ""
         }));
       }

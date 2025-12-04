@@ -266,3 +266,34 @@ export async function getInstanceStatus(
     return { success: false, error: error.message || 'Erro ao obter status' };
   }
 }
+
+// =====================================================
+// FUNÇÃO - BUSCAR FOTO DO PERFIL DO CONTATO
+// =====================================================
+export async function fetchContactProfile(
+  channelId: string,
+  phone: string
+): Promise<{ success: boolean; profilePictureUrl?: string | null; name?: string | null; error?: string }> {
+  try {
+    console.log('[Instance Creator] Fetching contact profile:', { channelId, phone });
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'fetchProfile',
+        channelId,
+        phone,
+      },
+    });
+
+    console.log('[Instance Creator] FetchProfile Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao buscar perfil' };
+    }
+
+    return data as { success: boolean; profilePictureUrl?: string | null; name?: string | null; error?: string };
+  } catch (error: any) {
+    console.error('[Instance Creator] FetchProfile Error:', error);
+    return { success: false, error: error.message || 'Erro ao buscar perfil' };
+  }
+}
