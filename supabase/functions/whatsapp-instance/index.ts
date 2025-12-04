@@ -10,7 +10,7 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus';
   providerCode: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -510,6 +510,80 @@ async function deleteEvolutionInstance(config: ProviderConfig, instanceName: str
 }
 
 // =====================================================
+// GET INSTANCE STATUS (para verificar conexão sem CORS)
+// =====================================================
+async function getUAZAPIStatus(config: ProviderConfig, instanceName: string) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[UAZAPI] Getting status for:', instanceName);
+  
+  try {
+    const response = await fetch(`${baseUrl}/instance/connectionState/${instanceName}`, {
+      headers: { 'admintoken': config.adminToken },
+    });
+    
+    if (response.status === 401) {
+      const retryRes = await fetch(`${baseUrl}/instance/connectionState/${instanceName}`, {
+        headers: { 'apikey': config.adminToken },
+      });
+      
+      if (!retryRes.ok) {
+        return { success: false, error: 'Falha ao obter status' };
+      }
+      
+      const data = await retryRes.json();
+      const state = data.instance?.state || data.state;
+      return { 
+        success: true, 
+        status: state === 'open' ? 'connected' : 'disconnected',
+        state,
+        ownerJid: data.instance?.owner || data.ownerJid
+      };
+    }
+    
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+    
+    const data = await response.json();
+    const state = data.instance?.state || data.state;
+    return { 
+      success: true, 
+      status: state === 'open' ? 'connected' : 'disconnected',
+      state,
+      ownerJid: data.instance?.owner || data.ownerJid
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function getEvolutionStatus(config: ProviderConfig, instanceName: string) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[Evolution] Getting status for:', instanceName);
+  
+  try {
+    const response = await fetch(`${baseUrl}/instance/connectionState/${instanceName}`, {
+      headers: { 'apikey': config.adminToken },
+    });
+    
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+    
+    const data = await response.json();
+    const state = data.instance?.state || data.state;
+    return { 
+      success: true, 
+      status: state === 'open' ? 'connected' : 'disconnected',
+      state,
+      ownerJid: data.instance?.owner || data.ownerJid
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// =====================================================
 // MAIN HANDLER
 // =====================================================
 serve(async (req) => {
@@ -634,6 +708,21 @@ serve(async (req) => {
           break;
         case 'evolution':
           result = await deleteEvolutionInstance(config, instanceId!);
+          break;
+        default:
+          result = { success: false, error: 'Provedor desconhecido' };
+      }
+    } else if (action === 'getStatus') {
+      // Get instance connection status
+      switch (providerCode) {
+        case 'zapi':
+          result = { success: false, error: 'Z-API não suporta verificação de status via esta API' };
+          break;
+        case 'uazapi':
+          result = await getUAZAPIStatus(config, instanceId!);
+          break;
+        case 'evolution':
+          result = await getEvolutionStatus(config, instanceId!);
           break;
         default:
           result = { success: false, error: 'Provedor desconhecido' };

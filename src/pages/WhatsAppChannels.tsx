@@ -72,7 +72,7 @@ import { useProviders, useConfiguredProviders } from '@/hooks/useProviders';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useCreateChannelWithInstance, useRefreshQRCode } from '@/hooks/useCreateChannelWithInstance';
 import { whatsappService } from '@/lib/whatsapp';
-import { fetchProviderInstances, deleteProviderInstance, ProviderInstance } from '@/lib/whatsapp/instance-creator';
+import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, ProviderInstance } from '@/lib/whatsapp/instance-creator';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -242,28 +242,43 @@ export default function WhatsAppChannels() {
 
         for (const instance of result.instances) {
           const instanceName = instance.instance?.instanceName || instance.instanceName;
-          const instanceStatus = instance.instance?.state || instance.connectionStatus?.state || 'disconnected';
+          const connectionState = typeof instance.connectionStatus === 'object' ? instance.connectionStatus?.state : instance.connectionStatus;
+          const instanceStatus = instance.instance?.state || connectionState;
           const profileName = instance.instance?.profileName || instance.profileName;
           const ownerPhone = instance.instance?.owner || instance.owner;
+          const ownerJid = instance.ownerJid;
+          
+          // Extrair phone do ownerJid se disponível (formato: 5521999999999@s.whatsapp.net)
+          let phone = ownerPhone;
+          if (!phone && ownerJid) {
+            phone = ownerJid.split('@')[0];
+          }
           
           if (!instanceName) continue;
 
           // Verificar se já existe no banco
           const existingChannel = channels.find(c => c.instance_id === instanceName);
 
+          // Determinar status - apenas 'open' é considerado conectado
+          const newStatus = instanceStatus === 'open' ? 'connected' : 'disconnected';
+
           if (existingChannel) {
-            // Atualizar status
-            const newStatus = instanceStatus === 'open' ? 'connected' : 'disconnected';
-            if (existingChannel.status !== newStatus) {
-              await supabase
-                .from('whatsapp_channels')
-                .update({ 
-                  status: newStatus,
-                  phone: ownerPhone || existingChannel.phone,
-                  last_sync_at: new Date().toISOString(),
-                })
-                .eq('id', existingChannel.id);
-              totalUpdated++;
+            // Atualizar status SOMENTE se a API retornou um estado válido
+            if (instanceStatus) {
+              const needsUpdate = existingChannel.status !== newStatus || 
+                                  (phone && existingChannel.phone !== phone);
+              
+              if (needsUpdate) {
+                await supabase
+                  .from('whatsapp_channels')
+                  .update({ 
+                    status: newStatus,
+                    phone: phone || existingChannel.phone,
+                    last_sync_at: new Date().toISOString(),
+                  })
+                  .eq('id', existingChannel.id);
+                totalUpdated++;
+              }
             }
           } else {
             // Criar novo canal
@@ -271,10 +286,10 @@ export default function WhatsAppChannels() {
               .from('whatsapp_channels')
               .insert({
                 name: profileName || instanceName,
-                phone: ownerPhone || 'Não identificado',
+                phone: phone || 'Não identificado',
                 provider_id: provider.id,
                 instance_id: instanceName,
-                status: instanceStatus === 'open' ? 'connected' : 'disconnected',
+                status: newStatus,
                 last_sync_at: new Date().toISOString(),
               });
             
@@ -448,14 +463,37 @@ export default function WhatsAppChannels() {
 
   const handleSync = async (channel: WhatsAppChannel) => {
     try {
-      const status = await whatsappService.getStatus(channel.id);
+      // Buscar provedor do canal para saber qual API usar
+      const provider = providers.find(p => p.id === channel.provider_id);
+      if (!provider || !channel.instance_id) {
+        toast.error('Canal sem provedor ou instância configurada');
+        return;
+      }
+
+      // Usar Edge Function para obter status (evita CORS)
+      const result = await getInstanceStatus(
+        provider.code as 'zapi' | 'uazapi' | 'evolution',
+        channel.instance_id
+      );
+
+      if (!result.success) {
+        // Se falhar ao obter status, NÃO sobrescrever o status atual
+        console.warn('[Sync] Falha ao obter status:', result.error);
+        toast.error(`Não foi possível verificar status: ${result.error}`);
+        return;
+      }
+
+      // Só atualiza se conseguiu obter status com sucesso
       await updateChannel.mutateAsync({
         id: channel.id,
-        status,
+        status: result.status,
         last_sync_at: new Date().toISOString(),
       });
-      toast.success(`${channel.name} está ${status}.`);
+      
+      toast.success(`${channel.name} está ${result.status === 'connected' ? 'conectado' : 'desconectado'}.`);
     } catch (error: any) {
+      // NÃO sobrescrever status em caso de erro
+      console.error('[Sync] Erro:', error);
       toast.error(error.message || 'Erro ao sincronizar');
     }
   };

@@ -26,10 +26,11 @@ export interface ProviderInstance {
   instanceName: string;
   instanceId?: string;
   owner?: string;
+  ownerJid?: string;
   profileName?: string;
   profilePicUrl?: string;
   status?: string;
-  connectionStatus?: {
+  connectionStatus?: string | {
     state?: string;
   };
   instance?: {
@@ -195,5 +196,36 @@ export async function deleteProviderInstance(
   } catch (error: any) {
     console.error('[Instance Creator] Error:', error);
     return { success: false, error: error.message || 'Erro ao excluir instância' };
+  }
+}
+
+// =====================================================
+// FUNÇÃO UNIFICADA - OBTER STATUS DA INSTÂNCIA
+// =====================================================
+export async function getInstanceStatus(
+  providerCode: 'zapi' | 'uazapi' | 'evolution',
+  instanceId: string
+): Promise<{ success: boolean; status?: string; state?: string; ownerJid?: string; error?: string }> {
+  try {
+    console.log('[Instance Creator] Getting status:', { providerCode, instanceId });
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'getStatus',
+        providerCode,
+        instanceId,
+      },
+    });
+
+    console.log('[Instance Creator] Get Status Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao obter status' };
+    }
+
+    return data as { success: boolean; status?: string; state?: string; ownerJid?: string; error?: string };
+  } catch (error: any) {
+    console.error('[Instance Creator] Error:', error);
+    return { success: false, error: error.message || 'Erro ao obter status' };
   }
 }
