@@ -489,7 +489,7 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
                 {message.content && message.message_type === 'text' && (
                   <p className="text-sm leading-relaxed">{message.content}</p>
                 )}
-                {message.content && message.message_type !== 'text' && message.message_type !== 'document' && (
+                {message.content && message.message_type !== 'text' && message.message_type !== 'document' && message.message_type !== 'audio' && message.message_type !== 'video' && (
                   <p className="text-sm leading-relaxed mt-1">{message.content}</p>
                 )}
               </>
@@ -979,12 +979,48 @@ export default function Conversations() {
         }
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const audioFile = new File([audioBlob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
-        setSelectedFiles([audioFile]);
-        toast.success('Áudio gravado com sucesso');
         stream.getTracks().forEach(track => track.stop());
+        
+        // Send audio directly without confirmation
+        const selectedConv = conversations?.find(c => c.id === selectedConversationId);
+        const channelId = selectedConv?.channel_id;
+        const contactPhone = selectedConv?.contact?.phone;
+        
+        if (selectedConversationId) {
+          try {
+            setIsUploading(true);
+            const result = await uploadAttachment(audioFile, selectedConversationId);
+            
+            // Send via WhatsApp
+            let whatsappMessageId: string | undefined;
+            if (channelId && contactPhone) {
+              const whatsappResult = await sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url);
+              if (whatsappResult.success) {
+                whatsappMessageId = whatsappResult.messageId;
+              }
+            }
+            
+            sendMessage.mutate({
+              conversation_id: selectedConversationId,
+              content: '',
+              is_from_me: true,
+              message_type: 'audio',
+              media_url: result.url,
+              media_mime_type: result.mimeType,
+              whatsapp_message_id: whatsappMessageId,
+            });
+            
+            toast.success('Áudio enviado!');
+          } catch (error) {
+            console.error('Error sending audio:', error);
+            toast.error('Erro ao enviar áudio');
+          } finally {
+            setIsUploading(false);
+          }
+        }
       };
 
       mediaRecorder.start();
