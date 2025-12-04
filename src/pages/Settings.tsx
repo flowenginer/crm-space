@@ -16,6 +16,12 @@ import {
   Phone,
   ChevronRight,
   Loader2,
+  Shield,
+  Palette,
+  Globe,
+  Clock,
+  Key,
+  Monitor,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -371,6 +377,20 @@ export default function Settings() {
           >
             <Bell size={18} />
             Notificações
+          </TabsTrigger>
+          <TabsTrigger
+            value="security"
+            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+          >
+            <Shield size={18} />
+            Segurança
+          </TabsTrigger>
+          <TabsTrigger
+            value="general"
+            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+          >
+            <Palette size={18} />
+            Geral
           </TabsTrigger>
         </TabsList>
 
@@ -767,6 +787,201 @@ export default function Settings() {
               </div>
             </>
           )}
+        </TabsContent>
+
+        {/* TAB 6: Security */}
+        <TabsContent value="security" className="space-y-6">
+          {/* Change Password */}
+          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-foreground mb-6">Alterar Senha</h3>
+            <div className="max-w-md space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Senha atual</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Nova senha</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Confirmar nova senha</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                />
+              </div>
+              <button className="px-6 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all">
+                Alterar senha
+              </button>
+            </div>
+          </div>
+
+          {/* Sessions */}
+          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-foreground mb-6">Sessões Ativas</h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-status-success/10 rounded-lg flex items-center justify-center">
+                    <Monitor size={20} className="text-status-success" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-foreground">Chrome - Windows</div>
+                    <div className="text-sm text-muted-foreground">Rio de Janeiro, Brasil • Ativo agora</div>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 bg-status-success/10 text-status-success rounded-full text-xs font-medium">
+                  Sessão atual
+                </span>
+              </div>
+            </div>
+            <button className="mt-4 px-4 py-2 border border-status-error/30 text-status-error rounded-xl hover:bg-status-error/10 transition-colors">
+              Encerrar todas as outras sessões
+            </button>
+          </div>
+
+          {/* Two-Factor Authentication */}
+          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <Key size={24} className="text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">Autenticação de dois fatores</h3>
+                  <p className="text-sm text-muted-foreground">Adicione uma camada extra de segurança à sua conta</p>
+                </div>
+              </div>
+              <button className="px-4 py-2 border border-border rounded-xl hover:bg-muted transition-colors">
+                Configurar
+              </button>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* TAB 7: General */}
+        <TabsContent value="general" className="space-y-6">
+          {/* Company Info */}
+          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-foreground mb-6">Informações da Empresa</h3>
+            <div className="max-w-md space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Nome da empresa</label>
+                <input
+                  type="text"
+                  defaultValue="Space Sports"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">CNPJ</label>
+                <input
+                  type="text"
+                  placeholder="00.000.000/0000-00"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Telefone</label>
+                <input
+                  type="tel"
+                  placeholder="+55 (00) 00000-0000"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Email</label>
+                <input
+                  type="email"
+                  placeholder="contato@empresa.com"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                />
+              </div>
+              <button className="px-6 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all">
+                Salvar alterações
+              </button>
+            </div>
+          </div>
+
+          {/* Working Hours */}
+          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <Clock size={20} className="text-primary" />
+              <h3 className="text-lg font-semibold text-foreground">Horário de Funcionamento</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-4 max-w-md mb-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Início</label>
+                <input
+                  type="time"
+                  defaultValue="08:00"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Fim</label>
+                <input
+                  type="time"
+                  defaultValue="18:00"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">Dias de funcionamento</label>
+              <div className="flex gap-2">
+                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, idx) => (
+                  <button
+                    key={day}
+                    className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors ${
+                      idx >= 1 && idx <= 5
+                        ? 'bg-primary text-white'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Timezone */}
+          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <Globe size={20} className="text-primary" />
+              <h3 className="text-lg font-semibold text-foreground">Fuso Horário</h3>
+            </div>
+            <select className="w-full max-w-md px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background">
+              <option>America/Sao_Paulo (UTC-03:00)</option>
+              <option>America/Manaus (UTC-04:00)</option>
+              <option>America/Fortaleza (UTC-03:00)</option>
+              <option>America/Recife (UTC-03:00)</option>
+            </select>
+          </div>
+
+          {/* Danger Zone */}
+          <div className="bg-status-error/5 rounded-2xl border border-status-error/20 p-6">
+            <h3 className="text-lg font-semibold text-status-error mb-2">Zona de Perigo</h3>
+            <p className="text-sm text-status-error/80 mb-4">Ações irreversíveis que afetam toda a sua conta</p>
+            <div className="flex gap-4">
+              <button className="px-4 py-2 border border-status-error/30 text-status-error rounded-xl hover:bg-status-error/10 transition-colors">
+                Exportar todos os dados
+              </button>
+              <button className="px-4 py-2 border border-status-error/30 text-status-error rounded-xl hover:bg-status-error/10 transition-colors">
+                Excluir conta
+              </button>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 
