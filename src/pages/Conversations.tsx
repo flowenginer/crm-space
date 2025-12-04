@@ -52,7 +52,7 @@ import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
-import { useConversations, useMessages, useSendMessage, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
+import { useConversations, useMessages, useSendMessage, uploadAttachment, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -298,6 +298,7 @@ interface MessageBubbleProps {
 
 function MessageBubble({ message }: MessageBubbleProps) {
   const isMe = message.is_from_me;
+  const hasMedia = message.media_url && message.message_type !== 'text';
 
   return (
     <div className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
@@ -309,7 +310,56 @@ function MessageBubble({ message }: MessageBubbleProps) {
             : 'bg-card border border-border text-foreground'
         )}
       >
-        <p className="text-sm leading-relaxed">{message.content || ''}</p>
+        {/* Media content */}
+        {hasMedia && (
+          <div className="mb-2">
+            {message.message_type === 'image' && (
+              <img 
+                src={message.media_url!} 
+                alt="Imagem" 
+                className="rounded-lg max-h-64 w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => window.open(message.media_url!, '_blank')}
+              />
+            )}
+            {message.message_type === 'video' && (
+              <video 
+                src={message.media_url!} 
+                controls 
+                className="rounded-lg max-h-64 w-full"
+              />
+            )}
+            {message.message_type === 'audio' && (
+              <audio 
+                src={message.media_url!} 
+                controls 
+                className="w-full min-w-[200px]"
+              />
+            )}
+            {message.message_type === 'document' && (
+              <a 
+                href={message.media_url!} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className={cn(
+                  'flex items-center gap-2 p-2 rounded-lg transition-colors',
+                  isMe ? 'bg-white/10 hover:bg-white/20' : 'bg-muted hover:bg-muted/80'
+                )}
+              >
+                <FileText size={24} className={isMe ? 'text-white' : 'text-muted-foreground'} />
+                <span className="text-sm truncate">{message.content || 'Documento'}</span>
+              </a>
+            )}
+          </div>
+        )}
+        
+        {/* Text content */}
+        {message.content && message.message_type === 'text' && (
+          <p className="text-sm leading-relaxed">{message.content}</p>
+        )}
+        {message.content && message.message_type !== 'text' && message.message_type !== 'document' && (
+          <p className="text-sm leading-relaxed mt-1">{message.content}</p>
+        )}
+        
         <div className={cn(
           'flex items-center justify-end gap-1 mt-1',
           isMe ? 'text-purple-200' : 'text-muted-foreground'
@@ -386,6 +436,7 @@ export default function Conversations() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -444,23 +495,68 @@ export default function Conversations() {
     setShowMobileChat(false);
   };
 
-  const handleSendMessage = () => {
-    if (!messageInput.trim() || !selectedConversationId) return;
+  const handleSendMessage = async () => {
+    if (!selectedConversationId) return;
+    
+    // Check if we have either text or a file
+    const hasText = messageInput.trim().length > 0;
+    const hasFile = selectedFile !== null;
+    
+    if (!hasText && !hasFile) return;
     
     if (isInternalNoteMode) {
+      if (!hasText) return;
       createInternalNote.mutate({
         conversationId: selectedConversationId,
         content: messageInput.trim(),
       });
       setMessageInput('');
       setIsInternalNoteMode(false);
-    } else {
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      
+      let mediaUrl: string | undefined;
+      let mediaMimeType: string | undefined;
+      let messageType = 'text';
+
+      // Upload file if selected
+      if (hasFile) {
+        const result = await uploadAttachment(selectedFile, selectedConversationId);
+        mediaUrl = result.url;
+        mediaMimeType = result.mimeType;
+        
+        // Determine message type based on file type
+        if (selectedFile.type.startsWith('image/')) {
+          messageType = 'image';
+        } else if (selectedFile.type.startsWith('video/')) {
+          messageType = 'video';
+        } else if (selectedFile.type.startsWith('audio/')) {
+          messageType = 'audio';
+        } else {
+          messageType = 'document';
+        }
+      }
+
       sendMessage.mutate({
         conversation_id: selectedConversationId,
-        content: messageInput.trim(),
+        content: hasText ? messageInput.trim() : (selectedFile?.name || ''),
         is_from_me: true,
+        message_type: messageType,
+        media_url: mediaUrl,
+        media_mime_type: mediaMimeType,
       });
+
       setMessageInput('');
+      clearSelectedFile();
+      toast.success(hasFile ? 'Arquivo enviado com sucesso!' : undefined);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error('Erro ao enviar mensagem. Tente novamente.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -923,13 +1019,13 @@ export default function Conversations() {
                   {/* Send Button */}
                   <button 
                     onClick={handleSendMessage}
-                    disabled={!messageInput.trim() || sendMessage.isPending || createInternalNote.isPending}
+                    disabled={(!messageInput.trim() && !selectedFile) || sendMessage.isPending || createInternalNote.isPending || isUploading}
                     className={cn(
                       'p-3 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50',
                       isInternalNoteMode ? 'bg-amber-500 hover:bg-amber-600' : 'btn-gradient'
                     )}
                   >
-                    {(sendMessage.isPending || createInternalNote.isPending) 
+                    {(sendMessage.isPending || createInternalNote.isPending || isUploading) 
                       ? <Loader2 size={20} className="animate-spin" /> 
                       : <Send size={20} />}
                   </button>
