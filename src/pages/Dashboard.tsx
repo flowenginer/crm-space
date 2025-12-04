@@ -12,7 +12,8 @@ import {
   DollarSign,
   ChevronDown,
   RotateCcw,
-  Wallet
+  Wallet,
+  Loader2
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -41,75 +42,23 @@ import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/hooks/useAuth';
-
-// Mock data
-const mockDashboardData = {
-  wallet: 0.00,
-  metrics: [
-    {
-      title: "Novos contatos",
-      value: "1.056",
-      change: "+12%",
-      changeText: "vs mês anterior",
-      trend: "up" as const,
-      icon: UserPlus,
-      gradient: "from-purple-500 to-pink-500"
-    },
-    {
-      title: "Conversas respondidas",
-      value: "849",
-      change: "+5%",
-      changeText: "vs mês anterior",
-      trend: "up" as const,
-      icon: MessageSquare,
-      gradient: "from-blue-500 to-cyan-500"
-    },
-    {
-      title: "Conversas interagidas",
-      value: "1.625",
-      change: "+8%",
-      changeText: "vs mês anterior",
-      trend: "up" as const,
-      icon: Users,
-      gradient: "from-green-500 to-emerald-500"
-    },
-    {
-      title: "Tempo de resposta",
-      value: "43 min",
-      change: "-15%",
-      changeText: "vs mês anterior",
-      trend: "down" as const,
-      icon: Clock,
-      gradient: "from-orange-500 to-red-500"
-    }
-  ],
-  chartData: [
-    { date: '1/dez', newContacts: 420, answeredConversations: 310, interactedConversations: 500, responseTime: 125 },
-    { date: '2/dez', newContacts: 380, answeredConversations: 320, interactedConversations: 650, responseTime: 95 },
-    { date: '3/dez', newContacts: 256, answeredConversations: 219, interactedConversations: 475, responseTime: 150 },
-  ],
-  recentActivity: [
-    { id: 1, text: 'Novo lead cadastrado', time: 'há 5 minutos' },
-    { id: 2, text: 'Conversa iniciada', time: 'há 10 minutos' },
-    { id: 3, text: 'Venda realizada', time: 'há 15 minutos' },
-    { id: 4, text: 'Novo lead cadastrado', time: 'há 20 minutos' },
-  ],
-};
+import { useDashboardMetrics, useRecentActivity } from '@/hooks/useDashboard';
+import { useNavigate } from 'react-router-dom';
 
 // Stat Card Component
 interface StatCardProps {
   title: string;
   value: string;
-  change: string;
-  changeText: string;
-  trend: 'up' | 'down';
+  change?: string;
+  changeText?: string;
+  trend?: 'up' | 'down';
   icon: React.ElementType;
   gradient: string;
+  isLoading?: boolean;
 }
 
-function StatCard({ title, value, change, changeText, trend, icon: Icon, gradient }: StatCardProps) {
+function StatCard({ title, value, change, changeText, trend, icon: Icon, gradient, isLoading }: StatCardProps) {
   const isPositive = trend === 'up';
-  // For response time, down is good
   const isGoodTrend = title.includes('Tempo') ? trend === 'down' : trend === 'up';
   
   return (
@@ -120,19 +69,29 @@ function StatCard({ title, value, change, changeText, trend, icon: Icon, gradien
             {title}
           </p>
           <div className="space-y-1">
-            <h3 className="text-3xl font-bold text-foreground tracking-tight">
-              {value}
-            </h3>
-            <p className={`text-sm font-medium flex items-center gap-1 ${
-              isGoodTrend ? 'text-success' : 'text-destructive'
-            }`}>
-              {isPositive ? (
-                <TrendingUp className="h-4 w-4" />
-              ) : (
-                <TrendingDown className="h-4 w-4" />
-              )}
-              {change} {changeText}
-            </p>
+            {isLoading ? (
+              <div className="h-9 flex items-center">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : (
+              <>
+                <h3 className="text-3xl font-bold text-foreground tracking-tight">
+                  {value}
+                </h3>
+                {change && (
+                  <p className={`text-sm font-medium flex items-center gap-1 ${
+                    isGoodTrend ? 'text-success' : 'text-destructive'
+                  }`}>
+                    {isPositive ? (
+                      <TrendingUp className="h-4 w-4" />
+                    ) : (
+                      <TrendingDown className="h-4 w-4" />
+                    )}
+                    {change} {changeText}
+                  </p>
+                )}
+              </>
+            )}
           </div>
         </div>
         <div className={`p-3 rounded-xl bg-gradient-to-br ${gradient} shadow-lg group-hover:scale-110 transition-transform duration-300`}>
@@ -167,6 +126,10 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export default function Dashboard() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
+  const { data: metrics, isLoading: loadingMetrics } = useDashboardMetrics();
+  const { data: recentActivity = [], isLoading: loadingActivity } = useRecentActivity();
+  
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
     from: new Date(2025, 11, 1),
     to: new Date(2025, 11, 3),
@@ -180,6 +143,16 @@ export default function Dashboard() {
     { title: 'Ver Relatório', icon: BarChart3, gradient: 'from-green-500 to-emerald-500', href: '/reports' },
     { title: 'Nova Venda', icon: DollarSign, gradient: 'from-pink-500 to-rose-500', href: '/crm' },
   ];
+
+  // Build chart data from metrics (empty if no data)
+  const chartData = metrics ? [
+    { 
+      date: format(new Date(), 'dd/MMM', { locale: ptBR }), 
+      newContacts: metrics.newContacts, 
+      answeredConversations: metrics.respondedConversations, 
+      interactedConversations: metrics.totalConversations,
+    },
+  ] : [];
 
   return (
     <div className="space-y-8">
@@ -203,7 +176,7 @@ export default function Dashboard() {
             <p className="text-sm font-medium text-muted-foreground">Minha carteira</p>
           </div>
           <p className="text-3xl font-bold text-foreground mb-4">
-            R$ {mockDashboardData.wallet.toFixed(2).replace('.', ',')}
+            R$ 0,00
           </p>
           <Button className="w-full btn-gradient text-white rounded-xl hover:shadow-lg transition-all">
             <Plus className="h-4 w-4 mr-2" />
@@ -250,9 +223,6 @@ export default function Dashboard() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os usuários</SelectItem>
-            <SelectItem value="diego">Diego</SelectItem>
-            <SelectItem value="ian">Ian</SelectItem>
-            <SelectItem value="lara">Lara</SelectItem>
           </SelectContent>
         </Select>
 
@@ -285,15 +255,42 @@ export default function Dashboard() {
 
       {/* Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {mockDashboardData.metrics.map((metric, index) => (
-          <div 
-            key={metric.title} 
-            className="animate-slide-up"
-            style={{ animationDelay: `${index * 100}ms` }}
-          >
-            <StatCard {...metric} />
-          </div>
-        ))}
+        <div className="animate-slide-up">
+          <StatCard 
+            title="Novos contatos"
+            value={metrics?.newContacts.toLocaleString('pt-BR') || '0'}
+            icon={UserPlus}
+            gradient="from-purple-500 to-pink-500"
+            isLoading={loadingMetrics}
+          />
+        </div>
+        <div className="animate-slide-up" style={{ animationDelay: '100ms' }}>
+          <StatCard 
+            title="Conversas respondidas"
+            value={metrics?.respondedConversations.toLocaleString('pt-BR') || '0'}
+            icon={MessageSquare}
+            gradient="from-blue-500 to-cyan-500"
+            isLoading={loadingMetrics}
+          />
+        </div>
+        <div className="animate-slide-up" style={{ animationDelay: '200ms' }}>
+          <StatCard 
+            title="Conversas interagidas"
+            value={metrics?.totalConversations.toLocaleString('pt-BR') || '0'}
+            icon={Users}
+            gradient="from-green-500 to-emerald-500"
+            isLoading={loadingMetrics}
+          />
+        </div>
+        <div className="animate-slide-up" style={{ animationDelay: '300ms' }}>
+          <StatCard 
+            title="Tempo de resposta"
+            value={metrics?.avgResponseTime ? `${metrics.avgResponseTime} min` : '- min'}
+            icon={Clock}
+            gradient="from-orange-500 to-red-500"
+            isLoading={loadingMetrics}
+          />
+        </div>
       </div>
 
       {/* Main Chart */}
@@ -301,96 +298,91 @@ export default function Dashboard() {
         <h2 className="text-xl font-semibold text-foreground mb-6">Visão geral</h2>
         
         <div className="h-[350px] md:h-[400px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={mockDashboardData.chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorInteracted" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorContacts" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorAnswered" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorResponse" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              
-              <XAxis 
-                dataKey="date" 
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-              />
-              
-              <YAxis 
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-              />
-              
-              <Tooltip content={<CustomTooltip />} />
-              
-              <Legend 
-                wrapperStyle={{ fontSize: '14px', paddingTop: '20px' }}
-                iconType="circle"
-              />
-              
-              <Area
-                type="monotone"
-                dataKey="interactedConversations"
-                stroke="#10B981"
-                strokeWidth={3}
-                fill="url(#colorInteracted)"
-                name="Conversas interagidas"
-                dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
-                activeDot={{ r: 6, strokeWidth: 0 }}
-              />
-              
-              <Area
-                type="monotone"
-                dataKey="newContacts"
-                stroke="#3B82F6"
-                strokeWidth={3}
-                fill="url(#colorContacts)"
-                name="Novos Contatos"
-                dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                activeDot={{ r: 6, strokeWidth: 0 }}
-              />
-              
-              <Area
-                type="monotone"
-                dataKey="answeredConversations"
-                stroke="#F59E0B"
-                strokeWidth={3}
-                fill="url(#colorAnswered)"
-                name="Conversas respondidas"
-                dot={{ fill: '#F59E0B', strokeWidth: 2, r: 4 }}
-                activeDot={{ r: 6, strokeWidth: 0 }}
-              />
-              
-              <Area
-                type="monotone"
-                dataKey="responseTime"
-                stroke="#8B5CF6"
-                strokeWidth={3}
-                fill="url(#colorResponse)"
-                name="Tempo de resposta"
-                dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 4 }}
-                activeDot={{ r: 6, strokeWidth: 0 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          {chartData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Nenhum dado disponível para o período selecionado</p>
+                <p className="text-sm mt-1">Os dados aparecerão aqui conforme você usa o sistema</p>
+              </div>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorInteracted" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorContacts" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorAnswered" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                
+                <XAxis 
+                  dataKey="date" 
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                
+                <YAxis 
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                
+                <Tooltip content={<CustomTooltip />} />
+                
+                <Legend 
+                  wrapperStyle={{ fontSize: '14px', paddingTop: '20px' }}
+                  iconType="circle"
+                />
+                
+                <Area
+                  type="monotone"
+                  dataKey="interactedConversations"
+                  stroke="#10B981"
+                  strokeWidth={3}
+                  fill="url(#colorInteracted)"
+                  name="Conversas interagidas"
+                  dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
+                
+                <Area
+                  type="monotone"
+                  dataKey="newContacts"
+                  stroke="#3B82F6"
+                  strokeWidth={3}
+                  fill="url(#colorContacts)"
+                  name="Novos Contatos"
+                  dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
+                
+                <Area
+                  type="monotone"
+                  dataKey="answeredConversations"
+                  stroke="#F59E0B"
+                  strokeWidth={3}
+                  fill="url(#colorAnswered)"
+                  name="Conversas respondidas"
+                  dot={{ fill: '#F59E0B', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
@@ -400,23 +392,41 @@ export default function Dashboard() {
         <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated animate-slide-up">
           <h3 className="text-lg font-semibold text-foreground mb-4">Atividade Recente</h3>
           
-          <div className="space-y-3">
-            {mockDashboardData.recentActivity.map((activity) => (
-              <div 
-                key={activity.id} 
-                className="flex items-center gap-4 p-3 hover:bg-muted/50 rounded-xl transition-colors cursor-pointer"
-              >
-                <div className="p-2.5 bg-purple-100 rounded-lg">
-                  <UserPlus className="h-5 w-5 text-purple-600" />
+          {loadingActivity ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : recentActivity.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Clock className="h-10 w-10 mx-auto mb-3 opacity-50" />
+              <p>Nenhuma atividade recente</p>
+              <p className="text-sm mt-1">As atividades aparecerão aqui</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recentActivity.map((activity) => (
+                <div 
+                  key={activity.id} 
+                  className="flex items-center gap-4 p-3 hover:bg-muted/50 rounded-xl transition-colors cursor-pointer"
+                >
+                  <div className="p-2.5 bg-purple-100 rounded-lg">
+                    {activity.type === 'contact' ? (
+                      <UserPlus className="h-5 w-5 text-purple-600" />
+                    ) : activity.type === 'deal' ? (
+                      <DollarSign className="h-5 w-5 text-purple-600" />
+                    ) : (
+                      <MessageSquare className="h-5 w-5 text-purple-600" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{activity.text}</p>
+                    <p className="text-xs text-muted-foreground">{activity.time}</p>
+                  </div>
+                  <div className="h-2.5 w-2.5 bg-success rounded-full animate-pulse"></div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{activity.text}</p>
-                  <p className="text-xs text-muted-foreground">{activity.time}</p>
-                </div>
-                <div className="h-2.5 w-2.5 bg-success rounded-full animate-pulse"></div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Quick Actions */}
@@ -427,6 +437,7 @@ export default function Dashboard() {
             {quickActions.map((action) => (
               <button
                 key={action.title}
+                onClick={() => navigate(action.href)}
                 className="flex flex-col items-center justify-center p-6 rounded-xl bg-muted/50 hover:bg-muted border border-transparent hover:border-primary/20 transition-all duration-200 group"
               >
                 <div className={`p-4 bg-gradient-to-br ${action.gradient} rounded-xl mb-3 group-hover:scale-110 transition-transform shadow-lg`}>
