@@ -72,7 +72,7 @@ import { useProviders, useConfiguredProviders } from '@/hooks/useProviders';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useCreateChannelWithInstance, useRefreshQRCode } from '@/hooks/useCreateChannelWithInstance';
 import { whatsappService } from '@/lib/whatsapp';
-import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, ProviderInstance } from '@/lib/whatsapp/instance-creator';
+import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, setChannelWebhook, ProviderInstance } from '@/lib/whatsapp/instance-creator';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -546,6 +546,39 @@ export default function WhatsAppChannels() {
     setShowDeleteConfirm(true);
   };
 
+  const handleReconfigureWebhook = async (channel: WhatsAppChannel) => {
+    const provider = providers.find(p => p.id === channel.provider_id);
+    if (!provider || !channel.instance_id) {
+      toast.error('Canal sem provedor ou instância configurada');
+      return;
+    }
+
+    if (provider.code === 'zapi') {
+      toast.error('Z-API não suporta reconfiguração de webhook via API');
+      return;
+    }
+
+    toast.loading('Reconfigurando webhook...');
+    
+    try {
+      const result = await setChannelWebhook(
+        provider.code as 'uazapi' | 'evolution',
+        channel.instance_id
+      );
+
+      toast.dismiss();
+
+      if (result.success) {
+        toast.success('Webhook reconfigurado com sucesso! Agora as mensagens serão recebidas corretamente.');
+      } else {
+        toast.error(result.error || 'Erro ao reconfigurar webhook');
+      }
+    } catch (error: any) {
+      toast.dismiss();
+      toast.error(error.message || 'Erro ao reconfigurar webhook');
+    }
+  };
+
   const handleConfirmDelete = async () => {
     if (!selectedChannel) return;
     
@@ -670,6 +703,7 @@ export default function WhatsAppChannels() {
               onDisconnect={handleDisconnect}
               onConnect={handleConnect}
               onDelete={handleDeleteClick}
+              onReconfigureWebhook={handleReconfigureWebhook}
               getTimeSinceSync={getTimeSinceSync}
             />
           ))}
@@ -1131,6 +1165,7 @@ function ChannelCard({
   onDisconnect,
   onConnect,
   onDelete,
+  onReconfigureWebhook,
   getTimeSinceSync,
 }: {
   channel: WhatsAppChannel;
@@ -1139,6 +1174,7 @@ function ChannelCard({
   onDisconnect: (channel: WhatsAppChannel) => void;
   onConnect: (channel: WhatsAppChannel) => void;
   onDelete: (channel: WhatsAppChannel) => void;
+  onReconfigureWebhook: (channel: WhatsAppChannel) => void;
   getTimeSinceSync: (lastSync: string | null) => string;
 }) {
   const isConnected = channel.status === 'connected';
@@ -1185,6 +1221,10 @@ function ChannelCard({
             <DropdownMenuItem onClick={() => onSync(channel)}>
               <RefreshCw size={16} className="mr-2" />
               Sincronizar
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onReconfigureWebhook(channel)}>
+              <Settings size={16} className="mr-2" />
+              Reconfigurar Webhook
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem 

@@ -268,6 +268,37 @@ export async function getInstanceStatus(
 }
 
 // =====================================================
+// FUNÇÃO - RECONFIGURAR WEBHOOK DE INSTÂNCIA EXISTENTE
+// =====================================================
+export async function setChannelWebhook(
+  providerCode: 'zapi' | 'uazapi' | 'evolution',
+  instanceId: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    console.log('[Instance Creator] Setting webhook:', { providerCode, instanceId });
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'setWebhook',
+        providerCode,
+        instanceId,
+      },
+    });
+
+    console.log('[Instance Creator] SetWebhook Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao configurar webhook' };
+    }
+
+    return data as { success: boolean; message?: string; error?: string };
+  } catch (error: any) {
+    console.error('[Instance Creator] SetWebhook Error:', error);
+    return { success: false, error: error.message || 'Erro ao configurar webhook' };
+  }
+}
+
+// =====================================================
 // FUNÇÃO - BUSCAR FOTO DO PERFIL DO CONTATO
 // =====================================================
 export async function fetchContactProfile(
