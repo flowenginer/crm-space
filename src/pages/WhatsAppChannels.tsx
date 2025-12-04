@@ -504,13 +504,13 @@ export default function WhatsAppChannels() {
 
                     <div>
                       <Label htmlFor="department">Departamento (opcional)</Label>
-                      <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
-                        <SelectTrigger className="mt-2">
-                          <SelectValue placeholder="Nenhum departamento" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">Nenhum</SelectItem>
-                          {departments.map((dept) => (
+                    <Select value={selectedDepartmentId || "none"} onValueChange={(val) => setSelectedDepartmentId(val === "none" ? "" : val)}>
+                      <SelectTrigger className="mt-2">
+                        <SelectValue placeholder="Nenhum departamento" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Nenhum</SelectItem>
+                        {departments.map((dept) => (
                             <SelectItem key={dept.id} value={dept.id}>
                               {dept.name}
                             </SelectItem>
