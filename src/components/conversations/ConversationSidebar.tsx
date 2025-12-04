@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ScheduleMessageModal } from './ScheduleMessageModal';
+import { fetchContactProfile } from '@/lib/whatsapp/instance-creator';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -33,6 +34,8 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   const [showTagModal, setShowTagModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [isFetchingPhoto, setIsFetchingPhoto] = useState(false);
   
   const queryClient = useQueryClient();
 
@@ -325,13 +328,61 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     return format(d, "dd/MM/yyyy, HH:mm", { locale: ptBR });
   };
 
+  // Fetch profile photo from WhatsApp
+  const fetchPhoto = async () => {
+    if (!conversation?.channel_id || !contact.phone || contact.avatar_url) return;
+    
+    setIsFetchingPhoto(true);
+    try {
+      const result = await fetchContactProfile(conversation.channel_id, contact.phone);
+      if (result.success && result.profilePictureUrl) {
+        // Update contact avatar_url in database
+        await supabase
+          .from('contacts')
+          .update({ avatar_url: result.profilePictureUrl })
+          .eq('id', contact.id);
+        
+        queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      }
+    } catch (error) {
+      console.error('Error fetching profile photo:', error);
+    } finally {
+      setIsFetchingPhoto(false);
+    }
+  };
+
+  // Fetch photo on mount if not already fetched
+  useEffect(() => {
+    if (conversation?.channel_id && contact?.phone && !contact.avatar_url) {
+      fetchPhoto();
+    }
+  }, [conversation?.channel_id, contact?.phone, contact?.avatar_url]);
+
   return (
     <div className="w-[350px] bg-card border-l border-border flex flex-col h-full overflow-hidden">
       {/* Header: Contact Info */}
       <div className="p-6 text-center border-b border-border">
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">
-          {contact.full_name?.charAt(0)?.toUpperCase() || '?'}
-        </div>
+        {contact.avatar_url ? (
+          <div 
+            className="w-20 h-20 rounded-full mx-auto mb-4 cursor-pointer overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+            onClick={() => setShowPhotoModal(true)}
+          >
+            <img 
+              src={contact.avatar_url} 
+              alt={contact.full_name || 'Avatar'} 
+              className="w-full h-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4 relative">
+            {contact.full_name?.charAt(0)?.toUpperCase() || '?'}
+            {isFetchingPhoto && (
+              <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin text-white" />
+              </div>
+            )}
+          </div>
+        )}
         
         <h3 className="text-lg font-bold text-foreground mb-1">
           {contact.full_name || 'Sem nome'}
@@ -349,6 +400,19 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
           Editar contato
         </button>
       </div>
+
+      {/* Photo Modal */}
+      <Dialog open={showPhotoModal} onOpenChange={setShowPhotoModal}>
+        <DialogContent className="max-w-md p-2 bg-transparent border-none shadow-none">
+          {contact.avatar_url && (
+            <img 
+              src={contact.avatar_url} 
+              alt={contact.full_name || 'Avatar'} 
+              className="w-full h-auto rounded-lg"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">

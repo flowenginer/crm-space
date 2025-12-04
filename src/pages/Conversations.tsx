@@ -736,14 +736,23 @@ export default function Conversations() {
     try {
       setIsUploading(true);
       
+      // Get assignee name for signature
+      const assigneeName = selectedConv?.assignee?.full_name;
+      
       // Função auxiliar para enviar via WhatsApp (Edge Function - sem CORS)
       const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string): Promise<string | undefined> => {
         if (channelId && contactPhone) {
           try {
+            // Add agent signature for text messages when there's an assigned agent
+            let formattedContent = content;
+            if (type === 'text' && assigneeName) {
+              formattedContent = `*${assigneeName}*:\n${content}`;
+            }
+            
             const result = await sendWhatsAppMessage(
               channelId, 
               contactPhone, 
-              content, 
+              formattedContent, 
               type as 'text' | 'image' | 'audio' | 'video' | 'document',
               mediaUrl
             );
