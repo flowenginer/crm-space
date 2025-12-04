@@ -142,10 +142,36 @@ serve(async (req) => {
 
     if (profileUpdateError) {
       console.error('Profile update error:', profileUpdateError);
-      // Don't delete user, just log the error - profile might have been created by trigger
     }
 
-    console.log('User profile updated successfully');
+    // Map role to app_role enum and update user_roles table
+    const roleMapping: Record<string, string> = {
+      'admin': 'admin',
+      'supervisor': 'supervisor',
+      'manager': 'manager',
+      'vendedor': 'seller',
+      'seller': 'seller',
+      'designer': 'user',
+      'user': 'user'
+    };
+    
+    const appRole = roleMapping[role] || 'user';
+    
+    // Update the user_roles table (upsert to handle the trigger-created default)
+    const { error: roleError } = await supabaseAdmin
+      .from('user_roles')
+      .upsert({
+        user_id: newUser.user.id,
+        role: appRole
+      }, {
+        onConflict: 'user_id'
+      })
+
+    if (roleError) {
+      console.error('Role update error:', roleError);
+    }
+
+    console.log('User profile and role updated successfully');
 
     return new Response(
       JSON.stringify({ 
