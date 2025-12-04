@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { decode } from "https://esm.sh/base64-arraybuffer@1.0.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,12 +20,135 @@ interface NormalizedMessage {
   type: MessageType;
   content: string;
   mediaUrl?: string;
+  mediaBase64?: string;
   mediaMimeType?: string;
   caption?: string;
   timestamp: Date;
   quotedMessageId?: string;
   status: string;
   originalId: string;
+}
+
+// =====================================================
+// MEDIA UPLOAD FUNCTIONS
+// =====================================================
+
+function getExtensionFromMimetype(mimetype: string): string {
+  const mimeMap: Record<string, string> = {
+    'audio/ogg': 'ogg',
+    'audio/ogg; codecs=opus': 'ogg',
+    'audio/mp4': 'm4a',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/webm': 'webm',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'video/3gpp': '3gp',
+    'application/pdf': 'pdf',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-excel': 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  };
+  
+  // Clean mimetype (remove params like "; codecs=opus")
+  const cleanMime = mimetype.split(';')[0].trim();
+  return mimeMap[mimetype] || mimeMap[cleanMime] || 'bin';
+}
+
+async function uploadMediaToStorage(
+  supabase: any,
+  base64Data: string,
+  mimetype: string,
+  conversationId: string
+): Promise<string | null> {
+  try {
+    console.log(`[Webhook] Uploading media to storage - Mimetype: ${mimetype}, ConversationId: ${conversationId}`);
+    
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    const extension = getExtensionFromMimetype(mimetype);
+    const fileName = `${timestamp}_${randomId}.${extension}`;
+    const filePath = `${conversationId}/${fileName}`;
+    
+    // Decode base64 to ArrayBuffer
+    const buffer = decode(base64Data);
+    
+    console.log(`[Webhook] Decoded base64, size: ${buffer.byteLength} bytes`);
+    
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('conversation-attachments')
+      .upload(filePath, buffer, {
+        contentType: mimetype.split(';')[0].trim(), // Clean mimetype
+        upsert: false
+      });
+    
+    if (error) {
+      console.error('[Webhook] Storage upload error:', error);
+      return null;
+    }
+    
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('conversation-attachments')
+      .getPublicUrl(filePath);
+    
+    console.log(`[Webhook] Media uploaded successfully: ${urlData.publicUrl}`);
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error('[Webhook] Error uploading media:', error);
+    return null;
+  }
+}
+
+function extractEvolutionMediaBase64(msg: any): { base64: string | null; mimetype: string | null } {
+  const message = msg.message;
+  if (!message) return { base64: null, mimetype: null };
+  
+  // Check each media type for base64 data
+  if (message.audioMessage?.base64) {
+    console.log(`[Webhook] Found audio base64, length: ${message.audioMessage.base64.length}`);
+    return { 
+      base64: message.audioMessage.base64, 
+      mimetype: message.audioMessage.mimetype || 'audio/ogg; codecs=opus' 
+    };
+  }
+  if (message.imageMessage?.base64) {
+    console.log(`[Webhook] Found image base64, length: ${message.imageMessage.base64.length}`);
+    return { 
+      base64: message.imageMessage.base64, 
+      mimetype: message.imageMessage.mimetype || 'image/jpeg' 
+    };
+  }
+  if (message.videoMessage?.base64) {
+    console.log(`[Webhook] Found video base64, length: ${message.videoMessage.base64.length}`);
+    return { 
+      base64: message.videoMessage.base64, 
+      mimetype: message.videoMessage.mimetype || 'video/mp4' 
+    };
+  }
+  if (message.documentMessage?.base64) {
+    console.log(`[Webhook] Found document base64, length: ${message.documentMessage.base64.length}`);
+    return { 
+      base64: message.documentMessage.base64, 
+      mimetype: message.documentMessage.mimetype || 'application/octet-stream' 
+    };
+  }
+  if (message.stickerMessage?.base64) {
+    console.log(`[Webhook] Found sticker base64, length: ${message.stickerMessage.base64.length}`);
+    return { 
+      base64: message.stickerMessage.base64, 
+      mimetype: message.stickerMessage.mimetype || 'image/webp' 
+    };
+  }
+  
+  return { base64: null, mimetype: null };
 }
 
 serve(async (req) => {
@@ -59,12 +183,10 @@ serve(async (req) => {
     
     if (hasAudio) {
       console.log('🎵 [Webhook] AUDIO DETECTED!');
-      console.log('🎵 [Webhook] Audio payload:', JSON.stringify({
-        audioUrl: payload.audio?.audioUrl || payload.data?.message?.audioMessage?.url,
-        mimetype: payload.audio?.mimetype || payload.data?.message?.audioMessage?.mimetype,
-        type: payload.type || payload.data?.messageType,
-        fullAudioData: payload.audio || payload.data?.message?.audioMessage || payload.message?.audioMessage
-      }, null, 2));
+      const audioData = payload.audio || payload.data?.message?.audioMessage || payload.message?.audioMessage;
+      console.log('🎵 [Webhook] Has base64:', !!audioData?.base64);
+      console.log('🎵 [Webhook] Audio URL:', audioData?.url);
+      console.log('🎵 [Webhook] Mimetype:', audioData?.mimetype);
     }
 
     // Extract instance ID
@@ -197,12 +319,31 @@ serve(async (req) => {
         });
       }
 
+      // =====================================================
+      // UPLOAD MEDIA TO STORAGE (fromMe)
+      // =====================================================
+      let finalMediaUrl = normalizedMessage.mediaUrl;
+      
+      if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
+        console.log(`[Webhook] Uploading media for fromMe message...`);
+        const uploadedUrl = await uploadMediaToStorage(
+          supabase,
+          normalizedMessage.mediaBase64,
+          normalizedMessage.mediaMimeType,
+          conversation.id
+        );
+        if (uploadedUrl) {
+          finalMediaUrl = uploadedUrl;
+          console.log(`[Webhook] FromMe media uploaded, using Supabase URL`);
+        }
+      }
+
       // Salvar mensagem enviada
       const { error: msgError } = await supabase.from("messages").insert({
         conversation_id: conversation.id,
         content: normalizedMessage.content,
         message_type: normalizedMessage.type,
-        media_url: normalizedMessage.mediaUrl,
+        media_url: finalMediaUrl,
         media_mime_type: normalizedMessage.mediaMimeType,
         is_from_me: true,
         status: "sent",
@@ -315,13 +456,32 @@ serve(async (req) => {
         .eq("id", conversation.id);
     }
 
+    // =====================================================
+    // UPLOAD MEDIA TO STORAGE (received message)
+    // =====================================================
+    let finalMediaUrl = normalizedMessage.mediaUrl;
+    
+    if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
+      console.log(`[Webhook] Uploading media for received message...`);
+      const uploadedUrl = await uploadMediaToStorage(
+        supabase,
+        normalizedMessage.mediaBase64,
+        normalizedMessage.mediaMimeType,
+        conversation.id
+      );
+      if (uploadedUrl) {
+        finalMediaUrl = uploadedUrl;
+        console.log(`[Webhook] Received media uploaded, using Supabase URL`);
+      }
+    }
+
     // Save message
     const { error: msgError } = await supabase.from("messages").insert({
       conversation_id: conversation.id,
       contact_id: contact.id,
       content: normalizedMessage.content,
       message_type: normalizedMessage.type,
-      media_url: normalizedMessage.mediaUrl,
+      media_url: finalMediaUrl,
       media_mime_type: normalizedMessage.mediaMimeType,
       is_from_me: false,
       status: "delivered",
@@ -375,17 +535,14 @@ function getEventType(provider: WhatsAppProvider, payload: any): string {
 function isConnectionEvent(provider: WhatsAppProvider, payload: any): boolean {
   switch (provider) {
     case "zapi":
-      // Z-API connection events
       return payload.type === "connection_update" || 
              payload.event === "connection" ||
              payload.connected !== undefined;
     case "uazapi":
-      // UAZAPI connection events
       return payload.event === "connection.update" || 
              payload.event === "status" ||
              payload.type === "connection";
     case "evolution":
-      // Evolution API connection events
       return payload.event === "connection.update";
     default:
       return false;
@@ -420,7 +577,6 @@ async function handleConnectionEvent(
     case "evolution":
       const evolutionState = payload.data?.state || payload.state;
       newStatus = evolutionState === "open" ? "connected" : "disconnected";
-      // Extract phone from sender field or wuid
       ownerPhone = payload.sender?.replace("@s.whatsapp.net", "") || 
                    payload.data?.wuid?.replace("@s.whatsapp.net", "") ||
                    payload.data?.owner?.replace("@s.whatsapp.net", "");
@@ -429,7 +585,6 @@ async function handleConnectionEvent(
 
   console.log(`[Webhook] Connection update - Instance: ${instanceId}, Status: ${newStatus}, Phone: ${ownerPhone}`);
 
-  // Find channel by instance ID
   const { data: channel, error: channelError } = await supabase
     .from("whatsapp_channels")
     .select("id, name, phone, status")
@@ -442,13 +597,11 @@ async function handleConnectionEvent(
     return;
   }
 
-  // Only update if status changed
   const updateData: any = {
     status: newStatus,
     last_sync_at: new Date().toISOString(),
   };
 
-  // Update phone if we got one and current is empty or placeholder
   if (ownerPhone && (!channel.phone || channel.phone === "Aguardando conexão" || channel.phone === "Não identificado")) {
     updateData.phone = ownerPhone;
   }
@@ -497,7 +650,6 @@ async function handleMessageStatusEvent(
     
     console.log(`[Webhook] Processing status update: messageId=${update.messageId}, rawStatus=${update.status}`);
     
-    // Map provider status to our status
     const newStatus = mapProviderStatus(update.status);
     console.log(`[Webhook] Mapped status: ${update.status} -> ${newStatus}`);
     
@@ -506,7 +658,6 @@ async function handleMessageStatusEvent(
       continue;
     }
     
-    // Update message status by whatsapp_message_id
     const { data, error } = await supabase
       .from("messages")
       .update({ status: newStatus })
@@ -531,14 +682,12 @@ interface StatusUpdate {
 function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusUpdate[] {
   switch (provider) {
     case "zapi":
-      // Z-API sends single status update
       return [{
         messageId: payload.messageId || payload.ids?.[0] || "",
         status: payload.status || payload.ack || ""
       }];
     
     case "uazapi":
-      // UAZAPI can send array of updates
       const uazapiData = payload.data || payload;
       if (Array.isArray(uazapiData)) {
         return uazapiData.map((item: any) => ({
@@ -552,13 +701,9 @@ function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusU
       }];
     
     case "evolution":
-      // Evolution sends different formats:
-      // 1. messages.update event with data object containing keyId and status
-      // 2. Array format
       const evolutionData = payload.data;
       console.log(`[Webhook] Evolution status data:`, JSON.stringify(evolutionData));
       
-      // Format: { keyId, remoteJid, status, messageId }
       if (evolutionData?.keyId) {
         return [{
           messageId: evolutionData.keyId,
@@ -588,7 +733,6 @@ function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusU
 function mapProviderStatus(providerStatus: string): string | null {
   const status = String(providerStatus).toUpperCase();
   
-  // Evolution API statuses
   if (status === "DELIVERY_ACK" || status === "DELIVERED" || status === "SERVER_ACK") {
     return "delivered";
   }
@@ -602,8 +746,6 @@ function mapProviderStatus(providerStatus: string): string | null {
     return "failed";
   }
   
-  // Numeric ACK values (used by some providers)
-  // 0 = error, 1 = pending, 2 = sent, 3 = delivered, 4 = read
   const numStatus = parseInt(providerStatus);
   if (!isNaN(numStatus)) {
     switch (numStatus) {
@@ -612,7 +754,7 @@ function mapProviderStatus(providerStatus: string): string | null {
       case 2: return "sent";
       case 3: return "delivered";
       case 4: return "read";
-      case 5: return "read"; // played (audio)
+      case 5: return "read";
     }
   }
   
@@ -640,7 +782,6 @@ function isMessageEvent(provider: WhatsAppProvider, payload: any): boolean {
       const event = payload.event || payload.type;
       return event === "message" || event === "messages.upsert" || !!payload.message;
     case "evolution":
-      // Aceitar tanto mensagens recebidas (messages.upsert) quanto enviadas pelo celular (send.message)
       return payload.event === "messages.upsert" || payload.event === "send.message";
     default:
       return false;
@@ -665,7 +806,7 @@ function normalizeMessage(provider: WhatsAppProvider, payload: any): NormalizedM
     }
     
     if (normalized) {
-      console.log(`[Webhook] Normalized message - Type: ${normalized.type}, Content: ${normalized.content.substring(0, 50)}, MediaURL: ${normalized.mediaUrl ? 'YES' : 'NO'}`);
+      console.log(`[Webhook] Normalized message - Type: ${normalized.type}, Content: ${normalized.content.substring(0, 50)}, MediaURL: ${normalized.mediaUrl ? 'YES' : 'NO'}, MediaBase64: ${normalized.mediaBase64 ? 'YES' : 'NO'}`);
     }
     
     return normalized;
@@ -678,7 +819,6 @@ function normalizeMessage(provider: WhatsAppProvider, payload: any): NormalizedM
 function normalizeZAPIMessage(payload: any): NormalizedMessage | null {
   if (!payload.phone) return null;
 
-  // Ignorar mensagens de grupos (telefones que começam com 120363 são IDs de grupo)
   const phone = payload.phone?.replace(/\D/g, "") || "";
   if (phone.startsWith("120363") || payload.isGroup || payload.isGroupMsg) {
     console.log(`[Webhook ZAPI] Ignoring group message from: ${phone}`);
@@ -738,7 +878,6 @@ function normalizeUAZAPIMessage(payload: any): NormalizedMessage | null {
 
   let rawFrom = msg.from || msg.remoteJid || msg.phone || "";
   
-  // Ignorar mensagens de grupos (@g.us = grupo)
   if (rawFrom.includes("@g.us")) {
     console.log(`[Webhook UAZAPI] Ignoring group message from: ${rawFrom}`);
     return null;
@@ -746,7 +885,6 @@ function normalizeUAZAPIMessage(payload: any): NormalizedMessage | null {
   
   let from = rawFrom.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
   
-  // Ignorar IDs que começam com 120363 (grupos)
   if (from.startsWith("120363")) {
     console.log(`[Webhook UAZAPI] Ignoring group message from ID: ${from}`);
     return null;
@@ -800,10 +938,8 @@ function extractUAZAPIContent(msg: any, type: MessageType): string {
 }
 
 function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
-  // Aceitar tanto messages.upsert quanto send.message (mensagens enviadas pelo celular)
   if (payload.event !== "messages.upsert" && payload.event !== "send.message") return null;
 
-  // Para messages.upsert, data pode ser array. Para send.message, é objeto único
   let msg = payload.data;
   if (Array.isArray(msg)) {
     msg = msg[0];
@@ -813,7 +949,6 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
 
   const rawRemoteJid = msg.key.remoteJid || "";
   
-  // Ignorar mensagens de grupos (@g.us = grupo)
   if (rawRemoteJid.includes("@g.us")) {
     console.log(`[Webhook Evolution] Ignoring group message from: ${rawRemoteJid}`);
     return null;
@@ -821,7 +956,6 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
   
   let from = rawRemoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
   
-  // Ignorar IDs que começam com 120363 (grupos)
   if (from.startsWith("120363")) {
     console.log(`[Webhook Evolution] Ignoring group message from ID: ${from}`);
     return null;
@@ -829,7 +963,10 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
 
   const messageType = detectEvolutionMessageType(msg);
   
-  console.log(`[Webhook Evolution] Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}`);
+  // Extract base64 data if available
+  const mediaData = extractEvolutionMediaBase64(msg);
+  
+  console.log(`[Webhook Evolution] Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}, HasBase64: ${!!mediaData.base64}`);
 
   return {
     id: `evolution_${msg.key.id}`,
@@ -841,7 +978,8 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
     type: messageType,
     content: extractEvolutionContent(msg, messageType),
     mediaUrl: msg.message?.imageMessage?.url || msg.message?.audioMessage?.url || msg.message?.videoMessage?.url || msg.message?.documentMessage?.url,
-    mediaMimeType: msg.message?.imageMessage?.mimetype || msg.message?.audioMessage?.mimetype || msg.message?.videoMessage?.mimetype || msg.message?.documentMessage?.mimetype,
+    mediaBase64: mediaData.base64 || undefined,
+    mediaMimeType: mediaData.mimetype || msg.message?.imageMessage?.mimetype || msg.message?.audioMessage?.mimetype || msg.message?.videoMessage?.mimetype || msg.message?.documentMessage?.mimetype,
     caption: msg.message?.imageMessage?.caption || msg.message?.videoMessage?.caption,
     timestamp: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000),
     quotedMessageId: msg.message?.extendedTextMessage?.contextInfo?.stanzaId,
