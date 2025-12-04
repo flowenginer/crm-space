@@ -19,6 +19,7 @@ import { NavLink } from '@/components/NavLink';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const navItems = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -40,6 +41,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const location = useLocation();
   const { profile, signOut } = useAuth();
   const isMobile = useIsMobile();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   const getInitials = (name: string | null) => {
     if (!name) return 'U';
@@ -54,23 +57,43 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-40 flex h-screen flex-col sidebar-gradient shadow-2xl transition-all duration-300',
+        'fixed left-0 top-0 z-40 flex h-screen flex-col shadow-2xl transition-all duration-300',
         isCollapsed ? 'w-20' : 'w-[280px]',
-        isMobile && isCollapsed && '-translate-x-full'
+        isMobile && isCollapsed && '-translate-x-full',
+        // Light mode: vibrant purple gradient
+        // Dark mode: subtle dark gradient with hint of purple
+        isDark 
+          ? 'bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-r border-border/50' 
+          : 'bg-gradient-to-b from-purple-600 via-purple-700 to-pink-600'
       )}
     >
       {/* Logo Section */}
-      <div className="flex h-20 items-center justify-between px-5 border-b border-white/10">
+      <div className={cn(
+        "flex h-20 items-center justify-between px-5 border-b",
+        isDark ? "border-border/50" : "border-white/10"
+      )}>
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-lg">
-            <Shirt className="h-6 w-6 text-purple-600" />
+          <div className={cn(
+            "flex h-11 w-11 items-center justify-center rounded-xl shadow-lg",
+            isDark ? "bg-primary" : "bg-white"
+          )}>
+            <Shirt className={cn(
+              "h-6 w-6",
+              isDark ? "text-primary-foreground" : "text-purple-600"
+            )} />
           </div>
           {!isCollapsed && (
             <div className="flex flex-col">
-              <span className="font-bold text-lg text-white tracking-tight">
+              <span className={cn(
+                "font-bold text-lg tracking-tight",
+                isDark ? "text-foreground" : "text-white"
+              )}>
                 Space Sports
               </span>
-              <span className="text-xs text-purple-200">
+              <span className={cn(
+                "text-xs",
+                isDark ? "text-muted-foreground" : "text-purple-200"
+              )}>
                 CRM Pro
               </span>
             </div>
@@ -80,7 +103,12 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           variant="ghost"
           size="icon"
           onClick={onToggle}
-          className="h-9 w-9 text-white hover:bg-white/10 transition-colors"
+          className={cn(
+            "h-9 w-9 transition-colors",
+            isDark 
+              ? "text-muted-foreground hover:text-foreground hover:bg-muted" 
+              : "text-white hover:bg-white/10"
+          )}
         >
           {isCollapsed ? (
             <Menu className="h-5 w-5" />
@@ -104,14 +132,22 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                 className={cn(
                   'group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
                   isActive
-                    ? 'bg-white/20 text-white shadow-lg border-l-4 border-white'
-                    : 'text-purple-100 hover:bg-white/10 hover:text-white hover:scale-[1.02]',
+                    ? isDark
+                      ? 'bg-primary/15 text-primary border-l-4 border-primary'
+                      : 'bg-white/20 text-white shadow-lg border-l-4 border-white'
+                    : isDark
+                      ? 'text-muted-foreground hover:bg-muted hover:text-foreground hover:scale-[1.02]'
+                      : 'text-purple-100 hover:bg-white/10 hover:text-white hover:scale-[1.02]',
                   isCollapsed && 'justify-center px-3'
                 )}
               >
                 <Icon className={cn(
                   'h-5 w-5 shrink-0 transition-transform',
-                  isActive ? 'text-white' : 'text-purple-200 group-hover:text-white'
+                  isActive 
+                    ? isDark ? 'text-primary' : 'text-white'
+                    : isDark 
+                      ? 'text-muted-foreground group-hover:text-foreground' 
+                      : 'text-purple-200 group-hover:text-white'
                 )} />
                 {!isCollapsed && <span>{item.title}</span>}
               </NavLink>
@@ -124,7 +160,10 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       <div className="p-4">
         <div
           className={cn(
-            'rounded-xl glass border border-white/20 p-3 transition-all',
+            'rounded-xl p-3 transition-all',
+            isDark 
+              ? 'bg-muted/50 border border-border/50' 
+              : 'glass border border-white/20',
             isCollapsed && 'flex flex-col items-center gap-2'
           )}
         >
@@ -134,21 +173,35 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           )}>
             {/* Avatar with notification badge */}
             <div className="relative">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-purple-600 font-semibold text-sm border-2 border-white shadow-lg">
+              <div className={cn(
+                "flex h-11 w-11 items-center justify-center rounded-full font-semibold text-sm border-2 shadow-lg",
+                isDark 
+                  ? "bg-primary text-primary-foreground border-primary" 
+                  : "bg-white text-purple-600 border-white"
+              )}>
                 {getInitials(profile?.full_name)}
               </div>
               {/* Notification badge */}
-              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white border-2 border-purple-600 shadow-md">
+              <span className={cn(
+                "absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground border-2 shadow-md",
+                isDark ? "border-slate-900" : "border-purple-600"
+              )}>
                 3
               </span>
             </div>
 
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="truncate text-sm font-semibold text-white">
+                <p className={cn(
+                  "truncate text-sm font-semibold",
+                  isDark ? "text-foreground" : "text-white"
+                )}>
                   {profile?.full_name || 'Usuário'}
                 </p>
-                <p className="truncate text-xs text-purple-200 flex items-center gap-1">
+                <p className={cn(
+                  "truncate text-xs flex items-center gap-1",
+                  isDark ? "text-muted-foreground" : "text-purple-200"
+                )}>
                   <span className="h-2 w-2 rounded-full bg-green-400"></span>
                   Online
                 </p>
@@ -160,7 +213,12 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-white hover:bg-white/10 transition-colors"
+                  className={cn(
+                    "h-9 w-9 transition-colors",
+                    isDark 
+                      ? "text-muted-foreground hover:text-foreground hover:bg-muted" 
+                      : "text-white hover:bg-white/10"
+                  )}
                 >
                   <Bell className="h-4 w-4" />
                 </Button>
@@ -168,7 +226,12 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                   variant="ghost"
                   size="icon"
                   onClick={() => signOut()}
-                  className="h-9 w-9 text-white hover:bg-red-500/30 transition-colors"
+                  className={cn(
+                    "h-9 w-9 transition-colors",
+                    isDark 
+                      ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10" 
+                      : "text-white hover:bg-red-500/30"
+                  )}
                 >
                   <LogOut className="h-4 w-4" />
                 </Button>
@@ -181,7 +244,12 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
               variant="ghost"
               size="icon"
               onClick={() => signOut()}
-              className="h-9 w-9 text-white hover:bg-red-500/30 transition-colors"
+              className={cn(
+                "h-9 w-9 transition-colors",
+                isDark 
+                  ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10" 
+                  : "text-white hover:bg-red-500/30"
+              )}
             >
               <LogOut className="h-4 w-4" />
             </Button>
