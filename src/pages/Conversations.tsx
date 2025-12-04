@@ -18,6 +18,7 @@ import {
   Mail,
   ChevronLeft,
   Loader2,
+  Calendar,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,6 +41,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
+import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { useConversations, useMessages, useSendMessage, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -327,6 +329,7 @@ export default function Conversations() {
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const isMobile = useIsMobile();
 
   // Fetch real conversations from database with filter
@@ -577,6 +580,13 @@ export default function Conversations() {
                 <button className="p-2 hover:bg-muted rounded-lg transition-colors">
                   <Paperclip size={22} className="text-muted-foreground" />
                 </button>
+                <button 
+                  onClick={() => setShowScheduleModal(true)}
+                  className="p-2 hover:bg-muted rounded-lg transition-colors"
+                  title="Agendar mensagem"
+                >
+                  <Calendar size={22} className="text-muted-foreground" />
+                </button>
 
                 <div className="flex-1">
                   <Textarea
@@ -606,6 +616,16 @@ export default function Conversations() {
                 </button>
               </div>
             </div>
+
+            {/* Schedule Message Modal */}
+            <ScheduleMessageModal
+              open={showScheduleModal}
+              onClose={() => setShowScheduleModal(false)}
+              contactId={selectedConversation.contact_id}
+              conversationId={selectedConversation.id}
+              channelId={selectedConversation.channel_id}
+              contactName={selectedConversation.contact?.full_name}
+            />
           </>
         ) : (
           /* Empty State with Start Conversation */
