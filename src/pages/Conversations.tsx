@@ -56,7 +56,7 @@ import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
-import { useConversations, useMessages, useSendMessage, useDeleteMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
+import { useConversations, useMessages, useSendMessage, useDeleteMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
@@ -322,6 +322,7 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showImagePreview, setShowImagePreview] = useState(false);
   const isMe = message.is_from_me;
   const hasMedia = message.media_url && message.message_type !== 'text';
   const isDeleted = message.is_deleted;
@@ -451,7 +452,7 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
                         src={message.media_url!} 
                         alt="Imagem" 
                         className="rounded-lg max-h-64 w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                        onClick={() => window.open(message.media_url!, '_blank')}
+                        onClick={() => setShowImagePreview(true)}
                         loading="lazy"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
@@ -596,6 +597,25 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Image Preview Dialog */}
+      <Dialog open={showImagePreview} onOpenChange={setShowImagePreview}>
+        <DialogContent className="max-w-4xl p-0 bg-black/90 border-none">
+          <div className="relative flex items-center justify-center min-h-[50vh]">
+            <button 
+              onClick={() => setShowImagePreview(false)}
+              className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white z-10"
+            >
+              <X size={24} />
+            </button>
+            <img 
+              src={message.media_url!} 
+              alt="Imagem expandida" 
+              className="max-w-full max-h-[85vh] object-contain"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -664,6 +684,7 @@ export default function Conversations() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const dragCounterRef = useRef(0);
+  const isSendingRef = useRef(false);
   const isMobile = useIsMobile();
 
   // Fetch real conversations from database with filter
@@ -674,6 +695,7 @@ export default function Conversations() {
   const deleteMessage = useDeleteMessage();
   const reactToMessage = useReactToMessage();
   const createInternalNote = useCreateInternalNote();
+  const updateConversation = useUpdateConversation();
 
   // Realtime subscriptions
   useRealtimeMessages(selectedConversationId);
@@ -682,6 +704,17 @@ export default function Conversations() {
 
   // Find selected conversation from real data
   const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
+
+  // Mark conversation as read when selected
+  useEffect(() => {
+    if (selectedConversationId && selectedConversation?.is_unread) {
+      updateConversation.mutate({
+        id: selectedConversationId,
+        is_unread: false,
+        unread_count: 0,
+      });
+    }
+  }, [selectedConversationId, selectedConversation?.is_unread]);
 
   // Combine messages and internal notes, sorted by created_at
   const allChatItems = useMemo(() => {
@@ -728,6 +761,9 @@ export default function Conversations() {
   const handleSendMessage = async () => {
     if (!selectedConversationId) return;
     
+    // Prevent duplicate sends
+    if (isSendingRef.current) return;
+    
     // Check if we have either text or files
     const hasText = messageInput.trim().length > 0;
     const hasFiles = selectedFiles.length > 0;
@@ -751,6 +787,7 @@ export default function Conversations() {
     const contactPhone = selectedConv?.contact?.phone;
 
     try {
+      isSendingRef.current = true;
       setIsUploading(true);
       
       // Get assignee name for signature
@@ -857,6 +894,7 @@ export default function Conversations() {
       toast.error('Erro ao enviar mensagem. Tente novamente.');
     } finally {
       setIsUploading(false);
+      isSendingRef.current = false;
     }
   };
 
@@ -992,6 +1030,9 @@ export default function Conversations() {
         const audioFile = new File([audioBlob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
         stream.getTracks().forEach(track => track.stop());
         
+        // Prevent duplicate sends
+        if (isSendingRef.current) return;
+        
         // Send audio directly without confirmation
         const selectedConv = conversations?.find(c => c.id === selectedConversationId);
         const channelId = selectedConv?.channel_id;
@@ -999,6 +1040,7 @@ export default function Conversations() {
         
         if (selectedConversationId) {
           try {
+            isSendingRef.current = true;
             setIsUploading(true);
             const result = await uploadAttachment(audioFile, selectedConversationId);
             
@@ -1027,6 +1069,7 @@ export default function Conversations() {
             toast.error('Erro ao enviar áudio');
           } finally {
             setIsUploading(false);
+            isSendingRef.current = false;
           }
         }
       };
@@ -1198,9 +1241,18 @@ export default function Conversations() {
                     </button>
                   )}
                   <div className="relative">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold shadow-md">
-                      {(selectedConversation.contact?.full_name || 'C').charAt(0).toUpperCase()}
-                    </div>
+                    {selectedConversation.contact?.avatar_url ? (
+                      <img 
+                        src={selectedConversation.contact.avatar_url}
+                        alt={selectedConversation.contact.full_name || 'Contato'}
+                        loading="lazy"
+                        className="w-12 h-12 rounded-full object-cover shadow-md"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold shadow-md">
+                        {(selectedConversation.contact?.full_name || 'C').charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     {selectedConversation.contact?.is_online && (
                       <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-success rounded-full border-2 border-card"></div>
                     )}
