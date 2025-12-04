@@ -65,14 +65,33 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     enabled: !!conversationId,
   });
 
-  // Fetch all tags
+  // Fetch all tags (with visibility filter)
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
     queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      // Get user's department
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('department_id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      // Build visibility filter
+      const conditions = ['visibility.eq.public', 'visibility.is.null'];
+      conditions.push(`and(visibility.eq.private,created_by.eq.${user.id})`);
+      if (profile?.department_id) {
+        conditions.push(`and(visibility.eq.department,department_id.eq.${profile.department_id})`);
+      }
+
       const { data, error } = await supabase
         .from('tags')
         .select('*')
+        .or(conditions.join(','))
         .order('name');
+      
       if (error) throw error;
       return data;
     },
@@ -807,7 +826,7 @@ function EditContactModal({
   );
 }
 
-// Add Tag Modal
+// Add Tag Modal with ability to create new tags
 function AddTagModal({ 
   open, 
   onClose, 
@@ -821,39 +840,230 @@ function AddTagModal({
   currentTagIds: string[];
   onAddTag: (tagId: string) => void;
 }) {
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#8B5CF6');
+  const [newTagVisibility, setNewTagVisibility] = useState<'public' | 'private'>('private');
+  const [isCreating, setIsCreating] = useState(false);
+  const queryClient = useQueryClient();
+
   const availableTags = allTags.filter(tag => !currentTagIds.includes(tag.id));
 
+  const colors = [
+    '#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16', 
+    '#22C55E', '#10B981', '#14B8A6', '#06B6D4', '#0EA5E9',
+    '#3B82F6', '#6366F1', '#8B5CF6', '#A855F7', '#D946EF', '#EC4899'
+  ];
+
+  const handleCreateTag = async () => {
+    if (!newTagName.trim()) {
+      toast.error('Digite o nome da etiqueta');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { data: newTag, error } = await supabase
+        .from('tags')
+        .insert({
+          name: newTagName.trim(),
+          color: newTagColor,
+          visibility: newTagVisibility,
+          created_by: user?.id,
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      // Immediately add the new tag to the contact
+      onAddTag(newTag.id);
+      
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      toast.success('Etiqueta criada e adicionada!');
+      
+      // Reset form
+      setNewTagName('');
+      setNewTagColor('#8B5CF6');
+      setShowCreateForm(false);
+      onClose();
+    } catch (error: any) {
+      if (error.code === '23505') {
+        toast.error('Já existe uma etiqueta com este nome');
+      } else {
+        toast.error('Erro ao criar etiqueta');
+      }
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleClose = () => {
+    setShowCreateForm(false);
+    setNewTagName('');
+    setNewTagColor('#8B5CF6');
+    onClose();
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Adicionar Etiqueta</DialogTitle>
+          <DialogTitle>
+            {showCreateForm ? 'Criar Nova Etiqueta' : 'Adicionar Etiqueta'}
+          </DialogTitle>
         </DialogHeader>
         
         <div className="py-4">
-          {availableTags.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">
-              Todas as etiquetas já foram adicionadas
-            </p>
+          {!showCreateForm ? (
+            <>
+              {/* Existing Tags List */}
+              {availableTags.length === 0 ? (
+                <p className="text-muted-foreground text-center py-4">
+                  Todas as etiquetas já foram adicionadas
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
+                  {availableTags.map((tag) => (
+                    <button
+                      key={tag.id}
+                      onClick={() => {
+                        onAddTag(tag.id);
+                        onClose();
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg bg-muted hover:bg-accent transition-colors"
+                    >
+                      <div 
+                        className="w-4 h-4 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: tag.color || '#8B5CF6' }}
+                      />
+                      <span className="text-foreground flex-1 text-left">{tag.name}</span>
+                      {tag.visibility === 'private' && (
+                        <span className="text-xs text-muted-foreground">🔒</span>
+                      )}
+                      {tag.visibility === 'department' && (
+                        <span className="text-xs text-muted-foreground">🏢</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              {/* Create New Tag Button */}
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed border-border hover:border-primary hover:bg-accent/50 transition-colors text-primary"
+              >
+                <Plus size={18} />
+                Criar nova etiqueta
+              </button>
+            </>
           ) : (
-            <div className="space-y-2">
-              {availableTags.map((tag) => (
-                <button
-                  key={tag.id}
-                  onClick={() => {
-                    onAddTag(tag.id);
-                    onClose();
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-lg bg-muted hover:bg-accent transition-colors"
-                >
-                  <div 
-                    className="w-4 h-4 rounded-full"
-                    style={{ backgroundColor: tag.color || '#8B5CF6' }}
+            <>
+              {/* Create Tag Form */}
+              <div className="space-y-4">
+                {/* Name */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">
+                    Nome da etiqueta *
+                  </label>
+                  <Input
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    placeholder="Ex: Cliente VIP, Urgente..."
+                    autoFocus
                   />
-                  <span className="text-foreground">{tag.name}</span>
-                </button>
-              ))}
-            </div>
+                </div>
+
+                {/* Color */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Cor
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {colors.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setNewTagColor(color)}
+                        className={`w-7 h-7 rounded-full transition-transform ${
+                          newTagColor === color ? 'ring-2 ring-primary ring-offset-2 ring-offset-background scale-110' : ''
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Visibility */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Visibilidade
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setNewTagVisibility('private')}
+                      className={`flex-1 flex items-center justify-center gap-2 p-2.5 rounded-lg border-2 transition-colors ${
+                        newTagVisibility === 'private' 
+                          ? 'border-purple-500 bg-purple-500/20 text-purple-400' 
+                          : 'border-border text-muted-foreground hover:border-muted-foreground'
+                      }`}
+                    >
+                      <span className="text-sm">🔒 Só eu</span>
+                    </button>
+                    <button
+                      onClick={() => setNewTagVisibility('public')}
+                      className={`flex-1 flex items-center justify-center gap-2 p-2.5 rounded-lg border-2 transition-colors ${
+                        newTagVisibility === 'public' 
+                          ? 'border-green-500 bg-green-500/20 text-green-400' 
+                          : 'border-border text-muted-foreground hover:border-muted-foreground'
+                      }`}
+                    >
+                      <span className="text-sm">🌍 Todos</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Pré-visualização
+                  </label>
+                  <div className="p-3 bg-muted rounded-lg">
+                    <span 
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-white"
+                      style={{ backgroundColor: newTagColor }}
+                    >
+                      {newTagName || 'Nome da etiqueta'}
+                      {newTagVisibility === 'private' && ' 🔒'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 mt-4">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowCreateForm(false)}
+                  className="flex-1"
+                >
+                  Voltar
+                </Button>
+                <Button 
+                  onClick={handleCreateTag}
+                  disabled={isCreating || !newTagName.trim()}
+                  className="flex-1 btn-gradient"
+                >
+                  {isCreating ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    'Criar'
+                  )}
+                </Button>
+              </div>
+            </>
           )}
         </div>
       </DialogContent>

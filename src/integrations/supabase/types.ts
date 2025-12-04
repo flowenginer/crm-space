@@ -1358,28 +1358,52 @@ export type Database = {
         Row: {
           color: string | null
           created_at: string
+          created_by: string | null
+          department_id: string | null
           description: string | null
           id: string
           name: string
           usage_count: number | null
+          visibility: string | null
         }
         Insert: {
           color?: string | null
           created_at?: string
+          created_by?: string | null
+          department_id?: string | null
           description?: string | null
           id?: string
           name: string
           usage_count?: number | null
+          visibility?: string | null
         }
         Update: {
           color?: string | null
           created_at?: string
+          created_by?: string | null
+          department_id?: string | null
           description?: string | null
           id?: string
           name?: string
           usage_count?: number | null
+          visibility?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tags_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tags_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       template_folders: {
         Row: {
