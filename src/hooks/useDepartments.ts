@@ -47,7 +47,7 @@ export function useCreateDepartment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (department: { name: string; description?: string | null; color?: string | null; is_active?: boolean | null }) => {
+    mutationFn: async (department: { name: string; description?: string | null; color?: string | null; icon?: string | null; is_active?: boolean | null }) => {
       const { data, error } = await supabase
         .from('departments')
         .insert(department)

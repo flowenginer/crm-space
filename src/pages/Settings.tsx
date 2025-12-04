@@ -24,6 +24,8 @@ import {
   Monitor,
 } from 'lucide-react';
 import { UserManagement } from '@/components/settings/UserManagement';
+import { RoleManagement } from '@/components/settings/RoleManagement';
+import { DepartmentManagement } from '@/components/settings/DepartmentManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -343,52 +345,59 @@ export default function Settings() {
 
       {/* Tabs */}
       <Tabs defaultValue="team" className="w-full">
-        <TabsList className="bg-card border border-border rounded-xl p-1 shadow-sm w-full flex mb-6">
+        <TabsList className="bg-card border border-border rounded-xl p-1 shadow-sm w-full flex flex-wrap mb-6">
           <TabsTrigger
             value="team"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
             <Users size={18} />
             Equipe
           </TabsTrigger>
           <TabsTrigger
+            value="roles"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+          >
+            <Shield size={18} />
+            Perfis
+          </TabsTrigger>
+          <TabsTrigger
             value="departments"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
             <Building2 size={18} />
             Departamentos
           </TabsTrigger>
           <TabsTrigger
             value="channels"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
             <MessageSquare size={18} />
             Canais
           </TabsTrigger>
           <TabsTrigger
             value="fields"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
             <Database size={18} />
             Campos
           </TabsTrigger>
           <TabsTrigger
             value="notifications"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
             <Bell size={18} />
             Notificações
           </TabsTrigger>
           <TabsTrigger
             value="security"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
-            <Shield size={18} />
+            <Key size={18} />
             Segurança
           </TabsTrigger>
           <TabsTrigger
             value="general"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
             <Palette size={18} />
             Geral
@@ -400,76 +409,17 @@ export default function Settings() {
           <UserManagement />
         </TabsContent>
 
-        {/* TAB 2: Departments */}
-        <TabsContent value="departments" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <p className="text-muted-foreground">Organize sua equipe em departamentos</p>
-            <button
-              onClick={() => {
-                setEditingItem(null);
-                setDepartmentForm({ name: '', description: '', color: '#8B5CF6' });
-                setShowDepartmentModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all"
-            >
-              <Plus size={18} />
-              Novo Departamento
-            </button>
-          </div>
-
-          {loadingDepts ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : departments.length === 0 ? (
-            <div className="bg-card rounded-2xl border border-border p-12 text-center">
-              <Building2 size={48} className="mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">Nenhum departamento cadastrado</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-4">
-              {departments.map((dept) => (
-                <div key={dept.id} className="bg-card rounded-2xl border border-border p-6 shadow-sm hover:shadow-md transition-all">
-                  <div className="flex items-start justify-between mb-4">
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center"
-                      style={{ backgroundColor: `${dept.color}20` }}
-                    >
-                      <Building2 size={24} style={{ color: dept.color || '#8B5CF6' }} />
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="p-1.5 hover:bg-muted rounded-lg transition-colors">
-                          <MoreVertical size={16} className="text-muted-foreground" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEditDepartment(dept)}>
-                          <Edit3 size={14} className="mr-2" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDeleteDepartment(dept.id)} className="text-status-error">
-                          <Trash2 size={14} className="mr-2" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-1">{dept.name}</h3>
-                  <p className="text-sm text-muted-foreground mb-4">{dept.description || 'Sem descrição'}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      {dept.member_count || 0} {dept.member_count === 1 ? 'membro' : 'membros'}
-                    </span>
-                    <ChevronRight size={16} className="text-muted-foreground" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        {/* TAB 2: Role Management */}
+        <TabsContent value="roles" className="space-y-6">
+          <RoleManagement />
         </TabsContent>
 
-        {/* TAB 3: Channels */}
+        {/* TAB 3: Departments */}
+        <TabsContent value="departments" className="space-y-6">
+          <DepartmentManagement />
+        </TabsContent>
+
+        {/* TAB 4: Channels */}
         <TabsContent value="channels" className="space-y-6">
           <div className="flex items-center justify-between">
             <p className="text-muted-foreground">Gerencie seus canais de atendimento WhatsApp</p>
