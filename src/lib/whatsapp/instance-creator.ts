@@ -44,6 +44,43 @@ export interface ProviderInstance {
 }
 
 // =====================================================
+// FUNÇÃO UNIFICADA - ENVIAR MENSAGEM VIA EDGE FUNCTION
+// =====================================================
+export async function sendWhatsAppMessage(
+  channelId: string,
+  phone: string,
+  content: string,
+  type: 'text' | 'image' | 'audio' | 'video' | 'document' = 'text',
+  mediaUrl?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    console.log('[Instance Creator] Sending message:', { channelId, phone, type });
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'send',
+        channelId,
+        phone,
+        content,
+        type,
+        mediaUrl,
+      },
+    });
+
+    console.log('[Instance Creator] Send Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao enviar mensagem' };
+    }
+
+    return data as { success: boolean; messageId?: string; error?: string };
+  } catch (error: any) {
+    console.error('[Instance Creator] Send Error:', error);
+    return { success: false, error: error.message || 'Erro ao enviar mensagem' };
+  }
+}
+
+// =====================================================
 // FUNÇÃO UNIFICADA - CRIAR INSTÂNCIA
 // =====================================================
 export async function createWhatsAppInstance(

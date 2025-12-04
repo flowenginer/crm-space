@@ -110,14 +110,111 @@ serve(async (req) => {
       });
     }
 
-    // Skip messages from self
+    // =====================================================
+    // PROCESSAR MENSAGENS - TANTO RECEBIDAS QUANTO ENVIADAS (fromMe)
+    // =====================================================
+    
     if (normalizedMessage.isFromMe) {
-      console.log(`[Webhook] Message from self, skipping`);
-      return new Response(JSON.stringify({ success: true, message: "Self message" }), {
+      // Mensagem enviada pelo celular/outro dispositivo - salvar no sistema
+      console.log(`[Webhook] Processing fromMe message to: ${normalizedMessage.from}`);
+      
+      // Para mensagens fromMe, o "from" é o destinatário (remoteJid)
+      const recipientPhone = normalizedMessage.from;
+      
+      // Buscar contato pelo telefone do destinatário
+      const { data: contact } = await supabase
+        .from("contacts")
+        .select("id")
+        .eq("phone", recipientPhone)
+        .single();
+
+      if (!contact) {
+        console.log(`[Webhook] Contact not found for fromMe message: ${recipientPhone}`);
+        return new Response(JSON.stringify({ success: true, message: "Contact not found for fromMe" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Buscar conversa existente com esse contato
+      const { data: conversation } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("contact_id", contact.id)
+        .eq("channel_id", channel.id)
+        .in("status", ["open", "pending"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!conversation) {
+        console.log(`[Webhook] No open conversation found for fromMe message`);
+        return new Response(JSON.stringify({ success: true, message: "No conversation for fromMe" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Verificar se a mensagem já existe (evitar duplicatas)
+      const { data: existingMsg } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("whatsapp_message_id", normalizedMessage.originalId)
+        .single();
+
+      if (existingMsg) {
+        console.log(`[Webhook] Message already exists, skipping: ${normalizedMessage.originalId}`);
+        return new Response(JSON.stringify({ success: true, message: "Message already exists" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Salvar mensagem enviada
+      const { error: msgError } = await supabase.from("messages").insert({
+        conversation_id: conversation.id,
+        content: normalizedMessage.content,
+        message_type: normalizedMessage.type,
+        media_url: normalizedMessage.mediaUrl,
+        media_mime_type: normalizedMessage.mediaMimeType,
+        is_from_me: true,
+        status: "sent",
+        whatsapp_message_id: normalizedMessage.originalId,
+        created_at: normalizedMessage.timestamp.toISOString(),
+      });
+
+      if (msgError) {
+        console.error(`[Webhook] Error saving fromMe message:`, msgError);
+        throw msgError;
+      }
+
+      // Atualizar conversa
+      await supabase
+        .from("conversations")
+        .update({
+          last_message_at: normalizedMessage.timestamp.toISOString(),
+          last_message_preview: normalizedMessage.content.substring(0, 100),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", conversation.id);
+
+      // Atualizar stats do canal
+      await supabase
+        .from("whatsapp_channels")
+        .update({
+          messages_sent: (channel as any).messages_sent + 1 || 1,
+          messages_sent_today: (channel as any).messages_sent_today + 1 || 1,
+          last_sync_at: new Date().toISOString(),
+        })
+        .eq("id", channel.id);
+
+      console.log(`[Webhook] FromMe message saved for conversation ${conversation.id}`);
+      return new Response(JSON.stringify({ success: true, message: "FromMe message saved" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // =====================================================
+    // MENSAGEM RECEBIDA (não fromMe) - Fluxo normal
+    // =====================================================
+    
     // Find or create contact
     let { data: contact } = await supabase
       .from("contacts")
@@ -447,7 +544,7 @@ function normalizeUAZAPIMessage(payload: any): NormalizedMessage | null {
   let rawFrom = msg.from || msg.remoteJid || msg.phone || "";
   
   // Ignorar mensagens de grupos (@g.us = grupo)
-  if (rawFrom.includes("@g.us") || msg.isGroup || msg.isGroupMsg) {
+  if (rawFrom.includes("@g.us")) {
     console.log(`[Webhook UAZAPI] Ignoring group message from: ${rawFrom}`);
     return null;
   }

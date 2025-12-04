@@ -60,7 +60,7 @@ import { useConversations, useMessages, useSendMessage, useDeleteMessage, useRea
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
-import { whatsappService } from '@/lib/whatsapp';
+import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
 import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
@@ -734,17 +734,21 @@ export default function Conversations() {
     try {
       setIsUploading(true);
       
-      // Função auxiliar para enviar via WhatsApp
+      // Função auxiliar para enviar via WhatsApp (Edge Function - sem CORS)
       const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string) => {
         if (channelId && contactPhone) {
           try {
-            await whatsappService.sendMessage(
+            const result = await sendWhatsAppMessage(
               channelId, 
               contactPhone, 
               content, 
               type as 'text' | 'image' | 'audio' | 'video' | 'document',
-              mediaUrl ? { mediaUrl, filename: content } : undefined
+              mediaUrl
             );
+            if (!result.success) {
+              console.error('[WhatsApp Send Error]', result.error);
+              toast.error('Erro ao enviar para WhatsApp: ' + (result.error || 'Erro desconhecido'));
+            }
           } catch (whatsappError) {
             console.error('[WhatsApp Send Error]', whatsappError);
             // Continua mesmo se falhar - a mensagem fica salva no banco

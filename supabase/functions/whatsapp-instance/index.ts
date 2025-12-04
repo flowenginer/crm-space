@@ -10,12 +10,18 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus';
-  providerCode: 'zapi' | 'uazapi' | 'evolution';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send';
+  providerCode?: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
   instanceToken?: string;
   webhookUrl?: string;
+  // For send action
+  channelId?: string;
+  phone?: string;
+  content?: string;
+  type?: 'text' | 'image' | 'audio' | 'video' | 'document';
+  mediaUrl?: string;
 }
 
 interface ProviderConfig {
@@ -52,6 +58,245 @@ function normalizeBaseUrl(url: string): string {
     normalized = normalized.slice(0, -8);
   }
   return normalized;
+}
+
+// =====================================================
+// SEND MESSAGE FUNCTIONS
+// =====================================================
+async function sendEvolutionMessage(
+  baseUrl: string,
+  instanceName: string,
+  apiKey: string,
+  phone: string,
+  content: string,
+  type: string,
+  mediaUrl?: string
+) {
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  const formattedPhone = phone.replace(/\D/g, '') + '@s.whatsapp.net';
+  
+  console.log('[Evolution] Sending message:', { instanceName, phone: formattedPhone, type });
+  
+  let endpoint = '';
+  let body: any = {};
+  
+  if (type === 'text') {
+    endpoint = `${normalizedUrl}/message/sendText/${instanceName}`;
+    body = {
+      number: formattedPhone,
+      text: content,
+    };
+  } else if (type === 'image') {
+    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
+    body = {
+      number: formattedPhone,
+      mediatype: 'image',
+      media: mediaUrl,
+      caption: content || '',
+    };
+  } else if (type === 'audio') {
+    endpoint = `${normalizedUrl}/message/sendWhatsAppAudio/${instanceName}`;
+    body = {
+      number: formattedPhone,
+      audio: mediaUrl,
+    };
+  } else if (type === 'video') {
+    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
+    body = {
+      number: formattedPhone,
+      mediatype: 'video',
+      media: mediaUrl,
+      caption: content || '',
+    };
+  } else if (type === 'document') {
+    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
+    body = {
+      number: formattedPhone,
+      mediatype: 'document',
+      media: mediaUrl,
+      fileName: content || 'document',
+    };
+  }
+  
+  console.log('[Evolution] Request:', { endpoint, body });
+  
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': apiKey,
+    },
+    body: JSON.stringify(body),
+  });
+  
+  const data = await safeJsonParse(response, 'Evolution Send');
+  
+  return {
+    success: true,
+    messageId: data.key?.id || data.id,
+    data,
+  };
+}
+
+async function sendUAZAPIMessage(
+  baseUrl: string,
+  instanceName: string,
+  adminToken: string,
+  phone: string,
+  content: string,
+  type: string,
+  mediaUrl?: string
+) {
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  const formattedPhone = phone.replace(/\D/g, '') + '@s.whatsapp.net';
+  
+  console.log('[UAZAPI] Sending message:', { instanceName, phone: formattedPhone, type });
+  
+  let endpoint = '';
+  let body: any = {};
+  
+  if (type === 'text') {
+    endpoint = `${normalizedUrl}/message/sendText/${instanceName}`;
+    body = {
+      number: formattedPhone,
+      text: content,
+    };
+  } else if (type === 'image') {
+    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
+    body = {
+      number: formattedPhone,
+      mediatype: 'image',
+      media: mediaUrl,
+      caption: content || '',
+    };
+  } else if (type === 'audio') {
+    endpoint = `${normalizedUrl}/message/sendWhatsAppAudio/${instanceName}`;
+    body = {
+      number: formattedPhone,
+      audio: mediaUrl,
+    };
+  } else if (type === 'video') {
+    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
+    body = {
+      number: formattedPhone,
+      mediatype: 'video',
+      media: mediaUrl,
+      caption: content || '',
+    };
+  } else if (type === 'document') {
+    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
+    body = {
+      number: formattedPhone,
+      mediatype: 'document',
+      media: mediaUrl,
+      fileName: content || 'document',
+    };
+  }
+  
+  console.log('[UAZAPI] Request:', { endpoint, body });
+  
+  // Try with admintoken first
+  let response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'admintoken': adminToken,
+    },
+    body: JSON.stringify(body),
+  });
+  
+  // If 401, try with apikey
+  if (response.status === 401) {
+    console.log('[UAZAPI] 401 with admintoken, trying apikey...');
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': adminToken,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+  
+  const data = await safeJsonParse(response, 'UAZAPI Send');
+  
+  return {
+    success: true,
+    messageId: data.key?.id || data.id,
+    data,
+  };
+}
+
+async function sendZAPIMessage(
+  instanceId: string,
+  token: string,
+  clientToken: string,
+  phone: string,
+  content: string,
+  type: string,
+  mediaUrl?: string
+) {
+  const formattedPhone = phone.replace(/\D/g, '');
+  
+  console.log('[Z-API] Sending message:', { instanceId, phone: formattedPhone, type });
+  
+  let endpoint = '';
+  let body: any = {};
+  
+  const baseUrl = `https://api.z-api.io/instances/${instanceId}/token/${token}`;
+  
+  if (type === 'text') {
+    endpoint = `${baseUrl}/send-text`;
+    body = {
+      phone: formattedPhone,
+      message: content,
+    };
+  } else if (type === 'image') {
+    endpoint = `${baseUrl}/send-image`;
+    body = {
+      phone: formattedPhone,
+      image: mediaUrl,
+      caption: content || '',
+    };
+  } else if (type === 'audio') {
+    endpoint = `${baseUrl}/send-audio`;
+    body = {
+      phone: formattedPhone,
+      audio: mediaUrl,
+    };
+  } else if (type === 'video') {
+    endpoint = `${baseUrl}/send-video`;
+    body = {
+      phone: formattedPhone,
+      video: mediaUrl,
+      caption: content || '',
+    };
+  } else if (type === 'document') {
+    endpoint = `${baseUrl}/send-document/${formattedPhone}`;
+    body = {
+      document: mediaUrl,
+      fileName: content || 'document',
+    };
+  }
+  
+  console.log('[Z-API] Request:', { endpoint });
+  
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Client-Token': clientToken || '',
+    },
+    body: JSON.stringify(body),
+  });
+  
+  const data = await safeJsonParse(response, 'Z-API Send');
+  
+  return {
+    success: true,
+    messageId: data.messageId || data.zapiMessageId,
+    data,
+  };
 }
 
 // =====================================================
@@ -600,7 +845,131 @@ serve(async (req) => {
     const body: CreateInstanceRequest = await req.json();
     console.log('[WhatsApp Instance] Request:', body);
 
-    const { action, providerCode, instanceName, instanceId, instanceToken, webhookUrl } = body;
+    const { action, providerCode, instanceName, instanceId, instanceToken, webhookUrl, channelId, phone, content, type, mediaUrl } = body;
+
+    // =====================================================
+    // SEND ACTION - Rota especial que busca dados do canal
+    // =====================================================
+    if (action === 'send') {
+      if (!channelId || !phone || !content) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'channelId, phone e content são obrigatórios' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      // Buscar dados do canal
+      const { data: channel, error: channelError } = await supabase
+        .from('whatsapp_channels')
+        .select(`
+          id,
+          instance_id,
+          instance_token,
+          provider:whatsapp_providers(
+            code,
+            base_url,
+            admin_token,
+            client_token
+          )
+        `)
+        .eq('id', channelId)
+        .eq('is_deleted', false)
+        .single();
+
+      if (channelError || !channel) {
+        console.error('[WhatsApp Send] Channel not found:', channelError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+
+      const provider = channel.provider as any;
+      if (!provider) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Provedor não configurado para este canal' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      console.log('[WhatsApp Send] Channel:', { 
+        instanceId: channel.instance_id, 
+        provider: provider.code 
+      });
+
+      let result;
+      const messageType = type || 'text';
+
+      try {
+        switch (provider.code) {
+          case 'evolution':
+            result = await sendEvolutionMessage(
+              provider.base_url,
+              channel.instance_id!,
+              provider.admin_token,
+              phone,
+              content,
+              messageType,
+              mediaUrl
+            );
+            break;
+          case 'uazapi':
+            result = await sendUAZAPIMessage(
+              provider.base_url,
+              channel.instance_id!,
+              provider.admin_token,
+              phone,
+              content,
+              messageType,
+              mediaUrl
+            );
+            break;
+          case 'zapi':
+            result = await sendZAPIMessage(
+              channel.instance_id!,
+              channel.instance_token!,
+              provider.client_token || '',
+              phone,
+              content,
+              messageType,
+              mediaUrl
+            );
+            break;
+          default:
+            result = { success: false, error: 'Provedor desconhecido' };
+        }
+      } catch (sendError: any) {
+        console.error('[WhatsApp Send] Error:', sendError);
+        result = { success: false, error: sendError.message };
+      }
+
+      // Atualizar estatísticas do canal
+      if (result.success) {
+        await supabase
+          .from('whatsapp_channels')
+          .update({
+            messages_sent: (channel as any).messages_sent + 1 || 1,
+            messages_sent_today: (channel as any).messages_sent_today + 1 || 1,
+            last_sync_at: new Date().toISOString(),
+          })
+          .eq('id', channelId);
+      }
+
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // =====================================================
+    // OUTRAS AÇÕES - Requerem providerCode
+    // =====================================================
+    if (!providerCode) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'providerCode é obrigatório' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
 
     // Get provider config from database
     const { data: provider, error: providerError } = await supabase
