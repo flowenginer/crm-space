@@ -29,6 +29,11 @@ export interface Conversation {
   channel?: { id: string; name: string } | null;
 }
 
+export interface MessageReaction {
+  emoji: string;
+  user_id: string;
+}
+
 export interface Message {
   id: string;
   conversation_id: string;
@@ -42,6 +47,11 @@ export interface Message {
   status: string | null;
   whatsapp_message_id: string | null;
   created_at: string;
+  reply_to_message_id: string | null;
+  reactions: MessageReaction[] | null;
+  is_deleted: boolean | null;
+  deleted_at: string | null;
+  reply_to?: Message[] | null;
 }
 
 export type AssignmentFilter = 'all' | 'mine' | 'unassigned';
@@ -86,12 +96,13 @@ export function useMessages(conversationId: string | null) {
       
       const { data, error } = await supabase
         .from('messages')
-        .select('*')
+        .select('*, reply_to:messages!messages_reply_to_message_id_fkey(*)')
         .eq('conversation_id', conversationId)
+        .eq('is_deleted', false)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      return data as Message[];
+      return data as unknown as Message[];
     },
     enabled: !!conversationId,
   });
@@ -108,6 +119,7 @@ export function useSendMessage() {
       message_type?: string;
       media_url?: string;
       media_mime_type?: string;
+      reply_to_message_id?: string;
     }) => {
       const { data, error } = await supabase
         .from('messages')
@@ -118,6 +130,7 @@ export function useSendMessage() {
           message_type: message.message_type || 'text',
           media_url: message.media_url || null,
           media_mime_type: message.media_mime_type || null,
+          reply_to_message_id: message.reply_to_message_id || null,
           status: 'sent',
         })
         .select()
@@ -149,6 +162,83 @@ export function useSendMessage() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['messages', variables.conversation_id] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    },
+  });
+}
+
+export function useDeleteMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ messageId, conversationId }: { messageId: string; conversationId: string }) => {
+      const { error } = await supabase
+        .from('messages')
+        .update({ 
+          is_deleted: true, 
+          deleted_at: new Date().toISOString(),
+          content: 'Mensagem apagada'
+        })
+        .eq('id', messageId);
+
+      if (error) throw error;
+      return { messageId, conversationId };
+    },
+    onSuccess: (variables) => {
+      queryClient.invalidateQueries({ queryKey: ['messages', variables.conversationId] });
+    },
+  });
+}
+
+export function useReactToMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      messageId, 
+      conversationId, 
+      emoji, 
+      userId 
+    }: { 
+      messageId: string; 
+      conversationId: string; 
+      emoji: string; 
+      userId: string;
+    }) => {
+      // First get current reactions
+      const { data: message, error: fetchError } = await supabase
+        .from('messages')
+        .select('reactions')
+        .eq('id', messageId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentReactions = (message?.reactions as { emoji: string; user_id: string }[]) || [];
+      
+      // Check if user already reacted with this emoji
+      const existingIndex = currentReactions.findIndex(
+        r => r.emoji === emoji && r.user_id === userId
+      );
+
+      let newReactions;
+      if (existingIndex >= 0) {
+        // Remove reaction
+        newReactions = currentReactions.filter((_, i) => i !== existingIndex);
+      } else {
+        // Add reaction
+        newReactions = [...currentReactions, { emoji, user_id: userId }];
+      }
+
+      const { error } = await supabase
+        .from('messages')
+        .update({ reactions: newReactions })
+        .eq('id', messageId);
+
+      if (error) throw error;
+      return { messageId, conversationId };
+    },
+    onSuccess: (variables) => {
+      queryClient.invalidateQueries({ queryKey: ['messages', variables.conversationId] });
     },
   });
 }

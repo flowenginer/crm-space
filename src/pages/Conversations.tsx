@@ -25,6 +25,9 @@ import {
   Image,
   FileText,
   Upload,
+  Reply,
+  Trash2,
+  CornerDownRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -53,7 +56,8 @@ import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
-import { useConversations, useMessages, useSendMessage, uploadAttachment, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
+import { useConversations, useMessages, useSendMessage, useDeleteMessage, useReactToMessage, uploadAttachment, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
+import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -295,88 +299,206 @@ function ConversationItem({ conversation, isSelected, onClick }: ConversationIte
 // Message Bubble Component using real data
 interface MessageBubbleProps {
   message: Message;
+  onReply?: (message: Message) => void;
+  onDelete?: (messageId: string) => void;
+  onReact?: (messageId: string, emoji: string) => void;
 }
 
-function MessageBubble({ message }: MessageBubbleProps) {
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubbleProps) {
+  const [showActions, setShowActions] = useState(false);
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
   const isMe = message.is_from_me;
   const hasMedia = message.media_url && message.message_type !== 'text';
+  const isDeleted = message.is_deleted;
+  const reactions = (message.reactions || []) as { emoji: string; user_id: string }[];
+  const replyTo = message.reply_to?.[0];
+
+  // Group reactions by emoji
+  const groupedReactions = reactions.reduce((acc, r) => {
+    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   return (
-    <div className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
-      <div
-        className={cn(
-          'max-w-[70%] rounded-2xl px-4 py-3 shadow-sm',
-          isMe
-            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-            : 'bg-card border border-border text-foreground'
-        )}
-      >
-        {/* Media content */}
-        {hasMedia && (
-          <div className="mb-2">
-            {message.message_type === 'image' && (
-              <img 
-                src={message.media_url!} 
-                alt="Imagem" 
-                className="rounded-lg max-h-64 w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                onClick={() => window.open(message.media_url!, '_blank')}
-              />
-            )}
-            {message.message_type === 'video' && (
-              <video 
-                src={message.media_url!} 
-                controls 
-                className="rounded-lg max-h-64 w-full"
-              />
-            )}
-            {message.message_type === 'audio' && (
-              <audio 
-                src={message.media_url!} 
-                controls 
-                className="w-full min-w-[200px]"
-              />
-            )}
-            {message.message_type === 'document' && (
-              <a 
-                href={message.media_url!} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className={cn(
-                  'flex items-center gap-2 p-2 rounded-lg transition-colors',
-                  isMe ? 'bg-white/10 hover:bg-white/20' : 'bg-muted hover:bg-muted/80'
-                )}
+    <div 
+      className={cn('flex group relative', isMe ? 'justify-end' : 'justify-start')}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => { setShowActions(false); setShowReactionPicker(false); }}
+    >
+      {/* Action buttons - left side for received messages */}
+      {!isMe && showActions && !isDeleted && (
+        <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Popover open={showReactionPicker} onOpenChange={setShowReactionPicker}>
+            <PopoverTrigger asChild>
+              <button 
+                className="p-1.5 hover:bg-muted rounded-full transition-colors"
+                title="Reagir"
               >
-                <FileText size={24} className={isMe ? 'text-white' : 'text-muted-foreground'} />
-                <span className="text-sm truncate">{message.content || 'Documento'}</span>
-              </a>
+                <Smile size={16} className="text-muted-foreground" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-2" side="top" align="start">
+              <div className="flex gap-1">
+                {QUICK_REACTIONS.map(emoji => (
+                  <button 
+                    key={emoji}
+                    onClick={() => { onReact?.(message.id, emoji); setShowReactionPicker(false); }}
+                    className="text-xl hover:bg-muted p-1 rounded transition-colors"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <button 
+            onClick={() => onReply?.(message)}
+            className="p-1.5 hover:bg-muted rounded-full transition-colors"
+            title="Responder"
+          >
+            <Reply size={16} className="text-muted-foreground" />
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col max-w-[70%]">
+        {/* Reply reference */}
+        {replyTo && !isDeleted && (
+          <div 
+            className={cn(
+              'flex items-center gap-2 px-3 py-1.5 mb-1 rounded-t-xl text-xs border-l-2',
+              isMe 
+                ? 'bg-purple-700/30 border-purple-400 text-purple-200' 
+                : 'bg-muted/50 border-primary text-muted-foreground'
             )}
+          >
+            <CornerDownRight size={12} />
+            <span className="truncate">
+              {replyTo.is_deleted ? 'Mensagem apagada' : replyTo.content?.substring(0, 50) || 'Mídia'}
+              {replyTo.content && replyTo.content.length > 50 ? '...' : ''}
+            </span>
           </div>
         )}
-        
-        {/* Text content */}
-        {message.content && message.message_type === 'text' && (
-          <p className="text-sm leading-relaxed">{message.content}</p>
-        )}
-        {message.content && message.message_type !== 'text' && message.message_type !== 'document' && (
-          <p className="text-sm leading-relaxed mt-1">{message.content}</p>
-        )}
-        
-        <div className={cn(
-          'flex items-center justify-end gap-1 mt-1',
-          isMe ? 'text-purple-200' : 'text-muted-foreground'
-        )}>
-          <span className="text-xs">
-            {new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          {isMe && (
+
+        <div
+          className={cn(
+            'rounded-2xl px-4 py-3 shadow-sm',
+            isMe
+              ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+              : 'bg-card border border-border text-foreground',
+            isDeleted && 'opacity-60 italic'
+          )}
+        >
+          {isDeleted ? (
+            <p className="text-sm">🚫 Mensagem apagada</p>
+          ) : (
             <>
-              {message.status === 'sent' && <Check size={14} />}
-              {message.status === 'delivered' && <CheckCheck size={14} />}
-              {message.status === 'read' && <CheckCheck size={14} className="text-blue-300" />}
+              {/* Media content */}
+              {hasMedia && (
+                <div className="mb-2">
+                  {message.message_type === 'image' && (
+                    <img 
+                      src={message.media_url!} 
+                      alt="Imagem" 
+                      className="rounded-lg max-h-64 w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => window.open(message.media_url!, '_blank')}
+                    />
+                  )}
+                  {message.message_type === 'video' && (
+                    <video 
+                      src={message.media_url!} 
+                      controls 
+                      className="rounded-lg max-h-64 w-full"
+                    />
+                  )}
+                  {message.message_type === 'audio' && (
+                    <audio 
+                      src={message.media_url!} 
+                      controls 
+                      className="w-full min-w-[200px]"
+                    />
+                  )}
+                  {message.message_type === 'document' && (
+                    <a 
+                      href={message.media_url!} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className={cn(
+                        'flex items-center gap-2 p-2 rounded-lg transition-colors',
+                        isMe ? 'bg-white/10 hover:bg-white/20' : 'bg-muted hover:bg-muted/80'
+                      )}
+                    >
+                      <FileText size={24} className={isMe ? 'text-white' : 'text-muted-foreground'} />
+                      <span className="text-sm truncate">{message.content || 'Documento'}</span>
+                    </a>
+                  )}
+                </div>
+              )}
+              
+              {/* Text content */}
+              {message.content && message.message_type === 'text' && (
+                <p className="text-sm leading-relaxed">{message.content}</p>
+              )}
+              {message.content && message.message_type !== 'text' && message.message_type !== 'document' && (
+                <p className="text-sm leading-relaxed mt-1">{message.content}</p>
+              )}
             </>
           )}
+          
+          <div className={cn(
+            'flex items-center justify-end gap-1 mt-1',
+            isMe ? 'text-purple-200' : 'text-muted-foreground'
+          )}>
+            <span className="text-xs">
+              {new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            {isMe && (
+              <>
+                {message.status === 'sent' && <Check size={14} />}
+                {message.status === 'delivered' && <CheckCheck size={14} />}
+                {message.status === 'read' && <CheckCheck size={14} className="text-blue-300" />}
+              </>
+            )}
+          </div>
         </div>
+
+        {/* Reactions display */}
+        {Object.keys(groupedReactions).length > 0 && (
+          <div className={cn('flex gap-1 mt-1', isMe ? 'justify-end' : 'justify-start')}>
+            {Object.entries(groupedReactions).map(([emoji, count]) => (
+              <span 
+                key={emoji} 
+                className="bg-muted/80 px-1.5 py-0.5 rounded-full text-xs flex items-center gap-0.5 cursor-pointer hover:bg-muted"
+                onClick={() => onReact?.(message.id, emoji)}
+              >
+                {emoji} {count > 1 && <span className="text-muted-foreground">{count}</span>}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Action buttons - right side for sent messages */}
+      {isMe && showActions && !isDeleted && (
+        <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button 
+            onClick={() => onReply?.(message)}
+            className="p-1.5 hover:bg-muted rounded-full transition-colors"
+            title="Responder"
+          >
+            <Reply size={16} className="text-muted-foreground" />
+          </button>
+          <button 
+            onClick={() => onDelete?.(message.id)}
+            className="p-1.5 hover:bg-destructive/20 rounded-full transition-colors"
+            title="Apagar"
+          >
+            <Trash2 size={16} className="text-destructive" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -439,6 +561,7 @@ export default function Conversations() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -451,6 +574,8 @@ export default function Conversations() {
   const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedConversationId);
   const { data: internalNotes = [], isLoading: notesLoading } = useInternalNotes(selectedConversationId);
   const sendMessage = useSendMessage();
+  const deleteMessage = useDeleteMessage();
+  const reactToMessage = useReactToMessage();
   const createInternalNote = useCreateInternalNote();
 
   // Find selected conversation from real data
@@ -528,8 +653,10 @@ export default function Conversations() {
           content: messageInput.trim(),
           is_from_me: true,
           message_type: 'text',
+          reply_to_message_id: replyingTo?.id,
         });
         setMessageInput('');
+        setReplyingTo(null);
       } else if (hasFiles) {
         // Send each file as a separate message
         for (const file of selectedFiles) {
@@ -552,6 +679,7 @@ export default function Conversations() {
             message_type: messageType,
             media_url: result.url,
             media_mime_type: result.mimeType,
+            reply_to_message_id: replyingTo?.id,
           });
         }
         
@@ -566,6 +694,7 @@ export default function Conversations() {
         }
         
         setMessageInput('');
+        setReplyingTo(null);
         clearSelectedFiles();
         toast.success(selectedFiles.length > 1 ? `${selectedFiles.length} arquivos enviados!` : 'Arquivo enviado!');
       }
@@ -575,6 +704,24 @@ export default function Conversations() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  // Message action handlers
+  const handleReplyMessage = (message: Message) => {
+    setReplyingTo(message);
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!selectedConversationId) return;
+    deleteMessage.mutate({ messageId, conversationId: selectedConversationId });
+    toast.success('Mensagem apagada');
+  };
+
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!selectedConversationId) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    reactToMessage.mutate({ messageId, conversationId: selectedConversationId, emoji, userId: user.id });
   };
 
   // Emoji picker handler
@@ -940,7 +1087,13 @@ export default function Conversations() {
                     item.itemType === 'note' ? (
                       <InternalNoteCard key={`note-${item.id}`} note={item as InternalNote} />
                     ) : (
-                      <MessageBubble key={`msg-${item.id}`} message={item as Message} />
+                      <MessageBubble 
+                        key={`msg-${item.id}`} 
+                        message={item as Message}
+                        onReply={handleReplyMessage}
+                        onDelete={handleDeleteMessage}
+                        onReact={handleReactToMessage}
+                      />
                     )
                   ))}
                 </>
@@ -962,6 +1115,28 @@ export default function Conversations() {
                   className="p-1 hover:bg-amber-500/20 rounded"
                 >
                   <X size={16} className="text-amber-600 dark:text-amber-400" />
+                </button>
+              </div>
+            )}
+
+            {/* Reply Preview */}
+            {replyingTo && (
+              <div className="flex items-center justify-between px-4 py-2 bg-primary/10 border-y border-primary/30">
+                <div className="flex items-center gap-2 text-primary flex-1 min-w-0">
+                  <Reply size={16} />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-medium">Respondendo</span>
+                    <span className="text-xs opacity-70 truncate">
+                      {replyingTo.content?.substring(0, 60) || 'Mídia'}
+                      {replyingTo.content && replyingTo.content.length > 60 ? '...' : ''}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setReplyingTo(null)}
+                  className="p-1 hover:bg-primary/20 rounded"
+                >
+                  <X size={16} className="text-primary" />
                 </button>
               </div>
             )}
