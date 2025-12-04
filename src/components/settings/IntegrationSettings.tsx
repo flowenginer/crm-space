@@ -167,8 +167,8 @@ export function IntegrationSettings() {
             </CardHeader>
 
             <CardContent className="space-y-4">
-              {/* URL Base (Evolution) */}
-              {provider.code === 'evolution' && (
+              {/* URL Base (Evolution e UAZAPI) */}
+              {(provider.code === 'evolution' || provider.code === 'uazapi') && (
                 <div>
                   <label className="block text-sm font-medium mb-1">
                     URL do Servidor *
@@ -176,10 +176,14 @@ export function IntegrationSettings() {
                   <Input
                     value={values.baseUrl}
                     onChange={(e) => updateFormValue(provider.id, 'baseUrl', e.target.value)}
-                    placeholder="https://evolution.seudominio.com"
+                    placeholder={provider.code === 'uazapi' 
+                      ? "https://api.seudominio.com" 
+                      : "https://evolution.seudominio.com"}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    URL onde sua Evolution API está hospedada
+                    {provider.code === 'uazapi' 
+                      ? 'URL do seu servidor UAZAPI (ex: https://api.seudominio.com)' 
+                      : 'URL onde sua Evolution API está hospedada'}
                   </p>
                 </div>
               )}
