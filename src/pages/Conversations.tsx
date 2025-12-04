@@ -432,7 +432,7 @@ export default function Conversations() {
 
       {/* Column 2: Chat Area */}
       <div className={cn(
-        'flex-1 flex flex-col bg-muted/30',
+        'flex-1 flex flex-col bg-background',
         isMobile && !showMobileChat ? 'hidden' : 'flex'
       )}>
         {selectedConversation ? (
