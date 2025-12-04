@@ -11,6 +11,10 @@ export interface WhatsAppProvider {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Novos campos para criação automática de instâncias
+  admin_token?: string | null;
+  client_token?: string | null;
+  is_configured?: boolean;
 }
 
 export function useProviders() {
@@ -21,6 +25,24 @@ export function useProviders() {
         .from('whatsapp_providers')
         .select('*')
         .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      return data as WhatsAppProvider[];
+    },
+  });
+}
+
+// Hook para buscar apenas provedores configurados
+export function useConfiguredProviders() {
+  return useQuery({
+    queryKey: ['whatsapp-providers-configured'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('whatsapp_providers')
+        .select('*')
+        .eq('is_active', true)
+        .eq('is_configured', true)
         .order('name');
 
       if (error) throw error;
