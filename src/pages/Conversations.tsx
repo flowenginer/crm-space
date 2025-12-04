@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search,
@@ -11,6 +11,7 @@ import {
   Smile,
   Paperclip,
   Mic,
+  MicOff,
   Send,
   Check,
   CheckCheck,
@@ -20,6 +21,9 @@ import {
   Loader2,
   Calendar,
   StickyNote,
+  FileIcon,
+  Image,
+  FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,6 +40,11 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -47,6 +56,8 @@ import { useConversations, useMessages, useSendMessage, type Conversation, type 
 import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
+import { toast } from 'sonner';
 
 // Mock Data for reference (will be replaced by real data)
 const mockConversations = [
@@ -371,6 +382,14 @@ export default function Conversations() {
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useIsMobile();
 
   // Fetch real conversations from database with filter
@@ -443,6 +462,104 @@ export default function Conversations() {
       });
       setMessageInput('');
     }
+  };
+
+  // Emoji picker handler
+  const handleEmojiClick = (emojiData: EmojiClickData) => {
+    setMessageInput(prev => prev + emojiData.emoji);
+    setShowEmojiPicker(false);
+  };
+
+  // File attachment handler
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('Arquivo muito grande. Máximo: 10MB');
+        return;
+      }
+      setSelectedFile(file);
+      toast.success(`Arquivo "${file.name}" selecionado`);
+    }
+  };
+
+  const handleAttachmentClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Audio recording handlers
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
+        setSelectedFile(audioFile);
+        toast.success('Áudio gravado com sucesso');
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      // Start recording timer
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      toast.error('Não foi possível acessar o microfone');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    audioChunksRef.current = [];
+    setIsRecording(false);
+    setRecordingTime(0);
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+  };
+
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -656,73 +773,168 @@ export default function Conversations() {
               </div>
             )}
 
-            {/* Message Input */}
-            <div className="bg-card border-t border-border px-4 md:px-6 py-4">
-              <div className="flex items-end gap-2 md:gap-3">
-                <button className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex">
-                  <Smile size={22} className="text-muted-foreground" />
-                </button>
-                <button className="p-2 hover:bg-muted rounded-lg transition-colors">
-                  <Paperclip size={22} className="text-muted-foreground" />
-                </button>
-                <button 
-                  onClick={() => setShowScheduleModal(true)}
-                  className="p-2 hover:bg-muted rounded-lg transition-colors"
-                  title="Agendar mensagem"
-                >
-                  <Calendar size={22} className="text-muted-foreground" />
-                </button>
-                {/* Internal Note Button */}
-                <button
-                  onClick={() => setIsInternalNoteMode(!isInternalNoteMode)}
-                  className={cn(
-                    'p-2 rounded-lg transition-colors',
-                    isInternalNoteMode 
-                      ? 'bg-amber-500 text-white' 
-                      : 'hover:bg-muted text-muted-foreground'
+            {/* Selected File Preview */}
+            {selectedFile && (
+              <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-y border-border">
+                <div className="flex items-center gap-2">
+                  {selectedFile.type.startsWith('image/') ? (
+                    <Image size={16} className="text-blue-500" />
+                  ) : selectedFile.type.startsWith('audio/') ? (
+                    <Mic size={16} className="text-green-500" />
+                  ) : (
+                    <FileIcon size={16} className="text-muted-foreground" />
                   )}
-                  title="Criar nota interna"
-                >
-                  <StickyNote size={22} />
-                </button>
-
-                <div className="flex-1">
-                  <Textarea
-                    placeholder={isInternalNoteMode ? "Digite sua nota interna..." : "Digite sua mensagem..."}
-                    value={messageInput}
-                    onChange={(e) => setMessageInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                    className={cn(
-                      'min-h-[44px] max-h-[120px] resize-none rounded-xl',
-                      isInternalNoteMode
-                        ? 'bg-amber-500/10 border-amber-500/30 placeholder:text-amber-600/50 dark:placeholder:text-amber-400/50'
-                        : 'bg-muted/50 border-border/50'
-                    )}
-                    rows={1}
-                  />
+                  <span className="text-sm text-foreground truncate max-w-[200px]">
+                    {selectedFile.name}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    ({(selectedFile.size / 1024).toFixed(1)} KB)
+                  </span>
                 </div>
-
-                <button className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex">
-                  <Mic size={22} className="text-muted-foreground" />
-                </button>
-                <button 
-                  onClick={handleSendMessage}
-                  disabled={!messageInput.trim() || sendMessage.isPending || createInternalNote.isPending}
-                  className={cn(
-                    'p-3 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50',
-                    isInternalNoteMode ? 'bg-amber-500 hover:bg-amber-600' : 'btn-gradient'
-                  )}
+                <button
+                  onClick={clearSelectedFile}
+                  className="p-1 hover:bg-destructive/20 rounded"
                 >
-                  {(sendMessage.isPending || createInternalNote.isPending) 
-                    ? <Loader2 size={20} className="animate-spin" /> 
-                    : <Send size={20} />}
+                  <X size={16} className="text-destructive" />
                 </button>
               </div>
+            )}
+
+            {/* Message Input */}
+            <div className="bg-card border-t border-border px-4 md:px-6 py-4">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleFileSelect}
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+              />
+
+              {/* Recording UI */}
+              {isRecording ? (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 flex-1 bg-destructive/10 rounded-xl px-4 py-3">
+                    <div className="w-3 h-3 bg-destructive rounded-full animate-pulse" />
+                    <span className="text-destructive font-medium">Gravando...</span>
+                    <span className="text-destructive font-mono">{formatRecordingTime(recordingTime)}</span>
+                  </div>
+                  <button
+                    onClick={cancelRecording}
+                    className="p-3 hover:bg-muted rounded-xl transition-colors"
+                    title="Cancelar gravação"
+                  >
+                    <X size={22} className="text-muted-foreground" />
+                  </button>
+                  <button
+                    onClick={stopRecording}
+                    className="p-3 bg-destructive text-white rounded-xl hover:bg-destructive/90 transition-colors"
+                    title="Parar e enviar"
+                  >
+                    <MicOff size={22} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-end gap-2 md:gap-3">
+                  {/* Emoji Picker */}
+                  <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                    <PopoverTrigger asChild>
+                      <button 
+                        className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex"
+                        title="Emoji"
+                      >
+                        <Smile size={22} className="text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 border-0" side="top" align="start">
+                      <EmojiPicker
+                        onEmojiClick={handleEmojiClick}
+                        theme={Theme.AUTO}
+                        lazyLoadEmojis
+                        searchPlaceholder="Buscar emoji..."
+                        width={320}
+                        height={400}
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Attachment Button */}
+                  <button 
+                    onClick={handleAttachmentClick}
+                    className="p-2 hover:bg-muted rounded-lg transition-colors"
+                    title="Anexar arquivo"
+                  >
+                    <Paperclip size={22} className="text-muted-foreground" />
+                  </button>
+
+                  {/* Schedule Message */}
+                  <button 
+                    onClick={() => setShowScheduleModal(true)}
+                    className="p-2 hover:bg-muted rounded-lg transition-colors"
+                    title="Agendar mensagem"
+                  >
+                    <Calendar size={22} className="text-muted-foreground" />
+                  </button>
+
+                  {/* Internal Note Button */}
+                  <button
+                    onClick={() => setIsInternalNoteMode(!isInternalNoteMode)}
+                    className={cn(
+                      'p-2 rounded-lg transition-colors',
+                      isInternalNoteMode 
+                        ? 'bg-amber-500 text-white' 
+                        : 'hover:bg-muted text-muted-foreground'
+                    )}
+                    title="Criar nota interna"
+                  >
+                    <StickyNote size={22} />
+                  </button>
+
+                  <div className="flex-1">
+                    <Textarea
+                      placeholder={isInternalNoteMode ? "Digite sua nota interna..." : "Digite sua mensagem..."}
+                      value={messageInput}
+                      onChange={(e) => setMessageInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendMessage();
+                        }
+                      }}
+                      className={cn(
+                        'min-h-[44px] max-h-[120px] resize-none rounded-xl',
+                        isInternalNoteMode
+                          ? 'bg-amber-500/10 border-amber-500/30 placeholder:text-amber-600/50 dark:placeholder:text-amber-400/50'
+                          : 'bg-muted/50 border-border/50'
+                      )}
+                      rows={1}
+                    />
+                  </div>
+
+                  {/* Audio Recording Button */}
+                  <button 
+                    onClick={startRecording}
+                    className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex"
+                    title="Gravar áudio"
+                  >
+                    <Mic size={22} className="text-muted-foreground" />
+                  </button>
+
+                  {/* Send Button */}
+                  <button 
+                    onClick={handleSendMessage}
+                    disabled={!messageInput.trim() || sendMessage.isPending || createInternalNote.isPending}
+                    className={cn(
+                      'p-3 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50',
+                      isInternalNoteMode ? 'bg-amber-500 hover:bg-amber-600' : 'btn-gradient'
+                    )}
+                  >
+                    {(sendMessage.isPending || createInternalNote.isPending) 
+                      ? <Loader2 size={20} className="animate-spin" /> 
+                      : <Send size={20} />}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Schedule Message Modal */}
