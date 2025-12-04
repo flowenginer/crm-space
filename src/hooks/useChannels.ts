@@ -13,13 +13,28 @@ export interface WhatsAppChannel {
   battery_level: number | null;
   last_sync_at: string | null;
   messages_sent: number | null;
+  messages_sent_today: number | null;
   messages_received: number | null;
+  messages_received_today: number | null;
   department_id: string | null;
+  provider_id: string | null;
+  instance_id: string | null;
+  instance_token: string | null;
+  webhook_url: string | null;
+  session_data: Record<string, unknown> | null;
   is_deleted: boolean | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
   department?: { id: string; name: string } | null;
+  provider?: { 
+    id: string; 
+    name: string; 
+    code: string;
+    base_url: string;
+    api_key: string | null;
+    api_secret: string | null;
+  } | null;
 }
 
 export function useChannels() {
@@ -30,10 +45,31 @@ export function useChannels() {
         .from('whatsapp_channels')
         .select(`
           *,
-          department:departments(id, name)
+          department:departments(id, name),
+          provider:whatsapp_providers(id, name, code, base_url, api_key, api_secret)
         `)
         .eq('is_deleted', false)
         .order('name');
+
+      if (error) throw error;
+      return data as WhatsAppChannel[];
+    },
+  });
+}
+
+export function useDeletedChannels() {
+  return useQuery({
+    queryKey: ['deleted-channels'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('whatsapp_channels')
+        .select(`
+          *,
+          department:departments(id, name),
+          provider:whatsapp_providers(id, name, code)
+        `)
+        .eq('is_deleted', true)
+        .order('deleted_at', { ascending: false });
 
       if (error) throw error;
       return data as WhatsAppChannel[];
@@ -45,15 +81,31 @@ export function useCreateChannel() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (channel: { name: string; phone: string; department_id?: string | null }) => {
+    mutationFn: async (channel: { 
+      name: string; 
+      phone: string; 
+      provider_id: string;
+      instance_id: string;
+      instance_token?: string;
+      department_id?: string | null;
+      type?: string;
+    }) => {
       const { data, error } = await supabase
         .from('whatsapp_channels')
         .insert({
           name: channel.name,
           phone: channel.phone,
-          department_id: channel.department_id
+          provider_id: channel.provider_id,
+          instance_id: channel.instance_id,
+          instance_token: channel.instance_token || null,
+          department_id: channel.department_id || null,
+          type: channel.type || 'unofficial',
+          status: 'disconnected',
         })
-        .select()
+        .select(`
+          *,
+          provider:whatsapp_providers(id, name, code, base_url, api_key, api_secret)
+        `)
         .single();
 
       if (error) throw error;
@@ -69,10 +121,13 @@ export function useUpdateChannel() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...channel }: Partial<WhatsAppChannel> & { id: string }) => {
+    mutationFn: async ({ id, ...updates }: { id: string; [key: string]: unknown }) => {
       const { error } = await supabase
         .from('whatsapp_channels')
-        .update(channel)
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        } as any)
         .eq('id', id);
 
       if (error) throw error;
@@ -97,6 +152,26 @@ export function useDeleteChannel() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['channels'] });
+      queryClient.invalidateQueries({ queryKey: ['deleted-channels'] });
+    },
+  });
+}
+
+export function useRestoreChannel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('whatsapp_channels')
+        .update({ is_deleted: false, deleted_at: null })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+      queryClient.invalidateQueries({ queryKey: ['deleted-channels'] });
     },
   });
 }

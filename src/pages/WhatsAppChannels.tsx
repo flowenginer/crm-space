@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus,
   Trash2,
@@ -14,7 +14,8 @@ import {
   Check,
   Edit3,
   BarChart3,
-  X,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,162 +33,72 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-
-interface WhatsAppChannel {
-  id: string;
-  name: string;
-  phone: string | null;
-  channelId: string | null;
-  status: 'connected' | 'disconnected' | 'connecting' | 'available';
-  type: 'unofficial' | 'business' | null;
-  lastSync: string | null;
-  batteryLevel: number | null;
-  messagesSent: number;
-  messagesReceived: number;
-  activeContacts: number;
-}
-
-const mockWhatsAppChannels: WhatsAppChannel[] = [
-  {
-    id: '1',
-    name: 'Vendas 06',
-    phone: '+55 (21) 9 8533-2473',
-    channelId: '3949',
-    status: 'connected',
-    type: 'unofficial',
-    lastSync: '2025-12-03T15:30:00',
-    batteryLevel: 87,
-    messagesSent: 2345,
-    messagesReceived: 3678,
-    activeContacts: 234,
-  },
-  {
-    id: '2',
-    name: 'Vendas 08',
-    phone: '+55 (21) 9 6533-2750',
-    channelId: '9571',
-    status: 'connected',
-    type: 'unofficial',
-    lastSync: '2025-12-03T14:20:00',
-    batteryLevel: 92,
-    messagesSent: 1890,
-    messagesReceived: 2456,
-    activeContacts: 189,
-  },
-  {
-    id: '3',
-    name: 'Vendas 01',
-    phone: '+55 (21) 9 7099-0110',
-    channelId: '9965',
-    status: 'connected',
-    type: 'business',
-    lastSync: '2025-12-03T16:10:00',
-    batteryLevel: null,
-    messagesSent: 5670,
-    messagesReceived: 7890,
-    activeContacts: 567,
-  },
-  {
-    id: '4',
-    name: 'Vendas 03',
-    phone: '+55 (21) 9 9693-3037',
-    channelId: '9937',
-    status: 'connected',
-    type: 'unofficial',
-    lastSync: '2025-12-03T15:45:00',
-    batteryLevel: 78,
-    messagesSent: 1234,
-    messagesReceived: 1567,
-    activeContacts: 123,
-  },
-  {
-    id: '5',
-    name: 'Vendas 05',
-    phone: '+55 (21) 9 8533-2281',
-    channelId: '9558',
-    status: 'connected',
-    type: 'unofficial',
-    lastSync: '2025-12-03T14:30:00',
-    batteryLevel: 65,
-    messagesSent: 987,
-    messagesReceived: 1234,
-    activeContacts: 98,
-  },
-  {
-    id: '6',
-    name: 'Vendas 02',
-    phone: '+55 (21) 9 7805-2644',
-    channelId: '9866',
-    status: 'connected',
-    type: 'business',
-    lastSync: '2025-12-03T16:00:00',
-    batteryLevel: null,
-    messagesSent: 4567,
-    messagesReceived: 5678,
-    activeContacts: 456,
-  },
-  {
-    id: '7',
-    name: 'Vendas 07',
-    phone: '+55 (21) 9 6533-2686',
-    channelId: '9578',
-    status: 'disconnected',
-    type: 'unofficial',
-    lastSync: '2025-12-02T10:00:00',
-    batteryLevel: null,
-    messagesSent: 567,
-    messagesReceived: 789,
-    activeContacts: 56,
-  },
-  {
-    id: '8',
-    name: 'Canal Disponível',
-    phone: null,
-    channelId: null,
-    status: 'available',
-    type: null,
-    lastSync: null,
-    batteryLevel: null,
-    messagesSent: 0,
-    messagesReceived: 0,
-    activeContacts: 0,
-  },
-];
-
-const mockDeletedChannels = [
-  {
-    id: 'd1',
-    name: 'Vendas 04',
-    phone: '+55 (21) 9 7777-7777',
-    deletedAt: '2025-11-28T10:00:00',
-  },
-];
-
-const mockSyncLogs = [
-  { time: '15:30', status: 'success', messages: 45 },
-  { time: '14:15', status: 'success', messages: 32 },
-  { time: '12:45', status: 'success', messages: 28 },
-];
+import { 
+  useChannels, 
+  useDeletedChannels, 
+  useCreateChannel, 
+  useUpdateChannel,
+  useDeleteChannel,
+  useRestoreChannel,
+  type WhatsAppChannel 
+} from '@/hooks/useChannels';
+import { useProviders } from '@/hooks/useProviders';
+import { useDepartments } from '@/hooks/useDepartments';
+import { whatsappService } from '@/lib/whatsapp';
 
 export default function WhatsAppChannels() {
-  const [channels] = useState<WhatsAppChannel[]>(mockWhatsAppChannels);
+  const { data: channels = [], isLoading } = useChannels();
+  const { data: deletedChannels = [] } = useDeletedChannels();
+  const { data: providers = [] } = useProviders();
+  const { data: departments = [] } = useDepartments();
+  
+  const createChannel = useCreateChannel();
+  const updateChannel = useUpdateChannel();
+  const deleteChannel = useDeleteChannel();
+  const restoreChannel = useRestoreChannel();
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showDeletedModal, setShowDeletedModal] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<WhatsAppChannel | null>(null);
   const [addStep, setAddStep] = useState(1);
+  
+  // Form state
   const [newChannelName, setNewChannelName] = useState('');
-  const [newChannelType, setNewChannelType] = useState<'unofficial' | 'business'>('unofficial');
-  const [qrCountdown, setQrCountdown] = useState(45);
+  const [newChannelPhone, setNewChannelPhone] = useState('');
+  const [selectedProviderId, setSelectedProviderId] = useState('');
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
+  const [instanceId, setInstanceId] = useState('');
+  const [instanceToken, setInstanceToken] = useState('');
+  
+  // QR Code state
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [qrCountdown, setQrCountdown] = useState(60);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [createdChannelId, setCreatedChannelId] = useState<string | null>(null);
 
   const connectedCount = channels.filter(c => c.status === 'connected').length;
   const totalSlots = channels.length;
-  const availableSlots = channels.filter(c => c.status === 'available').length;
+
+  // QR countdown timer
+  useEffect(() => {
+    if (addStep === 2 && qrCountdown > 0) {
+      const timer = setTimeout(() => setQrCountdown(prev => prev - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [addStep, qrCountdown]);
 
   const getTimeSinceSync = (lastSync: string | null) => {
     if (!lastSync) return 'N/A';
@@ -197,54 +108,220 @@ export default function WhatsAppChannels() {
     return `${hours}h`;
   };
 
+  const getSelectedProvider = () => {
+    return providers.find(p => p.id === selectedProviderId);
+  };
+
+  const resetForm = () => {
+    setAddStep(1);
+    setNewChannelName('');
+    setNewChannelPhone('');
+    setSelectedProviderId('');
+    setSelectedDepartmentId('');
+    setInstanceId('');
+    setInstanceToken('');
+    setQrCode(null);
+    setQrCountdown(60);
+    setIsConnecting(false);
+    setConnectionError(null);
+    setCreatedChannelId(null);
+  };
+
   const handleOpenDetails = (channel: WhatsAppChannel) => {
     setSelectedChannel(channel);
     setShowDetailsModal(true);
   };
 
   const handleAddChannel = () => {
-    setAddStep(1);
-    setNewChannelName('');
-    setNewChannelType('unofficial');
+    resetForm();
     setShowAddModal(true);
   };
 
-  const handleContinueAdd = () => {
-    if (addStep === 1 && newChannelName.trim()) {
-      setAddStep(2);
-      setQrCountdown(45);
-    } else if (addStep === 2) {
-      // Simulate connection success
-      setAddStep(3);
+  const handleContinueAdd = async () => {
+    if (addStep === 1) {
+      if (!newChannelName.trim() || !selectedProviderId || !instanceId.trim()) {
+        toast({
+          title: 'Campos obrigatórios',
+          description: 'Preencha todos os campos obrigatórios.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setIsConnecting(true);
+      setConnectionError(null);
+
+      try {
+        // Create channel in database first
+        const createdChannel = await createChannel.mutateAsync({
+          name: newChannelName,
+          phone: newChannelPhone || 'Aguardando conexão',
+          provider_id: selectedProviderId,
+          instance_id: instanceId,
+          instance_token: instanceToken || undefined,
+          department_id: selectedDepartmentId || null,
+        });
+
+        setCreatedChannelId(createdChannel.id);
+
+        // Try to connect and get QR code
+        const result = await whatsappService.connect(createdChannel.id);
+
+        if (result.status === 'connected') {
+          setAddStep(3);
+        } else if (result.qrCode) {
+          setQrCode(result.qrCode);
+          setQrCountdown(60);
+          setAddStep(2);
+        } else {
+          setConnectionError('Não foi possível gerar o QR Code. Verifique as credenciais.');
+        }
+      } catch (error: any) {
+        console.error('Connection error:', error);
+        setConnectionError(error.message || 'Erro ao conectar. Verifique as credenciais.');
+      } finally {
+        setIsConnecting(false);
+      }
     } else if (addStep === 3) {
       setShowAddModal(false);
+      resetForm();
+    }
+  };
+
+  const handleRefreshQR = async () => {
+    if (!createdChannelId) return;
+    
+    setIsConnecting(true);
+    try {
+      const result = await whatsappService.connect(createdChannelId);
+      if (result.qrCode) {
+        setQrCode(result.qrCode);
+        setQrCountdown(60);
+      } else if (result.status === 'connected') {
+        setAddStep(3);
+        toast({
+          title: 'Conectado!',
+          description: 'Canal conectado com sucesso.',
+        });
+      }
+    } catch (error: any) {
       toast({
-        title: 'Canal conectado!',
-        description: `${newChannelName} foi adicionado com sucesso.`,
+        title: 'Erro',
+        description: error.message || 'Erro ao gerar QR Code',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleConnect = async (channel: WhatsAppChannel) => {
+    setSelectedChannel(channel);
+    setIsConnecting(true);
+    
+    try {
+      const result = await whatsappService.connect(channel.id);
+      
+      if (result.status === 'connected') {
+        toast({
+          title: 'Conectado!',
+          description: `${channel.name} está conectado.`,
+        });
+      } else if (result.qrCode) {
+        setQrCode(result.qrCode);
+        setQrCountdown(60);
+        setCreatedChannelId(channel.id);
+        setAddStep(2);
+        setShowAddModal(true);
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error.message || 'Erro ao conectar',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async (channel: WhatsAppChannel) => {
+    try {
+      await whatsappService.disconnect(channel.id);
+      toast({
+        title: 'Desconectado',
+        description: `${channel.name} foi desconectado.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error.message || 'Erro ao desconectar',
+        variant: 'destructive',
       });
     }
   };
 
-  const handleSync = (channel: WhatsAppChannel) => {
-    toast({
-      title: 'Sincronizando...',
-      description: `Sincronizando ${channel.name}`,
-    });
+  const handleSync = async (channel: WhatsAppChannel) => {
+    try {
+      const status = await whatsappService.getStatus(channel.id);
+      await updateChannel.mutateAsync({
+        id: channel.id,
+        status,
+        last_sync_at: new Date().toISOString(),
+      });
+      toast({
+        title: 'Sincronizado',
+        description: `${channel.name} está ${status}.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error.message || 'Erro ao sincronizar',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleDisconnect = (channel: WhatsAppChannel) => {
-    toast({
-      title: 'Canal desconectado',
-      description: `${channel.name} foi desconectado.`,
-      variant: 'destructive',
-    });
+  const handleDelete = async (channel: WhatsAppChannel) => {
+    try {
+      await deleteChannel.mutateAsync(channel.id);
+      toast({
+        title: 'Canal removido',
+        description: `${channel.name} foi movido para a lixeira.`,
+      });
+      setShowDetailsModal(false);
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error.message || 'Erro ao remover canal',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleConnect = (channel: WhatsAppChannel) => {
-    setSelectedChannel(channel);
-    setAddStep(2);
-    setShowAddModal(true);
+  const handleRestore = async (channel: WhatsAppChannel) => {
+    try {
+      await restoreChannel.mutateAsync(channel.id);
+      toast({
+        title: 'Canal restaurado',
+        description: `${channel.name} foi restaurado.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error.message || 'Erro ao restaurar canal',
+        variant: 'destructive',
+      });
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -253,10 +330,7 @@ export default function WhatsAppChannels() {
         <div>
           <h1 className="text-3xl font-bold text-foreground mb-2">Canais de atendimento</h1>
           <p className="text-muted-foreground">
-            <span className="font-semibold text-primary">{connectedCount}/{totalSlots}</span> canais utilizados
-            {availableSlots > 0 && (
-              <span className="text-green-600 ml-2">({availableSlots} disponível)</span>
-            )}
+            <span className="font-semibold text-primary">{connectedCount}/{totalSlots}</span> canais conectados
           </p>
         </div>
 
@@ -268,9 +342,9 @@ export default function WhatsAppChannels() {
           >
             <Trash2 size={18} />
             Deletados
-            {mockDeletedChannels.length > 0 && (
+            {deletedChannels.length > 0 && (
               <span className="ml-1 px-2 py-0.5 bg-destructive/20 text-destructive rounded-full text-xs font-bold">
-                {mockDeletedChannels.length}
+                {deletedChannels.length}
               </span>
             )}
           </Button>
@@ -283,22 +357,43 @@ export default function WhatsAppChannels() {
       </div>
 
       {/* Channels Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {channels.map((channel) => (
-          <ChannelCard
-            key={channel.id}
-            channel={channel}
-            onOpenDetails={handleOpenDetails}
-            onSync={handleSync}
-            onDisconnect={handleDisconnect}
-            onConnect={handleConnect}
-            getTimeSinceSync={getTimeSinceSync}
-          />
-        ))}
-      </div>
+      {channels.length === 0 ? (
+        <div className="text-center py-16 bg-card rounded-2xl border border-border">
+          <MessageCircle className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-xl font-semibold text-foreground mb-2">Nenhum canal configurado</h3>
+          <p className="text-muted-foreground mb-6">Adicione seu primeiro canal WhatsApp para começar</p>
+          <Button onClick={handleAddChannel} className="btn-gradient">
+            <Plus size={18} />
+            Adicionar Canal
+          </Button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {channels.map((channel) => (
+            <ChannelCard
+              key={channel.id}
+              channel={channel}
+              onOpenDetails={handleOpenDetails}
+              onSync={handleSync}
+              onDisconnect={handleDisconnect}
+              onConnect={handleConnect}
+              getTimeSinceSync={getTimeSinceSync}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Add Channel Modal */}
-      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+      <Dialog open={showAddModal} onOpenChange={(open) => {
+        if (!open && addStep !== 3) {
+          // If closing without completing, clean up created channel
+          if (createdChannelId && addStep === 2) {
+            deleteChannel.mutate(createdChannelId);
+          }
+        }
+        setShowAddModal(open);
+        if (!open) resetForm();
+      }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold">
@@ -306,20 +401,20 @@ export default function WhatsAppChannels() {
             </DialogTitle>
             {addStep !== 3 && (
               <DialogDescription>
-                Configure e conecte um novo número WhatsApp ao seu CRM
+                {addStep === 1 ? 'Selecione o provedor e configure as credenciais' : 'Escaneie o QR Code com seu WhatsApp'}
               </DialogDescription>
             )}
           </DialogHeader>
 
           <div className="space-y-6 py-4">
-            {/* Step 1: Channel Name & Type */}
+            {/* Step 1: Provider Selection & Credentials */}
             {addStep === 1 && (
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="channelName">Nome do canal</Label>
+                  <Label htmlFor="channelName">Nome do canal *</Label>
                   <Input
                     id="channelName"
-                    placeholder="Ex: Vendas 09, Suporte 01..."
+                    placeholder="Ex: Vendas 01, Suporte..."
                     value={newChannelName}
                     onChange={(e) => setNewChannelName(e.target.value)}
                     className="mt-2"
@@ -327,33 +422,111 @@ export default function WhatsAppChannels() {
                 </div>
 
                 <div>
-                  <Label className="mb-3 block">Tipo de conexão</Label>
-                  <RadioGroup
-                    value={newChannelType}
-                    onValueChange={(value) => setNewChannelType(value as 'unofficial' | 'business')}
-                    className="space-y-3"
-                  >
-                    <label className="flex items-start gap-3 p-4 border-2 border-border rounded-xl cursor-pointer hover:border-primary transition-all has-[:checked]:border-primary has-[:checked]:bg-primary/5">
-                      <RadioGroupItem value="unofficial" className="mt-1" />
-                      <div>
-                        <div className="font-semibold text-foreground mb-1">WhatsApp não oficial (Gratuito)</div>
-                        <div className="text-sm text-muted-foreground">
-                          Conecte via QR Code. Requer celular próximo. Ideal para começar.
-                        </div>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-3 p-4 border-2 border-border rounded-xl cursor-pointer hover:border-primary transition-all has-[:checked]:border-primary has-[:checked]:bg-primary/5">
-                      <RadioGroupItem value="business" className="mt-1" />
-                      <div>
-                        <div className="font-semibold text-foreground mb-1">WhatsApp Business API</div>
-                        <div className="text-sm text-muted-foreground">
-                          Conexão oficial via Meta. Requer aprovação. Mais estável e recursos avançados.
-                        </div>
-                      </div>
-                    </label>
-                  </RadioGroup>
+                  <Label htmlFor="provider">Provedor WhatsApp *</Label>
+                  <Select value={selectedProviderId} onValueChange={setSelectedProviderId}>
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder="Selecione o provedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providers.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{provider.name}</span>
+                            <span className="text-xs text-muted-foreground">({provider.code})</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {selectedProviderId && (
+                  <>
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        {getSelectedProvider()?.code === 'zapi' && (
+                          <>Obtenha as credenciais em <strong>z-api.io</strong> → Sua Instância → Credenciais</>
+                        )}
+                        {getSelectedProvider()?.code === 'uazapi' && (
+                          <>Obtenha as credenciais em <strong>uazapi.com</strong> → Dashboard → Instâncias</>
+                        )}
+                        {getSelectedProvider()?.code === 'evolution' && (
+                          <>Configure a URL da sua instância Evolution API self-hosted</>
+                        )}
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="instanceId">
+                        {getSelectedProvider()?.code === 'evolution' ? 'Nome da Instância *' : 'Instance ID *'}
+                      </Label>
+                      <Input
+                        id="instanceId"
+                        placeholder={getSelectedProvider()?.code === 'evolution' ? 'minha-instancia' : 'Ex: 3F7A9B2C1D...'}
+                        value={instanceId}
+                        onChange={(e) => setInstanceId(e.target.value)}
+                        className="mt-2"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="instanceToken">
+                        {getSelectedProvider()?.code === 'evolution' ? 'API Key (Global)' : 'Token da Instância'}
+                      </Label>
+                      <Input
+                        id="instanceToken"
+                        type="password"
+                        placeholder="Token de acesso..."
+                        value={instanceToken}
+                        onChange={(e) => setInstanceToken(e.target.value)}
+                        className="mt-2"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {getSelectedProvider()?.code === 'zapi' && 'Opcional: Client Token para maior segurança'}
+                        {getSelectedProvider()?.code === 'uazapi' && 'Token Bearer da sua instância'}
+                        {getSelectedProvider()?.code === 'evolution' && 'API Key configurada no seu servidor'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="phone">Número do WhatsApp</Label>
+                      <Input
+                        id="phone"
+                        placeholder="+55 21 99999-9999"
+                        value={newChannelPhone}
+                        onChange={(e) => setNewChannelPhone(e.target.value)}
+                        className="mt-2"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Será preenchido automaticamente após conexão
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="department">Departamento (opcional)</Label>
+                      <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
+                        <SelectTrigger className="mt-2">
+                          <SelectValue placeholder="Nenhum departamento" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Nenhum</SelectItem>
+                          {departments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id}>
+                              {dept.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+
+                {connectionError && (
+                  <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-lg">
+                    <AlertCircle size={18} />
+                    <span className="text-sm">{connectionError}</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -362,9 +535,21 @@ export default function WhatsAppChannels() {
               <div className="text-center">
                 <div className="mb-6">
                   <div className="inline-block p-4 bg-card border-4 border-border rounded-2xl shadow-elevated">
-                    <div className="w-64 h-64 bg-gradient-to-br from-primary/10 to-pink-500/10 rounded-xl flex items-center justify-center">
-                      <QrCode size={180} className="text-primary" />
-                    </div>
+                    {qrCode ? (
+                      <img 
+                        src={qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`}
+                        alt="QR Code"
+                        className="w-64 h-64 rounded-xl"
+                      />
+                    ) : (
+                      <div className="w-64 h-64 bg-gradient-to-br from-primary/10 to-pink-500/10 rounded-xl flex items-center justify-center">
+                        {isConnecting ? (
+                          <Loader2 size={48} className="text-primary animate-spin" />
+                        ) : (
+                          <QrCode size={180} className="text-primary" />
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -391,13 +576,30 @@ export default function WhatsAppChannels() {
                 <div className="flex items-center justify-center gap-2 mb-4">
                   <Clock size={18} className="text-orange-500" />
                   <span className="text-sm text-muted-foreground">
-                    QR Code expira em: <strong className="text-orange-600">00:{qrCountdown.toString().padStart(2, '0')}</strong>
+                    QR Code expira em: <strong className={cn(
+                      qrCountdown <= 10 ? 'text-destructive' : 'text-orange-600'
+                    )}>00:{qrCountdown.toString().padStart(2, '0')}</strong>
                   </span>
                 </div>
 
-                <button className="text-sm text-primary hover:text-primary/80 font-medium">
-                  Gerar novo QR Code
-                </button>
+                <Button 
+                  variant="link" 
+                  onClick={handleRefreshQR}
+                  disabled={isConnecting}
+                  className="text-primary"
+                >
+                  {isConnecting ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin mr-2" />
+                      Gerando...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw size={16} className="mr-2" />
+                      Gerar novo QR Code
+                    </>
+                  )}
+                </Button>
               </div>
             )}
 
@@ -417,8 +619,8 @@ export default function WhatsAppChannels() {
 
                 <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-xl p-4 mb-6">
                   <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">Número conectado:</span>
-                    <span className="font-semibold text-foreground">+55 (21) 99999-9999</span>
+                    <span className="text-muted-foreground">Provedor:</span>
+                    <span className="font-semibold text-foreground">{getSelectedProvider()?.name}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Status:</span>
@@ -436,21 +638,53 @@ export default function WhatsAppChannels() {
             {addStep === 1 && (
               <Button
                 onClick={handleContinueAdd}
-                disabled={!newChannelName.trim()}
+                disabled={!newChannelName.trim() || !selectedProviderId || !instanceId.trim() || isConnecting}
                 className="w-full btn-gradient"
               >
-                Continuar
+                {isConnecting ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin mr-2" />
+                    Conectando...
+                  </>
+                ) : (
+                  'Conectar'
+                )}
               </Button>
             )}
 
             {addStep === 2 && (
-              <Button
-                variant="outline"
-                onClick={() => setShowAddModal(false)}
-                className="w-full"
-              >
-                Cancelar
-              </Button>
+              <div className="w-full space-y-2">
+                <Button
+                  onClick={() => {
+                    // Check connection status
+                    handleRefreshQR();
+                  }}
+                  className="w-full btn-gradient"
+                  disabled={isConnecting}
+                >
+                  {isConnecting ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin mr-2" />
+                      Verificando...
+                    </>
+                  ) : (
+                    'Já escaneei o QR Code'
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (createdChannelId) {
+                      deleteChannel.mutate(createdChannelId);
+                    }
+                    setShowAddModal(false);
+                    resetForm();
+                  }}
+                  className="w-full"
+                >
+                  Cancelar
+                </Button>
+              </div>
             )}
 
             {addStep === 3 && (
@@ -481,57 +715,49 @@ export default function WhatsAppChannels() {
                 </div>
                 <h3 className="text-xl font-bold text-foreground mb-1">{selectedChannel.name}</h3>
                 <p className="text-sm text-muted-foreground">{selectedChannel.phone}</p>
+                {selectedChannel.provider && (
+                  <p className="text-xs text-primary mt-1">{selectedChannel.provider.name}</p>
+                )}
               </div>
 
               {/* Statistics */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-3 bg-muted/50 rounded-lg">
                   <div className="text-2xl font-bold text-foreground mb-1">
-                    {selectedChannel.messagesSent.toLocaleString()}
+                    {(selectedChannel.messages_sent || 0).toLocaleString()}
                   </div>
-                  <div className="text-xs text-muted-foreground">Mensagens enviadas</div>
+                  <div className="text-xs text-muted-foreground">Enviadas</div>
                 </div>
-                <div className="text-center">
+                <div className="text-center p-3 bg-muted/50 rounded-lg">
                   <div className="text-2xl font-bold text-foreground mb-1">
-                    {selectedChannel.messagesReceived.toLocaleString()}
+                    {(selectedChannel.messages_received || 0).toLocaleString()}
                   </div>
-                  <div className="text-xs text-muted-foreground">Mensagens recebidas</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-foreground mb-1">
-                    {selectedChannel.activeContacts}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Contatos ativos</div>
+                  <div className="text-xs text-muted-foreground">Recebidas</div>
                 </div>
               </div>
 
-              {/* Recent Syncs */}
-              <div>
-                <h4 className="text-sm font-semibold text-foreground mb-3">Sincronizações recentes</h4>
-                <div className="space-y-2">
-                  {mockSyncLogs.map((sync, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-sm bg-muted/50 rounded-lg p-3">
-                      <div className="flex items-center gap-2">
-                        <Check size={16} className="text-green-600" />
-                        <span className="text-muted-foreground">Hoje, {sync.time}</span>
-                      </div>
-                      <span className="text-foreground font-medium">{sync.messages} mensagens</span>
-                    </div>
-                  ))}
+              {/* Channel Details */}
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Instance ID:</span>
+                  <span className="font-mono text-xs">{selectedChannel.instance_id || '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Departamento:</span>
+                  <span>{selectedChannel.department?.name || 'Nenhum'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Última sync:</span>
+                  <span>{getTimeSinceSync(selectedChannel.last_sync_at)}</span>
                 </div>
               </div>
 
               {/* Actions */}
               <div className="pt-4 border-t border-border space-y-2">
-                <button className="w-full py-2.5 text-left px-4 hover:bg-muted rounded-lg transition-colors flex items-center gap-3 text-sm">
-                  <Edit3 size={16} className="text-muted-foreground" />
-                  <span className="text-foreground">Editar nome do canal</span>
-                </button>
-                <button className="w-full py-2.5 text-left px-4 hover:bg-muted rounded-lg transition-colors flex items-center gap-3 text-sm">
-                  <BarChart3 size={16} className="text-muted-foreground" />
-                  <span className="text-foreground">Ver estatísticas completas</span>
-                </button>
-                <button className="w-full py-2.5 text-left px-4 hover:bg-destructive/10 rounded-lg transition-colors flex items-center gap-3 text-sm text-destructive">
+                <button 
+                  className="w-full py-2.5 text-left px-4 hover:bg-destructive/10 rounded-lg transition-colors flex items-center gap-3 text-sm text-destructive"
+                  onClick={() => handleDelete(selectedChannel)}
+                >
                   <Trash2 size={16} />
                   <span>Excluir canal</span>
                 </button>
@@ -551,13 +777,13 @@ export default function WhatsAppChannels() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-4">
-            {mockDeletedChannels.length === 0 ? (
+          <div className="space-y-3 py-4 max-h-96 overflow-y-auto">
+            {deletedChannels.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 Nenhum canal deletado
               </div>
             ) : (
-              mockDeletedChannels.map((channel) => (
+              deletedChannels.map((channel) => (
                 <div key={channel.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-xl">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
@@ -566,18 +792,21 @@ export default function WhatsAppChannels() {
                     <div>
                       <h4 className="font-semibold text-foreground">{channel.name}</h4>
                       <p className="text-sm text-muted-foreground">{channel.phone}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Deletado em {new Date(channel.deletedAt).toLocaleDateString('pt-BR')}
-                      </p>
+                      {channel.deleted_at && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Deletado em {new Date(channel.deleted_at).toLocaleDateString('pt-BR')}
+                        </p>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                    <Button 
+                      size="sm" 
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => handleRestore(channel)}
+                    >
                       Restaurar
-                    </Button>
-                    <Button size="sm" variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/10">
-                      Excluir permanentemente
                     </Button>
                   </div>
                 </div>
@@ -606,17 +835,15 @@ function ChannelCard({
   onConnect: (channel: WhatsAppChannel) => void;
   getTimeSinceSync: (lastSync: string | null) => string;
 }) {
-  const isAvailable = channel.status === 'available';
   const isConnected = channel.status === 'connected';
-  const isDisconnected = channel.status === 'disconnected';
+  const isDisconnected = channel.status === 'disconnected' || !channel.status;
 
   return (
     <div
       className={cn(
         'bg-card rounded-2xl border-2 shadow-card p-6 transition-all duration-300 hover:shadow-card-hover',
         isConnected && 'border-green-200 dark:border-green-800',
-        isDisconnected && 'border-destructive/30 opacity-75',
-        isAvailable && 'border-border border-dashed'
+        isDisconnected && 'border-border'
       )}
     >
       {/* Card Header */}
@@ -626,166 +853,137 @@ function ChannelCard({
             className={cn(
               'p-3 rounded-xl shadow-lg',
               isConnected && 'bg-gradient-to-br from-green-500 to-emerald-600',
-              isDisconnected && 'bg-muted-foreground',
-              isAvailable && 'bg-gradient-to-br from-primary to-pink-500'
+              isDisconnected && 'bg-muted-foreground'
             )}
           >
-            {isAvailable ? (
-              <Plus size={24} className="text-white" />
-            ) : (
-              <MessageCircle size={24} className="text-white" />
-            )}
+            <MessageCircle size={24} className="text-white" />
           </div>
 
-          {!isAvailable && (
-            <div className="flex items-center gap-2">
-              {isConnected && <Wifi size={18} className="text-green-500" />}
-              {isDisconnected && <WifiOff size={18} className="text-destructive" />}
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {isConnected && <Wifi size={18} className="text-green-500" />}
+            {isDisconnected && <WifiOff size={18} className="text-muted-foreground" />}
+          </div>
         </div>
 
-        {!isAvailable && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="p-1.5 hover:bg-muted rounded-lg transition-colors">
-                <MoreVertical size={18} className="text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onOpenDetails(channel)}>
-                <BarChart3 size={16} className="mr-2" />
-                Ver detalhes
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Edit3 size={16} className="mr-2" />
-                Editar
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive">
-                <Trash2 size={16} className="mr-2" />
-                Excluir
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="p-1.5 hover:bg-muted rounded-lg transition-colors">
+              <MoreVertical size={18} className="text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onOpenDetails(channel)}>
+              <BarChart3 size={16} className="mr-2" />
+              Ver detalhes
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Edit3 size={16} className="mr-2" />
+              Editar
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="text-destructive">
+              <Trash2 size={16} className="mr-2" />
+              Excluir
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {/* Card Content */}
-      {isAvailable ? (
-        <div className="text-center py-8">
-          <h3 className="text-lg font-bold text-foreground mb-2">Slot Disponível</h3>
-          <p className="text-sm text-muted-foreground mb-4">Conecte um novo canal WhatsApp</p>
-          <Button className="w-full btn-gradient">Conectar Canal</Button>
+      {/* Channel Name */}
+      <div className="mb-3">
+        <h3 className="text-lg font-bold text-foreground mb-1">{channel.name}</h3>
+        <div className="flex items-center gap-1 flex-wrap">
+          {channel.provider && (
+            <span className="px-2 py-1 rounded-full font-medium text-xs bg-primary/10 text-primary">
+              {channel.provider.name}
+            </span>
+          )}
+          <span
+            className={cn(
+              'px-2 py-1 rounded-full font-medium text-xs',
+              isConnected
+                ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
+                : 'bg-muted text-muted-foreground'
+            )}
+          >
+            {isConnected ? 'Conectado' : 'Desconectado'}
+          </span>
         </div>
-      ) : (
-        <>
-          {/* Channel Name */}
-          <div className="mb-3">
-            <h3 className="text-lg font-bold text-foreground mb-1">{channel.name}</h3>
-            <div className="flex items-center gap-1 flex-wrap">
-              <span
+      </div>
+
+      {/* Phone Number */}
+      <div className="bg-muted/50 rounded-lg p-3 mb-3">
+        <div className="flex items-center justify-between text-sm mb-1">
+          <span className="text-muted-foreground font-medium">Número:</span>
+          <span className="text-foreground font-semibold">{channel.phone}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground font-medium">Instance:</span>
+          <span className="text-muted-foreground font-mono text-xs truncate max-w-32">
+            {channel.instance_id || '-'}
+          </span>
+        </div>
+      </div>
+
+      {/* Additional Info */}
+      {isConnected && (
+        <div className="space-y-2 mb-4">
+          {channel.battery_level && (
+            <div className="flex items-center gap-2 text-sm">
+              <Battery
+                size={16}
                 className={cn(
-                  'px-2 py-1 rounded-full font-medium text-xs',
-                  channel.type === 'business'
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                    : 'bg-muted text-muted-foreground'
+                  channel.battery_level > 50 && 'text-green-600',
+                  channel.battery_level <= 50 && channel.battery_level > 20 && 'text-yellow-600',
+                  channel.battery_level <= 20 && 'text-destructive'
                 )}
-              >
-                {channel.type === 'business' ? 'Business API' : 'Não oficial'}
-              </span>
-              <span
-                className={cn(
-                  'px-2 py-1 rounded-full font-medium text-xs',
-                  isConnected
-                    ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
-                    : 'bg-destructive/20 text-destructive'
-                )}
-              >
-                {isConnected ? 'Estável' : 'Desconectado'}
-              </span>
-            </div>
-          </div>
-
-          {/* Phone Number */}
-          <div className="bg-muted/50 rounded-lg p-3 mb-3">
-            <div className="flex items-center justify-between text-sm mb-1">
-              <span className="text-muted-foreground font-medium">Número:</span>
-              <span className="text-foreground font-semibold">{channel.phone}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground font-medium">ID:</span>
-              <span className="text-muted-foreground font-mono text-xs">{channel.channelId}</span>
-            </div>
-          </div>
-
-          {/* Additional Info */}
-          {isConnected && (
-            <div className="space-y-2 mb-4">
-              {channel.batteryLevel && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Battery
-                    size={16}
-                    className={cn(
-                      channel.batteryLevel > 50 && 'text-green-600',
-                      channel.batteryLevel <= 50 && channel.batteryLevel > 20 && 'text-yellow-600',
-                      channel.batteryLevel <= 20 && 'text-destructive'
-                    )}
-                  />
-                  <span className="text-muted-foreground">Bateria:</span>
-                  <span className="font-medium text-foreground">{channel.batteryLevel}%</span>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Clock size={16} />
-                <span>Sincronizado há {getTimeSinceSync(channel.lastSync)}</span>
-              </div>
+              />
+              <span className="text-muted-foreground">Bateria:</span>
+              <span className="font-medium text-foreground">{channel.battery_level}%</span>
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div className="flex gap-2">
-            {isConnected ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 border-destructive/30 text-destructive hover:bg-destructive/10"
-                  onClick={() => onDisconnect(channel)}
-                >
-                  <Power size={16} />
-                  Desconectar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 border-primary/30 text-primary hover:bg-primary/10"
-                  onClick={() => onSync(channel)}
-                >
-                  <RefreshCw size={16} />
-                  Sincronizar
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  size="sm"
-                  className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:shadow-lg"
-                  onClick={() => onConnect(channel)}
-                >
-                  <Power size={16} />
-                  Conectar
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1">
-                  <QrCode size={16} />
-                  Novo QR
-                </Button>
-              </>
-            )}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Clock size={16} />
+            <span>Sincronizado há {getTimeSinceSync(channel.last_sync_at)}</span>
           </div>
-        </>
+        </div>
       )}
+
+      {/* Action Buttons */}
+      <div className="flex gap-2">
+        {isConnected ? (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 border-destructive/30 text-destructive hover:bg-destructive/10"
+              onClick={() => onDisconnect(channel)}
+            >
+              <Power size={16} />
+              Desconectar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 border-primary/30 text-primary hover:bg-primary/10"
+              onClick={() => onSync(channel)}
+            >
+              <RefreshCw size={16} />
+              Sincronizar
+            </Button>
+          </>
+        ) : (
+          <Button
+            size="sm"
+            className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:shadow-lg"
+            onClick={() => onConnect(channel)}
+          >
+            <Power size={16} className="mr-1" />
+            Conectar
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
