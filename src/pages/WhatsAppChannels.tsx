@@ -72,7 +72,7 @@ import { useProviders, useConfiguredProviders } from '@/hooks/useProviders';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useCreateChannelWithInstance, useRefreshQRCode } from '@/hooks/useCreateChannelWithInstance';
 import { whatsappService } from '@/lib/whatsapp';
-import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, ProviderInstance } from '@/lib/whatsapp/instance-creator';
+import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, ProviderInstance } from '@/lib/whatsapp/instance-creator';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -430,22 +430,64 @@ export default function WhatsAppChannels() {
   };
 
   const handleConnect = async (channel: WhatsAppChannel) => {
+    // Buscar provedor do canal
+    const provider = providers.find(p => p.id === channel.provider_id);
+    if (!provider || !channel.instance_id) {
+      toast.error('Canal sem provedor ou instância configurada');
+      return;
+    }
+
     setSelectedChannel(channel);
     setIsConnecting(true);
     
     try {
-      const result = await whatsappService.connect(channel.id);
-      
-      if (result.status === 'connected') {
-        toast.success(`${channel.name} está conectado.`);
-      } else if (result.qrCode) {
-        setQrCode(result.qrCode);
+      // Primeiro verificar se já está conectado via Edge Function
+      const statusResult = await getInstanceStatus(
+        provider.code as 'zapi' | 'uazapi' | 'evolution',
+        channel.instance_id
+      );
+
+      if (statusResult.success && statusResult.status === 'connected') {
+        // Já está conectado - apenas atualizar o banco
+        await updateChannel.mutateAsync({
+          id: channel.id,
+          status: 'connected',
+          last_sync_at: new Date().toISOString(),
+        });
+        toast.success(`${channel.name} já está conectado!`);
+        return;
+      }
+
+      // Não está conectado - buscar QR Code via Edge Function
+      const qrResult = await getWhatsAppQRCode(
+        provider.code as 'zapi' | 'uazapi' | 'evolution',
+        channel.instance_id,
+        channel.instance_token || provider.admin_token || ''
+      );
+
+      if (qrResult.connected) {
+        // Conectou durante a verificação
+        await updateChannel.mutateAsync({
+          id: channel.id,
+          status: 'connected',
+          last_sync_at: new Date().toISOString(),
+        });
+        toast.success(`${channel.name} está conectado!`);
+        return;
+      }
+
+      if (qrResult.qrCode) {
+        // Mostrar QR Code para o usuário escanear
+        setQrCode(qrResult.qrCode);
         setQrCountdown(60);
         setCreatedChannelId(channel.id);
         setAddStep(2);
         setShowAddModal(true);
+      } else {
+        toast.error('Não foi possível obter o QR Code. Tente novamente.');
       }
     } catch (error: any) {
+      console.error('[handleConnect] Error:', error);
       toast.error(error.message || 'Erro ao conectar');
     } finally {
       setIsConnecting(false);
