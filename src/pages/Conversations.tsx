@@ -28,6 +28,7 @@ import {
   Reply,
   Trash2,
   CornerDownRight,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -49,6 +50,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -65,6 +73,9 @@ import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { toast } from 'sonner';
+import { useTeam } from '@/hooks/useTeam';
+import { useTags } from '@/hooks/useTags';
+import { useDepartments } from '@/hooks/useDepartments';
 
 // Mock Data for reference (will be replaced by real data)
 const mockConversations = [
@@ -679,6 +690,14 @@ export default function Conversations() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
+  const [messageSearchQuery, setMessageSearchQuery] = useState('');
+  const [advancedFilters, setAdvancedFilters] = useState({
+    agentId: 'all',
+    tagIds: [] as string[],
+    protocolNumber: '',
+    departmentId: 'all',
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -692,6 +711,9 @@ export default function Conversations() {
   const { data: conversations = [], isLoading: conversationsLoading } = useConversations(quickFilter);
   const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedConversationId);
   const { data: internalNotes = [], isLoading: notesLoading } = useInternalNotes(selectedConversationId);
+  const { data: teamMembers = [] } = useTeam();
+  const { data: tags = [] } = useTags();
+  const { data: departments = [] } = useDepartments();
   const sendMessage = useSendMessage();
   const deleteMessage = useDeleteMessage();
   const reactToMessage = useReactToMessage();
@@ -726,6 +748,15 @@ export default function Conversations() {
     );
   }, [messages, internalNotes]);
 
+  // Filter messages for in-conversation search
+  const filteredChatItems = useMemo(() => {
+    if (!messageSearchQuery.trim()) return allChatItems;
+    return allChatItems.filter(item => 
+      item.itemType === 'message' && 
+      (item as Message).content?.toLowerCase().includes(messageSearchQuery.toLowerCase())
+    );
+  }, [allChatItems, messageSearchQuery]);
+
   // Auto-scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -749,14 +780,117 @@ export default function Conversations() {
     }
   }, [searchParams]);
 
-  // Filter conversations based on search
-  const filteredConversations = conversations.filter((conv) => {
-    const contactName = conv.contact?.full_name || '';
-    if (searchQuery && !contactName.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
+  // Filter conversations based on all filters (search, channel, sort, advanced)
+  const filteredConversations = useMemo(() => {
+    return conversations
+      .filter((conv) => {
+        const contactName = conv.contact?.full_name || '';
+        const contactPhone = conv.contact?.phone || '';
+        
+        // Search filter (name or phone)
+        if (searchQuery) {
+          const searchLower = searchQuery.toLowerCase();
+          if (!contactName.toLowerCase().includes(searchLower) && 
+              !contactPhone.includes(searchLower)) {
+            return false;
+          }
+        }
+        
+        // Channel filter - whatsapp_channels table means it's WhatsApp
+        if (channelFilter !== 'all') {
+          const hasWhatsAppChannel = !!conv.channel_id;
+          if (channelFilter === 'whatsapp' && !hasWhatsAppChannel) {
+            return false;
+          }
+          // Currently we only support WhatsApp, so email filter would return nothing
+          if (channelFilter === 'email' && hasWhatsAppChannel) {
+            return false;
+          }
+        }
+        
+        // Advanced filters
+        if (advancedFilters.agentId !== 'all' && conv.assigned_to !== advancedFilters.agentId) {
+          return false;
+        }
+        
+        if (advancedFilters.departmentId !== 'all' && conv.department_id !== advancedFilters.departmentId) {
+          return false;
+        }
+        
+        if (advancedFilters.protocolNumber && !conv.id.includes(advancedFilters.protocolNumber)) {
+          return false;
+        }
+        
+        return true;
+      })
+      .sort((a, b) => {
+        switch (sortFilter) {
+          case 'unread':
+            // Unread first, then by date
+            if (a.is_unread && !b.is_unread) return -1;
+            if (!a.is_unread && b.is_unread) return 1;
+            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+          case 'oldest':
+            return new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+          case 'newest':
+          default:
+            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+        }
+      });
+  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters]);
+
+  // Conversation action handlers
+  const handleMarkAsUnread = () => {
+    if (selectedConversationId) {
+      updateConversation.mutate({ id: selectedConversationId, is_unread: true, unread_count: 1 });
+      toast.success('Conversa marcada como não lida');
     }
-    return true;
-  });
+  };
+
+  const handleCloseConversation = () => {
+    if (selectedConversationId) {
+      updateConversation.mutate({ 
+        id: selectedConversationId, 
+        status: 'closed',
+        closed_at: new Date().toISOString(),
+      });
+      toast.success('Conversa fechada');
+    }
+  };
+
+  const handleExportConversation = () => {
+    if (!selectedConversation || messages.length === 0) {
+      toast.error('Nenhuma mensagem para exportar');
+      return;
+    }
+    
+    const messagesText = messages.map(m => 
+      `[${format(new Date(m.created_at), 'dd/MM/yyyy HH:mm')}] ${m.is_from_me ? 'Você' : selectedConversation.contact?.full_name || 'Contato'}: ${m.content || '[Mídia]'}`
+    ).join('\n');
+    
+    const blob = new Blob([messagesText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `conversa-${selectedConversation.contact?.full_name || 'contato'}-${format(new Date(), 'dd-MM-yyyy')}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Conversa exportada!');
+  };
+
+  const handleClearAdvancedFilters = () => {
+    setAdvancedFilters({
+      agentId: 'all',
+      tagIds: [],
+      protocolNumber: '',
+      departmentId: 'all',
+    });
+  };
+
+  const handleApplyFilters = () => {
+    setShowFilters(false);
+    toast.success('Filtros aplicados');
+  };
 
   const handleSelectConversation = (conv: Conversation) => {
     setSelectedConversationId(conv.id);
@@ -1299,18 +1433,60 @@ export default function Conversations() {
                 </div>
 
                 <div className="flex items-center gap-1">
-                  <button className="p-2 hover:bg-muted rounded-lg transition-colors">
-                    <Search size={20} className="text-muted-foreground" />
-                  </button>
+                  {showMessageSearch ? (
+                    <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-1">
+                      <Search size={16} className="text-muted-foreground" />
+                      <Input
+                        type="text"
+                        placeholder="Buscar na conversa..."
+                        value={messageSearchQuery}
+                        onChange={(e) => setMessageSearchQuery(e.target.value)}
+                        className="h-8 w-40 md:w-56 border-0 bg-transparent p-0 focus-visible:ring-0"
+                        autoFocus
+                      />
+                      <button 
+                        onClick={() => { setShowMessageSearch(false); setMessageSearchQuery(''); }}
+                        className="p-1 hover:bg-background rounded"
+                      >
+                        <X size={16} className="text-muted-foreground" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setShowMessageSearch(true)}
+                      className="p-2 hover:bg-muted rounded-lg transition-colors"
+                    >
+                      <Search size={20} className="text-muted-foreground" />
+                    </button>
+                  )}
                   <button className="p-2 hover:bg-muted rounded-lg transition-colors">
                     <Phone size={20} className="text-muted-foreground" />
                   </button>
                   <button className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex">
                     <Video size={20} className="text-muted-foreground" />
                   </button>
-                  <button className="p-2 hover:bg-muted rounded-lg transition-colors">
-                    <MoreVertical size={20} className="text-muted-foreground" />
-                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="p-2 hover:bg-muted rounded-lg transition-colors">
+                        <MoreVertical size={20} className="text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48 bg-popover">
+                      <DropdownMenuItem onClick={handleMarkAsUnread}>
+                        <Mail size={16} className="mr-2" />
+                        Marcar como não lida
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleCloseConversation}>
+                        <X size={16} className="mr-2" />
+                        Fechar conversa
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handleExportConversation}>
+                        <Download size={16} className="mr-2" />
+                        Exportar conversa
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             </div>
@@ -1345,14 +1521,25 @@ export default function Conversations() {
                 </div>
               ) : (
                 <>
+                  {/* Search Results Indicator */}
+                  {messageSearchQuery && (
+                    <div className="flex items-center justify-center py-2">
+                      <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
+                        {filteredChatItems.length} resultado(s) encontrado(s)
+                      </span>
+                    </div>
+                  )}
+                  
                   {/* Date Separator */}
-                  <div className="flex items-center gap-3 my-4">
-                    <div className="flex-1 h-px bg-border"></div>
-                    <span className="text-xs text-muted-foreground font-medium px-2">Hoje</span>
-                    <div className="flex-1 h-px bg-border"></div>
-                  </div>
+                  {!messageSearchQuery && (
+                    <div className="flex items-center gap-3 my-4">
+                      <div className="flex-1 h-px bg-border"></div>
+                      <span className="text-xs text-muted-foreground font-medium px-2">Hoje</span>
+                      <div className="flex-1 h-px bg-border"></div>
+                    </div>
+                  )}
 
-                  {allChatItems.map((item) => (
+                  {(messageSearchQuery ? filteredChatItems : allChatItems).map((item) => (
                     item.itemType === 'note' ? (
                       <InternalNoteCard key={`note-${item.id}`} note={item as InternalNote} />
                     ) : (
@@ -1642,15 +1829,20 @@ export default function Conversations() {
               <label className="block text-sm font-medium text-foreground mb-2">
                 Filtrar por agente
               </label>
-              <Select defaultValue="all">
+              <Select 
+                value={advancedFilters.agentId} 
+                onValueChange={(v) => setAdvancedFilters(prev => ({ ...prev, agentId: v }))}
+              >
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="diego">Diego</SelectItem>
-                  <SelectItem value="ian">Ian</SelectItem>
-                  <SelectItem value="lara">Lara</SelectItem>
+                  {teamMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.full_name || 'Sem nome'}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1660,14 +1852,29 @@ export default function Conversations() {
                 Filtrar por etiqueta
               </label>
               <div className="flex flex-wrap gap-2">
-                {['Urgente', 'VIP', 'Follow-up', 'Cliente', 'Lead'].map((tag) => (
+                {tags.length > 0 ? tags.map((tag) => (
                   <button
-                    key={tag}
-                    className="px-3 py-1.5 border border-border rounded-lg text-sm hover:border-primary hover:bg-accent transition-colors"
+                    key={tag.id}
+                    onClick={() => {
+                      setAdvancedFilters(prev => ({
+                        ...prev,
+                        tagIds: prev.tagIds.includes(tag.id)
+                          ? prev.tagIds.filter(id => id !== tag.id)
+                          : [...prev.tagIds, tag.id]
+                      }));
+                    }}
+                    className={cn(
+                      'px-3 py-1.5 border rounded-lg text-sm transition-colors',
+                      advancedFilters.tagIds.includes(tag.id)
+                        ? 'border-primary bg-accent text-primary'
+                        : 'border-border hover:border-primary'
+                    )}
                   >
-                    {tag}
+                    {tag.name}
                   </button>
-                ))}
+                )) : (
+                  <p className="text-sm text-muted-foreground">Nenhuma etiqueta cadastrada</p>
+                )}
               </div>
             </div>
 
@@ -1678,33 +1885,48 @@ export default function Conversations() {
               <Input
                 type="text"
                 placeholder="Digite o protocolo..."
+                value={advancedFilters.protocolNumber}
+                onChange={(e) => setAdvancedFilters(prev => ({ ...prev, protocolNumber: e.target.value }))}
                 className="w-full"
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Filas
+                Departamento
               </label>
-              <div className="flex gap-2">
-                <button className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">
-                  Fila 1
-                </button>
-                <button className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-sm font-medium">
-                  Fila 2
-                </button>
-                <button className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg text-sm font-medium">
-                  Fila 3
-                </button>
+              <div className="flex flex-wrap gap-2">
+                {departments.length > 0 ? departments.map((dept) => (
+                  <button
+                    key={dept.id}
+                    onClick={() => setAdvancedFilters(prev => ({ 
+                      ...prev, 
+                      departmentId: prev.departmentId === dept.id ? 'all' : dept.id 
+                    }))}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                      advancedFilters.departmentId === dept.id
+                        ? 'text-white'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    )}
+                    style={{ 
+                      backgroundColor: advancedFilters.departmentId === dept.id ? (dept.color || '#8B5CF6') : undefined 
+                    }}
+                  >
+                    {dept.name}
+                  </button>
+                )) : (
+                  <p className="text-sm text-muted-foreground">Nenhum departamento cadastrado</p>
+                )}
               </div>
             </div>
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={() => setShowFilters(false)}>
+            <Button variant="ghost" onClick={handleClearAdvancedFilters}>
               Limpar
             </Button>
-            <Button className="btn-gradient text-white" onClick={() => setShowFilters(false)}>
+            <Button className="btn-gradient text-white" onClick={handleApplyFilters}>
               Aplicar Filtros
             </Button>
           </DialogFooter>
