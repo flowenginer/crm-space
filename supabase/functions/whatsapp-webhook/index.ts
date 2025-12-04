@@ -526,7 +526,7 @@ function getEventType(provider: WhatsAppProvider, payload: any): string {
     case "uazapi":
       return payload.event || payload.type || "message";
     case "evolution":
-      return payload.event || "message";
+      return (payload.event || "message").toLowerCase().replace(/_/g, '.');
     default:
       return "unknown";
   }
@@ -543,7 +543,8 @@ function isConnectionEvent(provider: WhatsAppProvider, payload: any): boolean {
              payload.event === "status" ||
              payload.type === "connection";
     case "evolution":
-      return payload.event === "connection.update";
+      const evolutionConnEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
+      return evolutionConnEvent === "connection.update";
     default:
       return false;
   }
@@ -626,7 +627,8 @@ function isMessageStatusEvent(provider: WhatsAppProvider, payload: any): boolean
     case "uazapi":
       return payload.event === "messages.update" || payload.event === "message.ack";
     case "evolution":
-      return payload.event === "messages.update";
+      const evolutionStatusEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
+      return evolutionStatusEvent === "messages.update";
     default:
       return false;
   }
@@ -782,7 +784,8 @@ function isMessageEvent(provider: WhatsAppProvider, payload: any): boolean {
       const event = payload.event || payload.type;
       return event === "message" || event === "messages.upsert" || !!payload.message;
     case "evolution":
-      return payload.event === "messages.upsert" || payload.event === "send.message";
+      const evolutionMsgEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
+      return evolutionMsgEvent === "messages.upsert" || evolutionMsgEvent === "send.message";
     default:
       return false;
   }
@@ -938,7 +941,8 @@ function extractUAZAPIContent(msg: any, type: MessageType): string {
 }
 
 function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
-  if (payload.event !== "messages.upsert" && payload.event !== "send.message") return null;
+  const eventType = (payload.event || "").toLowerCase().replace(/_/g, '.');
+  if (eventType !== "messages.upsert" && eventType !== "send.message") return null;
 
   let msg = payload.data;
   if (Array.isArray(msg)) {
