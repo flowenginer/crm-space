@@ -24,6 +24,22 @@ interface ProviderConfig {
   clientToken?: string;
 }
 
+// Helper to safely parse JSON response
+async function safeJsonParse(response: Response, context: string) {
+  const text = await response.text();
+  console.log(`[${context}] Raw response (${response.status}):`, text.substring(0, 500));
+  
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`);
+  }
+  
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid JSON response: ${text.substring(0, 200)}`);
+  }
+}
+
 // =====================================================
 // Z-API
 // =====================================================
@@ -49,8 +65,7 @@ async function createZAPIInstance(config: ProviderConfig, instanceName: string, 
     }),
   });
 
-  const data = await response.json();
-  console.log('[Z-API] Response:', data);
+  const data = await safeJsonParse(response, 'Z-API Create');
 
   if (data.error) {
     return { success: false, error: data.error };
@@ -76,8 +91,7 @@ async function getZAPIQRCode(instanceId: string, token: string, clientToken?: st
       },
     }
   );
-  const statusData = await statusRes.json();
-  console.log('[Z-API] Status:', statusData);
+  const statusData = await safeJsonParse(statusRes, 'Z-API Status');
 
   if (statusData.connected) {
     return { connected: true };
@@ -93,7 +107,7 @@ async function getZAPIQRCode(instanceId: string, token: string, clientToken?: st
       },
     }
   );
-  const qrData = await qrRes.json();
+  const qrData = await safeJsonParse(qrRes, 'Z-API QR');
 
   return {
     qrCode: qrData.value,
@@ -107,26 +121,31 @@ async function getZAPIQRCode(instanceId: string, token: string, clientToken?: st
 async function createUAZAPIInstance(config: ProviderConfig, instanceName: string, webhookUrl: string) {
   console.log('[UAZAPI] Creating instance:', instanceName, 'at', config.baseUrl);
   
-  const response = await fetch(`${config.baseUrl}/instance/create`, {
+  // UAZAPI uses a different endpoint structure
+  const url = `${config.baseUrl}/instance/create`;
+  console.log('[UAZAPI] Request URL:', url);
+  
+  const requestBody = {
+    instanceName: instanceName,
+    qrcode: true,
+    webhook: {
+      url: webhookUrl,
+      enabled: true,
+      events: ['QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE'],
+    },
+  };
+  console.log('[UAZAPI] Request body:', JSON.stringify(requestBody));
+  
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.adminToken}`,
       'apikey': config.adminToken,
     },
-    body: JSON.stringify({
-      instanceName: instanceName,
-      qrcode: true,
-      webhook: {
-        url: webhookUrl,
-        enabled: true,
-        events: ['QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE'],
-      },
-    }),
+    body: JSON.stringify(requestBody),
   });
 
-  const data = await response.json();
-  console.log('[UAZAPI] Response:', data);
+  const data = await safeJsonParse(response, 'UAZAPI Create');
 
   if (data.error || !data.instance) {
     return { success: false, error: data.error || data.message || 'Falha ao criar instância' };
@@ -147,8 +166,7 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: str
   const statusRes = await fetch(`${baseUrl}/instance/connectionState/${instanceName}`, {
     headers: { 'apikey': token },
   });
-  const statusData = await statusRes.json();
-  console.log('[UAZAPI] Status:', statusData);
+  const statusData = await safeJsonParse(statusRes, 'UAZAPI Status');
 
   if (statusData.instance?.state === 'open') {
     return { connected: true };
@@ -158,7 +176,7 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: str
   const qrRes = await fetch(`${baseUrl}/instance/qrcode/${instanceName}`, {
     headers: { 'apikey': token },
   });
-  const qrData = await qrRes.json();
+  const qrData = await safeJsonParse(qrRes, 'UAZAPI QR');
 
   return {
     qrCode: qrData.qrcode?.base64 || qrData.base64,
@@ -198,8 +216,7 @@ async function createEvolutionInstance(config: ProviderConfig, instanceName: str
     }),
   });
 
-  const data = await response.json();
-  console.log('[Evolution] Response:', data);
+  const data = await safeJsonParse(response, 'Evolution Create');
 
   if (!data.instance) {
     return { success: false, error: data.message || 'Falha ao criar instância' };
@@ -220,8 +237,7 @@ async function getEvolutionQRCode(baseUrl: string, instanceName: string, apiKey:
   const statusRes = await fetch(`${baseUrl}/instance/connectionState/${instanceName}`, {
     headers: { 'apikey': apiKey },
   });
-  const statusData = await statusRes.json();
-  console.log('[Evolution] Status:', statusData);
+  const statusData = await safeJsonParse(statusRes, 'Evolution Status');
 
   if (statusData.instance?.state === 'open') {
     return { connected: true };
@@ -231,7 +247,7 @@ async function getEvolutionQRCode(baseUrl: string, instanceName: string, apiKey:
   const qrRes = await fetch(`${baseUrl}/instance/qrcode/${instanceName}`, {
     headers: { 'apikey': apiKey },
   });
-  const qrData = await qrRes.json();
+  const qrData = await safeJsonParse(qrRes, 'Evolution QR');
 
   return {
     qrCode: qrData.qrcode?.base64 || qrData.base64,
