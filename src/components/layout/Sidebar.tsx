@@ -60,7 +60,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const isMobile = useIsMobile();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { hasPermission, isAdmin, role: userRole } = usePermissions();
+  const { hasPermission, isAdmin, role: userRole, isLoading: permissionsLoading } = usePermissions();
 
   // Fetch pending scheduled messages count
   const { data: pendingCount } = useQuery({
@@ -80,6 +80,9 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const filteredNavItems = navItems.filter((item) => {
     // Dashboard is always visible
     if (item.href === '/') return true;
+    
+    // While loading, show all items (ProtectedRoute handles actual access)
+    if (permissionsLoading) return true;
     
     // Admin sees everything
     if (isAdmin) return true;
