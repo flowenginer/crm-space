@@ -496,7 +496,8 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
               {isMe && (
                 <span className="flex items-center">
                   {message.status === 'failed' && <X size={14} className="text-red-400" />}
-                  {message.status === 'sent' && <Check size={14} />}
+                  {message.status === 'pending' && <Loader2 size={14} className="animate-spin opacity-70" />}
+                  {(message.status === 'sent' || !message.status) && <Check size={14} />}
                   {message.status === 'delivered' && <CheckCheck size={14} />}
                   {message.status === 'read' && <CheckCheck size={14} className="text-blue-400" />}
                 </span>
