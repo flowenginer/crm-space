@@ -107,6 +107,57 @@ async function uploadMediaToStorage(
   }
 }
 
+// =====================================================
+// FETCH MEDIA FROM EVOLUTION API
+// =====================================================
+
+async function fetchMediaBase64FromEvolution(
+  baseUrl: string,
+  apiKey: string,
+  instanceName: string,
+  messageKey: { id: string; remoteJid: string; fromMe: boolean }
+): Promise<{ base64: string | null; mimetype: string | null }> {
+  try {
+    console.log(`[Webhook] Fetching media base64 from Evolution API for message: ${messageKey.id}`);
+    
+    // Normalize base URL
+    let normalizedUrl = baseUrl.replace(/\/+$/, '');
+    if (normalizedUrl.endsWith('/manager')) {
+      normalizedUrl = normalizedUrl.replace(/\/manager$/, '');
+    }
+    
+    const response = await fetch(`${normalizedUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': apiKey,
+      },
+      body: JSON.stringify({
+        message: {
+          key: messageKey
+        },
+        convertToMp4: true
+      })
+    });
+    
+    if (!response.ok) {
+      console.error(`[Webhook] Failed to fetch media from Evolution: ${response.status} ${response.statusText}`);
+      return { base64: null, mimetype: null };
+    }
+    
+    const data = await response.json();
+    console.log(`[Webhook] Media fetched successfully, base64 length: ${data.base64?.length || 0}`);
+    
+    return {
+      base64: data.base64 || null,
+      mimetype: data.mimetype || null
+    };
+  } catch (error) {
+    console.error('[Webhook] Error fetching media from Evolution:', error);
+    return { base64: null, mimetype: null };
+  }
+}
+
 function extractEvolutionMediaBase64(msg: any): { base64: string | null; mimetype: string | null } {
   const message = msg.message;
   if (!message) return { base64: null, mimetype: null };
@@ -240,7 +291,10 @@ serve(async (req) => {
 
     const { data: channel, error: channelError } = await supabase
       .from("whatsapp_channels")
-      .select("id, name")
+      .select(`
+        id, name, instance_id,
+        provider:whatsapp_providers!inner(code, base_url, admin_token)
+      `)
       .eq("instance_id", instanceId)
       .eq("is_deleted", false)
       .single();
@@ -324,6 +378,29 @@ serve(async (req) => {
       // =====================================================
       let finalMediaUrl = normalizedMessage.mediaUrl;
       
+      // If media exists but no base64, fetch from Evolution API
+      if (normalizedMessage.mediaUrl && !normalizedMessage.mediaBase64 && normalizedMessage.type !== 'text') {
+        console.log(`[Webhook] FromMe media without base64, fetching from Evolution API...`);
+        const provider = (channel as any).provider;
+        if (provider?.code === 'evolution' && provider?.base_url && provider?.admin_token) {
+          const mediaData = await fetchMediaBase64FromEvolution(
+            provider.base_url,
+            provider.admin_token,
+            channel.instance_id || '',
+            {
+              id: normalizedMessage.originalId,
+              remoteJid: normalizedMessage.from + '@s.whatsapp.net',
+              fromMe: normalizedMessage.isFromMe
+            }
+          );
+          if (mediaData.base64) {
+            normalizedMessage.mediaBase64 = mediaData.base64;
+            normalizedMessage.mediaMimeType = mediaData.mimetype || normalizedMessage.mediaMimeType;
+          }
+        }
+      }
+      
+      // Now upload if we have base64
       if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
         console.log(`[Webhook] Uploading media for fromMe message...`);
         const uploadedUrl = await uploadMediaToStorage(
@@ -461,6 +538,29 @@ serve(async (req) => {
     // =====================================================
     let finalMediaUrl = normalizedMessage.mediaUrl;
     
+    // If media exists but no base64, fetch from Evolution API
+    if (normalizedMessage.mediaUrl && !normalizedMessage.mediaBase64 && normalizedMessage.type !== 'text') {
+      console.log(`[Webhook] Received media without base64, fetching from Evolution API...`);
+      const provider = (channel as any).provider;
+      if (provider?.code === 'evolution' && provider?.base_url && provider?.admin_token) {
+        const mediaData = await fetchMediaBase64FromEvolution(
+          provider.base_url,
+          provider.admin_token,
+          channel.instance_id || '',
+          {
+            id: normalizedMessage.originalId,
+            remoteJid: normalizedMessage.from + '@s.whatsapp.net',
+            fromMe: normalizedMessage.isFromMe
+          }
+        );
+        if (mediaData.base64) {
+          normalizedMessage.mediaBase64 = mediaData.base64;
+          normalizedMessage.mediaMimeType = mediaData.mimetype || normalizedMessage.mediaMimeType;
+        }
+      }
+    }
+    
+    // Now upload if we have base64
     if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
       console.log(`[Webhook] Uploading media for received message...`);
       const uploadedUrl = await uploadMediaToStorage(
