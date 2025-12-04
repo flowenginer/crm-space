@@ -23,6 +23,7 @@ import {
   Key,
   Monitor,
 } from 'lucide-react';
+import { UserManagement } from '@/components/settings/UserManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
