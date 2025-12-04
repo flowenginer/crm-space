@@ -1066,12 +1066,24 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
 
   const rawRemoteJid = msg.key.remoteJid || "";
   
-  if (rawRemoteJid.includes("@g.us")) {
-    console.log(`[Webhook Evolution] Ignoring group message from: ${rawRemoteJid}`);
+  // CORREÇÃO: Verificar se está usando LID e obter o número real de remoteJidAlt
+  let realRemoteJid = rawRemoteJid;
+  if (rawRemoteJid.includes("@lid") && msg.key.remoteJidAlt) {
+    console.log(`[Webhook Evolution] LID detected! Using remoteJidAlt: ${msg.key.remoteJidAlt} instead of: ${rawRemoteJid}`);
+    realRemoteJid = msg.key.remoteJidAlt;
+  }
+  
+  if (realRemoteJid.includes("@g.us")) {
+    console.log(`[Webhook Evolution] Ignoring group message from: ${realRemoteJid}`);
     return null;
   }
   
-  let from = rawRemoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
+  // Extrair número limpo removendo sufixos do WhatsApp
+  let from = realRemoteJid
+    .replace("@s.whatsapp.net", "")
+    .replace("@c.us", "")
+    .replace("@lid", "")
+    .replace(/\D/g, "");
   
   if (from.startsWith("120363")) {
     console.log(`[Webhook Evolution] Ignoring group message from ID: ${from}`);
@@ -1083,7 +1095,7 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
   // Extract base64 data if available
   const mediaData = extractEvolutionMediaBase64(msg);
   
-  console.log(`[Webhook Evolution] Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}, HasBase64: ${!!mediaData.base64}`);
+  console.log(`[Webhook Evolution] Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}, HasBase64: ${!!mediaData.base64}, OriginalJid: ${rawRemoteJid}, RealJid: ${realRemoteJid}`);
 
   return {
     id: `evolution_${msg.key.id}`,
