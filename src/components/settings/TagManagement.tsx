@@ -46,6 +46,7 @@ export function TagManagement() {
   const deleteTag = useDeleteTag();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [visibilityFilter, setVisibilityFilter] = useState<TagVisibility | 'all'>('all');
   const [showModal, setShowModal] = useState(false);
   const [editingTag, setEditingTag] = useState<TagType | null>(null);
   const [form, setForm] = useState({
@@ -56,9 +57,11 @@ export function TagManagement() {
     department_id: '',
   });
 
-  const filteredTags = tags.filter(tag =>
-    tag.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredTags = tags.filter(tag => {
+    const matchesSearch = tag.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesVisibility = visibilityFilter === 'all' || tag.visibility === visibilityFilter;
+    return matchesSearch && matchesVisibility;
+  });
 
   // Counters by visibility
   const publicCount = tags.filter(t => t.visibility === 'public').length;
@@ -179,23 +182,56 @@ export function TagManagement() {
         </Button>
       </div>
 
-      {/* Visibility Stats */}
+      {/* Visibility Stats - Clickable Filters */}
       <div className="flex flex-wrap gap-3">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
+        <button
+          onClick={() => setVisibilityFilter('all')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer ${
+            visibilityFilter === 'all'
+              ? 'bg-primary/20 border border-primary/40 ring-2 ring-primary/20'
+              : 'bg-muted/50 border border-border hover:bg-muted'
+          }`}
+        >
+          <Tag size={14} className={visibilityFilter === 'all' ? 'text-primary' : 'text-muted-foreground'} />
+          <span className={`text-sm font-medium ${visibilityFilter === 'all' ? 'text-primary' : 'text-muted-foreground'}`}>{tags.length}</span>
+          <span className="text-xs text-muted-foreground">Todas</span>
+        </button>
+        <button
+          onClick={() => setVisibilityFilter(visibilityFilter === 'public' ? 'all' : 'public')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer ${
+            visibilityFilter === 'public'
+              ? 'bg-green-500/20 border border-green-500/40 ring-2 ring-green-500/20'
+              : 'bg-green-500/10 border border-green-500/20 hover:bg-green-500/20'
+          }`}
+        >
           <Globe size={14} className="text-green-500" />
           <span className="text-sm text-green-500 font-medium">{publicCount}</span>
           <span className="text-xs text-muted-foreground">Públicas</span>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/20">
+        </button>
+        <button
+          onClick={() => setVisibilityFilter(visibilityFilter === 'private' ? 'all' : 'private')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer ${
+            visibilityFilter === 'private'
+              ? 'bg-purple-500/20 border border-purple-500/40 ring-2 ring-purple-500/20'
+              : 'bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20'
+          }`}
+        >
           <Lock size={14} className="text-purple-500" />
           <span className="text-sm text-purple-500 font-medium">{privateCount}</span>
           <span className="text-xs text-muted-foreground">Privadas</span>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20">
+        </button>
+        <button
+          onClick={() => setVisibilityFilter(visibilityFilter === 'department' ? 'all' : 'department')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer ${
+            visibilityFilter === 'department'
+              ? 'bg-blue-500/20 border border-blue-500/40 ring-2 ring-blue-500/20'
+              : 'bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20'
+          }`}
+        >
           <Building2 size={14} className="text-blue-500" />
           <span className="text-sm text-blue-500 font-medium">{departmentCount}</span>
           <span className="text-xs text-muted-foreground">Departamento</span>
-        </div>
+        </button>
       </div>
 
       {/* Search */}
