@@ -167,23 +167,24 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
   };
   console.log('[UAZAPI] Request body:', JSON.stringify(requestBody));
   
+  // UAZAPI usa 'admintoken' como header principal
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'apikey': config.adminToken,
+      'admintoken': config.adminToken,
     },
     body: JSON.stringify(requestBody),
   });
 
-  // If 401, try with Authorization Bearer header
+  // If 401, try with 'apikey' header (Evolution API format)
   if (response.status === 401) {
-    console.log('[UAZAPI] 401 with apikey header, trying Authorization Bearer...');
+    console.log('[UAZAPI] 401 with admintoken header, trying apikey...');
     const retryResponse = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.adminToken}`,
+        'apikey': config.adminToken,
       },
       body: JSON.stringify(requestBody),
     });
@@ -193,11 +194,11 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
       console.log('[UAZAPI] Still 401 after trying both auth methods:', errorText);
       return { 
         success: false, 
-        error: 'Token inválido ou sem permissão. Verifique se o Admin Token está correto (deve ser a AUTHENTICATION_API_KEY do servidor).' 
+        error: 'Token inválido ou sem permissão. Verifique se o Admin Token está correto.' 
       };
     }
 
-    const data = await safeJsonParse(retryResponse, 'UAZAPI Create (Bearer)');
+    const data = await safeJsonParse(retryResponse, 'UAZAPI Create (apikey)');
     if (data.error || !data.instance) {
       return { success: false, error: data.error || data.message || 'Falha ao criar instância' };
     }
@@ -227,8 +228,9 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: str
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   console.log('[UAZAPI] Getting QR code for:', instanceName, 'at', normalizedUrl);
   
+  // UAZAPI usa 'admintoken' para operações administrativas
   const statusRes = await fetch(`${normalizedUrl}/instance/connectionState/${instanceName}`, {
-    headers: { 'apikey': token },
+    headers: { 'admintoken': token },
   });
   const statusData = await safeJsonParse(statusRes, 'UAZAPI Status');
 
@@ -238,7 +240,7 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: str
 
   // Get QR Code
   const qrRes = await fetch(`${normalizedUrl}/instance/qrcode/${instanceName}`, {
-    headers: { 'apikey': token },
+    headers: { 'admintoken': token },
   });
   const qrData = await safeJsonParse(qrRes, 'UAZAPI QR');
 
@@ -253,14 +255,16 @@ async function fetchUAZAPIInstances(config: ProviderConfig) {
   console.log('[UAZAPI] Fetching all instances from:', baseUrl);
   
   try {
+    // UAZAPI usa 'admintoken' como header principal
     const response = await fetch(`${baseUrl}/instance/fetchInstances`, {
-      headers: { 'apikey': config.adminToken },
+      headers: { 'admintoken': config.adminToken },
     });
     
     if (response.status === 401) {
-      // Try Bearer
+      // Fallback para 'apikey'
+      console.log('[UAZAPI] 401 with admintoken, trying apikey...');
       const retryRes = await fetch(`${baseUrl}/instance/fetchInstances`, {
-        headers: { 'Authorization': `Bearer ${config.adminToken}` },
+        headers: { 'apikey': config.adminToken },
       });
       
       if (!retryRes.ok) {
@@ -289,23 +293,24 @@ async function testUAZAPIConnection(config: ProviderConfig) {
   console.log('[UAZAPI] Testing connection to:', baseUrl);
   
   try {
-    // Try to fetch instances as a connection test
+    // UAZAPI usa 'admintoken' como header principal
     const response = await fetch(`${baseUrl}/instance/fetchInstances`, {
-      headers: { 'apikey': config.adminToken },
+      headers: { 'admintoken': config.adminToken },
     });
     
     console.log('[UAZAPI] Test response status:', response.status);
     
     if (response.status === 401) {
-      // Try Bearer
+      // Fallback para 'apikey'
+      console.log('[UAZAPI] 401 with admintoken, trying apikey...');
       const retryRes = await fetch(`${baseUrl}/instance/fetchInstances`, {
-        headers: { 'Authorization': `Bearer ${config.adminToken}` },
+        headers: { 'apikey': config.adminToken },
       });
       
       if (retryRes.status === 401) {
         return { 
           success: false, 
-          error: 'Token inválido. Use a AUTHENTICATION_API_KEY configurada no servidor UAZAPI/Evolution.' 
+          error: 'Token inválido. Verifique se você está usando o Admin Token correto da sua conta UAZAPI.' 
         };
       }
       
@@ -332,15 +337,18 @@ async function deleteUAZAPIInstance(config: ProviderConfig, instanceName: string
   console.log('[UAZAPI] Deleting instance:', instanceName);
   
   try {
+    // UAZAPI usa 'admintoken' como header principal
     const response = await fetch(`${baseUrl}/instance/delete/${instanceName}`, {
       method: 'DELETE',
-      headers: { 'apikey': config.adminToken },
+      headers: { 'admintoken': config.adminToken },
     });
     
     if (response.status === 401) {
+      // Fallback para 'apikey'
+      console.log('[UAZAPI] 401 with admintoken, trying apikey...');
       const retryRes = await fetch(`${baseUrl}/instance/delete/${instanceName}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${config.adminToken}` },
+        headers: { 'apikey': config.adminToken },
       });
       
       if (!retryRes.ok) {
