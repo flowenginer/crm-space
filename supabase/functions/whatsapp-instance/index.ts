@@ -845,6 +845,7 @@ async function setEvolutionWebhook(config: ProviderConfig, instanceName: string,
       },
       body: JSON.stringify({
         webhook: {
+          enabled: true,
           url: webhookUrl,
           webhookByEvents: false,
           webhookBase64: true,
