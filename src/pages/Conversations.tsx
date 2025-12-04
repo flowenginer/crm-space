@@ -436,7 +436,7 @@ export default function Conversations() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -501,11 +501,11 @@ export default function Conversations() {
   const handleSendMessage = async () => {
     if (!selectedConversationId) return;
     
-    // Check if we have either text or a file
+    // Check if we have either text or files
     const hasText = messageInput.trim().length > 0;
-    const hasFile = selectedFile !== null;
+    const hasFiles = selectedFiles.length > 0;
     
-    if (!hasText && !hasFile) return;
+    if (!hasText && !hasFiles) return;
     
     if (isInternalNoteMode) {
       if (!hasText) return;
@@ -521,40 +521,54 @@ export default function Conversations() {
     try {
       setIsUploading(true);
       
-      let mediaUrl: string | undefined;
-      let mediaMimeType: string | undefined;
-      let messageType = 'text';
+      // Send text message first if exists
+      if (hasText && !hasFiles) {
+        sendMessage.mutate({
+          conversation_id: selectedConversationId,
+          content: messageInput.trim(),
+          is_from_me: true,
+          message_type: 'text',
+        });
+        setMessageInput('');
+      } else if (hasFiles) {
+        // Send each file as a separate message
+        for (const file of selectedFiles) {
+          const result = await uploadAttachment(file, selectedConversationId);
+          
+          // Determine message type based on file type
+          let messageType = 'document';
+          if (file.type.startsWith('image/')) {
+            messageType = 'image';
+          } else if (file.type.startsWith('video/')) {
+            messageType = 'video';
+          } else if (file.type.startsWith('audio/')) {
+            messageType = 'audio';
+          }
 
-      // Upload file if selected
-      if (hasFile) {
-        const result = await uploadAttachment(selectedFile, selectedConversationId);
-        mediaUrl = result.url;
-        mediaMimeType = result.mimeType;
-        
-        // Determine message type based on file type
-        if (selectedFile.type.startsWith('image/')) {
-          messageType = 'image';
-        } else if (selectedFile.type.startsWith('video/')) {
-          messageType = 'video';
-        } else if (selectedFile.type.startsWith('audio/')) {
-          messageType = 'audio';
-        } else {
-          messageType = 'document';
+          sendMessage.mutate({
+            conversation_id: selectedConversationId,
+            content: file.name,
+            is_from_me: true,
+            message_type: messageType,
+            media_url: result.url,
+            media_mime_type: result.mimeType,
+          });
         }
+        
+        // Send text after files if exists
+        if (hasText) {
+          sendMessage.mutate({
+            conversation_id: selectedConversationId,
+            content: messageInput.trim(),
+            is_from_me: true,
+            message_type: 'text',
+          });
+        }
+        
+        setMessageInput('');
+        clearSelectedFiles();
+        toast.success(selectedFiles.length > 1 ? `${selectedFiles.length} arquivos enviados!` : 'Arquivo enviado!');
       }
-
-      sendMessage.mutate({
-        conversation_id: selectedConversationId,
-        content: hasText ? messageInput.trim() : (selectedFile?.name || ''),
-        is_from_me: true,
-        message_type: messageType,
-        media_url: mediaUrl,
-        media_mime_type: mediaMimeType,
-      });
-
-      setMessageInput('');
-      clearSelectedFile();
-      toast.success(hasFile ? 'Arquivo enviado com sucesso!' : undefined);
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Erro ao enviar mensagem. Tente novamente.');
@@ -571,15 +585,24 @@ export default function Conversations() {
 
   // File attachment handler
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Check file size (max 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error('Arquivo muito grande. Máximo: 10MB');
-        return;
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const validFiles: File[] = [];
+      const maxFiles = 10;
+      const maxSize = 10 * 1024 * 1024; // 10MB
+
+      Array.from(files).slice(0, maxFiles).forEach(file => {
+        if (file.size > maxSize) {
+          toast.error(`"${file.name}" é muito grande. Máximo: 10MB`);
+        } else {
+          validFiles.push(file);
+        }
+      });
+
+      if (validFiles.length > 0) {
+        setSelectedFiles(prev => [...prev, ...validFiles].slice(0, maxFiles));
+        toast.success(`${validFiles.length} arquivo(s) selecionado(s)`);
       }
-      setSelectedFile(file);
-      toast.success(`Arquivo "${file.name}" selecionado`);
     }
   };
 
@@ -587,11 +610,15 @@ export default function Conversations() {
     fileInputRef.current?.click();
   };
 
-  const clearSelectedFile = () => {
-    setSelectedFile(null);
+  const clearSelectedFiles = () => {
+    setSelectedFiles([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   // Drag and drop handlers
@@ -626,14 +653,22 @@ export default function Conversations() {
 
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      const file = files[0];
-      // Check file size (max 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error('Arquivo muito grande. Máximo: 10MB');
-        return;
+      const validFiles: File[] = [];
+      const maxFiles = 10;
+      const maxSize = 10 * 1024 * 1024; // 10MB
+
+      Array.from(files).slice(0, maxFiles).forEach(file => {
+        if (file.size > maxSize) {
+          toast.error(`"${file.name}" é muito grande. Máximo: 10MB`);
+        } else {
+          validFiles.push(file);
+        }
+      });
+
+      if (validFiles.length > 0) {
+        setSelectedFiles(prev => [...prev, ...validFiles].slice(0, maxFiles));
+        toast.success(`${validFiles.length} arquivo(s) selecionado(s)`);
       }
-      setSelectedFile(file);
-      toast.success(`Arquivo "${file.name}" selecionado`);
     }
   };
 
@@ -654,7 +689,7 @@ export default function Conversations() {
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const audioFile = new File([audioBlob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
-        setSelectedFile(audioFile);
+        setSelectedFiles([audioFile]);
         toast.success('Áudio gravado com sucesso');
         stream.getTracks().forEach(track => track.stop());
       };
@@ -931,30 +966,47 @@ export default function Conversations() {
               </div>
             )}
 
-            {/* Selected File Preview */}
-            {selectedFile && (
-              <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-y border-border">
-                <div className="flex items-center gap-2">
-                  {selectedFile.type.startsWith('image/') ? (
-                    <Image size={16} className="text-blue-500" />
-                  ) : selectedFile.type.startsWith('audio/') ? (
-                    <Mic size={16} className="text-green-500" />
-                  ) : (
-                    <FileIcon size={16} className="text-muted-foreground" />
-                  )}
-                  <span className="text-sm text-foreground truncate max-w-[200px]">
-                    {selectedFile.name}
+            {/* Selected Files Preview */}
+            {selectedFiles.length > 0 && (
+              <div className="px-4 py-2 bg-muted/50 border-y border-border space-y-2 max-h-32 overflow-y-auto">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">
+                    {selectedFiles.length} arquivo(s) selecionado(s)
                   </span>
-                  <span className="text-xs text-muted-foreground">
-                    ({(selectedFile.size / 1024).toFixed(1)} KB)
-                  </span>
+                  <button
+                    onClick={clearSelectedFiles}
+                    className="text-xs text-destructive hover:underline"
+                  >
+                    Limpar todos
+                  </button>
                 </div>
-                <button
-                  onClick={clearSelectedFile}
-                  className="p-1 hover:bg-destructive/20 rounded"
-                >
-                  <X size={16} className="text-destructive" />
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {selectedFiles.map((file, index) => (
+                    <div 
+                      key={index}
+                      className="flex items-center gap-1.5 bg-background rounded-lg px-2 py-1 border border-border"
+                    >
+                      {file.type.startsWith('image/') ? (
+                        <Image size={14} className="text-blue-500" />
+                      ) : file.type.startsWith('audio/') ? (
+                        <Mic size={14} className="text-green-500" />
+                      ) : file.type.startsWith('video/') ? (
+                        <Video size={14} className="text-purple-500" />
+                      ) : (
+                        <FileIcon size={14} className="text-muted-foreground" />
+                      )}
+                      <span className="text-xs text-foreground truncate max-w-[120px]">
+                        {file.name}
+                      </span>
+                      <button
+                        onClick={() => removeFile(index)}
+                        className="p-0.5 hover:bg-destructive/20 rounded"
+                      >
+                        <X size={12} className="text-destructive" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -965,6 +1017,7 @@ export default function Conversations() {
                 ref={fileInputRef}
                 type="file"
                 className="hidden"
+                multiple
                 onChange={handleFileSelect}
                 accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
               />
@@ -1081,7 +1134,7 @@ export default function Conversations() {
                   {/* Send Button */}
                   <button 
                     onClick={handleSendMessage}
-                    disabled={(!messageInput.trim() && !selectedFile) || sendMessage.isPending || createInternalNote.isPending || isUploading}
+                    disabled={(!messageInput.trim() && selectedFiles.length === 0) || sendMessage.isPending || createInternalNote.isPending || isUploading}
                     className={cn(
                       'p-3 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50',
                       isInternalNoteMode ? 'bg-amber-500 hover:bg-amber-600' : 'btn-gradient'
