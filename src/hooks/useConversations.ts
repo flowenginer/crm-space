@@ -44,11 +44,15 @@ export interface Message {
   created_at: string;
 }
 
-export function useConversations() {
+export type AssignmentFilter = 'all' | 'mine' | 'unassigned';
+
+export function useConversations(filter?: AssignmentFilter) {
   return useQuery({
-    queryKey: ['conversations'],
+    queryKey: ['conversations', filter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      let query = supabase
         .from('conversations')
         .select(`
           *,
@@ -58,6 +62,15 @@ export function useConversations() {
         `)
         .eq('status', 'open')
         .order('last_message_at', { ascending: false });
+
+      // Apply assignment filter
+      if (filter === 'mine' && user) {
+        query = query.eq('assigned_to', user.id);
+      } else if (filter === 'unassigned') {
+        query = query.is('assigned_to', null);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return data as Conversation[];
