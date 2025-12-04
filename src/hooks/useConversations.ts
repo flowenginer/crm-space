@@ -106,6 +106,8 @@ export function useSendMessage() {
       content: string;
       is_from_me?: boolean;
       message_type?: string;
+      media_url?: string;
+      media_mime_type?: string;
     }) => {
       const { data, error } = await supabase
         .from('messages')
@@ -114,6 +116,8 @@ export function useSendMessage() {
           content: message.content,
           is_from_me: message.is_from_me ?? true,
           message_type: message.message_type || 'text',
+          media_url: message.media_url || null,
+          media_mime_type: message.media_mime_type || null,
           status: 'sent',
         })
         .select()
@@ -122,11 +126,21 @@ export function useSendMessage() {
       if (error) throw error;
 
       // Update conversation last message
+      const preview = message.message_type === 'image' 
+        ? '📷 Imagem' 
+        : message.message_type === 'audio'
+        ? '🎵 Áudio'
+        : message.message_type === 'video'
+        ? '🎬 Vídeo'
+        : message.message_type === 'document'
+        ? '📄 Documento'
+        : message.content.substring(0, 100);
+
       await supabase
         .from('conversations')
         .update({
           last_message_at: new Date().toISOString(),
-          last_message_preview: message.content.substring(0, 100),
+          last_message_preview: preview,
         })
         .eq('id', message.conversation_id);
 
@@ -137,6 +151,30 @@ export function useSendMessage() {
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
   });
+}
+
+// Upload file to storage
+export async function uploadAttachment(file: File, conversationId: string): Promise<{ url: string; mimeType: string }> {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${conversationId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+  const { data, error } = await supabase.storage
+    .from('conversation-attachments')
+    .upload(fileName, file, {
+      cacheControl: '3600',
+      upsert: false,
+    });
+
+  if (error) throw error;
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('conversation-attachments')
+    .getPublicUrl(data.path);
+
+  return {
+    url: publicUrl,
+    mimeType: file.type,
+  };
 }
 
 export function useUpdateConversation() {
