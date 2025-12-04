@@ -962,6 +962,74 @@ serve(async (req) => {
     }
 
     // =====================================================
+    // FETCH PROFILE ACTION - Rota especial que busca dados do canal
+    // =====================================================
+    if (action === 'fetchProfile') {
+      if (!channelId || !phone) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'channelId e phone são obrigatórios' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      
+      // Get channel data
+      const { data: channel, error: channelError } = await supabase
+        .from('whatsapp_channels')
+        .select('*, provider:whatsapp_providers(*)')
+        .eq('id', channelId)
+        .single();
+      
+      if (channelError || !channel) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+      
+      const channelProvider = channel.provider as any;
+      if (!channelProvider || channelProvider.code !== 'evolution') {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Recurso disponível apenas para Evolution API' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      
+      const normalizedUrl = normalizeBaseUrl(channelProvider.base_url);
+      const formattedPhone = phone.replace(/\D/g, '');
+      
+      console.log('[FetchProfile] Fetching profile for:', formattedPhone);
+      
+      try {
+        const profileRes = await fetch(`${normalizedUrl}/chat/fetchProfile/${channel.instance_id}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': channelProvider.admin_token,
+          },
+          body: JSON.stringify({ number: formattedPhone }),
+        });
+        
+        const profileData = await safeJsonParse(profileRes, 'Evolution FetchProfile');
+        console.log('[FetchProfile] Response:', profileData);
+        
+        return new Response(
+          JSON.stringify({
+            success: true,
+            profilePictureUrl: profileData.profilePictureUrl || profileData.picture || null,
+            name: profileData.name || profileData.pushName || null,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (profileError: any) {
+        console.error('[FetchProfile] Error:', profileError);
+        return new Response(
+          JSON.stringify({ success: false, error: profileError.message }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+    }
+
+    // =====================================================
     // OUTRAS AÇÕES - Requerem providerCode
     // =====================================================
     if (!providerCode) {
@@ -1095,66 +1163,6 @@ serve(async (req) => {
           break;
         default:
           result = { success: false, error: 'Provedor desconhecido' };
-      }
-    } else if (action === 'fetchProfile') {
-      // Fetch contact profile (photo) - Evolution API only for now
-      // channelId and phone already destructured from body at line 848
-      
-      if (!channelId || !phone) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'channelId e phone são obrigatórios' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-        );
-      }
-      
-      // Get channel data
-      const { data: channel, error: channelError } = await supabase
-        .from('whatsapp_channels')
-        .select('*, provider:whatsapp_providers(*)')
-        .eq('id', channelId)
-        .single();
-      
-      if (channelError || !channel) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Canal não encontrado' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
-        );
-      }
-      
-      const channelProvider = channel.provider;
-      if (!channelProvider || channelProvider.code !== 'evolution') {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Recurso disponível apenas para Evolution API' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-        );
-      }
-      
-      const normalizedUrl = normalizeBaseUrl(channelProvider.base_url);
-      const formattedPhone = phone.replace(/\D/g, '');
-      
-      console.log('[FetchProfile] Fetching profile for:', formattedPhone);
-      
-      try {
-        const profileRes = await fetch(`${normalizedUrl}/chat/fetchProfile/${channel.instance_id}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': channelProvider.admin_token,
-          },
-          body: JSON.stringify({ number: formattedPhone }),
-        });
-        
-        const profileData = await safeJsonParse(profileRes, 'Evolution FetchProfile');
-        console.log('[FetchProfile] Response:', profileData);
-        
-        result = {
-          success: true,
-          profilePictureUrl: profileData.profilePictureUrl || profileData.picture || null,
-          name: profileData.name || profileData.pushName || null,
-        };
-      } catch (profileError: any) {
-        console.error('[FetchProfile] Error:', profileError);
-        result = { success: false, error: profileError.message };
       }
     } else {
       result = { success: false, error: 'Ação inválida' };
