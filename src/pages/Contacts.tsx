@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Search,
   Plus,
@@ -33,6 +35,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import { useContacts, useCreateContact, useUpdateContact, useDeleteContact, type Contact } from '@/hooks/useContacts';
 import { useTags, useCreateTag, useDeleteTag, useAddTagToContact, useRemoveTagFromContact } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
@@ -84,6 +87,9 @@ const getTagColorClass = (color: string | null) => {
 };
 
 export default function Contacts() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  
   const { data: contacts = [], isLoading: contactsLoading } = useContacts();
   const { data: tags = [], isLoading: tagsLoading } = useTags();
   const { data: team = [] } = useTeam();
@@ -96,6 +102,8 @@ export default function Contacts() {
   const deleteTag = useDeleteTag();
   const addTagToContact = useAddTagToContact();
   const removeTagFromContact = useRemoveTagFromContact();
+  
+  const [isOpeningChat, setIsOpeningChat] = useState(false);
 
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -270,8 +278,57 @@ export default function Contacts() {
     }
   };
 
-  const handleOpenChat = (contact: Contact) => {
-    toast.info(`Abrindo conversa com ${contact.full_name}`);
+  const handleOpenChat = async (contact: Contact) => {
+    if (isOpeningChat) return;
+    
+    setIsOpeningChat(true);
+    toast.info(`Abrindo conversa com ${contact.full_name}...`);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Check for existing open conversation with this contact
+      const { data: existingConversation } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_id', contact.id)
+        .in('status', ['open', 'pending'])
+        .maybeSingle();
+
+      let conversationId: string;
+
+      if (existingConversation) {
+        conversationId = existingConversation.id;
+      } else {
+        // Create new conversation
+        const { data: newConversation, error: createError } = await supabase
+          .from('conversations')
+          .insert({
+            contact_id: contact.id,
+            status: 'open',
+            assigned_to: user?.id,
+            is_unread: false,
+            unread_count: 0,
+            last_message_at: new Date().toISOString(),
+            last_message_preview: 'Nova conversa iniciada',
+          })
+          .select('id')
+          .single();
+
+        if (createError) throw createError;
+        conversationId = newConversation.id;
+      }
+
+      // Invalidate queries and navigate
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      navigate(`/conversas?id=${conversationId}`);
+      
+    } catch (error: any) {
+      console.error('Error opening chat:', error);
+      toast.error('Erro ao abrir conversa');
+    } finally {
+      setIsOpeningChat(false);
+    }
   };
 
   const clearFilters = () => {
