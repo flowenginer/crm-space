@@ -12,6 +12,7 @@ import {
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { ScheduleMessageModal } from './ScheduleMessageModal';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -565,6 +566,8 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
         onClose={() => setShowScheduleModal(false)}
         contactId={contact.id}
         conversationId={conversationId}
+        channelId={conversation?.channel_id}
+        contactName={contact.full_name}
       />
 
       <CloseConversationModal
@@ -1115,128 +1118,6 @@ function AddTagModal({
             </>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Schedule Message Modal
-function ScheduleMessageModal({ 
-  open, 
-  onClose, 
-  contactId,
-  conversationId
-}: { 
-  open: boolean; 
-  onClose: () => void;
-  contactId: string;
-  conversationId: string;
-}) {
-  const [message, setMessage] = useState('');
-  const [scheduledDate, setScheduledDate] = useState('');
-  const [scheduledTime, setScheduledTime] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const queryClient = useQueryClient();
-
-  const handleSchedule = async () => {
-    if (!message || !scheduledDate || !scheduledTime) {
-      toast.error('Preencha todos os campos');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const scheduledFor = new Date(`${scheduledDate}T${scheduledTime}`);
-
-      // Get a channel ID (first available)
-      const { data: channel } = await supabase
-        .from('whatsapp_channels')
-        .select('id')
-        .eq('status', 'connected')
-        .limit(1)
-        .single();
-
-      const { error } = await supabase
-        .from('scheduled_messages')
-        .insert({
-          contact_id: contactId,
-          conversation_id: conversationId,
-          channel_id: channel?.id || conversationId, // fallback
-          content: message,
-          scheduled_for: scheduledFor.toISOString(),
-          status: 'scheduled',
-          created_by: user?.id,
-        });
-
-      if (error) throw error;
-
-      toast.success('Mensagem agendada!');
-      queryClient.invalidateQueries({ queryKey: ['scheduled-messages'] });
-      onClose();
-      setMessage('');
-      setScheduledDate('');
-      setScheduledTime('');
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao agendar mensagem');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Agendar Mensagem</DialogTitle>
-        </DialogHeader>
-        
-        <div className="space-y-4 py-4">
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Mensagem</label>
-            <Textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              className="min-h-[100px]"
-              placeholder="Digite a mensagem..."
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Data</label>
-              <Input
-                type="date"
-                value={scheduledDate}
-                onChange={(e) => setScheduledDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Hora</label>
-              <Input
-                type="time"
-                value={scheduledTime}
-                onChange={(e) => setScheduledTime(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button 
-            onClick={handleSchedule}
-            disabled={isLoading}
-            className="btn-gradient"
-          >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4 mr-2" />}
-            Agendar
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
