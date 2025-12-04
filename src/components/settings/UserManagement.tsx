@@ -1016,12 +1016,12 @@ function EditUserModal({ open, onClose, user, departments }: {
             <label className="block text-sm font-medium text-foreground mb-2">
               Departamento
             </label>
-            <Select value={departmentId} onValueChange={setDepartmentId}>
+            <Select value={departmentId || "none"} onValueChange={(val) => setDepartmentId(val === "none" ? "" : val)}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione um departamento" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Nenhum</SelectItem>
+                <SelectItem value="none">Nenhum</SelectItem>
                 {departments.map((dept) => (
                   <SelectItem key={dept.id} value={dept.id}>
                     {dept.name}
