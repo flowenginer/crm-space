@@ -32,7 +32,6 @@ import {
 import { toast } from 'sonner';
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag, Tag as TagType, TagVisibility } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
-import { useAuth } from '@/hooks/useAuth';
 
 const predefinedColors = [
   '#8B5CF6', '#EC4899', '#EF4444', '#F97316', '#EAB308', '#22C55E',
@@ -42,7 +41,6 @@ const predefinedColors = [
 export function TagManagement() {
   const { data: tags = [], isLoading } = useTags();
   const { data: departments = [] } = useDepartments();
-  const { roles } = useAuth();
   const createTag = useCreateTag();
   const updateTag = useUpdateTag();
   const deleteTag = useDeleteTag();
@@ -57,10 +55,6 @@ export function TagManagement() {
     visibility: 'public' as TagVisibility,
     department_id: '',
   });
-
-  const isAdmin = roles.includes('admin');
-  const isSupervisor = roles.includes('supervisor');
-  const canCreatePublicTags = isAdmin || isSupervisor;
 
   const filteredTags = tags.filter(tag =>
     tag.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -82,7 +76,7 @@ export function TagManagement() {
         name: '',
         color: '#8B5CF6',
         description: '',
-        visibility: canCreatePublicTags ? 'public' : 'private',
+        visibility: 'public',
         department_id: '',
       });
     }
@@ -358,30 +352,28 @@ export function TagManagement() {
               </label>
               <div className="space-y-2">
                 {/* Public Option */}
-                {canCreatePublicTags && (
-                  <label
-                    className={`flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer border-2 transition-colors ${
-                      form.visibility === 'public' ? 'border-green-500' : 'border-transparent'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="visibility"
-                      value="public"
-                      checked={form.visibility === 'public'}
-                      onChange={(e) => setForm({ ...form, visibility: e.target.value as TagVisibility })}
-                      className="sr-only"
-                    />
-                    <div className="w-9 h-9 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
-                      <Globe size={18} className="text-green-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-foreground text-sm">Pública</div>
-                      <div className="text-xs text-muted-foreground">Visível para toda a equipe</div>
-                    </div>
-                    {form.visibility === 'public' && <Check size={16} className="text-green-500 flex-shrink-0" />}
-                  </label>
-                )}
+                <label
+                  className={`flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer border-2 transition-colors ${
+                    form.visibility === 'public' ? 'border-green-500' : 'border-transparent'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="visibility"
+                    value="public"
+                    checked={form.visibility === 'public'}
+                    onChange={(e) => setForm({ ...form, visibility: e.target.value as TagVisibility })}
+                    className="sr-only"
+                  />
+                  <div className="w-9 h-9 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                    <Globe size={18} className="text-green-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-foreground text-sm">Pública</div>
+                    <div className="text-xs text-muted-foreground">Visível para toda a equipe</div>
+                  </div>
+                  {form.visibility === 'public' && <Check size={16} className="text-green-500 flex-shrink-0" />}
+                </label>
 
                 {/* Private Option */}
                 <label
@@ -408,30 +400,28 @@ export function TagManagement() {
                 </label>
 
                 {/* Department Option */}
-                {canCreatePublicTags && (
-                  <label
-                    className={`flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer border-2 transition-colors ${
-                      form.visibility === 'department' ? 'border-blue-500' : 'border-transparent'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="visibility"
-                      value="department"
-                      checked={form.visibility === 'department'}
-                      onChange={(e) => setForm({ ...form, visibility: e.target.value as TagVisibility })}
-                      className="sr-only"
-                    />
-                    <div className="w-9 h-9 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                      <Building2 size={18} className="text-blue-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-foreground text-sm">Departamento</div>
-                      <div className="text-xs text-muted-foreground">Visível para o departamento selecionado</div>
-                    </div>
-                    {form.visibility === 'department' && <Check size={16} className="text-blue-500 flex-shrink-0" />}
-                  </label>
-                )}
+                <label
+                  className={`flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer border-2 transition-colors ${
+                    form.visibility === 'department' ? 'border-blue-500' : 'border-transparent'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="visibility"
+                    value="department"
+                    checked={form.visibility === 'department'}
+                    onChange={(e) => setForm({ ...form, visibility: e.target.value as TagVisibility })}
+                    className="sr-only"
+                  />
+                  <div className="w-9 h-9 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                    <Building2 size={18} className="text-blue-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-foreground text-sm">Departamento</div>
+                    <div className="text-xs text-muted-foreground">Visível para o departamento selecionado</div>
+                  </div>
+                  {form.visibility === 'department' && <Check size={16} className="text-blue-500 flex-shrink-0" />}
+                </label>
               </div>
 
               {/* Department Selector */}
