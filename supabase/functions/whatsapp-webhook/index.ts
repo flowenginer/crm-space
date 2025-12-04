@@ -136,7 +136,7 @@ async function fetchMediaBase64FromEvolution(
         message: {
           key: messageKey
         },
-        convertToMp4: true
+        convertToMp4: false  // Keep original format (ogg) which is supported by Storage
       })
     });
     
