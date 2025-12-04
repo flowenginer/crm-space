@@ -1,0 +1,1042 @@
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { 
+  X, Phone, Loader2, CalendarClock, Plus, Save
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
+interface ConversationSidebarProps {
+  conversationId: string;
+  onClose?: () => void;
+}
+
+const leadStatusOptions = [
+  { value: 'new', label: 'Novo Lead', color: 'bg-blue-500' },
+  { value: 'contacted', label: 'Contatado', color: 'bg-yellow-500' },
+  { value: 'qualified', label: 'Qualificado', color: 'bg-purple-500' },
+  { value: 'negotiation', label: 'Negociação', color: 'bg-orange-500' },
+  { value: 'client', label: 'Cliente', color: 'bg-green-500' },
+  { value: 'lost', label: 'Perdido', color: 'bg-red-500' },
+];
+
+export function ConversationSidebar({ conversationId, onClose }: ConversationSidebarProps) {
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  
+  const queryClient = useQueryClient();
+
+  // Fetch conversation with contact data
+  const { data: conversation, isLoading: loadingConversation } = useQuery({
+    queryKey: ['conversation-details', conversationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select(`
+          *,
+          contact:contacts(
+            *,
+            tags:contact_tags(
+              tag:tags(*)
+            )
+          ),
+          assigned_user:profiles!conversations_assigned_to_fkey(
+            id, full_name, avatar_url
+          ),
+          department:departments(
+            id, name
+          )
+        `)
+        .eq('id', conversationId)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!conversationId,
+  });
+
+  // Fetch all tags
+  const { data: allTags = [] } = useQuery({
+    queryKey: ['tags'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch team members
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['team-members'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, role, department_id')
+        .eq('is_active', true)
+        .order('full_name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch departments
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('departments')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Mutation: Update lead status
+  const updateLeadStatus = useMutation({
+    mutationFn: async (newStatus: string) => {
+      if (!conversation?.contact?.id) throw new Error('No contact');
+      
+      const { error } = await supabase
+        .from('contacts')
+        .update({ 
+          lead_status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', conversation.contact.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success('Status atualizado!');
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar status');
+    }
+  });
+
+  // Mutation: Update assigned user
+  const updateAssignedUser = useMutation({
+    mutationFn: async (userId: string | null) => {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ 
+          assigned_to: userId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', conversationId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success('Atendente atualizado!');
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar atendente');
+    }
+  });
+
+  // Mutation: Update department
+  const updateDepartment = useMutation({
+    mutationFn: async (departmentId: string | null) => {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ 
+          department_id: departmentId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', conversationId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success('Departamento atualizado!');
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar departamento');
+    }
+  });
+
+  // Mutation: Add tag
+  const addTag = useMutation({
+    mutationFn: async (tagId: string) => {
+      if (!conversation?.contact?.id) throw new Error('No contact');
+      
+      const { error } = await supabase
+        .from('contact_tags')
+        .insert({
+          contact_id: conversation.contact.id,
+          tag_id: tagId
+        });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      toast.success('Etiqueta adicionada!');
+    },
+    onError: (error: any) => {
+      if (error.code === '23505') {
+        toast.error('Etiqueta já adicionada');
+      } else {
+        toast.error('Erro ao adicionar etiqueta');
+      }
+    }
+  });
+
+  // Mutation: Remove tag
+  const removeTag = useMutation({
+    mutationFn: async (tagId: string) => {
+      if (!conversation?.contact?.id) throw new Error('No contact');
+      
+      const { error } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('contact_id', conversation.contact.id)
+        .eq('tag_id', tagId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      toast.success('Etiqueta removida!');
+    },
+    onError: () => {
+      toast.error('Erro ao remover etiqueta');
+    }
+  });
+
+  // Mutation: Close conversation
+  const closeConversation = useMutation({
+    mutationFn: async (reason?: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { error } = await supabase
+        .from('conversations')
+        .update({ 
+          status: 'closed',
+          closed_at: new Date().toISOString(),
+          closed_by: user?.id,
+          close_reason: reason,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', conversationId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success('Conversa fechada!');
+      setShowCloseModal(false);
+    },
+    onError: () => {
+      toast.error('Erro ao fechar conversa');
+    }
+  });
+
+  // Loading state
+  if (loadingConversation) {
+    return (
+      <div className="w-[350px] bg-card border-l border-border flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!conversation || !conversation.contact) {
+    return (
+      <div className="w-[350px] bg-card border-l border-border flex items-center justify-center">
+        <p className="text-muted-foreground">Conversa não encontrada</p>
+      </div>
+    );
+  }
+
+  const contact = conversation.contact;
+  const contactTags = contact.tags?.map((t: any) => t.tag).filter(Boolean) || [];
+
+  // Format phone for display
+  const formatPhone = (phone: string) => {
+    if (!phone) return '-';
+    const digits = phone.replace(/\D/g, '');
+    const local = digits.startsWith('55') ? digits.slice(2) : digits;
+    if (local.length === 11) {
+      return `+55 (${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+    }
+    return phone;
+  };
+
+  // Format date
+  const formatDate = (date: string) => {
+    if (!date) return '-';
+    return format(new Date(date), "dd/MM/yyyy", { locale: ptBR });
+  };
+
+  // Format datetime
+  const formatDateTime = (date: string) => {
+    if (!date) return '-';
+    const d = new Date(date);
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    
+    if (isToday) {
+      return `Hoje, ${format(d, "HH:mm", { locale: ptBR })}`;
+    }
+    return format(d, "dd/MM/yyyy, HH:mm", { locale: ptBR });
+  };
+
+  return (
+    <div className="w-[350px] bg-card border-l border-border flex flex-col h-full overflow-hidden">
+      {/* Header: Contact Info */}
+      <div className="p-6 text-center border-b border-border">
+        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">
+          {contact.full_name?.charAt(0)?.toUpperCase() || '?'}
+        </div>
+        
+        <h3 className="text-lg font-bold text-foreground mb-1">
+          {contact.full_name || 'Sem nome'}
+        </h3>
+        
+        <p className="text-sm text-muted-foreground flex items-center justify-center gap-2 mb-3">
+          <Phone size={14} />
+          {formatPhone(contact.phone)}
+        </p>
+        
+        <button 
+          onClick={() => setShowEditModal(true)}
+          className="text-primary hover:text-primary/80 text-sm font-medium"
+        >
+          Editar contato
+        </button>
+      </div>
+
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Lead Status */}
+        <div className="p-4 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Status Lead
+          </label>
+          <Select 
+            value={contact.lead_status || 'new'}
+            onValueChange={(value) => updateLeadStatus.mutate(value)}
+            disabled={updateLeadStatus.isPending}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {leadStatusOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${option.color}`} />
+                    {option.label}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Tags */}
+        <div className="p-4 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Etiquetas
+          </label>
+          
+          <div className="flex flex-wrap gap-2 mb-3">
+            {contactTags.length === 0 ? (
+              <span className="text-sm text-muted-foreground">Nenhuma etiqueta</span>
+            ) : (
+              contactTags.map((tag: any) => (
+                <span 
+                  key={tag.id}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
+                  style={{ 
+                    backgroundColor: `${tag.color || '#8B5CF6'}20`,
+                    color: tag.color || '#8B5CF6'
+                  }}
+                >
+                  {tag.name}
+                  <button 
+                    onClick={() => removeTag.mutate(tag.id)}
+                    className="hover:opacity-70"
+                    disabled={removeTag.isPending}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))
+            )}
+          </div>
+          
+          <button
+            onClick={() => setShowTagModal(true)}
+            className="text-primary hover:text-primary/80 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus size={14} />
+            Adicionar etiqueta
+          </button>
+        </div>
+
+        {/* Assigned User */}
+        <div className="p-4 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Atendente Responsável
+          </label>
+          <Select 
+            value={conversation.assigned_to || 'unassigned'}
+            onValueChange={(value) => updateAssignedUser.mutate(value === 'unassigned' ? null : value)}
+            disabled={updateAssignedUser.isPending}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Selecionar atendente" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unassigned">Não atribuído</SelectItem>
+              {teamMembers.map((member) => (
+                <SelectItem key={member.id} value={member.id}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs">
+                      {member.full_name?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                    {member.full_name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Department */}
+        <div className="p-4 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Departamento
+          </label>
+          <Select 
+            value={conversation.department_id || 'none'}
+            onValueChange={(value) => updateDepartment.mutate(value === 'none' ? null : value)}
+            disabled={updateDepartment.isPending}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Selecionar departamento" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Nenhum</SelectItem>
+              {departments.map((dept) => (
+                <SelectItem key={dept.id} value={dept.id}>
+                  {dept.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Additional Info */}
+        <div className="p-4 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+            Informações Adicionais
+          </label>
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Email:</span>
+              <span className="text-sm text-foreground">
+                {contact.email || '-'}
+              </span>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Primeiro contato:</span>
+              <span className="text-sm text-foreground">
+                {formatDate(contact.first_contact_at)}
+              </span>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Última interação:</span>
+              <span className="text-sm text-foreground">
+                {formatDateTime(contact.last_interaction_at || conversation.last_message_at)}
+              </span>
+            </div>
+
+            {contact.origin && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Origem:</span>
+                <span className="text-sm text-foreground capitalize">
+                  {contact.origin}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Notes */}
+        {contact.notes && (
+          <div className="p-4 border-b border-border">
+            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+              Observações
+            </label>
+            <p className="text-sm text-muted-foreground bg-muted rounded-lg p-3">
+              {contact.notes}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Footer: Action Buttons */}
+      <div className="p-4 border-t border-border space-y-2">
+        <Button
+          onClick={() => setShowScheduleModal(true)}
+          variant="outline"
+          className="w-full gap-2"
+        >
+          <CalendarClock size={18} />
+          Agendar mensagem
+        </Button>
+        
+        <Button
+          onClick={() => setShowCloseModal(true)}
+          variant="ghost"
+          className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 gap-2"
+        >
+          <X size={18} />
+          Fechar conversa
+        </Button>
+      </div>
+
+      {/* Modals */}
+      <EditContactModal
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        contact={contact}
+        conversationId={conversationId}
+      />
+
+      <AddTagModal
+        open={showTagModal}
+        onClose={() => setShowTagModal(false)}
+        allTags={allTags}
+        currentTagIds={contactTags.map((t: any) => t.id)}
+        onAddTag={(tagId) => addTag.mutate(tagId)}
+      />
+
+      <ScheduleMessageModal
+        open={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        contactId={contact.id}
+        conversationId={conversationId}
+      />
+
+      <CloseConversationModal
+        open={showCloseModal}
+        onClose={() => setShowCloseModal(false)}
+        onConfirm={(reason) => closeConversation.mutate(reason)}
+        isLoading={closeConversation.isPending}
+      />
+    </div>
+  );
+}
+
+// Edit Contact Modal
+function EditContactModal({ 
+  open, 
+  onClose, 
+  contact,
+  conversationId 
+}: { 
+  open: boolean; 
+  onClose: () => void;
+  contact: any;
+  conversationId: string;
+}) {
+  const [formData, setFormData] = useState({
+    full_name: '',
+    phone: '',
+    email: '',
+    cpf_cnpj: '',
+    birth_date: '',
+    zip_code: '',
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: '',
+    state: '',
+    notes: '',
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (contact) {
+      setFormData({
+        full_name: contact.full_name || '',
+        phone: contact.phone || '',
+        email: contact.email || '',
+        cpf_cnpj: contact.cpf_cnpj || '',
+        birth_date: contact.birth_date || '',
+        zip_code: contact.zip_code || '',
+        street: contact.street || '',
+        number: contact.number || '',
+        complement: contact.complement || '',
+        neighborhood: contact.neighborhood || '',
+        city: contact.city || '',
+        state: contact.state || '',
+        notes: contact.notes || '',
+      });
+    }
+  }, [contact]);
+
+  const handleSave = async () => {
+    setIsLoading(true);
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({
+          ...formData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', contact.id);
+
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      toast.success('Contato atualizado!');
+      onClose();
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao atualizar contato');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchAddressByCep = async (cep: string) => {
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length !== 8) return;
+
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      const data = await response.json();
+      
+      if (!data.erro) {
+        setFormData(prev => ({
+          ...prev,
+          street: data.logradouro || prev.street,
+          neighborhood: data.bairro || prev.neighborhood,
+          city: data.localidade || prev.city,
+          state: data.uf || prev.state,
+        }));
+        toast.success('Endereço encontrado!');
+      }
+    } catch (error) {
+      console.error('Error fetching CEP:', error);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar Contato</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Nome *</label>
+            <Input
+              value={formData.full_name}
+              onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
+              placeholder="Nome completo"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Telefone</label>
+              <Input
+                value={formData.phone}
+                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                placeholder="+55..."
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Email</label>
+              <Input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                placeholder="email@exemplo.com"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">CPF/CNPJ</label>
+              <Input
+                value={formData.cpf_cnpj}
+                onChange={(e) => setFormData(prev => ({ ...prev, cpf_cnpj: e.target.value }))}
+                placeholder="000.000.000-00"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Data de Nascimento</label>
+              <Input
+                type="date"
+                value={formData.birth_date}
+                onChange={(e) => setFormData(prev => ({ ...prev, birth_date: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-border">
+            <h4 className="text-sm font-medium text-foreground mb-3">Endereço</h4>
+            
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-muted-foreground mb-1">CEP</label>
+              <Input
+                value={formData.zip_code}
+                onChange={(e) => setFormData(prev => ({ ...prev, zip_code: e.target.value }))}
+                onBlur={(e) => fetchAddressByCep(e.target.value)}
+                placeholder="00000-000"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Rua</label>
+                <Input
+                  value={formData.street}
+                  onChange={(e) => setFormData(prev => ({ ...prev, street: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Nº</label>
+                <Input
+                  value={formData.number}
+                  onChange={(e) => setFormData(prev => ({ ...prev, number: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Complemento</label>
+                <Input
+                  value={formData.complement}
+                  onChange={(e) => setFormData(prev => ({ ...prev, complement: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Bairro</label>
+                <Input
+                  value={formData.neighborhood}
+                  onChange={(e) => setFormData(prev => ({ ...prev, neighborhood: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Cidade</label>
+                <Input
+                  value={formData.city}
+                  onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">UF</label>
+                <Input
+                  value={formData.state}
+                  onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                  maxLength={2}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Observações</label>
+            <Textarea
+              value={formData.notes}
+              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+              className="min-h-[80px]"
+              placeholder="Anotações sobre o contato..."
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleSave}
+            disabled={isLoading}
+            className="btn-gradient"
+          >
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+            Salvar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Add Tag Modal
+function AddTagModal({ 
+  open, 
+  onClose, 
+  allTags,
+  currentTagIds,
+  onAddTag
+}: { 
+  open: boolean; 
+  onClose: () => void;
+  allTags: any[];
+  currentTagIds: string[];
+  onAddTag: (tagId: string) => void;
+}) {
+  const availableTags = allTags.filter(tag => !currentTagIds.includes(tag.id));
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Adicionar Etiqueta</DialogTitle>
+        </DialogHeader>
+        
+        <div className="py-4">
+          {availableTags.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">
+              Todas as etiquetas já foram adicionadas
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {availableTags.map((tag) => (
+                <button
+                  key={tag.id}
+                  onClick={() => {
+                    onAddTag(tag.id);
+                    onClose();
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg bg-muted hover:bg-accent transition-colors"
+                >
+                  <div 
+                    className="w-4 h-4 rounded-full"
+                    style={{ backgroundColor: tag.color || '#8B5CF6' }}
+                  />
+                  <span className="text-foreground">{tag.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Schedule Message Modal
+function ScheduleMessageModal({ 
+  open, 
+  onClose, 
+  contactId,
+  conversationId
+}: { 
+  open: boolean; 
+  onClose: () => void;
+  contactId: string;
+  conversationId: string;
+}) {
+  const [message, setMessage] = useState('');
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
+
+  const handleSchedule = async () => {
+    if (!message || !scheduledDate || !scheduledTime) {
+      toast.error('Preencha todos os campos');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const scheduledFor = new Date(`${scheduledDate}T${scheduledTime}`);
+
+      // Get a channel ID (first available)
+      const { data: channel } = await supabase
+        .from('whatsapp_channels')
+        .select('id')
+        .eq('status', 'connected')
+        .limit(1)
+        .single();
+
+      const { error } = await supabase
+        .from('scheduled_messages')
+        .insert({
+          contact_id: contactId,
+          conversation_id: conversationId,
+          channel_id: channel?.id || conversationId, // fallback
+          content: message,
+          scheduled_for: scheduledFor.toISOString(),
+          status: 'scheduled',
+          created_by: user?.id,
+        });
+
+      if (error) throw error;
+
+      toast.success('Mensagem agendada!');
+      queryClient.invalidateQueries({ queryKey: ['scheduled-messages'] });
+      onClose();
+      setMessage('');
+      setScheduledDate('');
+      setScheduledTime('');
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao agendar mensagem');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Agendar Mensagem</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Mensagem</label>
+            <Textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className="min-h-[100px]"
+              placeholder="Digite a mensagem..."
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Data</label>
+              <Input
+                type="date"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Hora</label>
+              <Input
+                type="time"
+                value={scheduledTime}
+                onChange={(e) => setScheduledTime(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleSchedule}
+            disabled={isLoading}
+            className="btn-gradient"
+          >
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4 mr-2" />}
+            Agendar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Close Conversation Modal
+function CloseConversationModal({ 
+  open, 
+  onClose,
+  onConfirm,
+  isLoading
+}: { 
+  open: boolean; 
+  onClose: () => void;
+  onConfirm: (reason?: string) => void;
+  isLoading: boolean;
+}) {
+  const [reason, setReason] = useState('');
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Fechar Conversa</DialogTitle>
+        </DialogHeader>
+        
+        <div className="py-4">
+          <p className="text-muted-foreground text-sm mb-4">
+            Tem certeza que deseja fechar esta conversa?
+          </p>
+          
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Motivo (opcional)
+            </label>
+            <Input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Ex: Venda concluída, Não respondeu..."
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button 
+            onClick={() => onConfirm(reason || undefined)}
+            disabled={isLoading}
+            variant="destructive"
+          >
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4 mr-2" />}
+            Fechar Conversa
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default ConversationSidebar;
