@@ -24,6 +24,7 @@ import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 import ScheduledMessages from "@/pages/ScheduledMessages";
 import LiveMonitor from "@/pages/LiveMonitor";
+import ConversationReport from "@/pages/ConversationReport";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -86,6 +87,11 @@ const App = () => (
               <Route path="/ao-vivo" element={
                 <ProtectedRoute permission="settings.view">
                   <LiveMonitor />
+                </ProtectedRoute>
+              } />
+              <Route path="/relatorios/atendimentos" element={
+                <ProtectedRoute permission="reports.view">
+                  <ConversationReport />
                 </ProtectedRoute>
               } />
             </Route>
