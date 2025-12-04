@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search,
@@ -59,6 +59,7 @@ import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessage
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useReactToMessage, uploadAttachment, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
+import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
@@ -654,6 +655,11 @@ export default function Conversations() {
   const reactToMessage = useReactToMessage();
   const createInternalNote = useCreateInternalNote();
 
+  // Realtime subscriptions
+  useRealtimeMessages(selectedConversationId);
+  useRealtimeConversations();
+  const { typingUsers, startTyping, stopTyping } = useTypingIndicator(selectedConversationId);
+
   // Find selected conversation from real data
   const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
 
@@ -1093,15 +1099,29 @@ export default function Conversations() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-foreground">{selectedConversation.contact?.full_name || 'Contato'}</h3>
-                    <p className={cn(
-                      'text-sm flex items-center gap-1',
-                      selectedConversation.contact?.is_online ? 'text-success' : 'text-muted-foreground'
-                    )}>
-                      {selectedConversation.contact?.is_online && (
-                        <span className="w-2 h-2 bg-success rounded-full animate-pulse"></span>
-                      )}
-                      {selectedConversation.contact?.is_online ? 'Online' : 'Offline'}
-                    </p>
+                    {typingUsers.length > 0 ? (
+                      <p className="text-sm text-primary flex items-center gap-1">
+                        <span className="flex gap-0.5">
+                          <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                          <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                          <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                        </span>
+                        {typingUsers.length === 1 
+                          ? `${typingUsers[0].userName} está digitando...`
+                          : `${typingUsers.length} pessoas digitando...`
+                        }
+                      </p>
+                    ) : (
+                      <p className={cn(
+                        'text-sm flex items-center gap-1',
+                        selectedConversation.contact?.is_online ? 'text-success' : 'text-muted-foreground'
+                      )}>
+                        {selectedConversation.contact?.is_online && (
+                          <span className="w-2 h-2 bg-success rounded-full animate-pulse"></span>
+                        )}
+                        {selectedConversation.contact?.is_online ? 'Online' : 'Offline'}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1356,10 +1376,19 @@ export default function Conversations() {
                     <Textarea
                       placeholder={isInternalNoteMode ? "Digite sua nota interna..." : "Digite sua mensagem..."}
                       value={messageInput}
-                      onChange={(e) => setMessageInput(e.target.value)}
+                      onChange={(e) => {
+                        setMessageInput(e.target.value);
+                        if (!isInternalNoteMode && e.target.value.length > 0) {
+                          startTyping();
+                        } else {
+                          stopTyping();
+                        }
+                      }}
+                      onBlur={() => stopTyping()}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
+                          stopTyping();
                           handleSendMessage();
                         }
                       }}
