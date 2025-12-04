@@ -356,13 +356,13 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
           setShowFullEmojiPicker(false);
         }}
       >
-        {/* Action buttons - left side for received messages */}
-        {!isMe && showActions && !isDeleted && (
-          <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Action buttons - left side for received messages (absolute positioning) */}
+        {!isMe && !isDeleted && (
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full pr-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
             <Popover open={showReactionPicker} onOpenChange={setShowReactionPicker}>
               <PopoverTrigger asChild>
                 <button 
-                  className="p-1.5 hover:bg-muted rounded-full transition-colors"
+                  className="p-1.5 hover:bg-muted rounded-full transition-colors bg-background/80 backdrop-blur-sm"
                   title="Reagir"
                 >
                   <Smile size={16} className="text-muted-foreground" />
@@ -403,7 +403,7 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
             </Popover>
             <button 
               onClick={() => onReply?.(message)}
-              className="p-1.5 hover:bg-muted rounded-full transition-colors"
+              className="p-1.5 hover:bg-muted rounded-full transition-colors bg-background/80 backdrop-blur-sm"
               title="Responder"
             >
               <Reply size={16} className="text-muted-foreground" />
@@ -452,6 +452,14 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
                         alt="Imagem" 
                         className="rounded-lg max-h-64 w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
                         onClick={() => window.open(message.media_url!, '_blank')}
+                        loading="lazy"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          target.parentElement?.insertAdjacentHTML('beforeend', 
+                            '<div class="flex items-center gap-2 p-3 bg-muted/50 rounded-lg"><span class="text-sm text-muted-foreground">Imagem não disponível</span></div>'
+                          );
+                        }}
                       />
                     )}
                     {message.message_type === 'video' && (
@@ -489,7 +497,7 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
                 {message.content && message.message_type === 'text' && (
                   <p className="text-sm leading-relaxed">{message.content}</p>
                 )}
-                {message.content && message.message_type !== 'text' && message.message_type !== 'document' && message.message_type !== 'audio' && message.message_type !== 'video' && (
+                {message.content && message.message_type !== 'text' && message.message_type !== 'document' && message.message_type !== 'audio' && message.message_type !== 'video' && message.message_type !== 'image' && (
                   <p className="text-sm leading-relaxed mt-1">{message.content}</p>
                 )}
               </>
@@ -530,19 +538,19 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
           )}
         </div>
 
-        {/* Action buttons - right side for sent messages */}
-        {isMe && showActions && !isDeleted && (
-          <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Action buttons - right side for sent messages (absolute positioning) */}
+        {isMe && !isDeleted && (
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
             <button 
               onClick={() => onReply?.(message)}
-              className="p-1.5 hover:bg-muted rounded-full transition-colors"
+              className="p-1.5 hover:bg-muted rounded-full transition-colors bg-background/80 backdrop-blur-sm"
               title="Responder"
             >
               <Reply size={16} className="text-muted-foreground" />
             </button>
             <button 
               onClick={() => setShowDeleteConfirm(true)}
-              className="p-1.5 hover:bg-destructive/20 rounded-full transition-colors"
+              className="p-1.5 hover:bg-destructive/20 rounded-full transition-colors bg-background/80 backdrop-blur-sm"
               title="Apagar"
             >
               <Trash2 size={16} className="text-destructive" />
