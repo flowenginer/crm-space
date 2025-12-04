@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useDepartments } from '@/hooks/useDepartments';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -24,6 +25,15 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  Lock,
+  Eye,
+  EyeOff,
+  Phone,
+  Loader2,
+  UserPlus,
+  AlertCircle,
+  CheckCircle,
+  Building2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -479,8 +489,8 @@ export function UserManagement() {
         </div>
       </div>
 
-      {/* Invite Modal */}
-      <InviteUserModal 
+      {/* Create User Modal */}
+      <CreateUserModal 
         open={showInviteModal} 
         onClose={() => setShowInviteModal(false)}
         departments={departments}
@@ -501,97 +511,309 @@ export function UserManagement() {
 }
 
 // ==========================================
-// INVITE USER MODAL
+// CREATE USER MODAL (Direct user creation)
 // ==========================================
-function InviteUserModal({ open, onClose, departments }: { 
+function CreateUserModal({ open, onClose, departments }: { 
   open: boolean; 
   onClose: () => void;
   departments: any[];
 }) {
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [role, setRole] = useState<RoleKey>('vendedor');
   const [departmentId, setDepartmentId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const queryClient = useQueryClient();
 
+  // Generate random password
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    let result = '';
+    for (let i = 0; i < 12; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setPassword(result);
+    setConfirmPassword(result);
+    setShowPassword(true);
+    toast.success('Senha gerada!', { description: 'Anote a senha antes de criar o usuário.' });
+  };
+
+  // Password strength indicator
+  const getPasswordStrength = () => {
+    if (!password) return { level: 0, text: '', color: '' };
+    
+    let strength = 0;
+    if (password.length >= 6) strength++;
+    if (password.length >= 8) strength++;
+    if (/[A-Z]/.test(password)) strength++;
+    if (/[0-9]/.test(password)) strength++;
+    if (/[^A-Za-z0-9]/.test(password)) strength++;
+
+    if (strength <= 2) return { level: strength, text: 'Fraca', color: 'bg-destructive' };
+    if (strength <= 3) return { level: strength, text: 'Média', color: 'bg-warning' };
+    return { level: strength, text: 'Forte', color: 'bg-success' };
+  };
+
+  const passwordStrength = getPasswordStrength();
+
   const handleSubmit = async () => {
-    if (!email) {
-      toast.error('Digite o email do usuário');
+    // Validation
+    if (!fullName.trim()) {
+      toast.error('Nome é obrigatório');
       return;
     }
-
+    if (!email.trim()) {
+      toast.error('E-mail é obrigatório');
+      return;
+    }
     if (!email.includes('@')) {
-      toast.error('Digite um email válido');
+      toast.error('E-mail inválido');
+      return;
+    }
+    if (!password) {
+      toast.error('Senha é obrigatória');
+      return;
+    }
+    if (password.length < 6) {
+      toast.error('Senha deve ter no mínimo 6 caracteres');
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error('Senhas não conferem');
       return;
     }
 
     setIsLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
       
-      const token = crypto.randomUUID();
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
+      if (!session) {
+        throw new Error('Você precisa estar logado para criar usuários');
+      }
 
-      const { error } = await supabase.from('user_invites').insert({
-        email: email.toLowerCase().trim(),
-        role,
-        department_id: departmentId || null,
-        token,
-        expires_at: expiresAt.toISOString(),
-        invited_by: user?.id,
+      const response = await fetch(
+        `https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            password,
+            full_name: fullName.trim(),
+            role,
+            department_id: departmentId || null,
+            phone: phone || null
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Erro ao criar usuário');
+      }
+
+      toast.success('Usuário criado com sucesso!', {
+        description: `${fullName} já pode fazer login no sistema.`
       });
-
-      if (error) throw error;
-
-      toast.success(`Convite enviado para ${email}`);
-      queryClient.invalidateQueries({ queryKey: ['pendingInvites'] });
-      
-      // Reset form
-      setEmail('');
-      setRole('vendedor');
-      setDepartmentId('');
-      onClose();
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      handleClose();
     } catch (error: any) {
-      console.error(error);
-      if (error.code === '23505') {
-        toast.error('Este email já foi convidado');
+      console.error('Error creating user:', error);
+      // Handle specific errors
+      if (error.message?.includes('already registered') || error.message?.includes('Email already')) {
+        toast.error('E-mail já cadastrado', {
+          description: 'Este e-mail já está em uso por outro usuário.'
+        });
+      } else if (error.message?.includes('Only admins')) {
+        toast.error('Sem permissão', {
+          description: 'Apenas administradores podem criar usuários.'
+        });
       } else {
-        toast.error('Erro ao enviar convite');
+        toast.error('Erro ao criar usuário', {
+          description: error.message
+        });
       }
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleClose = () => {
+    setFullName('');
+    setEmail('');
+    setPhone('');
+    setPassword('');
+    setConfirmPassword('');
+    setRole('vendedor');
+    setDepartmentId('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    onClose();
+  };
+
   const selectedConfig = roleConfig[role];
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl">Convidar Novo Membro</DialogTitle>
+          <DialogTitle className="text-xl flex items-center gap-2">
+            <UserPlus size={20} className="text-primary" />
+            Cadastrar Novo Membro
+          </DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-6 py-4">
+        <div className="space-y-5 py-4">
+          {/* Full Name */}
+          <div>
+            <Label className="flex items-center gap-2 mb-2">
+              <UserCog size={14} />
+              Nome Completo *
+            </Label>
+            <Input
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Ex: João da Silva"
+            />
+          </div>
+
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Email *
-            </label>
+            <Label className="flex items-center gap-2 mb-2">
+              <Mail size={14} />
+              E-mail (Login) *
+            </Label>
             <Input
               type="email"
-              placeholder="usuario@empresa.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="usuario@empresa.com"
             />
+          </div>
+
+          {/* Phone */}
+          <div>
+            <Label className="flex items-center gap-2 mb-2">
+              <Phone size={14} />
+              Telefone (opcional)
+            </Label>
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="(21) 99999-9999"
+            />
+          </div>
+
+          {/* Password */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="flex items-center gap-2">
+                <Lock size={14} />
+                Senha *
+              </Label>
+              <button
+                type="button"
+                onClick={generatePassword}
+                className="text-xs text-primary hover:underline"
+              >
+                Gerar senha automática
+              </button>
+            </div>
+            <div className="relative">
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Mínimo 6 caracteres"
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            
+            {/* Password Strength */}
+            {password && (
+              <div className="mt-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all ${passwordStrength.color}`}
+                      style={{ width: `${(passwordStrength.level / 5) * 100}%` }}
+                    />
+                  </div>
+                  <span className={`text-xs ${
+                    passwordStrength.color === 'bg-destructive' ? 'text-destructive' :
+                    passwordStrength.color === 'bg-warning' ? 'text-warning' : 'text-success'
+                  }`}>
+                    {passwordStrength.text}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Confirm Password */}
+          <div>
+            <Label className="flex items-center gap-2 mb-2">
+              <Lock size={14} />
+              Confirmar Senha *
+            </Label>
+            <div className="relative">
+              <Input
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repita a senha"
+                className={`pr-10 ${
+                  confirmPassword && password !== confirmPassword 
+                    ? 'border-destructive' 
+                    : confirmPassword && password === confirmPassword
+                      ? 'border-success'
+                      : ''
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            {confirmPassword && password !== confirmPassword && (
+              <p className="text-xs text-destructive mt-1 flex items-center gap-1">
+                <AlertCircle size={12} />
+                Senhas não conferem
+              </p>
+            )}
+            {confirmPassword && password === confirmPassword && (
+              <p className="text-xs text-success mt-1 flex items-center gap-1">
+                <CheckCircle size={12} />
+                Senhas conferem
+              </p>
+            )}
           </div>
 
           {/* Role Selection */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-3">
+            <Label className="flex items-center gap-2 mb-3">
+              <Shield size={14} />
               Perfil de Acesso *
-            </label>
+            </Label>
             <div className="grid grid-cols-2 gap-3">
               {(Object.keys(roleConfig) as RoleKey[]).map((roleKey) => {
                 const config = roleConfig[roleKey];
@@ -604,23 +826,23 @@ function InviteUserModal({ open, onClose, departments }: {
                     type="button"
                     onClick={() => setRole(roleKey)}
                     className={`
-                      flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left
+                      flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left
                       ${isSelected 
                         ? `${config.border} ${config.bgLight}` 
                         : 'border-border hover:border-muted-foreground/30'
                       }
                     `}
                   >
-                    <div className={`w-10 h-10 rounded-lg ${config.bgLight} flex items-center justify-center`}>
-                      <Icon size={20} className={config.text} />
+                    <div className={`w-9 h-9 rounded-lg ${config.bgLight} flex items-center justify-center`}>
+                      <Icon size={18} className={config.text} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-foreground text-sm">
-                        {config.label}
+                        {config.shortLabel}
                       </div>
                     </div>
                     {isSelected && (
-                      <Check size={18} className="text-primary flex-shrink-0" />
+                      <CheckCircle size={16} className="text-primary flex-shrink-0" />
                     )}
                   </button>
                 );
@@ -637,9 +859,10 @@ function InviteUserModal({ open, onClose, departments }: {
 
           {/* Department */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
+            <Label className="flex items-center gap-2 mb-2">
+              <Building2 size={14} />
               Departamento
-            </label>
+            </Label>
             <Select value={departmentId} onValueChange={setDepartmentId}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione um departamento (opcional)" />
@@ -655,24 +878,24 @@ function InviteUserModal({ open, onClose, departments }: {
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+        <DialogFooter className="gap-3">
+          <Button variant="outline" onClick={handleClose}>
             Cancelar
           </Button>
           <Button 
             onClick={handleSubmit}
-            disabled={isLoading}
+            disabled={isLoading || !fullName || !email || !password || password !== confirmPassword}
             className="gap-2 btn-gradient text-white"
           >
             {isLoading ? (
               <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                Enviando...
+                <Loader2 size={16} className="animate-spin" />
+                Criando...
               </>
             ) : (
               <>
-                <Mail size={16} />
-                Enviar Convite
+                <UserPlus size={16} />
+                Criar Usuário
               </>
             )}
           </Button>
