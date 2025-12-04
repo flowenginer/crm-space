@@ -852,11 +852,15 @@ export type Database = {
           content: string | null
           conversation_id: string
           created_at: string
+          deleted_at: string | null
           id: string
+          is_deleted: boolean | null
           is_from_me: boolean | null
           media_mime_type: string | null
           media_url: string | null
           message_type: string | null
+          reactions: Json | null
+          reply_to_message_id: string | null
           sender_id: string | null
           status: string | null
           whatsapp_message_id: string | null
@@ -866,11 +870,15 @@ export type Database = {
           content?: string | null
           conversation_id: string
           created_at?: string
+          deleted_at?: string | null
           id?: string
+          is_deleted?: boolean | null
           is_from_me?: boolean | null
           media_mime_type?: string | null
           media_url?: string | null
           message_type?: string | null
+          reactions?: Json | null
+          reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string | null
           whatsapp_message_id?: string | null
@@ -880,11 +888,15 @@ export type Database = {
           content?: string | null
           conversation_id?: string
           created_at?: string
+          deleted_at?: string | null
           id?: string
+          is_deleted?: boolean | null
           is_from_me?: boolean | null
           media_mime_type?: string | null
           media_url?: string | null
           message_type?: string | null
+          reactions?: Json | null
+          reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string | null
           whatsapp_message_id?: string | null
@@ -902,6 +914,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_reply_to_message_id_fkey"
+            columns: ["reply_to_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
           {
