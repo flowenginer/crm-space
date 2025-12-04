@@ -84,8 +84,8 @@ export function useCreateChannel() {
     mutationFn: async (channel: { 
       name: string; 
       phone: string; 
-      provider_id: string;
-      instance_id: string;
+      provider_id?: string;
+      instance_id?: string;
       instance_token?: string;
       department_id?: string | null;
       type?: string;
@@ -95,8 +95,8 @@ export function useCreateChannel() {
         .insert({
           name: channel.name,
           phone: channel.phone,
-          provider_id: channel.provider_id,
-          instance_id: channel.instance_id,
+          provider_id: channel.provider_id || null,
+          instance_id: channel.instance_id || null,
           instance_token: channel.instance_token || null,
           department_id: channel.department_id || null,
           type: channel.type || 'unofficial',
