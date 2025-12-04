@@ -44,7 +44,28 @@ serve(async (req) => {
 
     const payload = await req.json();
     
-    console.log(`[Webhook] Received from ${provider}:`, JSON.stringify(payload).substring(0, 500));
+    // === DEBUG LOGGING ===
+    console.log(`[Webhook] Received from ${provider}:`, JSON.stringify(payload).substring(0, 800));
+    
+    // Audio detection debug
+    const hasAudio = 
+      payload.audio ||
+      payload.message?.audioMessage ||
+      payload.data?.message?.audioMessage ||
+      payload.data?.audio ||
+      payload.type === 'audio' ||
+      payload.type === 'ptt' ||
+      payload.messageType === 'audio';
+    
+    if (hasAudio) {
+      console.log('🎵 [Webhook] AUDIO DETECTED!');
+      console.log('🎵 [Webhook] Audio payload:', JSON.stringify({
+        audioUrl: payload.audio?.audioUrl || payload.data?.message?.audioMessage?.url,
+        mimetype: payload.audio?.mimetype || payload.data?.message?.audioMessage?.mimetype,
+        type: payload.type || payload.data?.messageType,
+        fullAudioData: payload.audio || payload.data?.message?.audioMessage || payload.message?.audioMessage
+      }, null, 2));
+    }
 
     // Extract instance ID
     const instanceId = extractInstanceId(provider, payload);
@@ -627,16 +648,26 @@ function isMessageEvent(provider: WhatsAppProvider, payload: any): boolean {
 
 function normalizeMessage(provider: WhatsAppProvider, payload: any): NormalizedMessage | null {
   try {
+    let normalized: NormalizedMessage | null = null;
     switch (provider) {
       case "zapi":
-        return normalizeZAPIMessage(payload);
+        normalized = normalizeZAPIMessage(payload);
+        break;
       case "uazapi":
-        return normalizeUAZAPIMessage(payload);
+        normalized = normalizeUAZAPIMessage(payload);
+        break;
       case "evolution":
-        return normalizeEvolutionMessage(payload);
+        normalized = normalizeEvolutionMessage(payload);
+        break;
       default:
-        return null;
+        normalized = null;
     }
+    
+    if (normalized) {
+      console.log(`[Webhook] Normalized message - Type: ${normalized.type}, Content: ${normalized.content.substring(0, 50)}, MediaURL: ${normalized.mediaUrl ? 'YES' : 'NO'}`);
+    }
+    
+    return normalized;
   } catch (error) {
     console.error(`[Webhook] Error normalizing ${provider} message:`, error);
     return null;
