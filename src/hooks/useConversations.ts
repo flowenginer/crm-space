@@ -94,15 +94,47 @@ export function useMessages(conversationId: string | null) {
     queryFn: async () => {
       if (!conversationId) return [];
       
+      // Buscar mensagens sem self-join (a FK não existe)
       const { data, error } = await supabase
         .from('messages')
-        .select('*, reply_to:messages!messages_reply_to_message_id_fkey(*)')
+        .select('*')
         .eq('conversation_id', conversationId)
         .eq('is_deleted', false)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      return data as unknown as Message[];
+      
+      // Mapear para o tipo Message
+      const messages: Message[] = (data || []).map(m => ({
+        ...m,
+        reactions: (m.reactions as unknown as MessageReaction[]) || null,
+        reply_to: null,
+      }));
+      
+      // Se precisar de replies, buscar separadamente
+      const replyIds = messages.filter(m => m.reply_to_message_id).map(m => m.reply_to_message_id!);
+      
+      if (replyIds.length > 0) {
+        const { data: replyMessages } = await supabase
+          .from('messages')
+          .select('*')
+          .in('id', replyIds);
+        
+        // Mapear replies às mensagens
+        const replyMap = new Map((replyMessages || []).map(m => [m.id, {
+          ...m,
+          reactions: (m.reactions as unknown as MessageReaction[]) || null,
+          reply_to: null,
+        } as Message]));
+        
+        messages.forEach(m => {
+          if (m.reply_to_message_id && replyMap.has(m.reply_to_message_id)) {
+            m.reply_to = [replyMap.get(m.reply_to_message_id)!];
+          }
+        });
+      }
+      
+      return messages;
     },
     enabled: !!conversationId,
   });
