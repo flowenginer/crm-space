@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
   Trash2,
@@ -120,6 +120,53 @@ export default function WhatsAppChannels() {
 
   const connectedCount = channels.filter(c => c.status === 'connected').length;
   const totalSlots = channels.length;
+
+  // Supabase Realtime subscription for channel status updates
+  useEffect(() => {
+    const channel = supabase
+      .channel('whatsapp-channels-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'whatsapp_channels',
+        },
+        (payload) => {
+          console.log('[Realtime] Channel updated:', payload);
+          const newData = payload.new as any;
+          const oldData = payload.old as any;
+          
+          // Check if status changed
+          if (newData.status !== oldData.status) {
+            if (newData.status === 'connected') {
+              toast.success(`Canal ${newData.name || 'WhatsApp'} conectado!`, {
+                description: 'O canal está pronto para receber mensagens.',
+                duration: 5000,
+              });
+              
+              // If we're waiting for QR scan and this channel connected, close modal
+              if (createdChannelId === newData.id && addStep === 2) {
+                setAddStep(3);
+              }
+            } else if (newData.status === 'disconnected' && oldData.status === 'connected') {
+              toast.warning(`Canal ${newData.name || 'WhatsApp'} desconectado`, {
+                description: 'O canal perdeu a conexão.',
+                duration: 5000,
+              });
+            }
+          }
+          
+          // Refetch to update UI
+          refetchChannels();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [createdChannelId, addStep, refetchChannels]);
 
   // QR countdown timer
   useEffect(() => {
