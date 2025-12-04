@@ -3,7 +3,6 @@ import {
   Search,
   Edit3,
   SlidersHorizontal,
-  MessageSquare,
   MessageCircle,
   Phone,
   Video,
@@ -15,10 +14,7 @@ import {
   Check,
   CheckCheck,
   X,
-  Plus,
-  Calendar,
   Mail,
-  Clock,
   ChevronLeft,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -41,6 +37,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
+import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 
 // Mock Data
 const mockConversations = [
@@ -545,141 +542,8 @@ export default function Conversations() {
 
       {/* Column 3: Contact Details (Desktop Only) */}
       {selectedConversation && (
-        <div className="hidden lg:flex w-[350px] bg-card border-l border-border flex-col overflow-y-auto">
-          <div className="p-6 space-y-6">
-            {/* Contact Header */}
-            <div className="text-center">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-3xl font-bold mx-auto mb-4 shadow-xl">
-                {selectedConversation.contactName.charAt(0)}
-              </div>
-              <h3 className="text-xl font-bold text-foreground mb-1">{selectedConversation.contactName}</h3>
-              <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
-                <Phone size={14} />
-                {selectedConversation.phone}
-              </p>
-              <button className="mt-3 px-4 py-2 text-sm text-primary hover:bg-accent rounded-lg transition-colors font-medium">
-                Editar contato
-              </button>
-            </div>
-
-            {/* Lead Status */}
-            <div className="bg-muted/50 rounded-xl p-4">
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Status Lead
-              </label>
-              <Select defaultValue={selectedConversation.leadStatus}>
-                <SelectTrigger className="w-full rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="new">Novo</SelectItem>
-                  <SelectItem value="in_progress">Em atendimento</SelectItem>
-                  <SelectItem value="quoted">Orçamento enviado</SelectItem>
-                  <SelectItem value="negotiation">Negociação</SelectItem>
-                  <SelectItem value="won">Fechado - Ganho</SelectItem>
-                  <SelectItem value="lost">Fechado - Perdido</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Tags */}
-            <div className="bg-muted/50 rounded-xl p-4">
-              <label className="block text-sm font-medium text-foreground mb-3">
-                Etiquetas
-              </label>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {selectedConversation.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className={cn(
-                      'px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1',
-                      tag === 'Urgente' ? 'bg-red-100 text-red-700' :
-                      tag === 'Follow-up' ? 'bg-yellow-100 text-yellow-700' :
-                      tag === 'VIP' ? 'bg-purple-100 text-purple-700' :
-                      'bg-blue-100 text-blue-700'
-                    )}
-                  >
-                    {tag}
-                    <X size={12} className="cursor-pointer hover:opacity-70" />
-                  </span>
-                ))}
-                {selectedConversation.tags.length === 0 && (
-                  <span className="text-sm text-muted-foreground">Nenhuma etiqueta</span>
-                )}
-              </div>
-              <button className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1">
-                <Plus size={14} />
-                Adicionar etiqueta
-              </button>
-            </div>
-
-            {/* Assigned To */}
-            <div className="bg-muted/50 rounded-xl p-4">
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Atendente Responsável
-              </label>
-              <Select defaultValue={selectedConversation.assignedTo || 'none'}>
-                <SelectTrigger className="w-full rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Não atribuído</SelectItem>
-                  <SelectItem value="Diego">Diego</SelectItem>
-                  <SelectItem value="Ian">Ian</SelectItem>
-                  <SelectItem value="Lara">Lara</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Department */}
-            <div className="bg-muted/50 rounded-xl p-4">
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Departamento
-              </label>
-              <Select defaultValue={selectedConversation.department}>
-                <SelectTrigger className="w-full rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Vendas">Vendas</SelectItem>
-                  <SelectItem value="Pós-venda">Pós-venda</SelectItem>
-                  <SelectItem value="Suporte">Suporte</SelectItem>
-                  <SelectItem value="Financeiro">Financeiro</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Additional Info */}
-            <div className="bg-muted/50 rounded-xl p-4">
-              <h4 className="text-sm font-medium text-foreground mb-3">Informações Adicionais</h4>
-              <div className="space-y-2.5 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Email:</span>
-                  <span className="text-foreground font-medium">{selectedConversation.email}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Primeiro contato:</span>
-                  <span className="text-foreground font-medium">{selectedConversation.firstContact}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Última interação:</span>
-                  <span className="text-foreground font-medium">{selectedConversation.lastInteraction}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="space-y-3 pt-4 border-t border-border">
-              <Button className="w-full btn-gradient text-white rounded-xl hover:shadow-lg">
-                <Calendar size={18} className="mr-2" />
-                Agendar mensagem
-              </Button>
-              <Button variant="outline" className="w-full rounded-xl border-destructive/50 text-destructive hover:bg-destructive/10">
-                <X size={18} className="mr-2" />
-                Fechar conversa
-              </Button>
-            </div>
-          </div>
+        <div className="hidden lg:flex">
+          <ConversationSidebar conversationId={selectedConversation.id} />
         </div>
       )}
 
