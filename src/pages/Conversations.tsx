@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search,
   Edit3,
@@ -16,6 +17,7 @@ import {
   X,
   Mail,
   ChevronLeft,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -38,8 +40,11 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
+import { useConversations, useMessages, useSendMessage, type Conversation, type Message } from '@/hooks/useConversations';
+import { formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
-// Mock Data
+// Mock Data for reference (will be replaced by real data)
 const mockConversations = [
   {
     id: '1',
@@ -185,29 +190,43 @@ const mockMessages = [
   },
 ];
 
-// Conversation Item Component
+// Conversation Item Component using real data
 interface ConversationItemProps {
-  conversation: typeof mockConversations[0];
+  conversation: Conversation;
   isSelected: boolean;
   onClick: () => void;
 }
 
 function ConversationItem({ conversation, isSelected, onClick }: ConversationItemProps) {
+  const contactName = conversation.contact?.full_name || 'Contato';
+  const isOnline = conversation.contact?.is_online || false;
+  const isUnread = conversation.is_unread || false;
+  const unreadCount = conversation.unread_count || 0;
+  
+  const formatTime = (date: string | null) => {
+    if (!date) return '';
+    try {
+      return formatDistanceToNow(new Date(date), { addSuffix: false, locale: ptBR });
+    } catch {
+      return '';
+    }
+  };
+
   return (
     <div
       onClick={onClick}
       className={cn(
         'p-4 border-b border-border/50 cursor-pointer transition-all duration-200',
-        isSelected ? 'bg-accent' : conversation.isUnread ? 'bg-purple-50/50' : 'hover:bg-muted/50'
+        isSelected ? 'bg-accent' : isUnread ? 'bg-purple-500/10' : 'hover:bg-muted/50'
       )}
     >
       <div className="flex items-start gap-3">
         {/* Avatar */}
         <div className="relative flex-shrink-0">
           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold shadow-md">
-            {conversation.contactName.charAt(0)}
+            {contactName.charAt(0).toUpperCase()}
           </div>
-          {conversation.isOnline && (
+          {isOnline && (
             <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-success rounded-full border-2 border-card"></div>
           )}
         </div>
@@ -217,43 +236,37 @@ function ConversationItem({ conversation, isSelected, onClick }: ConversationIte
           <div className="flex items-center justify-between mb-1">
             <h3 className={cn(
               'text-sm truncate',
-              conversation.isUnread ? 'font-semibold text-foreground' : 'font-medium text-foreground/80'
+              isUnread ? 'font-semibold text-foreground' : 'font-medium text-foreground/80'
             )}>
-              {conversation.contactName}
+              {contactName}
             </h3>
             <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
-              {conversation.timestamp}
+              {formatTime(conversation.last_message_at)}
             </span>
           </div>
 
           <p className={cn(
             'text-sm truncate mb-2',
-            conversation.isUnread ? 'text-foreground font-medium' : 'text-muted-foreground'
+            isUnread ? 'text-foreground font-medium' : 'text-muted-foreground'
           )}>
-            {conversation.lastMessage}
+            {conversation.last_message_preview || 'Nova conversa'}
           </p>
 
           <div className="flex items-center justify-between">
             {/* Channel Badge */}
             <div className="flex items-center gap-2">
-              {conversation.channel === 'whatsapp' && (
-                <div className="flex items-center gap-1 px-2 py-0.5 bg-green-100 rounded-full">
-                  <MessageCircle size={12} className="text-green-600" />
-                  <span className="text-xs text-green-600 font-medium">WhatsApp</span>
-                </div>
-              )}
-              {conversation.channel === 'email' && (
-                <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 rounded-full">
-                  <Mail size={12} className="text-blue-600" />
-                  <span className="text-xs text-blue-600 font-medium">Email</span>
-                </div>
-              )}
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-green-500/20 rounded-full">
+                <MessageCircle size={12} className="text-green-500" />
+                <span className="text-xs text-green-500 font-medium">
+                  {conversation.channel?.name || 'Chat'}
+                </span>
+              </div>
             </div>
 
             {/* Unread Badge */}
-            {conversation.isUnread && conversation.unreadCount > 0 && (
+            {isUnread && unreadCount > 0 && (
               <div className="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                <span className="text-xs text-primary-foreground font-bold">{conversation.unreadCount}</span>
+                <span className="text-xs text-primary-foreground font-bold">{unreadCount}</span>
               </div>
             )}
           </div>
@@ -263,13 +276,13 @@ function ConversationItem({ conversation, isSelected, onClick }: ConversationIte
   );
 }
 
-// Message Bubble Component
+// Message Bubble Component using real data
 interface MessageBubbleProps {
-  message: typeof mockMessages[0];
+  message: Message;
 }
 
 function MessageBubble({ message }: MessageBubbleProps) {
-  const isMe = message.senderId === 'me';
+  const isMe = message.is_from_me;
 
   return (
     <div className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
@@ -281,13 +294,13 @@ function MessageBubble({ message }: MessageBubbleProps) {
             : 'bg-card border border-border text-foreground'
         )}
       >
-        <p className="text-sm leading-relaxed">{message.content}</p>
+        <p className="text-sm leading-relaxed">{message.content || ''}</p>
         <div className={cn(
           'flex items-center justify-end gap-1 mt-1',
           isMe ? 'text-purple-200' : 'text-muted-foreground'
         )}>
           <span className="text-xs">
-            {new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            {new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
           </span>
           {isMe && (
             <>
@@ -303,7 +316,10 @@ function MessageBubble({ message }: MessageBubbleProps) {
 }
 
 export default function Conversations() {
-  const [selectedConversation, setSelectedConversation] = useState<typeof mockConversations[0] | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
+    searchParams.get('id')
+  );
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [channelFilter, setChannelFilter] = useState('all');
@@ -313,18 +329,37 @@ export default function Conversations() {
   const [showMobileChat, setShowMobileChat] = useState(false);
   const isMobile = useIsMobile();
 
-  const filteredConversations = mockConversations.filter((conv) => {
-    if (searchQuery && !conv.contactName.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
+  // Fetch real conversations from database
+  const { data: conversations = [], isLoading: conversationsLoading } = useConversations();
+  const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedConversationId);
+  const sendMessage = useSendMessage();
+
+  // Find selected conversation from real data
+  const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
+
+  // Handle URL param for conversation selection
+  useEffect(() => {
+    const idFromUrl = searchParams.get('id');
+    if (idFromUrl && idFromUrl !== selectedConversationId) {
+      setSelectedConversationId(idFromUrl);
+      if (isMobile) {
+        setShowMobileChat(true);
+      }
     }
-    if (channelFilter !== 'all' && conv.channel !== channelFilter) {
+  }, [searchParams]);
+
+  // Filter conversations based on search
+  const filteredConversations = conversations.filter((conv) => {
+    const contactName = conv.contact?.full_name || '';
+    if (searchQuery && !contactName.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }
     return true;
   });
 
-  const handleSelectConversation = (conv: typeof mockConversations[0]) => {
-    setSelectedConversation(conv);
+  const handleSelectConversation = (conv: Conversation) => {
+    setSelectedConversationId(conv.id);
+    setSearchParams({ id: conv.id });
     if (isMobile) {
       setShowMobileChat(true);
     }
@@ -332,6 +367,17 @@ export default function Conversations() {
 
   const handleBackToList = () => {
     setShowMobileChat(false);
+  };
+
+  const handleSendMessage = () => {
+    if (!messageInput.trim() || !selectedConversationId) return;
+    
+    sendMessage.mutate({
+      conversation_id: selectedConversationId,
+      content: messageInput.trim(),
+      is_from_me: true,
+    });
+    setMessageInput('');
   };
 
   return (
@@ -417,14 +463,25 @@ export default function Conversations() {
 
         {/* Conversations List */}
         <div className="flex-1 overflow-y-auto">
-          {filteredConversations.map((conv) => (
-            <ConversationItem
-              key={conv.id}
-              conversation={conv}
-              isSelected={selectedConversation?.id === conv.id}
-              onClick={() => handleSelectConversation(conv)}
-            />
-          ))}
+          {conversationsLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
+              <MessageCircle size={40} className="mb-3 opacity-50" />
+              <p className="text-sm">Nenhuma conversa encontrada</p>
+            </div>
+          ) : (
+            filteredConversations.map((conv) => (
+              <ConversationItem
+                key={conv.id}
+                conversation={conv}
+                isSelected={selectedConversationId === conv.id}
+                onClick={() => handleSelectConversation(conv)}
+              />
+            ))
+          )}
         </div>
       </div>
 
@@ -446,22 +503,22 @@ export default function Conversations() {
                   )}
                   <div className="relative">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold shadow-md">
-                      {selectedConversation.contactName.charAt(0)}
+                      {(selectedConversation.contact?.full_name || 'C').charAt(0).toUpperCase()}
                     </div>
-                    {selectedConversation.isOnline && (
+                    {selectedConversation.contact?.is_online && (
                       <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-success rounded-full border-2 border-card"></div>
                     )}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-foreground">{selectedConversation.contactName}</h3>
+                    <h3 className="font-semibold text-foreground">{selectedConversation.contact?.full_name || 'Contato'}</h3>
                     <p className={cn(
                       'text-sm flex items-center gap-1',
-                      selectedConversation.isOnline ? 'text-success' : 'text-muted-foreground'
+                      selectedConversation.contact?.is_online ? 'text-success' : 'text-muted-foreground'
                     )}>
-                      {selectedConversation.isOnline && (
+                      {selectedConversation.contact?.is_online && (
                         <span className="w-2 h-2 bg-success rounded-full animate-pulse"></span>
                       )}
-                      {selectedConversation.isOnline ? 'Online' : 'Offline'}
+                      {selectedConversation.contact?.is_online ? 'Online' : 'Offline'}
                     </p>
                   </div>
                 </div>
@@ -485,16 +542,30 @@ export default function Conversations() {
 
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
-              {/* Date Separator */}
-              <div className="flex items-center gap-3 my-4">
-                <div className="flex-1 h-px bg-border"></div>
-                <span className="text-xs text-muted-foreground font-medium px-2">Hoje</span>
-                <div className="flex-1 h-px bg-border"></div>
-              </div>
+              {messagesLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                  <MessageCircle size={48} className="mb-4 opacity-50" />
+                  <p>Nenhuma mensagem ainda</p>
+                  <p className="text-sm">Envie a primeira mensagem</p>
+                </div>
+              ) : (
+                <>
+                  {/* Date Separator */}
+                  <div className="flex items-center gap-3 my-4">
+                    <div className="flex-1 h-px bg-border"></div>
+                    <span className="text-xs text-muted-foreground font-medium px-2">Hoje</span>
+                    <div className="flex-1 h-px bg-border"></div>
+                  </div>
 
-              {mockMessages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
-              ))}
+                  {messages.map((msg) => (
+                    <MessageBubble key={msg.id} message={msg} />
+                  ))}
+                </>
+              )}
             </div>
 
             {/* Message Input */}
@@ -512,6 +583,12 @@ export default function Conversations() {
                     placeholder="Digite sua mensagem..."
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
                     className="min-h-[44px] max-h-[120px] resize-none rounded-xl bg-muted/50 border-border/50"
                     rows={1}
                   />
@@ -520,8 +597,12 @@ export default function Conversations() {
                 <button className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex">
                   <Mic size={22} className="text-muted-foreground" />
                 </button>
-                <button className="p-3 btn-gradient text-white rounded-xl hover:shadow-lg transition-all">
-                  <Send size={20} />
+                <button 
+                  onClick={handleSendMessage}
+                  disabled={!messageInput.trim() || sendMessage.isPending}
+                  className="p-3 btn-gradient text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50"
+                >
+                  {sendMessage.isPending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
                 </button>
               </div>
             </div>
@@ -530,11 +611,8 @@ export default function Conversations() {
           /* Empty State with Start Conversation */
           <StartConversation 
             onConversationCreated={(conversationId) => {
-              // Find the conversation in mock data or reload
-              const conv = mockConversations.find(c => c.id === conversationId);
-              if (conv) {
-                setSelectedConversation(conv);
-              }
+              setSelectedConversationId(conversationId);
+              setSearchParams({ id: conversationId });
             }}
           />
         )}
