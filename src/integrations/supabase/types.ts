@@ -1672,35 +1672,44 @@ export type Database = {
       }
       whatsapp_providers: {
         Row: {
+          admin_token: string | null
           api_key: string | null
           api_secret: string | null
           base_url: string
+          client_token: string | null
           code: string
           created_at: string | null
           id: string
           is_active: boolean | null
+          is_configured: boolean | null
           name: string
           updated_at: string | null
         }
         Insert: {
+          admin_token?: string | null
           api_key?: string | null
           api_secret?: string | null
           base_url: string
+          client_token?: string | null
           code: string
           created_at?: string | null
           id?: string
           is_active?: boolean | null
+          is_configured?: boolean | null
           name: string
           updated_at?: string | null
         }
         Update: {
+          admin_token?: string | null
           api_key?: string | null
           api_secret?: string | null
           base_url?: string
+          client_token?: string | null
           code?: string
           created_at?: string | null
           id?: string
           is_active?: boolean | null
+          is_configured?: boolean | null
           name?: string
           updated_at?: string | null
         }

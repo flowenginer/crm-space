@@ -16,6 +16,8 @@ import {
   BarChart3,
   Loader2,
   AlertCircle,
+  Settings,
+  Smartphone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -42,7 +44,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { 
   useChannels, 
@@ -53,17 +55,22 @@ import {
   useRestoreChannel,
   type WhatsAppChannel 
 } from '@/hooks/useChannels';
-import { useProviders } from '@/hooks/useProviders';
+import { useProviders, useConfiguredProviders } from '@/hooks/useProviders';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useCreateChannelWithInstance, useRefreshQRCode } from '@/hooks/useCreateChannelWithInstance';
 import { whatsappService } from '@/lib/whatsapp';
+import { Link } from 'react-router-dom';
 
 export default function WhatsAppChannels() {
   const { data: channels = [], isLoading } = useChannels();
   const { data: deletedChannels = [] } = useDeletedChannels();
   const { data: providers = [] } = useProviders();
+  const { data: configuredProviders = [] } = useConfiguredProviders();
   const { data: departments = [] } = useDepartments();
   
   const createChannel = useCreateChannel();
+  const createChannelWithInstance = useCreateChannelWithInstance();
+  const refreshQRCode = useRefreshQRCode();
   const updateChannel = useUpdateChannel();
   const deleteChannel = useDeleteChannel();
   const restoreChannel = useRestoreChannel();
@@ -73,10 +80,12 @@ export default function WhatsAppChannels() {
   const [showDeletedModal, setShowDeletedModal] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<WhatsAppChannel | null>(null);
   const [addStep, setAddStep] = useState(1);
+  const [addMode, setAddMode] = useState<'auto' | 'manual'>('auto');
   
   // Form state
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelPhone, setNewChannelPhone] = useState('');
+  const [selectedProviderCode, setSelectedProviderCode] = useState<'zapi' | 'uazapi' | 'evolution' | ''>('');
   const [selectedProviderId, setSelectedProviderId] = useState('');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
   const [instanceId, setInstanceId] = useState('');
@@ -114,8 +123,10 @@ export default function WhatsAppChannels() {
 
   const resetForm = () => {
     setAddStep(1);
+    setAddMode('auto');
     setNewChannelName('');
     setNewChannelPhone('');
+    setSelectedProviderCode('');
     setSelectedProviderId('');
     setSelectedDepartmentId('');
     setInstanceId('');
@@ -139,48 +150,88 @@ export default function WhatsAppChannels() {
 
   const handleContinueAdd = async () => {
     if (addStep === 1) {
-      if (!newChannelName.trim() || !selectedProviderId || !instanceId.trim()) {
-        toast({
-          title: 'Campos obrigatórios',
-          description: 'Preencha todos os campos obrigatórios.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setIsConnecting(true);
-      setConnectionError(null);
-
-      try {
-        // Create channel in database first
-        const createdChannel = await createChannel.mutateAsync({
-          name: newChannelName,
-          phone: newChannelPhone || 'Aguardando conexão',
-          provider_id: selectedProviderId,
-          instance_id: instanceId,
-          instance_token: instanceToken || undefined,
-          department_id: selectedDepartmentId || null,
-        });
-
-        setCreatedChannelId(createdChannel.id);
-
-        // Try to connect and get QR code
-        const result = await whatsappService.connect(createdChannel.id);
-
-        if (result.status === 'connected') {
-          setAddStep(3);
-        } else if (result.qrCode) {
-          setQrCode(result.qrCode);
-          setQrCountdown(60);
-          setAddStep(2);
-        } else {
-          setConnectionError('Não foi possível gerar o QR Code. Verifique as credenciais.');
+      // Modo automático (com provedor configurado)
+      if (addMode === 'auto') {
+        if (!newChannelName.trim() || !selectedProviderCode) {
+          toast.error('Preencha todos os campos obrigatórios.');
+          return;
         }
-      } catch (error: any) {
-        console.error('Connection error:', error);
-        setConnectionError(error.message || 'Erro ao conectar. Verifique as credenciais.');
-      } finally {
-        setIsConnecting(false);
+
+        setIsConnecting(true);
+        setConnectionError(null);
+
+        try {
+          const result = await createChannelWithInstance.mutateAsync({
+            name: newChannelName,
+            phone: newChannelPhone || '',
+            providerCode: selectedProviderCode,
+            departmentId: selectedDepartmentId || undefined,
+          });
+
+          setCreatedChannelId(result.channel.id);
+
+          if (result.qrCode) {
+            setQrCode(result.qrCode);
+            setQrCountdown(60);
+            setAddStep(2);
+          } else {
+            // Tentar buscar QR Code
+            const qrResult = await refreshQRCode.mutateAsync(result.channel.id);
+            if (qrResult.connected) {
+              setAddStep(3);
+            } else if (qrResult.qrCode) {
+              setQrCode(qrResult.qrCode);
+              setQrCountdown(60);
+              setAddStep(2);
+            } else {
+              setConnectionError('Não foi possível gerar o QR Code. Tente novamente.');
+            }
+          }
+        } catch (error: any) {
+          console.error('Connection error:', error);
+          setConnectionError(error.message || 'Erro ao criar canal.');
+        } finally {
+          setIsConnecting(false);
+        }
+      } else {
+        // Modo manual (credenciais manuais)
+        if (!newChannelName.trim() || !selectedProviderId || !instanceId.trim()) {
+          toast.error('Preencha todos os campos obrigatórios.');
+          return;
+        }
+
+        setIsConnecting(true);
+        setConnectionError(null);
+
+        try {
+          const createdChannel = await createChannel.mutateAsync({
+            name: newChannelName,
+            phone: newChannelPhone || 'Aguardando conexão',
+            provider_id: selectedProviderId,
+            instance_id: instanceId,
+            instance_token: instanceToken || undefined,
+            department_id: selectedDepartmentId || null,
+          });
+
+          setCreatedChannelId(createdChannel.id);
+
+          const result = await whatsappService.connect(createdChannel.id);
+
+          if (result.status === 'connected') {
+            setAddStep(3);
+          } else if (result.qrCode) {
+            setQrCode(result.qrCode);
+            setQrCountdown(60);
+            setAddStep(2);
+          } else {
+            setConnectionError('Não foi possível gerar o QR Code. Verifique as credenciais.');
+          }
+        } catch (error: any) {
+          console.error('Connection error:', error);
+          setConnectionError(error.message || 'Erro ao conectar. Verifique as credenciais.');
+        } finally {
+          setIsConnecting(false);
+        }
       }
     } else if (addStep === 3) {
       setShowAddModal(false);
@@ -199,17 +250,10 @@ export default function WhatsAppChannels() {
         setQrCountdown(60);
       } else if (result.status === 'connected') {
         setAddStep(3);
-        toast({
-          title: 'Conectado!',
-          description: 'Canal conectado com sucesso.',
-        });
+        toast.success('Canal conectado com sucesso!');
       }
     } catch (error: any) {
-      toast({
-        title: 'Erro',
-        description: error.message || 'Erro ao gerar QR Code',
-        variant: 'destructive',
-      });
+      toast.error(error.message || 'Erro ao gerar QR Code');
     } finally {
       setIsConnecting(false);
     }
@@ -223,10 +267,7 @@ export default function WhatsAppChannels() {
       const result = await whatsappService.connect(channel.id);
       
       if (result.status === 'connected') {
-        toast({
-          title: 'Conectado!',
-          description: `${channel.name} está conectado.`,
-        });
+        toast.success(`${channel.name} está conectado.`);
       } else if (result.qrCode) {
         setQrCode(result.qrCode);
         setQrCountdown(60);
@@ -235,11 +276,7 @@ export default function WhatsAppChannels() {
         setShowAddModal(true);
       }
     } catch (error: any) {
-      toast({
-        title: 'Erro',
-        description: error.message || 'Erro ao conectar',
-        variant: 'destructive',
-      });
+      toast.error(error.message || 'Erro ao conectar');
     } finally {
       setIsConnecting(false);
     }
@@ -248,16 +285,9 @@ export default function WhatsAppChannels() {
   const handleDisconnect = async (channel: WhatsAppChannel) => {
     try {
       await whatsappService.disconnect(channel.id);
-      toast({
-        title: 'Desconectado',
-        description: `${channel.name} foi desconectado.`,
-      });
+      toast.success(`${channel.name} foi desconectado.`);
     } catch (error: any) {
-      toast({
-        title: 'Erro',
-        description: error.message || 'Erro ao desconectar',
-        variant: 'destructive',
-      });
+      toast.error(error.message || 'Erro ao desconectar');
     }
   };
 
@@ -269,49 +299,28 @@ export default function WhatsAppChannels() {
         status,
         last_sync_at: new Date().toISOString(),
       });
-      toast({
-        title: 'Sincronizado',
-        description: `${channel.name} está ${status}.`,
-      });
+      toast.success(`${channel.name} está ${status}.`);
     } catch (error: any) {
-      toast({
-        title: 'Erro',
-        description: error.message || 'Erro ao sincronizar',
-        variant: 'destructive',
-      });
+      toast.error(error.message || 'Erro ao sincronizar');
     }
   };
 
   const handleDelete = async (channel: WhatsAppChannel) => {
     try {
       await deleteChannel.mutateAsync(channel.id);
-      toast({
-        title: 'Canal removido',
-        description: `${channel.name} foi movido para a lixeira.`,
-      });
+      toast.success(`${channel.name} foi movido para a lixeira.`);
       setShowDetailsModal(false);
     } catch (error: any) {
-      toast({
-        title: 'Erro',
-        description: error.message || 'Erro ao remover canal',
-        variant: 'destructive',
-      });
+      toast.error(error.message || 'Erro ao remover canal');
     }
   };
 
   const handleRestore = async (channel: WhatsAppChannel) => {
     try {
       await restoreChannel.mutateAsync(channel.id);
-      toast({
-        title: 'Canal restaurado',
-        description: `${channel.name} foi restaurado.`,
-      });
+      toast.success(`${channel.name} foi restaurado.`);
     } catch (error: any) {
-      toast({
-        title: 'Erro',
-        description: error.message || 'Erro ao restaurar canal',
-        variant: 'destructive',
-      });
+      toast.error(error.message || 'Erro ao restaurar canal');
     }
   };
 
@@ -421,75 +430,33 @@ export default function WhatsAppChannels() {
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="provider">Provedor WhatsApp *</Label>
-                  <Select value={selectedProviderId} onValueChange={setSelectedProviderId}>
-                    <SelectTrigger className="mt-2">
-                      <SelectValue placeholder="Selecione o provedor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {providers.map((provider) => (
-                        <SelectItem key={provider.id} value={provider.id}>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{provider.name}</span>
-                            <span className="text-xs text-muted-foreground">({provider.code})</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {selectedProviderId && (
+                {/* Modo de criação */}
+                {configuredProviders.length > 0 ? (
                   <>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">
-                        {getSelectedProvider()?.code === 'zapi' && (
-                          <>Obtenha as credenciais em <strong>z-api.io</strong> → Sua Instância → Credenciais</>
-                        )}
-                        {getSelectedProvider()?.code === 'uazapi' && (
-                          <>Obtenha as credenciais em <strong>uazapi.com</strong> → Dashboard → Instâncias</>
-                        )}
-                        {getSelectedProvider()?.code === 'evolution' && (
-                          <>Configure a URL da sua instância Evolution API self-hosted</>
-                        )}
-                      </p>
-                    </div>
-
                     <div>
-                      <Label htmlFor="instanceId">
-                        {getSelectedProvider()?.code === 'evolution' ? 'Nome da Instância *' : 'Instance ID *'}
-                      </Label>
-                      <Input
-                        id="instanceId"
-                        placeholder={getSelectedProvider()?.code === 'evolution' ? 'minha-instancia' : 'Ex: 3F7A9B2C1D...'}
-                        value={instanceId}
-                        onChange={(e) => setInstanceId(e.target.value)}
-                        className="mt-2"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="instanceToken">
-                        {getSelectedProvider()?.code === 'evolution' ? 'API Key (Global)' : 'Token da Instância'}
-                      </Label>
-                      <Input
-                        id="instanceToken"
-                        type="password"
-                        placeholder="Token de acesso..."
-                        value={instanceToken}
-                        onChange={(e) => setInstanceToken(e.target.value)}
-                        className="mt-2"
-                      />
+                      <Label>Provedor WhatsApp *</Label>
+                      <Select value={selectedProviderCode} onValueChange={(val) => setSelectedProviderCode(val as any)}>
+                        <SelectTrigger className="mt-2">
+                          <SelectValue placeholder="Selecione o provedor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {configuredProviders.map((provider) => (
+                            <SelectItem key={provider.id} value={provider.code}>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{provider.name}</span>
+                                <span className="text-xs text-green-600">(configurado)</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {getSelectedProvider()?.code === 'zapi' && 'Opcional: Client Token para maior segurança'}
-                        {getSelectedProvider()?.code === 'uazapi' && 'Token Bearer da sua instância'}
-                        {getSelectedProvider()?.code === 'evolution' && 'API Key configurada no seu servidor'}
+                        A instância será criada automaticamente
                       </p>
                     </div>
 
                     <div>
-                      <Label htmlFor="phone">Número do WhatsApp</Label>
+                      <Label htmlFor="phone">Número do WhatsApp (opcional)</Label>
                       <Input
                         id="phone"
                         placeholder="+55 21 99999-9999"
@@ -497,28 +464,39 @@ export default function WhatsAppChannels() {
                         onChange={(e) => setNewChannelPhone(e.target.value)}
                         className="mt-2"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Será preenchido automaticamente após conexão
-                      </p>
                     </div>
 
                     <div>
-                      <Label htmlFor="department">Departamento (opcional)</Label>
-                    <Select value={selectedDepartmentId || "none"} onValueChange={(val) => setSelectedDepartmentId(val === "none" ? "" : val)}>
-                      <SelectTrigger className="mt-2">
-                        <SelectValue placeholder="Nenhum departamento" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Nenhum</SelectItem>
-                        {departments.map((dept) => (
-                            <SelectItem key={dept.id} value={dept.id}>
-                              {dept.name}
-                            </SelectItem>
+                      <Label>Departamento (opcional)</Label>
+                      <Select value={selectedDepartmentId || "none"} onValueChange={(val) => setSelectedDepartmentId(val === "none" ? "" : val)}>
+                        <SelectTrigger className="mt-2">
+                          <SelectValue placeholder="Nenhum departamento" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Nenhum</SelectItem>
+                          {departments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </>
+                ) : (
+                  <div className="flex flex-col items-center gap-4 p-6 bg-muted/50 rounded-lg text-center">
+                    <AlertCircle size={40} className="text-orange-500" />
+                    <div>
+                      <p className="font-medium text-foreground">Nenhum provedor configurado</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Configure as credenciais de um provedor WhatsApp para criar canais automaticamente.
+                      </p>
+                    </div>
+                    <Link to="/settings?tab=integrations">
+                      <Button variant="outline" className="gap-2">
+                        <Settings size={16} />
+                        Configurar Integrações
+                      </Button>
+                    </Link>
+                  </div>
                 )}
 
                 {connectionError && (
@@ -635,19 +613,19 @@ export default function WhatsAppChannels() {
           </div>
 
           <DialogFooter>
-            {addStep === 1 && (
+            {addStep === 1 && configuredProviders.length > 0 && (
               <Button
                 onClick={handleContinueAdd}
-                disabled={!newChannelName.trim() || !selectedProviderId || !instanceId.trim() || isConnecting}
+                disabled={!newChannelName.trim() || !selectedProviderCode || isConnecting}
                 className="w-full btn-gradient"
               >
                 {isConnecting ? (
                   <>
                     <Loader2 size={18} className="animate-spin mr-2" />
-                    Conectando...
+                    Criando instância...
                   </>
                 ) : (
-                  'Conectar'
+                  'Criar e Conectar'
                 )}
               </Button>
             )}
