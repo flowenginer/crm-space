@@ -1,13 +1,10 @@
 import { useState } from 'react';
 import {
-  Settings as SettingsIcon,
   Users,
   Building2,
   MessageSquare,
   Database,
   Bell,
-  Shield,
-  Palette,
   Plus,
   Edit3,
   Trash2,
@@ -18,6 +15,7 @@ import {
   Mail,
   Phone,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -35,39 +33,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
-// Mock data
-const mockTeamMembers = [
-  { id: '1', name: 'Diego Silva', email: 'diego@spacesports.com', phone: '+55 21 99999-0001', role: 'admin', department: 'Vendas', status: 'active', avatar: null },
-  { id: '2', name: 'Ian Santos', email: 'ian@spacesports.com', phone: '+55 21 99999-0002', role: 'seller', department: 'Vendas', status: 'active', avatar: null },
-  { id: '3', name: 'Lara Oliveira', email: 'lara@spacesports.com', phone: '+55 21 99999-0003', role: 'seller', department: 'Pós-vendas', status: 'active', avatar: null },
-  { id: '4', name: 'Michel Costa', email: 'michel@spacesports.com', phone: '+55 21 99999-0004', role: 'supervisor', department: 'Suporte', status: 'inactive', avatar: null },
-  { id: '5', name: 'Ricardo Pereira', email: 'ricardo@spacesports.com', phone: '+55 21 99999-0005', role: 'seller', department: 'Vendas', status: 'active', avatar: null },
-];
-
-const mockDepartments = [
-  { id: '1', name: 'Vendas', description: 'Equipe de vendas e atendimento comercial', membersCount: 3, color: '#8B5CF6' },
-  { id: '2', name: 'Pós-vendas', description: 'Acompanhamento de pedidos e suporte', membersCount: 1, color: '#EC4899' },
-  { id: '3', name: 'Suporte', description: 'Atendimento técnico e dúvidas', membersCount: 1, color: '#3B82F6' },
-  { id: '4', name: 'Financeiro', description: 'Cobranças e pagamentos', membersCount: 0, color: '#10B981' },
-  { id: '5', name: 'Expedição', description: 'Logística e entregas', membersCount: 0, color: '#F59E0B' },
-];
-
-const mockChannels = [
-  { id: '1', name: 'Vendas 01', phone: '+55 21 98765-0001', status: 'connected', type: 'whatsapp', department: 'Vendas' },
-  { id: '2', name: 'Vendas 02', phone: '+55 21 98765-0002', status: 'connected', type: 'whatsapp', department: 'Vendas' },
-  { id: '3', name: 'Suporte', phone: '+55 21 98765-0003', status: 'disconnected', type: 'whatsapp', department: 'Suporte' },
-  { id: '4', name: 'Pós-vendas', phone: '+55 21 98765-0004', status: 'connected', type: 'whatsapp', department: 'Pós-vendas' },
-];
-
-const mockCustomFields = [
-  { id: '1', name: 'Tamanho de camisa', type: 'select', options: ['P', 'M', 'G', 'GG', 'G1', 'G2', 'G3', 'G4'], entity: 'contact', required: false },
-  { id: '2', name: 'Esporte preferido', type: 'text', options: [], entity: 'contact', required: false },
-  { id: '3', name: 'Time/Equipe', type: 'text', options: [], entity: 'contact', required: false },
-  { id: '4', name: 'Quantidade usual', type: 'number', options: [], entity: 'contact', required: false },
-  { id: '5', name: 'Prazo de entrega', type: 'date', options: [], entity: 'deal', required: true },
-];
+// Hooks
+import { useTeam, useUpdateTeamMember } from '@/hooks/useTeam';
+import { useDepartments, useCreateDepartment, useUpdateDepartment, useDeleteDepartment } from '@/hooks/useDepartments';
+import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/useChannels';
+import { useCustomFields, useCreateCustomField, useUpdateCustomField, useDeleteCustomField } from '@/hooks/useCustomFields';
+import { useNotificationSettings, useUpdateNotificationSettings } from '@/hooks/useNotificationSettings';
 
 const roleLabels: Record<string, string> = {
   admin: 'Administrador',
@@ -83,161 +56,270 @@ const fieldTypeLabels: Record<string, string> = {
   select: 'Seleção',
   date: 'Data',
   checkbox: 'Checkbox',
-  email: 'Email',
-  phone: 'Telefone',
+  multiselect: 'Multi-seleção',
 };
 
 export default function Settings() {
-  const [teamMembers, setTeamMembers] = useState(mockTeamMembers);
-  const [departments, setDepartments] = useState(mockDepartments);
-  const [channels] = useState(mockChannels);
-  const [customFields, setCustomFields] = useState(mockCustomFields);
-  
+  // Fetch real data
+  const { data: teamMembers = [], isLoading: loadingTeam } = useTeam();
+  const { data: departments = [], isLoading: loadingDepts } = useDepartments();
+  const { data: channels = [], isLoading: loadingChannels } = useChannels();
+  const { data: customFields = [], isLoading: loadingFields } = useCustomFields();
+  const { data: notificationSettings, isLoading: loadingNotifications } = useNotificationSettings();
+
+  // Mutations
+  const updateMember = useUpdateTeamMember();
+  const createDepartment = useCreateDepartment();
+  const updateDepartment = useUpdateDepartment();
+  const deleteDepartment = useDeleteDepartment();
+  const createChannel = useCreateChannel();
+  const updateChannel = useUpdateChannel();
+  const deleteChannel = useDeleteChannel();
+  const createField = useCreateCustomField();
+  const updateField = useUpdateCustomField();
+  const deleteField = useDeleteCustomField();
+  const updateNotifications = useUpdateNotificationSettings();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showDepartmentModal, setShowDepartmentModal] = useState(false);
   const [showFieldModal, setShowFieldModal] = useState(false);
+  const [showChannelModal, setShowChannelModal] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
-  
+
   // Member form state
   const [memberForm, setMemberForm] = useState({
-    name: '',
-    email: '',
+    full_name: '',
     phone: '',
-    role: 'seller',
-    department: '',
+    department_id: '',
   });
-  
+
   // Department form state
   const [departmentForm, setDepartmentForm] = useState({
     name: '',
     description: '',
     color: '#8B5CF6',
   });
-  
+
+  // Channel form state
+  const [channelForm, setChannelForm] = useState({
+    name: '',
+    phone: '',
+    department_id: '',
+  });
+
   // Custom field form state
   const [fieldForm, setFieldForm] = useState({
     name: '',
-    type: 'text',
+    field_type: 'text',
     options: '',
-    entity: 'contact',
-    required: false,
+    entity_type: 'contact',
+    is_required: false,
   });
 
   const filteredMembers = teamMembers.filter(member =>
-    member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    member.email.toLowerCase().includes(searchQuery.toLowerCase())
+    member.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleSaveMember = () => {
-    if (!memberForm.name || !memberForm.email) {
-      toast({ title: 'Erro', description: 'Preencha os campos obrigatórios', variant: 'destructive' });
-      return;
+  const handleSaveMember = async () => {
+    if (!editingItem) return;
+
+    try {
+      await updateMember.mutateAsync({
+        id: editingItem.id,
+        full_name: memberForm.full_name,
+        phone: memberForm.phone,
+        department_id: memberForm.department_id || null,
+      });
+      toast.success('Membro atualizado com sucesso');
+      setShowMemberModal(false);
+      setEditingItem(null);
+    } catch (error) {
+      toast.error('Erro ao atualizar membro');
     }
-    
-    if (editingItem) {
-      setTeamMembers(prev => prev.map(m => m.id === editingItem.id ? { ...m, ...memberForm } : m));
-      toast({ title: 'Membro atualizado', description: 'Dados salvos com sucesso' });
-    } else {
-      const newMember = { id: Date.now().toString(), ...memberForm, status: 'active', avatar: null };
-      setTeamMembers(prev => [...prev, newMember]);
-      toast({ title: 'Membro adicionado', description: 'Novo membro criado com sucesso' });
-    }
-    
-    setShowMemberModal(false);
-    setEditingItem(null);
-    setMemberForm({ name: '', email: '', phone: '', role: 'seller', department: '' });
   };
 
-  const handleSaveDepartment = () => {
+  const handleSaveDepartment = async () => {
     if (!departmentForm.name) {
-      toast({ title: 'Erro', description: 'Nome do departamento é obrigatório', variant: 'destructive' });
+      toast.error('Nome do departamento é obrigatório');
       return;
     }
-    
-    if (editingItem) {
-      setDepartments(prev => prev.map(d => d.id === editingItem.id ? { ...d, ...departmentForm } : d));
-      toast({ title: 'Departamento atualizado', description: 'Dados salvos com sucesso' });
-    } else {
-      const newDept = { id: Date.now().toString(), ...departmentForm, membersCount: 0 };
-      setDepartments(prev => [...prev, newDept]);
-      toast({ title: 'Departamento criado', description: 'Novo departamento adicionado' });
+
+    try {
+      if (editingItem) {
+        await updateDepartment.mutateAsync({
+          id: editingItem.id,
+          name: departmentForm.name,
+          description: departmentForm.description,
+          color: departmentForm.color,
+        });
+        toast.success('Departamento atualizado');
+      } else {
+        await createDepartment.mutateAsync({
+          name: departmentForm.name,
+          description: departmentForm.description,
+          color: departmentForm.color,
+          is_active: true,
+        });
+        toast.success('Departamento criado');
+      }
+      setShowDepartmentModal(false);
+      setEditingItem(null);
+      setDepartmentForm({ name: '', description: '', color: '#8B5CF6' });
+    } catch (error) {
+      toast.error('Erro ao salvar departamento');
     }
-    
-    setShowDepartmentModal(false);
-    setEditingItem(null);
-    setDepartmentForm({ name: '', description: '', color: '#8B5CF6' });
   };
 
-  const handleSaveField = () => {
+  const handleSaveChannel = async () => {
+    if (!channelForm.name || !channelForm.phone) {
+      toast.error('Nome e telefone são obrigatórios');
+      return;
+    }
+
+    try {
+      if (editingItem) {
+        await updateChannel.mutateAsync({
+          id: editingItem.id,
+          name: channelForm.name,
+          phone: channelForm.phone,
+          department_id: channelForm.department_id || null,
+        });
+        toast.success('Canal atualizado');
+      } else {
+        await createChannel.mutateAsync({
+          name: channelForm.name,
+          phone: channelForm.phone,
+          department_id: channelForm.department_id || null,
+        });
+        toast.success('Canal criado');
+      }
+      setShowChannelModal(false);
+      setEditingItem(null);
+      setChannelForm({ name: '', phone: '', department_id: '' });
+    } catch (error) {
+      toast.error('Erro ao salvar canal');
+    }
+  };
+
+  const handleSaveField = async () => {
     if (!fieldForm.name) {
-      toast({ title: 'Erro', description: 'Nome do campo é obrigatório', variant: 'destructive' });
+      toast.error('Nome do campo é obrigatório');
       return;
     }
-    
-    const options = fieldForm.type === 'select' ? fieldForm.options.split(',').map(o => o.trim()).filter(Boolean) : [];
-    
-    if (editingItem) {
-      setCustomFields(prev => prev.map(f => f.id === editingItem.id ? { ...f, ...fieldForm, options } : f));
-      toast({ title: 'Campo atualizado', description: 'Dados salvos com sucesso' });
-    } else {
-      const newField = { id: Date.now().toString(), ...fieldForm, options };
-      setCustomFields(prev => [...prev, newField]);
-      toast({ title: 'Campo criado', description: 'Novo campo customizado adicionado' });
+
+    const options = fieldForm.field_type === 'select' || fieldForm.field_type === 'multiselect'
+      ? fieldForm.options.split(',').map(o => o.trim()).filter(Boolean)
+      : [];
+
+    try {
+      if (editingItem) {
+        await updateField.mutateAsync({
+          id: editingItem.id,
+          name: fieldForm.name,
+          field_type: fieldForm.field_type,
+          entity_type: fieldForm.entity_type,
+          options,
+          is_required: fieldForm.is_required,
+        });
+        toast.success('Campo atualizado');
+      } else {
+        await createField.mutateAsync({
+          name: fieldForm.name,
+          field_type: fieldForm.field_type,
+          entity_type: fieldForm.entity_type,
+          options,
+          is_required: fieldForm.is_required,
+          order_position: customFields.length,
+        });
+        toast.success('Campo criado');
+      }
+      setShowFieldModal(false);
+      setEditingItem(null);
+      setFieldForm({ name: '', field_type: 'text', options: '', entity_type: 'contact', is_required: false });
+    } catch (error) {
+      toast.error('Erro ao salvar campo');
     }
-    
-    setShowFieldModal(false);
-    setEditingItem(null);
-    setFieldForm({ name: '', type: 'text', options: '', entity: 'contact', required: false });
   };
 
-  const handleEditMember = (member: typeof mockTeamMembers[0]) => {
+  const handleEditMember = (member: any) => {
     setEditingItem(member);
     setMemberForm({
-      name: member.name,
-      email: member.email,
-      phone: member.phone,
-      role: member.role,
-      department: member.department,
+      full_name: member.full_name || '',
+      phone: member.phone || '',
+      department_id: member.department_id || '',
     });
     setShowMemberModal(true);
   };
 
-  const handleEditDepartment = (dept: typeof mockDepartments[0]) => {
+  const handleEditDepartment = (dept: any) => {
     setEditingItem(dept);
     setDepartmentForm({
       name: dept.name,
-      description: dept.description,
-      color: dept.color,
+      description: dept.description || '',
+      color: dept.color || '#8B5CF6',
     });
     setShowDepartmentModal(true);
   };
 
-  const handleEditField = (field: typeof mockCustomFields[0]) => {
+  const handleEditChannel = (channel: any) => {
+    setEditingItem(channel);
+    setChannelForm({
+      name: channel.name,
+      phone: channel.phone,
+      department_id: channel.department_id || '',
+    });
+    setShowChannelModal(true);
+  };
+
+  const handleEditField = (field: any) => {
     setEditingItem(field);
     setFieldForm({
       name: field.name,
-      type: field.type,
-      options: field.options.join(', '),
-      entity: field.entity,
-      required: field.required,
+      field_type: field.field_type,
+      options: Array.isArray(field.options) ? field.options.join(', ') : '',
+      entity_type: field.entity_type,
+      is_required: field.is_required || false,
     });
     setShowFieldModal(true);
   };
 
-  const handleDeleteMember = (id: string) => {
-    setTeamMembers(prev => prev.filter(m => m.id !== id));
-    toast({ title: 'Membro removido', description: 'Membro excluído com sucesso' });
+  const handleDeleteDepartment = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este departamento?')) return;
+    try {
+      await deleteDepartment.mutateAsync(id);
+      toast.success('Departamento excluído');
+    } catch (error) {
+      toast.error('Erro ao excluir departamento');
+    }
   };
 
-  const handleDeleteDepartment = (id: string) => {
-    setDepartments(prev => prev.filter(d => d.id !== id));
-    toast({ title: 'Departamento removido', description: 'Departamento excluído com sucesso' });
+  const handleDeleteChannel = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este canal?')) return;
+    try {
+      await deleteChannel.mutateAsync(id);
+      toast.success('Canal excluído');
+    } catch (error) {
+      toast.error('Erro ao excluir canal');
+    }
   };
 
-  const handleDeleteField = (id: string) => {
-    setCustomFields(prev => prev.filter(f => f.id !== id));
-    toast({ title: 'Campo removido', description: 'Campo customizado excluído com sucesso' });
+  const handleDeleteField = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este campo?')) return;
+    try {
+      await deleteField.mutateAsync(id);
+      toast.success('Campo excluído');
+    } catch (error) {
+      toast.error('Erro ao excluir campo');
+    }
+  };
+
+  const handleNotificationChange = async (key: string, value: boolean) => {
+    try {
+      await updateNotifications.mutateAsync({ [key]: value });
+    } catch (error) {
+      toast.error('Erro ao atualizar notificação');
+    }
   };
 
   return (
@@ -294,7 +376,6 @@ export default function Settings() {
 
         {/* TAB 1: Team Management */}
         <TabsContent value="team" className="space-y-6">
-          {/* Header */}
           <div className="flex items-center justify-between">
             <div className="relative flex-1 max-w-md">
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -306,92 +387,80 @@ export default function Settings() {
                 className="w-full pl-10 pr-4 py-2.5 bg-card border border-border rounded-xl text-sm focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
             </div>
-            <button
-              onClick={() => {
-                setEditingItem(null);
-                setMemberForm({ name: '', email: '', phone: '', role: 'seller', department: '' });
-                setShowMemberModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all"
-            >
-              <Plus size={18} />
-              Novo Membro
-            </button>
           </div>
 
-          {/* Team Table */}
           <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-muted/50 border-b border-border">
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Membro</th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Contato</th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Função</th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Departamento</th>
-                  <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
-                  <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filteredMembers.map((member) => (
-                  <tr key={member.id} className="hover:bg-muted/30">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-semibold">
-                          {member.name.charAt(0)}
-                        </div>
-                        <span className="font-medium text-foreground">{member.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-sm text-foreground">
-                          <Mail size={14} className="text-muted-foreground" />
-                          {member.email}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Phone size={14} />
-                          {member.phone}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        member.role === 'admin' ? 'bg-status-error/10 text-status-error' :
-                        member.role === 'supervisor' ? 'bg-status-warning/10 text-status-warning' :
-                        'bg-primary/10 text-primary'
-                      }`}>
-                        {roleLabels[member.role]}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-foreground">{member.department}</td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        member.status === 'active' ? 'bg-status-success/10 text-status-success' : 'bg-muted text-muted-foreground'
-                      }`}>
-                        {member.status === 'active' ? 'Ativo' : 'Inativo'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => handleEditMember(member)}
-                          className="p-2 hover:bg-muted rounded-lg transition-colors"
-                        >
-                          <Edit3 size={16} className="text-muted-foreground" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteMember(member.id)}
-                          className="p-2 hover:bg-status-error/10 rounded-lg transition-colors"
-                        >
-                          <Trash2 size={16} className="text-status-error" />
-                        </button>
-                      </div>
-                    </td>
+            {loadingTeam ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-muted/50 border-b border-border">
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Membro</th>
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Contato</th>
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Função</th>
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Departamento</th>
+                    <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredMembers.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                        {searchQuery ? 'Nenhum membro encontrado' : 'Nenhum membro cadastrado'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredMembers.map((member) => (
+                      <tr key={member.id} className="hover:bg-muted/30">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-semibold">
+                              {member.full_name?.charAt(0) || '?'}
+                            </div>
+                            <span className="font-medium text-foreground">{member.full_name || 'Sem nome'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-1">
+                            {member.phone && (
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Phone size={14} />
+                                {member.phone}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                            member.role === 'admin' ? 'bg-status-error/10 text-status-error' :
+                            member.role === 'supervisor' ? 'bg-status-warning/10 text-status-warning' :
+                            'bg-primary/10 text-primary'
+                          }`}>
+                            {roleLabels[member.role || 'user']}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-foreground">
+                          {member.department?.name || '-'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleEditMember(member)}
+                              className="p-2 hover:bg-muted rounded-lg transition-colors"
+                            >
+                              <Edit3 size={16} className="text-muted-foreground" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </TabsContent>
 
@@ -412,95 +481,138 @@ export default function Settings() {
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            {departments.map((dept) => (
-              <div key={dept.id} className="bg-card rounded-2xl border border-border p-6 shadow-sm hover:shadow-md transition-all">
-                <div className="flex items-start justify-between mb-4">
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${dept.color}20` }}
-                  >
-                    <Building2 size={24} style={{ color: dept.color }} />
+          {loadingDepts ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : departments.length === 0 ? (
+            <div className="bg-card rounded-2xl border border-border p-12 text-center">
+              <Building2 size={48} className="mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">Nenhum departamento cadastrado</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              {departments.map((dept) => (
+                <div key={dept.id} className="bg-card rounded-2xl border border-border p-6 shadow-sm hover:shadow-md transition-all">
+                  <div className="flex items-start justify-between mb-4">
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: `${dept.color}20` }}
+                    >
+                      <Building2 size={24} style={{ color: dept.color || '#8B5CF6' }} />
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="p-1.5 hover:bg-muted rounded-lg transition-colors">
+                          <MoreVertical size={16} className="text-muted-foreground" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEditDepartment(dept)}>
+                          <Edit3 size={14} className="mr-2" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDeleteDepartment(dept.id)} className="text-status-error">
+                          <Trash2 size={14} className="mr-2" />
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="p-1.5 hover:bg-muted rounded-lg transition-colors">
-                        <MoreVertical size={16} className="text-muted-foreground" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleEditDepartment(dept)}>
-                        <Edit3 size={14} className="mr-2" />
-                        Editar
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDeleteDepartment(dept.id)} className="text-status-error">
-                        <Trash2 size={14} className="mr-2" />
-                        Excluir
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <h3 className="text-lg font-semibold text-foreground mb-1">{dept.name}</h3>
+                  <p className="text-sm text-muted-foreground mb-4">{dept.description || 'Sem descrição'}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      {dept.member_count || 0} {dept.member_count === 1 ? 'membro' : 'membros'}
+                    </span>
+                    <ChevronRight size={16} className="text-muted-foreground" />
+                  </div>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-1">{dept.name}</h3>
-                <p className="text-sm text-muted-foreground mb-4">{dept.description}</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    {dept.membersCount} {dept.membersCount === 1 ? 'membro' : 'membros'}
-                  </span>
-                  <ChevronRight size={16} className="text-muted-foreground" />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         {/* TAB 3: Channels */}
         <TabsContent value="channels" className="space-y-6">
           <div className="flex items-center justify-between">
             <p className="text-muted-foreground">Gerencie seus canais de atendimento WhatsApp</p>
-            <button className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all">
+            <button
+              onClick={() => {
+                setEditingItem(null);
+                setChannelForm({ name: '', phone: '', department_id: '' });
+                setShowChannelModal(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all"
+            >
               <Plus size={18} />
-              Conectar Canal
+              Novo Canal
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {channels.map((channel) => (
-              <div key={channel.id} className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                      channel.status === 'connected' ? 'bg-status-success/10' : 'bg-status-error/10'
-                    }`}>
-                      <MessageSquare size={24} className={
-                        channel.status === 'connected' ? 'text-status-success' : 'text-status-error'
-                      } />
+          {loadingChannels ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : channels.length === 0 ? (
+            <div className="bg-card rounded-2xl border border-border p-12 text-center">
+              <MessageSquare size={48} className="mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">Nenhum canal cadastrado</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              {channels.map((channel) => (
+                <div key={channel.id} className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                        channel.status === 'connected' ? 'bg-status-success/10' : 'bg-status-error/10'
+                      }`}>
+                        <MessageSquare size={24} className={
+                          channel.status === 'connected' ? 'text-status-success' : 'text-status-error'
+                        } />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-foreground">{channel.name}</h3>
+                        <p className="text-sm text-muted-foreground">{channel.phone}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-foreground">{channel.name}</h3>
-                      <p className="text-sm text-muted-foreground">{channel.phone}</p>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                        channel.status === 'connected'
+                          ? 'bg-status-success/10 text-status-success'
+                          : 'bg-status-error/10 text-status-error'
+                      }`}>
+                        {channel.status === 'connected' ? 'Conectado' : 'Desconectado'}
+                      </span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="p-1.5 hover:bg-muted rounded-lg transition-colors">
+                            <MoreVertical size={16} className="text-muted-foreground" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEditChannel(channel)}>
+                            <Edit3 size={14} className="mr-2" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDeleteChannel(channel.id)} className="text-status-error">
+                            <Trash2 size={14} className="mr-2" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                    channel.status === 'connected' 
-                      ? 'bg-status-success/10 text-status-success' 
-                      : 'bg-status-error/10 text-status-error'
-                  }`}>
-                    {channel.status === 'connected' ? 'Conectado' : 'Desconectado'}
-                  </span>
+                  <div className="pt-4 border-t border-border">
+                    <span className="text-sm text-muted-foreground">
+                      Departamento: {channel.department?.name || 'Não definido'}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between pt-4 border-t border-border">
-                  <span className="text-sm text-muted-foreground">Departamento: {channel.department}</span>
-                  <button className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                    channel.status === 'connected'
-                      ? 'bg-status-error/10 text-status-error hover:bg-status-error/20'
-                      : 'bg-status-success/10 text-status-success hover:bg-status-success/20'
-                  }`}>
-                    {channel.status === 'connected' ? 'Desconectar' : 'Reconectar'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         {/* TAB 4: Custom Fields */}
@@ -510,7 +622,7 @@ export default function Settings() {
             <button
               onClick={() => {
                 setEditingItem(null);
-                setFieldForm({ name: '', type: 'text', options: '', entity: 'contact', required: false });
+                setFieldForm({ name: '', field_type: 'text', options: '', entity_type: 'contact', is_required: false });
                 setShowFieldModal(true);
               }}
               className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all"
@@ -521,110 +633,140 @@ export default function Settings() {
           </div>
 
           <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-muted/50 border-b border-border">
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome do Campo</th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo</th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Entidade</th>
-                  <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Obrigatório</th>
-                  <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {customFields.map((field) => (
-                  <tr key={field.id} className="hover:bg-muted/30">
-                    <td className="px-6 py-4">
-                      <div>
-                        <span className="font-medium text-foreground">{field.name}</span>
-                        {field.options.length > 0 && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Opções: {field.options.join(', ')}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 bg-muted rounded-lg text-xs font-medium text-foreground">
-                        {fieldTypeLabels[field.type]}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-foreground capitalize">{field.entity === 'contact' ? 'Contato' : 'Negócio'}</td>
-                    <td className="px-6 py-4 text-center">
-                      {field.required ? (
-                        <Check size={18} className="text-status-success mx-auto" />
-                      ) : (
-                        <X size={18} className="text-muted-foreground mx-auto" />
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => handleEditField(field)}
-                          className="p-2 hover:bg-muted rounded-lg transition-colors"
-                        >
-                          <Edit3 size={16} className="text-muted-foreground" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteField(field.id)}
-                          className="p-2 hover:bg-status-error/10 rounded-lg transition-colors"
-                        >
-                          <Trash2 size={16} className="text-status-error" />
-                        </button>
-                      </div>
-                    </td>
+            {loadingFields ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-muted/50 border-b border-border">
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome do Campo</th>
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo</th>
+                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Entidade</th>
+                    <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Obrigatório</th>
+                    <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {customFields.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                        Nenhum campo customizado cadastrado
+                      </td>
+                    </tr>
+                  ) : (
+                    customFields.map((field) => (
+                      <tr key={field.id} className="hover:bg-muted/30">
+                        <td className="px-6 py-4">
+                          <div>
+                            <span className="font-medium text-foreground">{field.name}</span>
+                            {Array.isArray(field.options) && field.options.length > 0 && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Opções: {field.options.join(', ')}
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="px-2.5 py-1 bg-muted rounded-lg text-xs font-medium text-foreground">
+                            {fieldTypeLabels[field.field_type] || field.field_type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-foreground">
+                          {field.entity_type === 'contact' ? 'Contato' : 'Negócio'}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {field.is_required ? (
+                            <Check size={18} className="text-status-success mx-auto" />
+                          ) : (
+                            <X size={18} className="text-muted-foreground mx-auto" />
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleEditField(field)}
+                              className="p-2 hover:bg-muted rounded-lg transition-colors"
+                            >
+                              <Edit3 size={16} className="text-muted-foreground" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteField(field.id)}
+                              className="p-2 hover:bg-status-error/10 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={16} className="text-status-error" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </TabsContent>
 
         {/* TAB 5: Notifications */}
         <TabsContent value="notifications" className="space-y-6">
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-foreground mb-6">Preferências de Notificação</h3>
-            
-            <div className="space-y-6">
-              {[
-                { id: 'new_message', title: 'Novas mensagens', description: 'Receba notificação quando uma nova mensagem chegar', defaultChecked: true },
-                { id: 'new_deal', title: 'Novos negócios', description: 'Seja notificado quando um novo negócio for criado', defaultChecked: true },
-                { id: 'deal_stage', title: 'Mudança de etapa', description: 'Notifique quando um negócio mudar de etapa no funil', defaultChecked: false },
-                { id: 'sla_warning', title: 'Alerta de SLA', description: 'Avise quando um atendimento estiver perto do limite', defaultChecked: true },
-                { id: 'daily_summary', title: 'Resumo diário', description: 'Receba um resumo diário das atividades', defaultChecked: false },
-              ].map((setting) => (
-                <div key={setting.id} className="flex items-center justify-between py-4 border-b border-border last:border-0">
-                  <div>
-                    <h4 className="font-medium text-foreground">{setting.title}</h4>
-                    <p className="text-sm text-muted-foreground">{setting.description}</p>
-                  </div>
-                  <Switch defaultChecked={setting.defaultChecked} />
-                </div>
-              ))}
+          {loadingNotifications ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                <h3 className="text-lg font-semibold text-foreground mb-6">Preferências de Notificação</h3>
 
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-foreground mb-6">Canais de Notificação</h3>
-            
-            <div className="space-y-4">
-              {[
-                { id: 'email', title: 'Email', icon: Mail, enabled: true },
-                { id: 'push', title: 'Push (Navegador)', icon: Bell, enabled: true },
-                { id: 'whatsapp', title: 'WhatsApp', icon: MessageSquare, enabled: false },
-              ].map((channel) => (
-                <div key={channel.id} className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                      <channel.icon size={20} className="text-primary" />
+                <div className="space-y-6">
+                  {[
+                    { key: 'new_messages', title: 'Novas mensagens', description: 'Receba notificação quando uma nova mensagem chegar' },
+                    { key: 'new_deals', title: 'Novos negócios', description: 'Seja notificado quando um novo negócio for criado' },
+                    { key: 'stage_changes', title: 'Mudança de etapa', description: 'Notifique quando um negócio mudar de etapa no funil' },
+                    { key: 'sla_alerts', title: 'Alerta de SLA', description: 'Avise quando um atendimento estiver perto do limite' },
+                    { key: 'daily_summary', title: 'Resumo diário', description: 'Receba um resumo diário das atividades' },
+                  ].map((setting) => (
+                    <div key={setting.key} className="flex items-center justify-between py-4 border-b border-border last:border-0">
+                      <div>
+                        <h4 className="font-medium text-foreground">{setting.title}</h4>
+                        <p className="text-sm text-muted-foreground">{setting.description}</p>
+                      </div>
+                      <Switch
+                        checked={notificationSettings?.[setting.key as keyof typeof notificationSettings] as boolean ?? false}
+                        onCheckedChange={(checked) => handleNotificationChange(setting.key, checked)}
+                      />
                     </div>
-                    <span className="font-medium text-foreground">{channel.title}</span>
-                  </div>
-                  <Switch defaultChecked={channel.enabled} />
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+
+              <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                <h3 className="text-lg font-semibold text-foreground mb-6">Canais de Notificação</h3>
+
+                <div className="space-y-4">
+                  {[
+                    { key: 'email_enabled', title: 'Email', icon: Mail },
+                    { key: 'push_enabled', title: 'Push (Navegador)', icon: Bell },
+                    { key: 'whatsapp_enabled', title: 'WhatsApp', icon: MessageSquare },
+                  ].map((channel) => (
+                    <div key={channel.key} className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                          <channel.icon size={20} className="text-primary" />
+                        </div>
+                        <span className="font-medium text-foreground">{channel.title}</span>
+                      </div>
+                      <Switch
+                        checked={notificationSettings?.[channel.key as keyof typeof notificationSettings] as boolean ?? false}
+                        onCheckedChange={(checked) => handleNotificationChange(channel.key, checked)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -632,31 +774,19 @@ export default function Settings() {
       <Dialog open={showMemberModal} onOpenChange={setShowMemberModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingItem ? 'Editar Membro' : 'Novo Membro'}</DialogTitle>
-            <DialogDescription>
-              {editingItem ? 'Atualize os dados do membro da equipe' : 'Adicione um novo membro à equipe'}
-            </DialogDescription>
+            <DialogTitle>Editar Membro</DialogTitle>
+            <DialogDescription>Atualize os dados do membro da equipe</DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Nome completo *</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Nome completo</label>
               <input
                 type="text"
-                value={memberForm.name}
-                onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20"
+                value={memberForm.full_name}
+                onChange={(e) => setMemberForm({ ...memberForm, full_name: e.target.value })}
+                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                 placeholder="Nome do membro"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Email *</label>
-              <input
-                type="email"
-                value={memberForm.email}
-                onChange={(e) => setMemberForm({ ...memberForm, email: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20"
-                placeholder="email@exemplo.com"
               />
             </div>
             <div>
@@ -665,40 +795,25 @@ export default function Settings() {
                 type="tel"
                 value={memberForm.phone}
                 onChange={(e) => setMemberForm({ ...memberForm, phone: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                 placeholder="+55 21 99999-0000"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Função</label>
-                <select
-                  value={memberForm.role}
-                  onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="seller">Vendedor</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="manager">Gerente</option>
-                  <option value="admin">Administrador</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Departamento</label>
-                <select
-                  value={memberForm.department}
-                  onChange={(e) => setMemberForm({ ...memberForm, department: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">Selecione</option>
-                  {departments.map((dept) => (
-                    <option key={dept.id} value={dept.name}>{dept.name}</option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">Departamento</label>
+              <select
+                value={memberForm.department_id}
+                onChange={(e) => setMemberForm({ ...memberForm, department_id: e.target.value })}
+                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+              >
+                <option value="">Selecione</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>{dept.name}</option>
+                ))}
+              </select>
             </div>
           </div>
-          
+
           <DialogFooter>
             <button
               onClick={() => setShowMemberModal(false)}
@@ -708,9 +823,10 @@ export default function Settings() {
             </button>
             <button
               onClick={handleSaveMember}
-              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium"
+              disabled={updateMember.isPending}
+              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium disabled:opacity-50"
             >
-              {editingItem ? 'Salvar' : 'Criar'}
+              {updateMember.isPending ? 'Salvando...' : 'Salvar'}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -722,7 +838,7 @@ export default function Settings() {
           <DialogHeader>
             <DialogTitle>{editingItem ? 'Editar Departamento' : 'Novo Departamento'}</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">Nome *</label>
@@ -730,7 +846,7 @@ export default function Settings() {
                 type="text"
                 value={departmentForm.name}
                 onChange={(e) => setDepartmentForm({ ...departmentForm, name: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                 placeholder="Nome do departamento"
               />
             </div>
@@ -739,7 +855,7 @@ export default function Settings() {
               <textarea
                 value={departmentForm.description}
                 onChange={(e) => setDepartmentForm({ ...departmentForm, description: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none"
+                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none bg-background"
                 rows={3}
                 placeholder="Descrição do departamento"
               />
@@ -754,7 +870,7 @@ export default function Settings() {
               />
             </div>
           </div>
-          
+
           <DialogFooter>
             <button
               onClick={() => setShowDepartmentModal(false)}
@@ -764,80 +880,146 @@ export default function Settings() {
             </button>
             <button
               onClick={handleSaveDepartment}
-              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium"
+              disabled={createDepartment.isPending || updateDepartment.isPending}
+              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium disabled:opacity-50"
             >
-              {editingItem ? 'Salvar' : 'Criar'}
+              {(createDepartment.isPending || updateDepartment.isPending) ? 'Salvando...' : editingItem ? 'Salvar' : 'Criar'}
             </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Custom Field Modal */}
+      {/* Channel Modal */}
+      <Dialog open={showChannelModal} onOpenChange={setShowChannelModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingItem ? 'Editar Canal' : 'Novo Canal'}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">Nome *</label>
+              <input
+                type="text"
+                value={channelForm.name}
+                onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })}
+                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                placeholder="Ex: Vendas 01"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">Telefone *</label>
+              <input
+                type="tel"
+                value={channelForm.phone}
+                onChange={(e) => setChannelForm({ ...channelForm, phone: e.target.value })}
+                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                placeholder="+55 21 99999-0000"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">Departamento</label>
+              <select
+                value={channelForm.department_id}
+                onChange={(e) => setChannelForm({ ...channelForm, department_id: e.target.value })}
+                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+              >
+                <option value="">Selecione</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>{dept.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <button
+              onClick={() => setShowChannelModal(false)}
+              className="px-4 py-2 text-muted-foreground hover:bg-muted rounded-lg"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSaveChannel}
+              disabled={createChannel.isPending || updateChannel.isPending}
+              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium disabled:opacity-50"
+            >
+              {(createChannel.isPending || updateChannel.isPending) ? 'Salvando...' : editingItem ? 'Salvar' : 'Criar'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Field Modal */}
       <Dialog open={showFieldModal} onOpenChange={setShowFieldModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingItem ? 'Editar Campo' : 'Novo Campo Customizado'}</DialogTitle>
+            <DialogTitle>{editingItem ? 'Editar Campo' : 'Novo Campo'}</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Nome do campo *</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Nome *</label>
               <input
                 type="text"
                 value={fieldForm.name}
                 onChange={(e) => setFieldForm({ ...fieldForm, name: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20"
-                placeholder="Ex: Tamanho de camisa"
+                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                placeholder="Nome do campo"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Tipo</label>
                 <select
-                  value={fieldForm.type}
-                  onChange={(e) => setFieldForm({ ...fieldForm, type: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  value={fieldForm.field_type}
+                  onChange={(e) => setFieldForm({ ...fieldForm, field_type: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                 >
                   <option value="text">Texto</option>
                   <option value="number">Número</option>
-                  <option value="select">Seleção</option>
                   <option value="date">Data</option>
+                  <option value="select">Seleção</option>
+                  <option value="multiselect">Multi-seleção</option>
                   <option value="checkbox">Checkbox</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Entidade</label>
                 <select
-                  value={fieldForm.entity}
-                  onChange={(e) => setFieldForm({ ...fieldForm, entity: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  value={fieldForm.entity_type}
+                  onChange={(e) => setFieldForm({ ...fieldForm, entity_type: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                 >
                   <option value="contact">Contato</option>
                   <option value="deal">Negócio</option>
                 </select>
               </div>
             </div>
-            {fieldForm.type === 'select' && (
+            {(fieldForm.field_type === 'select' || fieldForm.field_type === 'multiselect') && (
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Opções (separadas por vírgula)</label>
                 <input
                   type="text"
                   value={fieldForm.options}
                   onChange={(e) => setFieldForm({ ...fieldForm, options: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  placeholder="P, M, G, GG"
+                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                  placeholder="Opção 1, Opção 2, Opção 3"
                 />
               </div>
             )}
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={fieldForm.required}
-                onCheckedChange={(checked) => setFieldForm({ ...fieldForm, required: checked })}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="required"
+                checked={fieldForm.is_required}
+                onChange={(e) => setFieldForm({ ...fieldForm, is_required: e.target.checked })}
+                className="rounded border-border"
               />
-              <span className="text-sm text-foreground">Campo obrigatório</span>
+              <label htmlFor="required" className="text-sm text-foreground">Campo obrigatório</label>
             </div>
           </div>
-          
+
           <DialogFooter>
             <button
               onClick={() => setShowFieldModal(false)}
@@ -847,9 +1029,10 @@ export default function Settings() {
             </button>
             <button
               onClick={handleSaveField}
-              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium"
+              disabled={createField.isPending || updateField.isPending}
+              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium disabled:opacity-50"
             >
-              {editingItem ? 'Salvar' : 'Criar'}
+              {(createField.isPending || updateField.isPending) ? 'Salvando...' : editingItem ? 'Salvar' : 'Criar'}
             </button>
           </DialogFooter>
         </DialogContent>
