@@ -919,25 +919,71 @@ function EditUserModal({ open, onClose, user, departments }: {
   const [isActive, setIsActive] = useState(true);
   const [showPermissions, setShowPermissions] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingEmail, setLoadingEmail] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [originalEmail, setOriginalEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordSection, setShowPasswordSection] = useState(false);
   const queryClient = useQueryClient();
+
+  // Fetch user email from auth
+  const fetchUserEmail = async (userId: string) => {
+    setLoadingEmail(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(
+        `https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/get-user-details`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`
+          },
+          body: JSON.stringify({ userId })
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setEmail(data.email || '');
+        setOriginalEmail(data.email || '');
+      }
+    } catch (error) {
+      console.error('Error fetching user email:', error);
+    } finally {
+      setLoadingEmail(false);
+    }
+  };
 
   // Update state when user changes
   useEffect(() => {
-    if (user) {
+    if (user && open) {
       setRole(user.role || 'vendedor');
       setDepartmentId(user.department_id || '');
       setIsActive(user.is_active !== false);
+      setFullName(user.full_name || '');
+      setPhone(user.phone || '');
+      setNewPassword('');
+      setShowPasswordSection(false);
+      setEmail('');
+      setOriginalEmail('');
+      fetchUserEmail(user.id);
     }
-  }, [user]);
+  }, [user, open]);
 
   const handleSubmit = async () => {
     if (!user) return;
 
     setIsLoading(true);
     try {
-      const { error } = await supabase
+      // Update profile
+      const { error: profileError } = await supabase
         .from('profiles')
         .update({
+          full_name: fullName,
+          phone,
           role,
           department_id: departmentId || null,
           is_active: isActive,
@@ -945,14 +991,40 @@ function EditUserModal({ open, onClose, user, departments }: {
         })
         .eq('id', user.id);
 
-      if (error) throw error;
+      if (profileError) throw profileError;
+
+      // Update email/password via edge function if changed
+      if (email !== originalEmail || newPassword) {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        const response = await fetch(
+          `https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/update-user`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token}`
+            },
+            body: JSON.stringify({
+              userId: user.id,
+              email: email !== originalEmail ? email : undefined,
+              password: newPassword || undefined
+            })
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao atualizar credenciais');
+        }
+      }
 
       toast.success('Usuário atualizado com sucesso!');
       queryClient.invalidateQueries({ queryKey: ['users'] });
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error('Erro ao atualizar usuário');
+      toast.error(error.message || 'Erro ao atualizar usuário');
     } finally {
       setIsLoading(false);
     }
@@ -964,25 +1036,122 @@ function EditUserModal({ open, onClose, user, departments }: {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl">Editar Membro</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-6 py-4">
-          {/* User Info Header */}
+          {/* User Avatar Header */}
           <div className="flex items-center gap-4 p-4 bg-muted rounded-xl">
             <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-primary-foreground font-bold text-xl">
-              {user.full_name?.charAt(0)?.toUpperCase() || '?'}
+              {fullName?.charAt(0)?.toUpperCase() || '?'}
             </div>
-            <div>
+            <div className="flex-1">
               <div className="font-semibold text-foreground text-lg">
-                {user.full_name || 'Sem nome'}
+                {fullName || 'Sem nome'}
               </div>
               <div className="text-sm text-muted-foreground">
-                {user.phone || '-'}
+                {email || '-'}
               </div>
             </div>
+          </div>
+
+          {/* Personal Info Section */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-foreground flex items-center gap-2">
+              <UserCog size={16} />
+              Informações Pessoais
+            </h3>
+            
+            {/* Full Name */}
+            <div>
+              <Label className="text-sm mb-2 block">Nome Completo</Label>
+              <Input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Nome do usuário"
+              />
+            </div>
+
+            {/* Email */}
+            <div>
+              <Label className="text-sm mb-2 block flex items-center gap-2">
+                <Mail size={14} />
+                E-mail
+              </Label>
+              <div className="relative">
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={loadingEmail ? "Carregando..." : "email@exemplo.com"}
+                  disabled={loadingEmail}
+                />
+                {loadingEmail && (
+                  <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />
+                )}
+              </div>
+            </div>
+
+            {/* Phone */}
+            <div>
+              <Label className="text-sm mb-2 block flex items-center gap-2">
+                <Phone size={14} />
+                Telefone
+              </Label>
+              <Input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+          </div>
+
+          {/* Password Section */}
+          <div className="border border-border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowPasswordSection(!showPasswordSection)}
+              className="w-full flex items-center justify-between p-4 bg-muted hover:bg-muted/80 transition-colors"
+            >
+              <span className="font-medium text-foreground flex items-center gap-2">
+                <Lock size={16} />
+                Alterar Senha
+              </span>
+              {showPasswordSection ? (
+                <ChevronUp size={18} className="text-muted-foreground" />
+              ) : (
+                <ChevronDown size={18} className="text-muted-foreground" />
+              )}
+            </button>
+            
+            {showPasswordSection && (
+              <div className="p-4 space-y-3 bg-card">
+                <div>
+                  <Label className="text-sm mb-2 block">Nova Senha</Label>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Deixe em branco para manter a atual"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Mínimo 6 caracteres. Deixe em branco para não alterar.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Role Selection */}
@@ -1093,12 +1262,12 @@ function EditUserModal({ open, onClose, user, departments }: {
           </Button>
           <Button 
             onClick={handleSubmit}
-            disabled={isLoading}
+            disabled={isLoading || !fullName}
             className="gap-2 btn-gradient text-white"
           >
             {isLoading ? (
               <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <Loader2 size={16} className="animate-spin" />
                 Salvando...
               </>
             ) : (

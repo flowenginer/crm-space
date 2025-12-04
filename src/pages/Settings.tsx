@@ -23,6 +23,8 @@ import {
   Key,
   Monitor,
   Tag,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { UserManagement } from '@/components/settings/UserManagement';
 import { RoleManagement } from '@/components/settings/RoleManagement';
@@ -45,6 +47,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 // Hooks
 import { useTeam, useUpdateTeamMember } from '@/hooks/useTeam';
@@ -71,6 +75,8 @@ const fieldTypeLabels: Record<string, string> = {
 };
 
 export default function Settings() {
+  const { user } = useAuth();
+  
   // Fetch real data
   const { data: teamMembers = [], isLoading: loadingTeam } = useTeam();
   const { data: departments = [], isLoading: loadingDepts } = useDepartments();
@@ -97,6 +103,14 @@ export default function Settings() {
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [showChannelModal, setShowChannelModal] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
+
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   // Member form state
   const [memberForm, setMemberForm] = useState({
@@ -330,6 +344,57 @@ export default function Settings() {
       await updateNotifications.mutateAsync({ [key]: value });
     } catch (error) {
       toast.error('Erro ao atualizar notificação');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!user) {
+      toast.error('Usuário não autenticado');
+      return;
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      toast.error('A nova senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error('As senhas não conferem');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(
+        `https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/update-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`
+          },
+          body: JSON.stringify({
+            userId: user.id,
+            password: newPassword
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Erro ao alterar senha');
+      }
+
+      toast.success('Senha alterada com sucesso!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao alterar senha');
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -673,34 +738,58 @@ export default function Settings() {
         <TabsContent value="security" className="space-y-6">
           {/* Change Password */}
           <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-foreground mb-6">Alterar Senha</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-6">Alterar Minha Senha</h3>
             <div className="max-w-md space-y-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Senha atual</label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                />
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Nova senha</label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                />
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Mínimo 6 caracteres</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Confirmar nova senha</label>
                 <input
                   type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                  className={`w-full px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-primary/20 bg-background ${
+                    confirmPassword && newPassword !== confirmPassword 
+                      ? 'border-destructive' 
+                      : 'border-border focus:border-primary'
+                  }`}
                 />
+                {confirmPassword && newPassword !== confirmPassword && (
+                  <p className="text-xs text-destructive mt-1">As senhas não conferem</p>
+                )}
               </div>
-              <button className="px-6 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all">
-                Alterar senha
+              <button 
+                onClick={handleChangePassword}
+                disabled={changingPassword || !newPassword || newPassword !== confirmPassword}
+                className="px-6 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {changingPassword ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Alterando...
+                  </>
+                ) : (
+                  'Alterar senha'
+                )}
               </button>
             </div>
           </div>
