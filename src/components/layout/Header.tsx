@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 interface HeaderProps {
   title: string;
@@ -67,9 +68,13 @@ export function Header({ title, onMenuClick }: HeaderProps) {
               selected={date}
               onSelect={setDate}
               initialFocus
+              className="pointer-events-auto"
             />
           </PopoverContent>
         </Popover>
+
+        {/* Theme Toggle */}
+        <ThemeToggle />
 
         {/* Notifications */}
         <Button 
@@ -78,7 +83,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
           className="relative h-11 w-11 rounded-xl border-border/50 hover:bg-muted hover:border-primary/50 transition-all"
         >
           <Bell className="h-5 w-5 text-muted-foreground" />
-          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white border-2 border-card shadow-sm">
+          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground border-2 border-card shadow-sm">
             5
           </span>
         </Button>
