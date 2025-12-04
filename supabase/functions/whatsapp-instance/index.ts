@@ -10,7 +10,7 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook';
   providerCode?: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -829,6 +829,120 @@ async function getEvolutionStatus(config: ProviderConfig, instanceName: string) 
 }
 
 // =====================================================
+// SET WEBHOOK - Reconfigurar webhook de instância existente
+// =====================================================
+async function setEvolutionWebhook(config: ProviderConfig, instanceName: string, webhookUrl: string) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[Evolution] Setting webhook for:', instanceName, 'URL:', webhookUrl);
+  
+  try {
+    const response = await fetch(`${baseUrl}/webhook/set/${instanceName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': config.adminToken,
+      },
+      body: JSON.stringify({
+        url: webhookUrl,
+        webhook_by_events: false,
+        webhook_base64: true,
+        events: [
+          'QRCODE_UPDATED',
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE', 
+          'CONNECTION_UPDATE',
+          'SEND_MESSAGE'
+        ]
+      }),
+    });
+    
+    const text = await response.text();
+    console.log('[Evolution SetWebhook] Response:', response.status, text);
+    
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 200)}` };
+    }
+    
+    return { success: true, message: 'Webhook configurado com sucesso!' };
+  } catch (err: any) {
+    console.error('[Evolution SetWebhook] Error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function setUAZAPIWebhook(config: ProviderConfig, instanceName: string, webhookUrl: string) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[UAZAPI] Setting webhook for:', instanceName, 'URL:', webhookUrl);
+  
+  try {
+    const response = await fetch(`${baseUrl}/webhook/set/${instanceName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'admintoken': config.adminToken,
+      },
+      body: JSON.stringify({
+        url: webhookUrl,
+        webhook_by_events: false,
+        webhook_base64: true,
+        events: [
+          'QRCODE_UPDATED',
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE',
+          'CONNECTION_UPDATE',
+          'SEND_MESSAGE'
+        ]
+      }),
+    });
+    
+    // Try apikey if admintoken fails
+    if (response.status === 401) {
+      console.log('[UAZAPI] 401 with admintoken, trying apikey...');
+      const retryRes = await fetch(`${baseUrl}/webhook/set/${instanceName}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': config.adminToken,
+        },
+        body: JSON.stringify({
+          url: webhookUrl,
+          webhook_by_events: false,
+          webhook_base64: true,
+          events: [
+            'QRCODE_UPDATED',
+            'MESSAGES_UPSERT',
+            'MESSAGES_UPDATE',
+            'CONNECTION_UPDATE',
+            'SEND_MESSAGE'
+          ]
+        }),
+      });
+      
+      const text = await retryRes.text();
+      console.log('[UAZAPI SetWebhook] Retry response:', retryRes.status, text);
+      
+      if (!retryRes.ok) {
+        return { success: false, error: `HTTP ${retryRes.status}: ${text.substring(0, 200)}` };
+      }
+      
+      return { success: true, message: 'Webhook configurado com sucesso!' };
+    }
+    
+    const text = await response.text();
+    console.log('[UAZAPI SetWebhook] Response:', response.status, text);
+    
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 200)}` };
+    }
+    
+    return { success: true, message: 'Webhook configurado com sucesso!' };
+  } catch (err: any) {
+    console.error('[UAZAPI SetWebhook] Error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// =====================================================
 // MAIN HANDLER
 // =====================================================
 serve(async (req) => {
@@ -1190,6 +1304,24 @@ serve(async (req) => {
           break;
         case 'evolution':
           result = await getEvolutionStatus(config, instanceId!);
+          break;
+        default:
+          result = { success: false, error: 'Provedor desconhecido' };
+      }
+    } else if (action === 'setWebhook') {
+      // Reconfigure webhook for existing instance
+      const finalWebhookUrl = webhookUrl || `${supabaseUrl}/functions/v1/whatsapp-webhook?provider=${providerCode}`;
+      console.log('[WhatsApp Instance] Setting webhook for:', instanceId, 'URL:', finalWebhookUrl);
+      
+      switch (providerCode) {
+        case 'zapi':
+          result = { success: false, error: 'Z-API não suporta reconfiguração de webhook via esta API' };
+          break;
+        case 'uazapi':
+          result = await setUAZAPIWebhook(config, instanceId!, finalWebhookUrl);
+          break;
+        case 'evolution':
+          result = await setEvolutionWebhook(config, instanceId!, finalWebhookUrl);
           break;
         default:
           result = { success: false, error: 'Provedor desconhecido' };
