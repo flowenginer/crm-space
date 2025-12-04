@@ -116,13 +116,14 @@ async function getZAPIQRCode(instanceId: string, token: string, clientToken?: st
 }
 
 // =====================================================
-// UAZAPI (baseado em Evolution API)
+// UAZAPI (usa prefixo /manager/ nos endpoints)
 // =====================================================
 async function createUAZAPIInstance(config: ProviderConfig, instanceName: string, webhookUrl: string) {
   console.log('[UAZAPI] Creating instance:', instanceName, 'at', config.baseUrl);
   console.log('[UAZAPI] Token (primeiros 8 chars):', config.adminToken?.substring(0, 8) + '...');
   
-  const url = `${config.baseUrl}/instance/create`;
+  // UAZAPI usa /manager/ prefix para endpoints de administração
+  const url = `${config.baseUrl}/manager/instance/create`;
   console.log('[UAZAPI] Request URL:', url);
   
   const requestBody = {
@@ -145,8 +146,7 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
   };
   console.log('[UAZAPI] Request body:', JSON.stringify(requestBody));
   
-  // Try with apikey header first (Evolution API v2 style)
-  let response = await fetch(url, {
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -158,7 +158,7 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
   // If 401, try with Authorization Bearer header
   if (response.status === 401) {
     console.log('[UAZAPI] 401 with apikey header, trying Authorization Bearer...');
-    response = await fetch(url, {
+    const retryResponse = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -166,15 +166,25 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
       },
       body: JSON.stringify(requestBody),
     });
-  }
 
-  // If still 401, return helpful error message
-  if (response.status === 401) {
-    const errorText = await response.text();
-    console.log('[UAZAPI] Still 401 after trying both auth methods:', errorText);
-    return { 
-      success: false, 
-      error: 'Token inválido ou sem permissão. Verifique se o Admin Token está correto e tem permissão para criar instâncias. O token deve ser a Global API Key configurada no servidor UAZAPI/Evolution.' 
+    if (retryResponse.status === 401) {
+      const errorText = await retryResponse.text();
+      console.log('[UAZAPI] Still 401 after trying both auth methods:', errorText);
+      return { 
+        success: false, 
+        error: 'Token inválido ou sem permissão. Verifique se o Admin Token está correto.' 
+      };
+    }
+
+    const data = await safeJsonParse(retryResponse, 'UAZAPI Create (Bearer)');
+    if (data.error || !data.instance) {
+      return { success: false, error: data.error || data.message || 'Falha ao criar instância' };
+    }
+    return {
+      success: true,
+      instanceId: data.instance.instanceName || instanceName,
+      token: data.hash?.apikey || data.token || config.adminToken,
+      qrCode: data.qrcode?.base64,
     };
   }
 
@@ -195,8 +205,8 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
 async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: string) {
   console.log('[UAZAPI] Getting QR code for:', instanceName);
   
-  // Check status
-  const statusRes = await fetch(`${baseUrl}/instance/connectionState/${instanceName}`, {
+  // UAZAPI usa /manager/ prefix
+  const statusRes = await fetch(`${baseUrl}/manager/instance/connectionState/${instanceName}`, {
     headers: { 'apikey': token },
   });
   const statusData = await safeJsonParse(statusRes, 'UAZAPI Status');
@@ -206,7 +216,7 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: str
   }
 
   // Get QR Code
-  const qrRes = await fetch(`${baseUrl}/instance/qrcode/${instanceName}`, {
+  const qrRes = await fetch(`${baseUrl}/manager/instance/qrcode/${instanceName}`, {
     headers: { 'apikey': token },
   });
   const qrData = await safeJsonParse(qrRes, 'UAZAPI QR');
