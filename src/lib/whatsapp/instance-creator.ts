@@ -22,6 +22,26 @@ export interface ProviderConfig {
   clientToken?: string;
 }
 
+export interface ProviderInstance {
+  instanceName: string;
+  instanceId?: string;
+  owner?: string;
+  profileName?: string;
+  profilePicUrl?: string;
+  status?: string;
+  connectionStatus?: {
+    state?: string;
+  };
+  instance?: {
+    instanceName?: string;
+    instanceId?: string;
+    owner?: string;
+    profileName?: string;
+    profilePictureUrl?: string;
+    state?: string;
+  };
+}
+
 // =====================================================
 // FUNÇÃO UNIFICADA - CRIAR INSTÂNCIA
 // =====================================================
@@ -86,5 +106,94 @@ export async function getWhatsAppQRCode(
   } catch (error: any) {
     console.error('[Instance Creator] Error:', error);
     return {};
+  }
+}
+
+// =====================================================
+// FUNÇÃO UNIFICADA - BUSCAR TODAS AS INSTÂNCIAS
+// =====================================================
+export async function fetchProviderInstances(
+  providerCode: 'zapi' | 'uazapi' | 'evolution'
+): Promise<{ success: boolean; instances?: ProviderInstance[]; error?: string }> {
+  try {
+    console.log('[Instance Creator] Fetching instances for:', providerCode);
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'fetchInstances',
+        providerCode,
+      },
+    });
+
+    console.log('[Instance Creator] Fetch Instances Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao buscar instâncias' };
+    }
+
+    return data as { success: boolean; instances?: ProviderInstance[]; error?: string };
+  } catch (error: any) {
+    console.error('[Instance Creator] Error:', error);
+    return { success: false, error: error.message || 'Erro ao buscar instâncias' };
+  }
+}
+
+// =====================================================
+// FUNÇÃO UNIFICADA - TESTAR CONEXÃO
+// =====================================================
+export async function testProviderConnection(
+  providerCode: 'zapi' | 'uazapi' | 'evolution'
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    console.log('[Instance Creator] Testing connection for:', providerCode);
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'testConnection',
+        providerCode,
+      },
+    });
+
+    console.log('[Instance Creator] Test Connection Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao testar conexão' };
+    }
+
+    return data as { success: boolean; message?: string; error?: string };
+  } catch (error: any) {
+    console.error('[Instance Creator] Error:', error);
+    return { success: false, error: error.message || 'Erro ao testar conexão' };
+  }
+}
+
+// =====================================================
+// FUNÇÃO UNIFICADA - EXCLUIR INSTÂNCIA DO PROVEDOR
+// =====================================================
+export async function deleteProviderInstance(
+  providerCode: 'zapi' | 'uazapi' | 'evolution',
+  instanceId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log('[Instance Creator] Deleting instance:', { providerCode, instanceId });
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'deleteInstance',
+        providerCode,
+        instanceId,
+      },
+    });
+
+    console.log('[Instance Creator] Delete Instance Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao excluir instância' };
+    }
+
+    return data as { success: boolean; error?: string };
+  } catch (error: any) {
+    console.error('[Instance Creator] Error:', error);
+    return { success: false, error: error.message || 'Erro ao excluir instância' };
   }
 }

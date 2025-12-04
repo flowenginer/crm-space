@@ -18,6 +18,8 @@ import {
   AlertCircle,
   Settings,
   Smartphone,
+  Download,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +30,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,6 +56,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { 
@@ -59,10 +72,12 @@ import { useProviders, useConfiguredProviders } from '@/hooks/useProviders';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useCreateChannelWithInstance, useRefreshQRCode } from '@/hooks/useCreateChannelWithInstance';
 import { whatsappService } from '@/lib/whatsapp';
+import { fetchProviderInstances, deleteProviderInstance, ProviderInstance } from '@/lib/whatsapp/instance-creator';
 import { Link } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function WhatsAppChannels() {
-  const { data: channels = [], isLoading } = useChannels();
+  const { data: channels = [], isLoading, refetch: refetchChannels } = useChannels();
   const { data: deletedChannels = [] } = useDeletedChannels();
   const { data: providers = [] } = useProviders();
   const { data: configuredProviders = [] } = useConfiguredProviders();
@@ -78,9 +93,14 @@ export default function WhatsAppChannels() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showDeletedModal, setShowDeletedModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<WhatsAppChannel | null>(null);
+  const [deleteFromProvider, setDeleteFromProvider] = useState(false);
   const [addStep, setAddStep] = useState(1);
   const [addMode, setAddMode] = useState<'auto' | 'manual'>('auto');
+  
+  // Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // Form state
   const [newChannelName, setNewChannelName] = useState('');
@@ -146,6 +166,94 @@ export default function WhatsAppChannels() {
   const handleAddChannel = () => {
     resetForm();
     setShowAddModal(true);
+  };
+
+  // Sincronizar instâncias do provedor
+  const handleSyncInstances = async () => {
+    if (configuredProviders.length === 0) {
+      toast.error('Nenhum provedor configurado');
+      return;
+    }
+
+    setIsSyncing(true);
+    let totalSynced = 0;
+    let totalCreated = 0;
+    let totalUpdated = 0;
+
+    try {
+      for (const provider of configuredProviders) {
+        toast.loading(`Sincronizando ${provider.name}...`);
+        
+        const result = await fetchProviderInstances(provider.code as 'zapi' | 'uazapi' | 'evolution');
+        
+        if (!result.success || !result.instances) {
+          console.log(`[Sync] ${provider.name}: ${result.error || 'Sem instâncias'}`);
+          continue;
+        }
+
+        console.log(`[Sync] ${provider.name}: ${result.instances.length} instâncias encontradas`);
+
+        for (const instance of result.instances) {
+          const instanceName = instance.instance?.instanceName || instance.instanceName;
+          const instanceStatus = instance.instance?.state || instance.connectionStatus?.state || 'disconnected';
+          const profileName = instance.instance?.profileName || instance.profileName;
+          const ownerPhone = instance.instance?.owner || instance.owner;
+          
+          if (!instanceName) continue;
+
+          // Verificar se já existe no banco
+          const existingChannel = channels.find(c => c.instance_id === instanceName);
+
+          if (existingChannel) {
+            // Atualizar status
+            const newStatus = instanceStatus === 'open' ? 'connected' : 'disconnected';
+            if (existingChannel.status !== newStatus) {
+              await supabase
+                .from('whatsapp_channels')
+                .update({ 
+                  status: newStatus,
+                  phone: ownerPhone || existingChannel.phone,
+                  last_sync_at: new Date().toISOString(),
+                })
+                .eq('id', existingChannel.id);
+              totalUpdated++;
+            }
+          } else {
+            // Criar novo canal
+            const { error } = await supabase
+              .from('whatsapp_channels')
+              .insert({
+                name: profileName || instanceName,
+                phone: ownerPhone || 'Não identificado',
+                provider_id: provider.id,
+                instance_id: instanceName,
+                status: instanceStatus === 'open' ? 'connected' : 'disconnected',
+                last_sync_at: new Date().toISOString(),
+              });
+            
+            if (!error) {
+              totalCreated++;
+            }
+          }
+          totalSynced++;
+        }
+      }
+
+      toast.dismiss();
+      
+      if (totalSynced === 0) {
+        toast.info('Nenhuma instância encontrada nos provedores');
+      } else {
+        toast.success(`Sincronização concluída! ${totalCreated} novos, ${totalUpdated} atualizados`);
+      }
+      
+      refetchChannels();
+    } catch (error: any) {
+      toast.dismiss();
+      toast.error(error.message || 'Erro ao sincronizar');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleContinueAdd = async () => {
@@ -305,11 +413,37 @@ export default function WhatsAppChannels() {
     }
   };
 
-  const handleDelete = async (channel: WhatsAppChannel) => {
+  const handleDeleteClick = (channel: WhatsAppChannel) => {
+    setSelectedChannel(channel);
+    setDeleteFromProvider(false);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!selectedChannel) return;
+    
     try {
-      await deleteChannel.mutateAsync(channel.id);
-      toast.success(`${channel.name} foi movido para a lixeira.`);
+      // Se marcou para excluir do provedor também
+      if (deleteFromProvider && selectedChannel.provider && selectedChannel.instance_id) {
+        toast.loading('Excluindo instância do provedor...');
+        const providerCode = (selectedChannel.provider as any).code as 'zapi' | 'uazapi' | 'evolution';
+        const result = await deleteProviderInstance(providerCode, selectedChannel.instance_id);
+        
+        if (!result.success) {
+          toast.dismiss();
+          toast.error(`Erro ao excluir do provedor: ${result.error}`);
+          // Continuar com exclusão local mesmo assim
+        } else {
+          toast.dismiss();
+        }
+      }
+      
+      // Excluir do banco (soft delete)
+      await deleteChannel.mutateAsync(selectedChannel.id);
+      toast.success(`${selectedChannel.name} foi movido para a lixeira.`);
       setShowDetailsModal(false);
+      setShowDeleteConfirm(false);
+      setSelectedChannel(null);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao remover canal');
     }
@@ -346,6 +480,20 @@ export default function WhatsAppChannels() {
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
+            onClick={handleSyncInstances}
+            disabled={isSyncing || configuredProviders.length === 0}
+            title="Sincronizar instâncias dos provedores"
+          >
+            {isSyncing ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Download size={18} />
+            )}
+            Sincronizar
+          </Button>
+
+          <Button
+            variant="outline"
             onClick={() => setShowDeletedModal(true)}
             className="border-destructive/30 text-destructive hover:bg-destructive/10"
           >
@@ -371,10 +519,18 @@ export default function WhatsAppChannels() {
           <MessageCircle className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-xl font-semibold text-foreground mb-2">Nenhum canal configurado</h3>
           <p className="text-muted-foreground mb-6">Adicione seu primeiro canal WhatsApp para começar</p>
-          <Button onClick={handleAddChannel} className="btn-gradient">
-            <Plus size={18} />
-            Adicionar Canal
-          </Button>
+          <div className="flex items-center justify-center gap-3">
+            {configuredProviders.length > 0 && (
+              <Button onClick={handleSyncInstances} variant="outline" disabled={isSyncing}>
+                {isSyncing ? <Loader2 size={18} className="animate-spin mr-2" /> : <Download size={18} className="mr-2" />}
+                Importar do Provedor
+              </Button>
+            )}
+            <Button onClick={handleAddChannel} className="btn-gradient">
+              <Plus size={18} />
+              Adicionar Canal
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -386,6 +542,7 @@ export default function WhatsAppChannels() {
               onSync={handleSync}
               onDisconnect={handleDisconnect}
               onConnect={handleConnect}
+              onDelete={handleDeleteClick}
               getTimeSinceSync={getTimeSinceSync}
             />
           ))}
@@ -394,12 +551,7 @@ export default function WhatsAppChannels() {
 
       {/* Add Channel Modal */}
       <Dialog open={showAddModal} onOpenChange={(open) => {
-        if (!open && addStep !== 3) {
-          // If closing without completing, clean up created channel
-          if (createdChannelId && addStep === 2) {
-            deleteChannel.mutate(createdChannelId);
-          }
-        }
+        // NÃO deletar canal ao fechar - usuário pode querer reconectar depois
         setShowAddModal(open);
         if (!open) resetForm();
       }}>
@@ -598,7 +750,7 @@ export default function WhatsAppChannels() {
                 <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-xl p-4 mb-6">
                   <div className="flex items-center justify-between text-sm mb-2">
                     <span className="text-muted-foreground">Provedor:</span>
-                    <span className="font-semibold text-foreground">{getSelectedProvider()?.name}</span>
+                    <span className="font-semibold text-foreground">{getSelectedProvider()?.name || selectedProviderCode}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Status:</span>
@@ -652,15 +804,14 @@ export default function WhatsAppChannels() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    if (createdChannelId) {
-                      deleteChannel.mutate(createdChannelId);
-                    }
+                    // NÃO deletar - apenas fechar
                     setShowAddModal(false);
                     resetForm();
+                    toast.info('Canal salvo. Você pode reconectá-lo depois.');
                   }}
                   className="w-full"
                 >
-                  Cancelar
+                  Fechar (conectar depois)
                 </Button>
               </div>
             )}
@@ -734,7 +885,10 @@ export default function WhatsAppChannels() {
               <div className="pt-4 border-t border-border space-y-2">
                 <button 
                   className="w-full py-2.5 text-left px-4 hover:bg-destructive/10 rounded-lg transition-colors flex items-center gap-3 text-sm text-destructive"
-                  onClick={() => handleDelete(selectedChannel)}
+                  onClick={() => {
+                    setShowDetailsModal(false);
+                    handleDeleteClick(selectedChannel);
+                  }}
                 >
                   <Trash2 size={16} />
                   <span>Excluir canal</span>
@@ -744,6 +898,51 @@ export default function WhatsAppChannels() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="text-destructive" size={20} />
+              Confirmar exclusão
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p>
+                  Tem certeza que deseja excluir o canal <strong>{selectedChannel?.name}</strong>?
+                </p>
+                
+                {selectedChannel?.provider && selectedChannel?.instance_id && (
+                  <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg">
+                    <Checkbox
+                      id="deleteFromProvider"
+                      checked={deleteFromProvider}
+                      onCheckedChange={(checked) => setDeleteFromProvider(checked === true)}
+                    />
+                    <label htmlFor="deleteFromProvider" className="text-sm cursor-pointer">
+                      <span className="font-medium">Excluir também do provedor</span>
+                      <p className="text-muted-foreground text-xs mt-1">
+                        Remove a instância da {(selectedChannel.provider as any)?.name || 'API'}.
+                        Se não marcar, a instância permanecerá ativa e poderá ser resincronizada.
+                      </p>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Deleted Channels Modal */}
       <Dialog open={showDeletedModal} onOpenChange={setShowDeletedModal}>
@@ -804,6 +1003,7 @@ function ChannelCard({
   onSync,
   onDisconnect,
   onConnect,
+  onDelete,
   getTimeSinceSync,
 }: {
   channel: WhatsAppChannel;
@@ -811,6 +1011,7 @@ function ChannelCard({
   onSync: (channel: WhatsAppChannel) => void;
   onDisconnect: (channel: WhatsAppChannel) => void;
   onConnect: (channel: WhatsAppChannel) => void;
+  onDelete: (channel: WhatsAppChannel) => void;
   getTimeSinceSync: (lastSync: string | null) => string;
 }) {
   const isConnected = channel.status === 'connected';
@@ -854,12 +1055,15 @@ function ChannelCard({
               <BarChart3 size={16} className="mr-2" />
               Ver detalhes
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Edit3 size={16} className="mr-2" />
-              Editar
+            <DropdownMenuItem onClick={() => onSync(channel)}>
+              <RefreshCw size={16} className="mr-2" />
+              Sincronizar
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">
+            <DropdownMenuItem 
+              className="text-destructive"
+              onClick={() => onDelete(channel)}
+            >
               <Trash2 size={16} className="mr-2" />
               Excluir
             </DropdownMenuItem>
@@ -928,8 +1132,8 @@ function ChannelCard({
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="flex gap-2">
+      {/* Actions */}
+      <div className="flex items-center gap-2 pt-3 border-t border-border">
         {isConnected ? (
           <>
             <Button
@@ -938,26 +1142,24 @@ function ChannelCard({
               className="flex-1 border-destructive/30 text-destructive hover:bg-destructive/10"
               onClick={() => onDisconnect(channel)}
             >
-              <Power size={16} />
+              <Power size={16} className="mr-1" />
               Desconectar
             </Button>
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 border-primary/30 text-primary hover:bg-primary/10"
               onClick={() => onSync(channel)}
             >
               <RefreshCw size={16} />
-              Sincronizar
             </Button>
           </>
         ) : (
           <Button
+            className="flex-1 btn-gradient"
             size="sm"
-            className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:shadow-lg"
             onClick={() => onConnect(channel)}
           >
-            <Power size={16} className="mr-1" />
+            <QrCode size={16} className="mr-1" />
             Conectar
           </Button>
         )}
