@@ -640,7 +640,8 @@ function isMessageEvent(provider: WhatsAppProvider, payload: any): boolean {
       const event = payload.event || payload.type;
       return event === "message" || event === "messages.upsert" || !!payload.message;
     case "evolution":
-      return payload.event === "messages.upsert";
+      // Aceitar tanto mensagens recebidas (messages.upsert) quanto enviadas pelo celular (send.message)
+      return payload.event === "messages.upsert" || payload.event === "send.message";
     default:
       return false;
   }
@@ -799,9 +800,15 @@ function extractUAZAPIContent(msg: any, type: MessageType): string {
 }
 
 function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
-  if (payload.event !== "messages.upsert") return null;
+  // Aceitar tanto messages.upsert quanto send.message (mensagens enviadas pelo celular)
+  if (payload.event !== "messages.upsert" && payload.event !== "send.message") return null;
 
-  const msg = payload.data;
+  // Para messages.upsert, data pode ser array. Para send.message, é objeto único
+  let msg = payload.data;
+  if (Array.isArray(msg)) {
+    msg = msg[0];
+  }
+  
   if (!msg?.key) return null;
 
   const rawRemoteJid = msg.key.remoteJid || "";
@@ -821,6 +828,8 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
   }
 
   const messageType = detectEvolutionMessageType(msg);
+  
+  console.log(`[Webhook Evolution] Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}`);
 
   return {
     id: `evolution_${msg.key.id}`,
@@ -834,7 +843,7 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
     mediaUrl: msg.message?.imageMessage?.url || msg.message?.audioMessage?.url || msg.message?.videoMessage?.url || msg.message?.documentMessage?.url,
     mediaMimeType: msg.message?.imageMessage?.mimetype || msg.message?.audioMessage?.mimetype || msg.message?.videoMessage?.mimetype || msg.message?.documentMessage?.mimetype,
     caption: msg.message?.imageMessage?.caption || msg.message?.videoMessage?.caption,
-    timestamp: new Date((msg.messageTimestamp || 0) * 1000),
+    timestamp: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000),
     quotedMessageId: msg.message?.extendedTextMessage?.contextInfo?.stanzaId,
     status: "delivered",
     originalId: msg.key.id,
