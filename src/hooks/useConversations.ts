@@ -152,6 +152,7 @@ export function useSendMessage() {
       media_url?: string;
       media_mime_type?: string;
       reply_to_message_id?: string;
+      whatsapp_message_id?: string;
     }) => {
       const { data, error } = await supabase
         .from('messages')
@@ -163,6 +164,7 @@ export function useSendMessage() {
           media_url: message.media_url || null,
           media_mime_type: message.media_mime_type || null,
           reply_to_message_id: message.reply_to_message_id || null,
+          whatsapp_message_id: message.whatsapp_message_id || null,
           status: 'sent',
         })
         .select()
@@ -196,6 +198,16 @@ export function useSendMessage() {
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
   });
+}
+
+// Update message with WhatsApp message ID (for status tracking)
+export async function updateMessageWhatsAppId(messageId: string, whatsappMessageId: string) {
+  const { error } = await supabase
+    .from('messages')
+    .update({ whatsapp_message_id: whatsappMessageId })
+    .eq('id', messageId);
+  
+  if (error) console.error('Error updating whatsapp_message_id:', error);
 }
 
 export function useDeleteMessage() {

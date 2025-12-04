@@ -69,6 +69,15 @@ serve(async (req) => {
       });
     }
 
+    // Handle message status updates (ACK events - delivered, read)
+    if (isMessageStatusEvent(provider, payload)) {
+      console.log(`[Webhook] Processing message status event`);
+      await handleMessageStatusEvent(supabase, provider, payload);
+      return new Response(JSON.stringify({ success: true, message: "Status event processed" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Check if this is a message event
     if (!isMessageEvent(provider, payload)) {
       console.log(`[Webhook] Not a message event, skipping`);
@@ -433,6 +442,134 @@ async function handleConnectionEvent(
   } else {
     console.log(`[Webhook] Channel ${channel.name} status updated to ${newStatus}`);
   }
+}
+
+function isMessageStatusEvent(provider: WhatsAppProvider, payload: any): boolean {
+  switch (provider) {
+    case "zapi":
+      return payload.type === "MessageStatusCallback" || payload.event === "message_status" || 
+             payload.status !== undefined && payload.messageId;
+    case "uazapi":
+      return payload.event === "messages.update" || payload.event === "message.ack";
+    case "evolution":
+      return payload.event === "messages.update";
+    default:
+      return false;
+  }
+}
+
+async function handleMessageStatusEvent(
+  supabase: any,
+  provider: WhatsAppProvider,
+  payload: any
+): Promise<void> {
+  const statusUpdates = extractStatusUpdates(provider, payload);
+  
+  for (const update of statusUpdates) {
+    if (!update.messageId || !update.status) continue;
+    
+    console.log(`[Webhook] Updating message status: ${update.messageId} -> ${update.status}`);
+    
+    // Map provider status to our status
+    const newStatus = mapProviderStatus(update.status);
+    if (!newStatus) continue;
+    
+    // Update message status by whatsapp_message_id
+    const { error } = await supabase
+      .from("messages")
+      .update({ status: newStatus })
+      .eq("whatsapp_message_id", update.messageId);
+    
+    if (error) {
+      console.error(`[Webhook] Error updating message status:`, error);
+    } else {
+      console.log(`[Webhook] Message ${update.messageId} status updated to ${newStatus}`);
+    }
+  }
+}
+
+interface StatusUpdate {
+  messageId: string;
+  status: string;
+}
+
+function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusUpdate[] {
+  switch (provider) {
+    case "zapi":
+      // Z-API sends single status update
+      return [{
+        messageId: payload.messageId || payload.ids?.[0] || "",
+        status: payload.status || payload.ack || ""
+      }];
+    
+    case "uazapi":
+      // UAZAPI can send array of updates
+      const uazapiData = payload.data || payload;
+      if (Array.isArray(uazapiData)) {
+        return uazapiData.map((item: any) => ({
+          messageId: item.key?.id || item.id || "",
+          status: item.status || item.update?.status || ""
+        }));
+      }
+      return [{
+        messageId: uazapiData.key?.id || uazapiData.id || "",
+        status: uazapiData.status || uazapiData.update?.status || ""
+      }];
+    
+    case "evolution":
+      // Evolution sends array in data
+      const evolutionData = payload.data;
+      if (Array.isArray(evolutionData)) {
+        return evolutionData.map((item: any) => ({
+          messageId: item.key?.id || item.id || "",
+          status: item.status || ""
+        }));
+      }
+      if (evolutionData?.key?.id) {
+        return [{
+          messageId: evolutionData.key.id,
+          status: evolutionData.status || ""
+        }];
+      }
+      return [];
+    
+    default:
+      return [];
+  }
+}
+
+function mapProviderStatus(providerStatus: string): string | null {
+  const status = String(providerStatus).toUpperCase();
+  
+  // Evolution API statuses
+  if (status === "DELIVERY_ACK" || status === "DELIVERED" || status === "SERVER_ACK") {
+    return "delivered";
+  }
+  if (status === "READ" || status === "PLAYED" || status === "VIEWED") {
+    return "read";
+  }
+  if (status === "SENT" || status === "PENDING") {
+    return "sent";
+  }
+  if (status === "ERROR" || status === "FAILED") {
+    return "failed";
+  }
+  
+  // Numeric ACK values (used by some providers)
+  // 0 = error, 1 = pending, 2 = sent, 3 = delivered, 4 = read
+  const numStatus = parseInt(providerStatus);
+  if (!isNaN(numStatus)) {
+    switch (numStatus) {
+      case 0: return "failed";
+      case 1: return "sent";
+      case 2: return "sent";
+      case 3: return "delivered";
+      case 4: return "read";
+      case 5: return "read"; // played (audio)
+    }
+  }
+  
+  return null;
 }
 
 function extractInstanceId(provider: WhatsAppProvider, payload: any): string {
