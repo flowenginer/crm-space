@@ -1009,7 +1009,36 @@ serve(async (req) => {
           body: JSON.stringify({ number: formattedPhone }),
         });
         
-        const profileData = await safeJsonParse(profileRes, 'Evolution FetchProfile');
+        const rawText = await profileRes.text();
+        console.log(`[Evolution FetchProfile] Raw response (${profileRes.status}):`, rawText);
+        
+        // Handle case where number doesn't exist on WhatsApp
+        if (profileRes.status === 400) {
+          try {
+            const errorData = JSON.parse(rawText);
+            // Check if this is a "number doesn't exist" error
+            if (errorData.response?.message?.[0]?.exists === false) {
+              console.log('[FetchProfile] Number does not exist on WhatsApp');
+              return new Response(
+                JSON.stringify({
+                  success: true,
+                  profilePictureUrl: null,
+                  name: null,
+                  numberExists: false,
+                }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+          } catch (e) {
+            // If we can't parse the error, fall through to generic error handling
+          }
+        }
+        
+        if (!profileRes.ok) {
+          throw new Error(`HTTP ${profileRes.status}: ${rawText}`);
+        }
+        
+        const profileData = JSON.parse(rawText);
         console.log('[FetchProfile] Response:', profileData);
         
         return new Response(
@@ -1017,6 +1046,7 @@ serve(async (req) => {
             success: true,
             profilePictureUrl: profileData.profilePictureUrl || profileData.picture || null,
             name: profileData.name || profileData.pushName || null,
+            numberExists: profileData.numberExists !== false,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
