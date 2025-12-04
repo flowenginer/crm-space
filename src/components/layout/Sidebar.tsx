@@ -37,6 +37,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard },
   { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.read' },
+  { title: 'Ao Vivo', href: '/ao-vivo', icon: Radio, roles: ['admin', 'supervisor'] },
   { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.read' },
   { title: 'Agendamentos', href: '/agendamentos', icon: CalendarClock, permission: 'templates.read' },
   { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.read' },
@@ -177,6 +178,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             const Icon = item.icon;
 
             const showBadge = item.href === '/agendamentos' && pendingCount && pendingCount > 0;
+            const showLiveBadge = item.href === '/ao-vivo';
 
             return (
               <NavLink
@@ -209,6 +211,9 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                       <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
                         {pendingCount > 99 ? '99+' : pendingCount}
                       </span>
+                    )}
+                    {showLiveBadge && (
+                      <span className="ml-2 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                     )}
                   </span>
                 )}

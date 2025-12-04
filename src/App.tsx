@@ -23,6 +23,7 @@ import Contacts from "@/pages/Contacts";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 import ScheduledMessages from "@/pages/ScheduledMessages";
+import LiveMonitor from "@/pages/LiveMonitor";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -80,6 +81,11 @@ const App = () => (
               <Route path="/agendamentos" element={
                 <ProtectedRoute permission="templates.read">
                   <ScheduledMessages />
+                </ProtectedRoute>
+              } />
+              <Route path="/ao-vivo" element={
+                <ProtectedRoute permission="settings.view">
+                  <LiveMonitor />
                 </ProtectedRoute>
               } />
             </Route>
