@@ -1733,6 +1733,14 @@ export type Database = {
       }
       increment_unread: { Args: { conv_id: string }; Returns: undefined }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      merge_duplicate_contacts: {
+        Args: {
+          p_duplicate_contact_id: string
+          p_keep_contact_id: string
+          p_use_duplicate_name?: boolean
+        }
+        Returns: undefined
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
