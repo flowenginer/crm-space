@@ -6,8 +6,10 @@ import {
   Search, 
   Tag, 
   Loader2,
-  X,
-  Check
+  Check,
+  Globe,
+  Lock,
+  Building2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,26 +22,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
-import { useTags, useCreateTag, useUpdateTag, useDeleteTag, Tag as TagType } from '@/hooks/useTags';
+import { useTags, useCreateTag, useUpdateTag, useDeleteTag, Tag as TagType, TagVisibility } from '@/hooks/useTags';
+import { useDepartments } from '@/hooks/useDepartments';
+import { useAuth } from '@/hooks/useAuth';
 
 const predefinedColors = [
-  '#8B5CF6', // Purple
-  '#EC4899', // Pink
-  '#EF4444', // Red
-  '#F97316', // Orange
-  '#EAB308', // Yellow
-  '#22C55E', // Green
-  '#14B8A6', // Teal
-  '#06B6D4', // Cyan
-  '#3B82F6', // Blue
-  '#6366F1', // Indigo
-  '#A855F7', // Violet
-  '#64748B', // Slate
+  '#8B5CF6', '#EC4899', '#EF4444', '#F97316', '#EAB308', '#22C55E',
+  '#14B8A6', '#06B6D4', '#3B82F6', '#6366F1', '#A855F7', '#64748B',
 ];
 
 export function TagManagement() {
   const { data: tags = [], isLoading } = useTags();
+  const { data: departments = [] } = useDepartments();
+  const { roles } = useAuth();
   const createTag = useCreateTag();
   const updateTag = useUpdateTag();
   const deleteTag = useDeleteTag();
@@ -51,7 +54,13 @@ export function TagManagement() {
     name: '',
     color: '#8B5CF6',
     description: '',
+    visibility: 'public' as TagVisibility,
+    department_id: '',
   });
+
+  const isAdmin = roles.includes('admin');
+  const isSupervisor = roles.includes('supervisor');
+  const canCreatePublicTags = isAdmin || isSupervisor;
 
   const filteredTags = tags.filter(tag =>
     tag.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -64,6 +73,8 @@ export function TagManagement() {
         name: tag.name,
         color: tag.color || '#8B5CF6',
         description: tag.description || '',
+        visibility: tag.visibility || 'public',
+        department_id: tag.department_id || '',
       });
     } else {
       setEditingTag(null);
@@ -71,6 +82,8 @@ export function TagManagement() {
         name: '',
         color: '#8B5CF6',
         description: '',
+        visibility: canCreatePublicTags ? 'public' : 'private',
+        department_id: '',
       });
     }
     setShowModal(true);
@@ -79,12 +92,17 @@ export function TagManagement() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingTag(null);
-    setForm({ name: '', color: '#8B5CF6', description: '' });
+    setForm({ name: '', color: '#8B5CF6', description: '', visibility: 'public', department_id: '' });
   };
 
   const handleSave = async () => {
     if (!form.name.trim()) {
       toast.error('Nome da etiqueta é obrigatório');
+      return;
+    }
+
+    if (form.visibility === 'department' && !form.department_id) {
+      toast.error('Selecione um departamento');
       return;
     }
 
@@ -95,6 +113,8 @@ export function TagManagement() {
           name: form.name.trim(),
           color: form.color,
           description: form.description.trim() || null,
+          visibility: form.visibility,
+          department_id: form.visibility === 'department' ? form.department_id : null,
         });
         toast.success('Etiqueta atualizada com sucesso');
       } else {
@@ -102,12 +122,18 @@ export function TagManagement() {
           name: form.name.trim(),
           color: form.color,
           description: form.description.trim() || null,
+          visibility: form.visibility,
+          department_id: form.visibility === 'department' ? form.department_id : null,
         });
         toast.success('Etiqueta criada com sucesso');
       }
       handleCloseModal();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar etiqueta');
+      if (error.code === '23505') {
+        toast.error('Já existe uma etiqueta com este nome');
+      } else {
+        toast.error(error.message || 'Erro ao salvar etiqueta');
+      }
     }
   };
 
@@ -122,6 +148,22 @@ export function TagManagement() {
     }
   };
 
+  const getVisibilityIcon = (visibility: TagVisibility) => {
+    switch (visibility) {
+      case 'private': return <Lock size={12} className="text-purple-500" />;
+      case 'department': return <Building2 size={12} className="text-blue-500" />;
+      default: return <Globe size={12} className="text-green-500" />;
+    }
+  };
+
+  const getVisibilityLabel = (tag: TagType) => {
+    switch (tag.visibility) {
+      case 'private': return 'Privada';
+      case 'department': return tag.department?.name || 'Departamento';
+      default: return 'Pública';
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -132,10 +174,7 @@ export function TagManagement() {
             Crie e organize etiquetas para categorizar contatos e conversas
           </p>
         </div>
-        <Button
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 btn-gradient"
-        >
+        <Button onClick={() => handleOpenModal()} className="flex items-center gap-2 btn-gradient">
           <Plus size={18} />
           Nova Etiqueta
         </Button>
@@ -192,9 +231,10 @@ export function TagManagement() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-foreground">{tag.name}</h3>
-                    <p className="text-xs text-muted-foreground">
-                      {tag.usage_count || 0} uso{(tag.usage_count || 0) !== 1 ? 's' : ''}
-                    </p>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      {getVisibilityIcon(tag.visibility)}
+                      <span>{getVisibilityLabel(tag)}</span>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -214,17 +254,20 @@ export function TagManagement() {
               </div>
               
               {tag.description && (
-                <p className="text-sm text-muted-foreground line-clamp-2">
+                <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
                   {tag.description}
                 </p>
               )}
 
-              <div className="mt-3 flex items-center gap-2">
+              <div className="flex items-center justify-between">
                 <span
                   className="px-3 py-1 rounded-full text-xs font-medium text-white"
                   style={{ backgroundColor: tag.color || '#8B5CF6' }}
                 >
                   {tag.name}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {tag.usage_count || 0} uso{(tag.usage_count || 0) !== 1 ? 's' : ''}
                 </span>
               </div>
             </div>
@@ -234,7 +277,7 @@ export function TagManagement() {
 
       {/* Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingTag ? 'Editar Etiqueta' : 'Nova Etiqueta'}
@@ -279,7 +322,6 @@ export function TagManagement() {
                 ))}
               </div>
               
-              {/* Custom color input */}
               <div className="mt-3 flex items-center gap-2">
                 <input
                   type="color"
@@ -305,8 +347,110 @@ export function TagManagement() {
                 placeholder="Descreva quando usar esta etiqueta..."
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                rows={3}
+                rows={2}
               />
+            </div>
+
+            {/* Visibility */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Visibilidade
+              </label>
+              <div className="space-y-2">
+                {/* Public Option */}
+                {canCreatePublicTags && (
+                  <label
+                    className={`flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer border-2 transition-colors ${
+                      form.visibility === 'public' ? 'border-green-500' : 'border-transparent'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="visibility"
+                      value="public"
+                      checked={form.visibility === 'public'}
+                      onChange={(e) => setForm({ ...form, visibility: e.target.value as TagVisibility })}
+                      className="sr-only"
+                    />
+                    <div className="w-9 h-9 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                      <Globe size={18} className="text-green-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-foreground text-sm">Pública</div>
+                      <div className="text-xs text-muted-foreground">Visível para toda a equipe</div>
+                    </div>
+                    {form.visibility === 'public' && <Check size={16} className="text-green-500 flex-shrink-0" />}
+                  </label>
+                )}
+
+                {/* Private Option */}
+                <label
+                  className={`flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer border-2 transition-colors ${
+                    form.visibility === 'private' ? 'border-purple-500' : 'border-transparent'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="visibility"
+                    value="private"
+                    checked={form.visibility === 'private'}
+                    onChange={(e) => setForm({ ...form, visibility: e.target.value as TagVisibility })}
+                    className="sr-only"
+                  />
+                  <div className="w-9 h-9 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                    <Lock size={18} className="text-purple-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-foreground text-sm">Privada</div>
+                    <div className="text-xs text-muted-foreground">Visível apenas para você</div>
+                  </div>
+                  {form.visibility === 'private' && <Check size={16} className="text-purple-500 flex-shrink-0" />}
+                </label>
+
+                {/* Department Option */}
+                {canCreatePublicTags && (
+                  <label
+                    className={`flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer border-2 transition-colors ${
+                      form.visibility === 'department' ? 'border-blue-500' : 'border-transparent'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="visibility"
+                      value="department"
+                      checked={form.visibility === 'department'}
+                      onChange={(e) => setForm({ ...form, visibility: e.target.value as TagVisibility })}
+                      className="sr-only"
+                    />
+                    <div className="w-9 h-9 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                      <Building2 size={18} className="text-blue-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-foreground text-sm">Departamento</div>
+                      <div className="text-xs text-muted-foreground">Visível para o departamento selecionado</div>
+                    </div>
+                    {form.visibility === 'department' && <Check size={16} className="text-blue-500 flex-shrink-0" />}
+                  </label>
+                )}
+              </div>
+
+              {/* Department Selector */}
+              {form.visibility === 'department' && (
+                <div className="mt-3">
+                  <Select value={form.department_id} onValueChange={(value) => setForm({ ...form, department_id: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o departamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.map((dept) => (
+                        <SelectItem key={dept.id} value={dept.id}>
+                          {dept.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             {/* Preview */}
@@ -316,10 +460,12 @@ export function TagManagement() {
               </label>
               <div className="bg-muted rounded-lg p-4 flex items-center gap-3">
                 <span
-                  className="px-3 py-1.5 rounded-full text-sm font-medium text-white"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-white"
                   style={{ backgroundColor: form.color }}
                 >
                   {form.name || 'Nome da etiqueta'}
+                  {form.visibility === 'private' && <Lock size={12} />}
+                  {form.visibility === 'department' && <Building2 size={12} />}
                 </span>
               </div>
             </div>
