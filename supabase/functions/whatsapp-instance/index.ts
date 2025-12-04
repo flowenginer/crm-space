@@ -836,6 +836,7 @@ async function setEvolutionWebhook(config: ProviderConfig, instanceName: string,
   console.log('[Evolution] Setting webhook for:', instanceName, 'URL:', webhookUrl);
   
   try {
+    // Evolution API expects webhook config wrapped in "webhook" property
     const response = await fetch(`${baseUrl}/webhook/set/${instanceName}`, {
       method: 'POST',
       headers: {
@@ -843,16 +844,18 @@ async function setEvolutionWebhook(config: ProviderConfig, instanceName: string,
         'apikey': config.adminToken,
       },
       body: JSON.stringify({
-        url: webhookUrl,
-        webhook_by_events: false,
-        webhook_base64: true,
-        events: [
-          'QRCODE_UPDATED',
-          'MESSAGES_UPSERT',
-          'MESSAGES_UPDATE', 
-          'CONNECTION_UPDATE',
-          'SEND_MESSAGE'
-        ]
+        webhook: {
+          url: webhookUrl,
+          webhookByEvents: false,
+          webhookBase64: true,
+          events: [
+            'QRCODE_UPDATED',
+            'MESSAGES_UPSERT',
+            'MESSAGES_UPDATE', 
+            'CONNECTION_UPDATE',
+            'SEND_MESSAGE'
+          ]
+        }
       }),
     });
     
