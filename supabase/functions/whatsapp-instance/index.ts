@@ -1081,9 +1081,10 @@ serve(async (req) => {
     // SEND ACTION - Rota especial que busca dados do canal
     // =====================================================
     if (action === 'send') {
-      if (!channelId || !phone || !content) {
+      // Allow empty content for media messages (audio, video, image)
+      if (!channelId || !phone || (!content && !mediaUrl)) {
         return new Response(
-          JSON.stringify({ success: false, error: 'channelId, phone e content são obrigatórios' }),
+          JSON.stringify({ success: false, error: 'channelId, phone e (content ou mediaUrl) são obrigatórios' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
         );
       }
@@ -1138,7 +1139,7 @@ serve(async (req) => {
               channel.instance_id!,
               provider.admin_token,
               phone,
-              content,
+              content || '',
               messageType,
               mediaUrl
             );
@@ -1149,7 +1150,7 @@ serve(async (req) => {
               channel.instance_id!,
               provider.admin_token,
               phone,
-              content,
+              content || '',
               messageType,
               mediaUrl
             );
@@ -1160,7 +1161,7 @@ serve(async (req) => {
               channel.instance_token!,
               provider.client_token || '',
               phone,
-              content,
+              content || '',
               messageType,
               mediaUrl
             );
