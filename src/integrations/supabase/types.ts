@@ -1273,6 +1273,7 @@ export type Database = {
           error_message: string | null
           id: string
           media_url: string | null
+          message_type: string | null
           recurrence_rule: string | null
           scheduled_for: string
           sent_at: string | null
@@ -1291,6 +1292,7 @@ export type Database = {
           error_message?: string | null
           id?: string
           media_url?: string | null
+          message_type?: string | null
           recurrence_rule?: string | null
           scheduled_for: string
           sent_at?: string | null
@@ -1309,6 +1311,7 @@ export type Database = {
           error_message?: string | null
           id?: string
           media_url?: string | null
+          message_type?: string | null
           recurrence_rule?: string | null
           scheduled_for?: string
           sent_at?: string | null
