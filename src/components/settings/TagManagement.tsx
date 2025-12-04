@@ -60,6 +60,11 @@ export function TagManagement() {
     tag.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Counters by visibility
+  const publicCount = tags.filter(t => t.visibility === 'public').length;
+  const privateCount = tags.filter(t => t.visibility === 'private').length;
+  const departmentCount = tags.filter(t => t.visibility === 'department').length;
+
   const handleOpenModal = (tag?: TagType) => {
     if (tag) {
       setEditingTag(tag);
@@ -172,6 +177,25 @@ export function TagManagement() {
           <Plus size={18} />
           Nova Etiqueta
         </Button>
+      </div>
+
+      {/* Visibility Stats */}
+      <div className="flex flex-wrap gap-3">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
+          <Globe size={14} className="text-green-500" />
+          <span className="text-sm text-green-500 font-medium">{publicCount}</span>
+          <span className="text-xs text-muted-foreground">Públicas</span>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/20">
+          <Lock size={14} className="text-purple-500" />
+          <span className="text-sm text-purple-500 font-medium">{privateCount}</span>
+          <span className="text-xs text-muted-foreground">Privadas</span>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20">
+          <Building2 size={14} className="text-blue-500" />
+          <span className="text-sm text-blue-500 font-medium">{departmentCount}</span>
+          <span className="text-xs text-muted-foreground">Departamento</span>
+        </div>
       </div>
 
       {/* Search */}
