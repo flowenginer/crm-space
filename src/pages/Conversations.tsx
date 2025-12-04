@@ -309,6 +309,8 @@ const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubbleProps) {
   const [showActions, setShowActions] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const isMe = message.is_from_me;
   const hasMedia = message.media_url && message.message_type !== 'text';
   const isDeleted = message.is_deleted;
@@ -321,185 +323,259 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
     return acc;
   }, {} as Record<string, number>);
 
-  return (
-    <div 
-      className={cn('flex group relative', isMe ? 'justify-end' : 'justify-start')}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => { setShowActions(false); setShowReactionPicker(false); }}
-    >
-      {/* Action buttons - left side for received messages */}
-      {!isMe && showActions && !isDeleted && (
-        <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Popover open={showReactionPicker} onOpenChange={setShowReactionPicker}>
-            <PopoverTrigger asChild>
-              <button 
-                className="p-1.5 hover:bg-muted rounded-full transition-colors"
-                title="Reagir"
-              >
-                <Smile size={16} className="text-muted-foreground" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-2" side="top" align="start">
-              <div className="flex gap-1">
-                {QUICK_REACTIONS.map(emoji => (
-                  <button 
-                    key={emoji}
-                    onClick={() => { onReact?.(message.id, emoji); setShowReactionPicker(false); }}
-                    className="text-xl hover:bg-muted p-1 rounded transition-colors"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          <button 
-            onClick={() => onReply?.(message)}
-            className="p-1.5 hover:bg-muted rounded-full transition-colors"
-            title="Responder"
-          >
-            <Reply size={16} className="text-muted-foreground" />
-          </button>
-        </div>
-      )}
+  const handleEmojiReaction = (emojiData: EmojiClickData) => {
+    onReact?.(message.id, emojiData.emoji);
+    setShowFullEmojiPicker(false);
+    setShowReactionPicker(false);
+  };
 
-      <div className="flex flex-col max-w-[70%]">
-        {/* Reply reference */}
-        {replyTo && !isDeleted && (
-          <div 
-            className={cn(
-              'flex items-center gap-2 px-3 py-1.5 mb-1 rounded-t-xl text-xs border-l-2',
-              isMe 
-                ? 'bg-purple-700/30 border-purple-400 text-purple-200' 
-                : 'bg-muted/50 border-primary text-muted-foreground'
-            )}
-          >
-            <CornerDownRight size={12} />
-            <span className="truncate">
-              {replyTo.is_deleted ? 'Mensagem apagada' : replyTo.content?.substring(0, 50) || 'Mídia'}
-              {replyTo.content && replyTo.content.length > 50 ? '...' : ''}
-            </span>
+  const handleConfirmDelete = () => {
+    onDelete?.(message.id);
+    setShowDeleteConfirm(false);
+  };
+
+  return (
+    <>
+      <div 
+        className={cn('flex group relative', isMe ? 'justify-end' : 'justify-start')}
+        onMouseEnter={() => setShowActions(true)}
+        onMouseLeave={() => { 
+          setShowActions(false); 
+          setShowReactionPicker(false); 
+          setShowFullEmojiPicker(false);
+        }}
+      >
+        {/* Action buttons - left side for received messages */}
+        {!isMe && showActions && !isDeleted && (
+          <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Popover open={showReactionPicker} onOpenChange={setShowReactionPicker}>
+              <PopoverTrigger asChild>
+                <button 
+                  className="p-1.5 hover:bg-muted rounded-full transition-colors"
+                  title="Reagir"
+                >
+                  <Smile size={16} className="text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" side="top" align="start">
+                {showFullEmojiPicker ? (
+                  <EmojiPicker
+                    onEmojiClick={handleEmojiReaction}
+                    theme={Theme.AUTO}
+                    lazyLoadEmojis
+                    searchPlaceholder="Buscar emoji..."
+                    width={320}
+                    height={350}
+                  />
+                ) : (
+                  <div className="p-2">
+                    <div className="flex gap-1 mb-2">
+                      {QUICK_REACTIONS.map(emoji => (
+                        <button 
+                          key={emoji}
+                          onClick={() => { onReact?.(message.id, emoji); setShowReactionPicker(false); }}
+                          className="text-xl hover:bg-muted p-1.5 rounded transition-colors"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setShowFullEmojiPicker(true)}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground py-1 border-t border-border"
+                    >
+                      Mais emojis...
+                    </button>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+            <button 
+              onClick={() => onReply?.(message)}
+              className="p-1.5 hover:bg-muted rounded-full transition-colors"
+              title="Responder"
+            >
+              <Reply size={16} className="text-muted-foreground" />
+            </button>
           </div>
         )}
 
-        <div
-          className={cn(
-            'rounded-2xl px-4 py-3 shadow-sm',
-            isMe
-              ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-              : 'bg-card border border-border text-foreground',
-            isDeleted && 'opacity-60 italic'
+        <div className="flex flex-col max-w-[70%]">
+          {/* Reply reference */}
+          {replyTo && !isDeleted && (
+            <div 
+              className={cn(
+                'flex items-center gap-2 px-3 py-1.5 mb-1 rounded-t-xl text-xs border-l-2',
+                isMe 
+                  ? 'bg-purple-700/30 border-purple-400 text-purple-200' 
+                  : 'bg-muted/50 border-primary text-muted-foreground'
+              )}
+            >
+              <CornerDownRight size={12} />
+              <span className="truncate">
+                {replyTo.is_deleted ? 'Mensagem apagada' : replyTo.content?.substring(0, 50) || 'Mídia'}
+                {replyTo.content && replyTo.content.length > 50 ? '...' : ''}
+              </span>
+            </div>
           )}
-        >
-          {isDeleted ? (
-            <p className="text-sm">🚫 Mensagem apagada</p>
-          ) : (
-            <>
-              {/* Media content */}
-              {hasMedia && (
-                <div className="mb-2">
-                  {message.message_type === 'image' && (
-                    <img 
-                      src={message.media_url!} 
-                      alt="Imagem" 
-                      className="rounded-lg max-h-64 w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                      onClick={() => window.open(message.media_url!, '_blank')}
-                    />
-                  )}
-                  {message.message_type === 'video' && (
-                    <video 
-                      src={message.media_url!} 
-                      controls 
-                      className="rounded-lg max-h-64 w-full"
-                    />
-                  )}
-                  {message.message_type === 'audio' && (
-                    <audio 
-                      src={message.media_url!} 
-                      controls 
-                      className="w-full min-w-[200px]"
-                    />
-                  )}
-                  {message.message_type === 'document' && (
-                    <a 
-                      href={message.media_url!} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className={cn(
-                        'flex items-center gap-2 p-2 rounded-lg transition-colors',
-                        isMe ? 'bg-white/10 hover:bg-white/20' : 'bg-muted hover:bg-muted/80'
-                      )}
-                    >
-                      <FileText size={24} className={isMe ? 'text-white' : 'text-muted-foreground'} />
-                      <span className="text-sm truncate">{message.content || 'Documento'}</span>
-                    </a>
-                  )}
-                </div>
-              )}
-              
-              {/* Text content */}
-              {message.content && message.message_type === 'text' && (
-                <p className="text-sm leading-relaxed">{message.content}</p>
-              )}
-              {message.content && message.message_type !== 'text' && message.message_type !== 'document' && (
-                <p className="text-sm leading-relaxed mt-1">{message.content}</p>
-              )}
-            </>
-          )}
-          
-          <div className={cn(
-            'flex items-center justify-end gap-1 mt-1',
-            isMe ? 'text-purple-200' : 'text-muted-foreground'
-          )}>
-            <span className="text-xs">
-              {new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-            {isMe && (
+
+          <div
+            className={cn(
+              'rounded-2xl px-4 py-3 shadow-sm',
+              isMe
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                : 'bg-card border border-border text-foreground',
+              isDeleted && 'opacity-60 italic'
+            )}
+          >
+            {isDeleted ? (
+              <p className="text-sm">🚫 Mensagem apagada</p>
+            ) : (
               <>
-                {message.status === 'sent' && <Check size={14} />}
-                {message.status === 'delivered' && <CheckCheck size={14} />}
-                {message.status === 'read' && <CheckCheck size={14} className="text-blue-300" />}
+                {/* Media content */}
+                {hasMedia && (
+                  <div className="mb-2">
+                    {message.message_type === 'image' && (
+                      <img 
+                        src={message.media_url!} 
+                        alt="Imagem" 
+                        className="rounded-lg max-h-64 w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => window.open(message.media_url!, '_blank')}
+                      />
+                    )}
+                    {message.message_type === 'video' && (
+                      <video 
+                        src={message.media_url!} 
+                        controls 
+                        className="rounded-lg max-h-64 w-full"
+                      />
+                    )}
+                    {message.message_type === 'audio' && (
+                      <audio 
+                        src={message.media_url!} 
+                        controls 
+                        className="w-full min-w-[200px]"
+                      />
+                    )}
+                    {message.message_type === 'document' && (
+                      <a 
+                        href={message.media_url!} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className={cn(
+                          'flex items-center gap-2 p-2 rounded-lg transition-colors',
+                          isMe ? 'bg-white/10 hover:bg-white/20' : 'bg-muted hover:bg-muted/80'
+                        )}
+                      >
+                        <FileText size={24} className={isMe ? 'text-white' : 'text-muted-foreground'} />
+                        <span className="text-sm truncate">{message.content || 'Documento'}</span>
+                      </a>
+                    )}
+                  </div>
+                )}
+                
+                {/* Text content */}
+                {message.content && message.message_type === 'text' && (
+                  <p className="text-sm leading-relaxed">{message.content}</p>
+                )}
+                {message.content && message.message_type !== 'text' && message.message_type !== 'document' && (
+                  <p className="text-sm leading-relaxed mt-1">{message.content}</p>
+                )}
               </>
             )}
+            
+            <div className={cn(
+              'flex items-center justify-end gap-1 mt-1',
+              isMe ? 'text-purple-200' : 'text-muted-foreground'
+            )}>
+              <span className="text-xs">
+                {new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+              {isMe && (
+                <>
+                  {message.status === 'sent' && <Check size={14} />}
+                  {message.status === 'delivered' && <CheckCheck size={14} />}
+                  {message.status === 'read' && <CheckCheck size={14} className="text-blue-300" />}
+                </>
+              )}
+            </div>
           </div>
+
+          {/* Reactions display */}
+          {Object.keys(groupedReactions).length > 0 && (
+            <div className={cn('flex gap-1 mt-1', isMe ? 'justify-end' : 'justify-start')}>
+              {Object.entries(groupedReactions).map(([emoji, count]) => (
+                <span 
+                  key={emoji} 
+                  className="bg-muted/80 px-1.5 py-0.5 rounded-full text-xs flex items-center gap-0.5 cursor-pointer hover:bg-muted"
+                  onClick={() => onReact?.(message.id, emoji)}
+                >
+                  {emoji} {count > 1 && <span className="text-muted-foreground">{count}</span>}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Reactions display */}
-        {Object.keys(groupedReactions).length > 0 && (
-          <div className={cn('flex gap-1 mt-1', isMe ? 'justify-end' : 'justify-start')}>
-            {Object.entries(groupedReactions).map(([emoji, count]) => (
-              <span 
-                key={emoji} 
-                className="bg-muted/80 px-1.5 py-0.5 rounded-full text-xs flex items-center gap-0.5 cursor-pointer hover:bg-muted"
-                onClick={() => onReact?.(message.id, emoji)}
-              >
-                {emoji} {count > 1 && <span className="text-muted-foreground">{count}</span>}
-              </span>
-            ))}
+        {/* Action buttons - right side for sent messages */}
+        {isMe && showActions && !isDeleted && (
+          <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button 
+              onClick={() => onReply?.(message)}
+              className="p-1.5 hover:bg-muted rounded-full transition-colors"
+              title="Responder"
+            >
+              <Reply size={16} className="text-muted-foreground" />
+            </button>
+            <button 
+              onClick={() => setShowDeleteConfirm(true)}
+              className="p-1.5 hover:bg-destructive/20 rounded-full transition-colors"
+              title="Apagar"
+            >
+              <Trash2 size={16} className="text-destructive" />
+            </button>
           </div>
         )}
       </div>
 
-      {/* Action buttons - right side for sent messages */}
-      {isMe && showActions && !isDeleted && (
-        <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button 
-            onClick={() => onReply?.(message)}
-            className="p-1.5 hover:bg-muted rounded-full transition-colors"
-            title="Responder"
-          >
-            <Reply size={16} className="text-muted-foreground" />
-          </button>
-          <button 
-            onClick={() => onDelete?.(message.id)}
-            className="p-1.5 hover:bg-destructive/20 rounded-full transition-colors"
-            title="Apagar"
-          >
-            <Trash2 size={16} className="text-destructive" />
-          </button>
-        </div>
-      )}
-    </div>
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 size={20} className="text-destructive" />
+              Apagar mensagem?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              Tem certeza que deseja apagar esta mensagem? Esta ação não pode ser desfeita.
+            </p>
+            {message.content && (
+              <div className="mt-3 p-3 bg-muted/50 rounded-lg border border-border">
+                <p className="text-sm text-foreground line-clamp-3">
+                  {message.content}
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteConfirm(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+            >
+              Apagar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
