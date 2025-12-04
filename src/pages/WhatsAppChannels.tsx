@@ -72,7 +72,7 @@ import { useProviders, useConfiguredProviders } from '@/hooks/useProviders';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useCreateChannelWithInstance, useRefreshQRCode } from '@/hooks/useCreateChannelWithInstance';
 import { whatsappService } from '@/lib/whatsapp';
-import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, setChannelWebhook, ProviderInstance } from '@/lib/whatsapp/instance-creator';
+import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, setChannelWebhook, configureChannelFull, fetchChannelWebhook, ProviderInstance } from '@/lib/whatsapp/instance-creator';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -579,6 +579,74 @@ export default function WhatsAppChannels() {
     }
   };
 
+  // Diagnóstico completo do canal
+  const handleDiagnoseChannel = async (channel: WhatsAppChannel) => {
+    const provider = providers.find(p => p.id === channel.provider_id);
+    if (!provider || !channel.instance_id) {
+      toast.error('Canal sem provedor ou instância configurada');
+      return;
+    }
+
+    if (provider.code !== 'evolution') {
+      toast.error('Diagnóstico disponível apenas para Evolution API');
+      return;
+    }
+
+    toast.loading('Executando diagnóstico completo...', { duration: 15000 });
+    
+    try {
+      const result = await configureChannelFull(
+        provider.code as 'evolution',
+        channel.instance_id
+      );
+
+      toast.dismiss();
+
+      if (result.success) {
+        const eventsMsg = result.webhookEvents?.join(', ') || 'N/A';
+        const hasMessagesUpsert = result.messagesUpsertActive;
+        
+        if (hasMessagesUpsert) {
+          toast.success(
+            <div>
+              <p className="font-bold">✅ Canal configurado com sucesso!</p>
+              <p className="text-sm mt-1">MESSAGES_UPSERT: <span className="text-green-600 font-bold">ATIVO</span></p>
+              <p className="text-xs mt-1 text-muted-foreground">Eventos: {eventsMsg}</p>
+            </div>,
+            { duration: 8000 }
+          );
+        } else {
+          toast.warning(
+            <div>
+              <p className="font-bold">⚠️ Configuração aplicada com ressalvas</p>
+              <p className="text-sm mt-1">MESSAGES_UPSERT: <span className="text-red-600 font-bold">INATIVO</span></p>
+              <p className="text-xs mt-1">Pode ser necessário reconfigurar manualmente na Evolution API</p>
+            </div>,
+            { duration: 10000 }
+          );
+        }
+      } else {
+        toast.error(
+          <div>
+            <p className="font-bold">Erro no diagnóstico</p>
+            <p className="text-sm">{result.error}</p>
+            {result.steps && (
+              <div className="text-xs mt-2">
+                {result.steps.map((s: any, i: number) => (
+                  <p key={i}>{s.step}: {s.success ? '✅' : '❌'}</p>
+                ))}
+              </div>
+            )}
+          </div>,
+          { duration: 10000 }
+        );
+      }
+    } catch (error: any) {
+      toast.dismiss();
+      toast.error(error.message || 'Erro ao diagnosticar canal');
+    }
+  };
+
   const handleConfirmDelete = async () => {
     if (!selectedChannel) return;
     
@@ -704,6 +772,7 @@ export default function WhatsAppChannels() {
               onConnect={handleConnect}
               onDelete={handleDeleteClick}
               onReconfigureWebhook={handleReconfigureWebhook}
+              onDiagnose={handleDiagnoseChannel}
               getTimeSinceSync={getTimeSinceSync}
             />
           ))}
@@ -1166,6 +1235,7 @@ function ChannelCard({
   onConnect,
   onDelete,
   onReconfigureWebhook,
+  onDiagnose,
   getTimeSinceSync,
 }: {
   channel: WhatsAppChannel;
@@ -1175,6 +1245,7 @@ function ChannelCard({
   onConnect: (channel: WhatsAppChannel) => void;
   onDelete: (channel: WhatsAppChannel) => void;
   onReconfigureWebhook: (channel: WhatsAppChannel) => void;
+  onDiagnose: (channel: WhatsAppChannel) => void;
   getTimeSinceSync: (lastSync: string | null) => string;
 }) {
   const isConnected = channel.status === 'connected';
@@ -1225,6 +1296,10 @@ function ChannelCard({
             <DropdownMenuItem onClick={() => onReconfigureWebhook(channel)}>
               <Settings size={16} className="mr-2" />
               Reconfigurar Webhook
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onDiagnose(channel)}>
+              <AlertTriangle size={16} className="mr-2 text-orange-500" />
+              Diagnosticar Canal
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem 

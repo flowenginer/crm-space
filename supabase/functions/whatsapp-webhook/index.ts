@@ -777,18 +777,31 @@ function extractInstanceId(provider: WhatsAppProvider, payload: any): string {
 }
 
 function isMessageEvent(provider: WhatsAppProvider, payload: any): boolean {
+  const event = payload.event || payload.type || "";
+  const normalizedEvent = event.toLowerCase().replace(/_/g, '.');
+  
+  let isMsg = false;
+  
   switch (provider) {
     case "zapi":
-      return !!(payload.phone && payload.text) || !!(payload.phone && (payload.image || payload.audio || payload.video || payload.document));
+      isMsg = !!(payload.phone && payload.text) || !!(payload.phone && (payload.image || payload.audio || payload.video || payload.document));
+      break;
     case "uazapi":
-      const event = payload.event || payload.type;
-      return event === "message" || event === "messages.upsert" || !!payload.message;
+      isMsg = normalizedEvent === "message" || normalizedEvent === "messages.upsert" || !!payload.message;
+      break;
     case "evolution":
-      const evolutionMsgEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
-      return evolutionMsgEvent === "messages.upsert" || evolutionMsgEvent === "send.message";
+      isMsg = normalizedEvent === "messages.upsert" || normalizedEvent === "send.message";
+      break;
     default:
-      return false;
+      isMsg = false;
   }
+  
+  // DEBUG: Log detalhado para diagnóstico
+  if (!isMsg) {
+    console.log(`[Webhook DEBUG] Event NOT processed as message - Provider: ${provider}, RawEvent: "${event}", NormalizedEvent: "${normalizedEvent}", IsMessageEvent: false`);
+  }
+  
+  return isMsg;
 }
 
 function normalizeMessage(provider: WhatsAppProvider, payload: any): NormalizedMessage | null {

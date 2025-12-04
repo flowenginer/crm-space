@@ -10,7 +10,7 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel';
   providerCode?: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -830,34 +830,38 @@ async function getEvolutionStatus(config: ProviderConfig, instanceName: string) 
 
 // =====================================================
 // SET WEBHOOK - Reconfigurar webhook de instância existente
+// CORRIGIDO: Formato do body conforme documentação oficial Evolution API
 // =====================================================
 async function setEvolutionWebhook(config: ProviderConfig, instanceName: string, webhookUrl: string) {
   const baseUrl = normalizeBaseUrl(config.baseUrl);
   console.log('[Evolution] Setting webhook for:', instanceName, 'URL:', webhookUrl);
   
   try {
-    // Evolution API expects webhook config wrapped in "webhook" property
+    // FORMATO CORRETO conforme documentação oficial Evolution API
+    // NÃO usar wrapper "webhook:{}" - enviar propriedades diretamente
+    const webhookBody = {
+      enabled: true,
+      url: webhookUrl,
+      webhookByEvents: false,
+      webhookBase64: true,
+      events: [
+        'QRCODE_UPDATED',
+        'MESSAGES_UPSERT',
+        'MESSAGES_UPDATE', 
+        'CONNECTION_UPDATE',
+        'SEND_MESSAGE'
+      ]
+    };
+    
+    console.log('[Evolution SetWebhook] Request body:', JSON.stringify(webhookBody));
+    
     const response = await fetch(`${baseUrl}/webhook/set/${instanceName}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'apikey': config.adminToken,
       },
-      body: JSON.stringify({
-        webhook: {
-          enabled: true,
-          url: webhookUrl,
-          webhookByEvents: false,
-          webhookBase64: true,
-          events: [
-            'QRCODE_UPDATED',
-            'MESSAGES_UPSERT',
-            'MESSAGES_UPDATE', 
-            'CONNECTION_UPDATE',
-            'SEND_MESSAGE'
-          ]
-        }
-      }),
+      body: JSON.stringify(webhookBody),
     });
     
     const text = await response.text();
@@ -867,9 +871,117 @@ async function setEvolutionWebhook(config: ProviderConfig, instanceName: string,
       return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 200)}` };
     }
     
-    return { success: true, message: 'Webhook configurado com sucesso!' };
+    return { success: true, message: 'Webhook configurado com sucesso!', data: JSON.parse(text) };
   } catch (err: any) {
     console.error('[Evolution SetWebhook] Error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// =====================================================
+// FETCH WEBHOOK - Verificar configuração atual do webhook
+// =====================================================
+async function fetchEvolutionWebhook(config: ProviderConfig, instanceName: string) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[Evolution] Fetching webhook config for:', instanceName);
+  
+  try {
+    const response = await fetch(`${baseUrl}/webhook/find/${instanceName}`, {
+      method: 'GET',
+      headers: {
+        'apikey': config.adminToken,
+      },
+    });
+    
+    const text = await response.text();
+    console.log('[Evolution FetchWebhook] Response:', response.status, text);
+    
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 200)}` };
+    }
+    
+    const data = JSON.parse(text);
+    return { 
+      success: true, 
+      webhook: data,
+      enabled: data.enabled,
+      url: data.url,
+      events: data.events || []
+    };
+  } catch (err: any) {
+    console.error('[Evolution FetchWebhook] Error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// =====================================================
+// RESTART INSTANCE - Reiniciar instância para aplicar configs
+// =====================================================
+async function restartEvolutionInstance(config: ProviderConfig, instanceName: string) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[Evolution] Restarting instance:', instanceName);
+  
+  try {
+    const response = await fetch(`${baseUrl}/instance/restart/${instanceName}`, {
+      method: 'PUT',
+      headers: {
+        'apikey': config.adminToken,
+      },
+    });
+    
+    const text = await response.text();
+    console.log('[Evolution Restart] Response:', response.status, text);
+    
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 200)}` };
+    }
+    
+    return { success: true, message: 'Instância reiniciada com sucesso!' };
+  } catch (err: any) {
+    console.error('[Evolution Restart] Error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// =====================================================
+// SET SETTINGS - Configurar settings da instância
+// =====================================================
+async function setEvolutionSettings(config: ProviderConfig, instanceName: string) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[Evolution] Setting settings for:', instanceName);
+  
+  try {
+    const settingsBody = {
+      rejectCall: true,
+      msgCall: 'No momento não podemos atender ligações.',
+      groupsIgnore: true,  // Ignorar grupos conforme preferência do usuário
+      alwaysOnline: false,
+      readMessages: false,
+      readStatus: true,
+      syncFullHistory: false
+    };
+    
+    console.log('[Evolution SetSettings] Request body:', JSON.stringify(settingsBody));
+    
+    const response = await fetch(`${baseUrl}/settings/set/${instanceName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': config.adminToken,
+      },
+      body: JSON.stringify(settingsBody),
+    });
+    
+    const text = await response.text();
+    console.log('[Evolution SetSettings] Response:', response.status, text);
+    
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 200)}` };
+    }
+    
+    return { success: true, message: 'Settings configurados com sucesso!' };
+  } catch (err: any) {
+    console.error('[Evolution SetSettings] Error:', err);
     return { success: false, error: err.message };
   }
 }
@@ -1329,6 +1441,101 @@ serve(async (req) => {
           break;
         default:
           result = { success: false, error: 'Provedor desconhecido' };
+      }
+    } else if (action === 'fetchWebhook') {
+      // Fetch current webhook configuration
+      console.log('[WhatsApp Instance] Fetching webhook config for:', instanceId);
+      
+      switch (providerCode) {
+        case 'zapi':
+          result = { success: false, error: 'Z-API não suporta consulta de webhook' };
+          break;
+        case 'uazapi':
+          result = { success: false, error: 'UAZAPI não suporta consulta de webhook' };
+          break;
+        case 'evolution':
+          result = await fetchEvolutionWebhook(config, instanceId!);
+          break;
+        default:
+          result = { success: false, error: 'Provedor desconhecido' };
+      }
+    } else if (action === 'restartInstance') {
+      // Restart instance to apply configurations
+      console.log('[WhatsApp Instance] Restarting instance:', instanceId);
+      
+      switch (providerCode) {
+        case 'zapi':
+          result = { success: false, error: 'Z-API não suporta reinício de instância' };
+          break;
+        case 'uazapi':
+          result = { success: false, error: 'UAZAPI não suporta reinício de instância' };
+          break;
+        case 'evolution':
+          result = await restartEvolutionInstance(config, instanceId!);
+          break;
+        default:
+          result = { success: false, error: 'Provedor desconhecido' };
+      }
+    } else if (action === 'setSettings') {
+      // Configure instance settings
+      console.log('[WhatsApp Instance] Setting settings for:', instanceId);
+      
+      switch (providerCode) {
+        case 'zapi':
+          result = { success: false, error: 'Z-API não suporta configuração de settings' };
+          break;
+        case 'uazapi':
+          result = { success: false, error: 'UAZAPI não suporta configuração de settings' };
+          break;
+        case 'evolution':
+          result = await setEvolutionSettings(config, instanceId!);
+          break;
+        default:
+          result = { success: false, error: 'Provedor desconhecido' };
+      }
+    } else if (action === 'configureChannel') {
+      // Full channel configuration: settings + webhook + restart + verify
+      console.log('[WhatsApp Instance] Full channel configuration for:', instanceId);
+      const finalWebhookUrl = webhookUrl || `${supabaseUrl}/functions/v1/whatsapp-webhook?provider=${providerCode}`;
+      
+      if (providerCode !== 'evolution') {
+        result = { success: false, error: 'Configuração completa disponível apenas para Evolution API' };
+      } else {
+        const steps: any[] = [];
+        
+        // Step 1: Set Settings
+        const settingsResult = await setEvolutionSettings(config, instanceId!);
+        steps.push({ step: 'settings', ...settingsResult });
+        
+        // Step 2: Set Webhook
+        const webhookResult = await setEvolutionWebhook(config, instanceId!, finalWebhookUrl);
+        steps.push({ step: 'webhook', ...webhookResult });
+        
+        // Step 3: Restart Instance
+        const restartResult = await restartEvolutionInstance(config, instanceId!);
+        steps.push({ step: 'restart', ...restartResult });
+        
+        // Wait a bit for restart to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Step 4: Fetch Webhook to verify
+        const verifyResult = await fetchEvolutionWebhook(config, instanceId!);
+        steps.push({ step: 'verify', ...verifyResult });
+        
+        const allSuccess = steps.every(s => s.success);
+        const hasMessagesUpsert = verifyResult.events?.includes('MESSAGES_UPSERT');
+        
+        result = {
+          success: allSuccess,
+          message: allSuccess 
+            ? `Canal configurado com sucesso! MESSAGES_UPSERT: ${hasMessagesUpsert ? 'ATIVO' : 'INATIVO'}`
+            : 'Algumas etapas falharam',
+          steps,
+          webhookEnabled: verifyResult.enabled,
+          webhookUrl: verifyResult.url,
+          webhookEvents: verifyResult.events,
+          messagesUpsertActive: hasMessagesUpsert
+        };
       }
     } else {
       result = { success: false, error: 'Ação inválida' };
