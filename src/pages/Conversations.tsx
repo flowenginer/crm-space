@@ -56,7 +56,7 @@ import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
-import { useConversations, useMessages, useSendMessage, useDeleteMessage, useReactToMessage, uploadAttachment, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
+import { useConversations, useMessages, useSendMessage, useDeleteMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
@@ -494,11 +494,12 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
                 {new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
               </span>
               {isMe && (
-                <>
+                <span className="flex items-center">
+                  {message.status === 'failed' && <X size={14} className="text-red-400" />}
                   {message.status === 'sent' && <Check size={14} />}
                   {message.status === 'delivered' && <CheckCheck size={14} />}
-                  {message.status === 'read' && <CheckCheck size={14} className="text-blue-300" />}
-                </>
+                  {message.status === 'read' && <CheckCheck size={14} className="text-blue-400" />}
+                </span>
               )}
             </div>
           </div>
@@ -735,7 +736,7 @@ export default function Conversations() {
       setIsUploading(true);
       
       // Função auxiliar para enviar via WhatsApp (Edge Function - sem CORS)
-      const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string) => {
+      const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string): Promise<string | undefined> => {
         if (channelId && contactPhone) {
           try {
             const result = await sendWhatsAppMessage(
@@ -748,26 +749,31 @@ export default function Conversations() {
             if (!result.success) {
               console.error('[WhatsApp Send Error]', result.error);
               toast.error('Erro ao enviar para WhatsApp: ' + (result.error || 'Erro desconhecido'));
+              return undefined;
             }
+            return result.messageId;
           } catch (whatsappError) {
             console.error('[WhatsApp Send Error]', whatsappError);
-            // Continua mesmo se falhar - a mensagem fica salva no banco
+            return undefined;
           }
         }
+        return undefined;
       };
       
       // Send text message first if exists
       if (hasText && !hasFiles) {
+        // Primeiro envia via WhatsApp para obter o messageId
+        const whatsappMessageId = await sendViaWhatsApp(messageInput.trim(), 'text');
+        
+        // Salva no banco com o whatsapp_message_id
         sendMessage.mutate({
           conversation_id: selectedConversationId,
           content: messageInput.trim(),
           is_from_me: true,
           message_type: 'text',
           reply_to_message_id: replyingTo?.id,
+          whatsapp_message_id: whatsappMessageId,
         });
-        
-        // Enviar via WhatsApp
-        await sendViaWhatsApp(messageInput.trim(), 'text');
         
         setMessageInput('');
         setReplyingTo(null);
@@ -786,6 +792,9 @@ export default function Conversations() {
             messageType = 'audio';
           }
 
+          // Primeiro envia via WhatsApp para obter o messageId
+          const whatsappMessageId = await sendViaWhatsApp(file.name, messageType, result.url);
+
           sendMessage.mutate({
             conversation_id: selectedConversationId,
             content: file.name,
@@ -794,23 +803,21 @@ export default function Conversations() {
             media_url: result.url,
             media_mime_type: result.mimeType,
             reply_to_message_id: replyingTo?.id,
+            whatsapp_message_id: whatsappMessageId,
           });
-          
-          // Enviar via WhatsApp
-          await sendViaWhatsApp(file.name, messageType, result.url);
         }
         
         // Send text after files if exists
         if (hasText) {
+          const whatsappMessageId = await sendViaWhatsApp(messageInput.trim(), 'text');
+          
           sendMessage.mutate({
             conversation_id: selectedConversationId,
             content: messageInput.trim(),
             is_from_me: true,
             message_type: 'text',
+            whatsapp_message_id: whatsappMessageId,
           });
-          
-          // Enviar via WhatsApp
-          await sendViaWhatsApp(messageInput.trim(), 'text');
         }
         
         setMessageInput('');
