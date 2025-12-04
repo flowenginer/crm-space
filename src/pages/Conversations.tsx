@@ -685,6 +685,7 @@ export default function Conversations() {
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const dragCounterRef = useRef(0);
   const isSendingRef = useRef(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
   // Fetch real conversations from database with filter
@@ -724,6 +725,18 @@ export default function Conversations() {
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
   }, [messages, internalNotes]);
+
+  // Auto-scroll to bottom when messages change
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      scrollToBottom();
+    }, 100);
+    return () => clearTimeout(timeout);
+  }, [allChatItems.length, selectedConversationId, scrollToBottom]);
 
   // Handle URL param for conversation selection
   useEffect(() => {
@@ -1304,7 +1317,7 @@ export default function Conversations() {
 
             {/* Messages Area with Drag & Drop */}
             <div 
-              className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 relative"
+              className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 space-y-4 relative"
               onDragEnter={handleDragEnter}
               onDragLeave={handleDragLeave}
               onDragOver={handleDragOver}
@@ -1352,6 +1365,7 @@ export default function Conversations() {
                       />
                     )
                   ))}
+                  <div ref={messagesEndRef} />
                 </>
               )}
             </div>
