@@ -10,7 +10,7 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance';
   providerCode: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -129,11 +129,17 @@ async function getZAPIQRCode(instanceId: string, token: string, clientToken?: st
   };
 }
 
+async function fetchZAPIInstances(config: ProviderConfig) {
+  console.log('[Z-API] Fetching all instances');
+  // Z-API doesn't have a fetch all instances endpoint in the same way
+  // Would need account-level API
+  return { success: false, error: 'Z-API não suporta listagem de instâncias via API' };
+}
+
 // =====================================================
 // UAZAPI (baseado em Evolution API)
 // =====================================================
 async function createUAZAPIInstance(config: ProviderConfig, instanceName: string, webhookUrl: string) {
-  // Normalize base URL to avoid double paths
   const baseUrl = normalizeBaseUrl(config.baseUrl);
   console.log('[UAZAPI] Creating instance:', instanceName, 'at', baseUrl);
   console.log('[UAZAPI] Token (primeiros 8 chars):', config.adminToken?.substring(0, 8) + '...');
@@ -187,7 +193,7 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
       console.log('[UAZAPI] Still 401 after trying both auth methods:', errorText);
       return { 
         success: false, 
-        error: 'Token inválido ou sem permissão. Verifique se o Admin Token está correto.' 
+        error: 'Token inválido ou sem permissão. Verifique se o Admin Token está correto (deve ser a AUTHENTICATION_API_KEY do servidor).' 
       };
     }
 
@@ -218,7 +224,6 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
 }
 
 async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: string) {
-  // Normalize base URL
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   console.log('[UAZAPI] Getting QR code for:', instanceName, 'at', normalizedUrl);
   
@@ -243,11 +248,123 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: str
   };
 }
 
+async function fetchUAZAPIInstances(config: ProviderConfig) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[UAZAPI] Fetching all instances from:', baseUrl);
+  
+  try {
+    const response = await fetch(`${baseUrl}/instance/fetchInstances`, {
+      headers: { 'apikey': config.adminToken },
+    });
+    
+    if (response.status === 401) {
+      // Try Bearer
+      const retryRes = await fetch(`${baseUrl}/instance/fetchInstances`, {
+        headers: { 'Authorization': `Bearer ${config.adminToken}` },
+      });
+      
+      if (!retryRes.ok) {
+        const text = await retryRes.text();
+        return { success: false, error: `HTTP ${retryRes.status}: ${text.substring(0, 100)}` };
+      }
+      
+      const data = await retryRes.json();
+      return { success: true, instances: data };
+    }
+    
+    if (!response.ok) {
+      const text = await response.text();
+      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 100)}` };
+    }
+    
+    const data = await response.json();
+    return { success: true, instances: data };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function testUAZAPIConnection(config: ProviderConfig) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[UAZAPI] Testing connection to:', baseUrl);
+  
+  try {
+    // Try to fetch instances as a connection test
+    const response = await fetch(`${baseUrl}/instance/fetchInstances`, {
+      headers: { 'apikey': config.adminToken },
+    });
+    
+    console.log('[UAZAPI] Test response status:', response.status);
+    
+    if (response.status === 401) {
+      // Try Bearer
+      const retryRes = await fetch(`${baseUrl}/instance/fetchInstances`, {
+        headers: { 'Authorization': `Bearer ${config.adminToken}` },
+      });
+      
+      if (retryRes.status === 401) {
+        return { 
+          success: false, 
+          error: 'Token inválido. Use a AUTHENTICATION_API_KEY configurada no servidor UAZAPI/Evolution.' 
+        };
+      }
+      
+      if (retryRes.ok) {
+        const data = await retryRes.json();
+        return { success: true, message: `Conexão OK! ${Array.isArray(data) ? data.length : 0} instância(s) encontrada(s).` };
+      }
+    }
+    
+    if (response.ok) {
+      const data = await response.json();
+      return { success: true, message: `Conexão OK! ${Array.isArray(data) ? data.length : 0} instância(s) encontrada(s).` };
+    }
+    
+    const text = await response.text();
+    return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 100)}` };
+  } catch (err: any) {
+    return { success: false, error: `Erro de conexão: ${err.message}` };
+  }
+}
+
+async function deleteUAZAPIInstance(config: ProviderConfig, instanceName: string) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[UAZAPI] Deleting instance:', instanceName);
+  
+  try {
+    const response = await fetch(`${baseUrl}/instance/delete/${instanceName}`, {
+      method: 'DELETE',
+      headers: { 'apikey': config.adminToken },
+    });
+    
+    if (response.status === 401) {
+      const retryRes = await fetch(`${baseUrl}/instance/delete/${instanceName}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${config.adminToken}` },
+      });
+      
+      if (!retryRes.ok) {
+        const text = await retryRes.text();
+        return { success: false, error: `HTTP ${retryRes.status}: ${text.substring(0, 100)}` };
+      }
+      return { success: true };
+    }
+    
+    if (!response.ok) {
+      const text = await response.text();
+      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 100)}` };
+    }
+    
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 // =====================================================
 // EVOLUTION API
 // =====================================================
 async function createEvolutionInstance(config: ProviderConfig, instanceName: string, webhookUrl: string) {
-  // Normalize base URL to avoid double /manager paths
   const baseUrl = normalizeBaseUrl(config.baseUrl);
   console.log('[Evolution] Creating instance:', instanceName, 'at', baseUrl);
   
@@ -292,7 +409,6 @@ async function createEvolutionInstance(config: ProviderConfig, instanceName: str
 }
 
 async function getEvolutionQRCode(baseUrl: string, instanceName: string, apiKey: string) {
-  // Normalize base URL
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   console.log('[Evolution] Getting QR code for:', instanceName, 'at', normalizedUrl);
   
@@ -316,6 +432,73 @@ async function getEvolutionQRCode(baseUrl: string, instanceName: string, apiKey:
     qrCode: qrData.qrcode?.base64 || qrData.base64,
     connected: false,
   };
+}
+
+async function fetchEvolutionInstances(config: ProviderConfig) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[Evolution] Fetching all instances from:', baseUrl);
+  
+  try {
+    const response = await fetch(`${baseUrl}/instance/fetchInstances`, {
+      headers: { 'apikey': config.adminToken },
+    });
+    
+    if (!response.ok) {
+      const text = await response.text();
+      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 100)}` };
+    }
+    
+    const data = await response.json();
+    return { success: true, instances: data };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function testEvolutionConnection(config: ProviderConfig) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[Evolution] Testing connection to:', baseUrl);
+  
+  try {
+    const response = await fetch(`${baseUrl}/instance/fetchInstances`, {
+      headers: { 'apikey': config.adminToken },
+    });
+    
+    if (response.status === 401) {
+      return { success: false, error: 'API Key inválida. Verifique a AUTHENTICATION_API_KEY do servidor Evolution.' };
+    }
+    
+    if (response.ok) {
+      const data = await response.json();
+      return { success: true, message: `Conexão OK! ${Array.isArray(data) ? data.length : 0} instância(s) encontrada(s).` };
+    }
+    
+    const text = await response.text();
+    return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 100)}` };
+  } catch (err: any) {
+    return { success: false, error: `Erro de conexão: ${err.message}` };
+  }
+}
+
+async function deleteEvolutionInstance(config: ProviderConfig, instanceName: string) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[Evolution] Deleting instance:', instanceName);
+  
+  try {
+    const response = await fetch(`${baseUrl}/instance/delete/${instanceName}`, {
+      method: 'DELETE',
+      headers: { 'apikey': config.adminToken },
+    });
+    
+    if (!response.ok) {
+      const text = await response.text();
+      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 100)}` };
+    }
+    
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 }
 
 // =====================================================
@@ -398,6 +581,51 @@ serve(async (req) => {
           break;
         case 'evolution':
           result = await getEvolutionQRCode(config.baseUrl, instanceId!, config.adminToken);
+          break;
+        default:
+          result = { success: false, error: 'Provedor desconhecido' };
+      }
+    } else if (action === 'fetchInstances') {
+      // Fetch all instances from provider
+      switch (providerCode) {
+        case 'zapi':
+          result = await fetchZAPIInstances(config);
+          break;
+        case 'uazapi':
+          result = await fetchUAZAPIInstances(config);
+          break;
+        case 'evolution':
+          result = await fetchEvolutionInstances(config);
+          break;
+        default:
+          result = { success: false, error: 'Provedor desconhecido' };
+      }
+    } else if (action === 'testConnection') {
+      // Test connection to provider
+      switch (providerCode) {
+        case 'zapi':
+          result = { success: true, message: 'Z-API não suporta teste de conexão. Tente criar uma instância.' };
+          break;
+        case 'uazapi':
+          result = await testUAZAPIConnection(config);
+          break;
+        case 'evolution':
+          result = await testEvolutionConnection(config);
+          break;
+        default:
+          result = { success: false, error: 'Provedor desconhecido' };
+      }
+    } else if (action === 'deleteInstance') {
+      // Delete instance from provider
+      switch (providerCode) {
+        case 'zapi':
+          result = { success: false, error: 'Z-API não suporta exclusão via API' };
+          break;
+        case 'uazapi':
+          result = await deleteUAZAPIInstance(config, instanceId!);
+          break;
+        case 'evolution':
+          result = await deleteEvolutionInstance(config, instanceId!);
           break;
         default:
           result = { success: false, error: 'Provedor desconhecido' };
