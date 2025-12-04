@@ -22,10 +22,12 @@ import {
   Clock,
   Key,
   Monitor,
+  Tag,
 } from 'lucide-react';
 import { UserManagement } from '@/components/settings/UserManagement';
 import { RoleManagement } from '@/components/settings/RoleManagement';
 import { DepartmentManagement } from '@/components/settings/DepartmentManagement';
+import { TagManagement } from '@/components/settings/TagManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -382,6 +384,13 @@ export default function Settings() {
             Campos
           </TabsTrigger>
           <TabsTrigger
+            value="tags"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+          >
+            <Tag size={18} />
+            Etiquetas
+          </TabsTrigger>
+          <TabsTrigger
             value="notifications"
             className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
@@ -417,6 +426,11 @@ export default function Settings() {
         {/* TAB 3: Departments */}
         <TabsContent value="departments" className="space-y-6">
           <DepartmentManagement />
+        </TabsContent>
+
+        {/* TAB: Tags */}
+        <TabsContent value="tags" className="space-y-6">
+          <TagManagement />
         </TabsContent>
 
         {/* TAB 4: Channels */}
