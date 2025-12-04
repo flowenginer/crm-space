@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 
 // Layout
 import { MainLayout } from "@/components/layout/MainLayout";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 // Auth pages
 import Auth from "@/pages/Auth";
@@ -40,13 +41,41 @@ const App = () => (
             {/* Protected routes with MainLayout */}
             <Route element={<MainLayout />}>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/conversations" element={<Conversations />} />
-              <Route path="/quick-messages" element={<QuickMessages />} />
-              <Route path="/crm" element={<CRM />} />
-              <Route path="/whatsapp-channels" element={<WhatsAppChannels />} />
-              <Route path="/contacts" element={<Contacts />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/settings" element={<Settings />} />
+              <Route path="/conversations" element={
+                <ProtectedRoute permission="conversations.read">
+                  <Conversations />
+                </ProtectedRoute>
+              } />
+              <Route path="/quick-messages" element={
+                <ProtectedRoute permission="templates.read">
+                  <QuickMessages />
+                </ProtectedRoute>
+              } />
+              <Route path="/crm" element={
+                <ProtectedRoute permission="deals.read">
+                  <CRM />
+                </ProtectedRoute>
+              } />
+              <Route path="/whatsapp-channels" element={
+                <ProtectedRoute permission="channels.read">
+                  <WhatsAppChannels />
+                </ProtectedRoute>
+              } />
+              <Route path="/contacts" element={
+                <ProtectedRoute permission="contacts.read">
+                  <Contacts />
+                </ProtectedRoute>
+              } />
+              <Route path="/reports" element={
+                <ProtectedRoute permission="reports.view">
+                  <Reports />
+                </ProtectedRoute>
+              } />
+              <Route path="/settings" element={
+                <ProtectedRoute permission="settings.view">
+                  <Settings />
+                </ProtectedRoute>
+              } />
             </Route>
 
             {/* Catch-all */}

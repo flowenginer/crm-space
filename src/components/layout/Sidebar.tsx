@@ -13,6 +13,7 @@ import {
   Bell,
   ChevronLeft,
   Menu,
+  LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NavLink } from '@/components/NavLink';
@@ -20,16 +21,25 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useTheme } from '@/contexts/ThemeContext';
+import { usePermissions } from '@/hooks/usePermissions';
 
-const navItems = [
+interface NavItem {
+  title: string;
+  href: string;
+  icon: LucideIcon;
+  permission?: string; // format: 'category.action'
+  roles?: ('admin' | 'supervisor' | 'vendedor' | 'designer')[];
+}
+
+const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { title: 'Conversas', href: '/conversations', icon: MessageSquare },
-  { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap },
-  { title: 'CRM', href: '/crm', icon: TrendingUp },
-  { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio },
-  { title: 'Contatos', href: '/contacts', icon: Users },
-  { title: 'Relatórios', href: '/reports', icon: BarChart3 },
-  { title: 'Configurações', href: '/settings', icon: Settings },
+  { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.read' },
+  { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.read' },
+  { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.read' },
+  { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.read' },
+  { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.read' },
+  { title: 'Relatórios', href: '/reports', icon: BarChart3, permission: 'reports.view' },
+  { title: 'Configurações', href: '/settings', icon: Settings, permission: 'settings.view' },
 ];
 
 interface SidebarProps {
@@ -43,6 +53,29 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const isMobile = useIsMobile();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const { hasPermission, isAdmin, role: userRole } = usePermissions();
+
+  // Filter nav items based on permissions
+  const filteredNavItems = navItems.filter((item) => {
+    // Dashboard is always visible
+    if (item.href === '/') return true;
+    
+    // Admin sees everything
+    if (isAdmin) return true;
+    
+    // Check specific permission
+    if (item.permission) {
+      const [category, action] = item.permission.split('.');
+      return hasPermission(category, action);
+    }
+    
+    // Check role restriction
+    if (item.roles) {
+      return userRole ? item.roles.includes(userRole) : false;
+    }
+    
+    return true;
+  });
 
   const getInitials = (name: string | null) => {
     if (!name) return 'U';
@@ -121,7 +154,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-6 px-3">
         <div className="space-y-1.5">
-          {navItems.map((item) => {
+          {filteredNavItems.map((item) => {
             const isActive = location.pathname === item.href;
             const Icon = item.icon;
 
