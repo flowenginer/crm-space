@@ -40,6 +40,20 @@ async function safeJsonParse(response: Response, context: string) {
   }
 }
 
+// Helper to normalize base URL (remove trailing /manager or /manager/)
+function normalizeBaseUrl(url: string): string {
+  let normalized = url.trim();
+  // Remove trailing slash
+  if (normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1);
+  }
+  // Remove /manager suffix if present (users sometimes add it incorrectly)
+  if (normalized.endsWith('/manager')) {
+    normalized = normalized.slice(0, -8);
+  }
+  return normalized;
+}
+
 // =====================================================
 // Z-API
 // =====================================================
@@ -116,14 +130,15 @@ async function getZAPIQRCode(instanceId: string, token: string, clientToken?: st
 }
 
 // =====================================================
-// UAZAPI (usa prefixo /manager/ nos endpoints)
+// UAZAPI (baseado em Evolution API)
 // =====================================================
 async function createUAZAPIInstance(config: ProviderConfig, instanceName: string, webhookUrl: string) {
-  console.log('[UAZAPI] Creating instance:', instanceName, 'at', config.baseUrl);
+  // Normalize base URL to avoid double paths
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[UAZAPI] Creating instance:', instanceName, 'at', baseUrl);
   console.log('[UAZAPI] Token (primeiros 8 chars):', config.adminToken?.substring(0, 8) + '...');
   
-  // UAZAPI usa /manager/ prefix para endpoints de administração
-  const url = `${config.baseUrl}/manager/instance/create`;
+  const url = `${baseUrl}/instance/create`;
   console.log('[UAZAPI] Request URL:', url);
   
   const requestBody = {
@@ -203,10 +218,11 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
 }
 
 async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: string) {
-  console.log('[UAZAPI] Getting QR code for:', instanceName);
+  // Normalize base URL
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  console.log('[UAZAPI] Getting QR code for:', instanceName, 'at', normalizedUrl);
   
-  // UAZAPI usa /manager/ prefix
-  const statusRes = await fetch(`${baseUrl}/manager/instance/connectionState/${instanceName}`, {
+  const statusRes = await fetch(`${normalizedUrl}/instance/connectionState/${instanceName}`, {
     headers: { 'apikey': token },
   });
   const statusData = await safeJsonParse(statusRes, 'UAZAPI Status');
@@ -216,7 +232,7 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: str
   }
 
   // Get QR Code
-  const qrRes = await fetch(`${baseUrl}/manager/instance/qrcode/${instanceName}`, {
+  const qrRes = await fetch(`${normalizedUrl}/instance/qrcode/${instanceName}`, {
     headers: { 'apikey': token },
   });
   const qrData = await safeJsonParse(qrRes, 'UAZAPI QR');
@@ -231,9 +247,11 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: str
 // EVOLUTION API
 // =====================================================
 async function createEvolutionInstance(config: ProviderConfig, instanceName: string, webhookUrl: string) {
-  console.log('[Evolution] Creating instance:', instanceName, 'at', config.baseUrl);
+  // Normalize base URL to avoid double /manager paths
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[Evolution] Creating instance:', instanceName, 'at', baseUrl);
   
-  const response = await fetch(`${config.baseUrl}/instance/create`, {
+  const response = await fetch(`${baseUrl}/instance/create`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -274,10 +292,12 @@ async function createEvolutionInstance(config: ProviderConfig, instanceName: str
 }
 
 async function getEvolutionQRCode(baseUrl: string, instanceName: string, apiKey: string) {
-  console.log('[Evolution] Getting QR code for:', instanceName);
+  // Normalize base URL
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  console.log('[Evolution] Getting QR code for:', instanceName, 'at', normalizedUrl);
   
   // Check status
-  const statusRes = await fetch(`${baseUrl}/instance/connectionState/${instanceName}`, {
+  const statusRes = await fetch(`${normalizedUrl}/instance/connectionState/${instanceName}`, {
     headers: { 'apikey': apiKey },
   });
   const statusData = await safeJsonParse(statusRes, 'Evolution Status');
@@ -287,7 +307,7 @@ async function getEvolutionQRCode(baseUrl: string, instanceName: string, apiKey:
   }
 
   // Get QR Code
-  const qrRes = await fetch(`${baseUrl}/instance/qrcode/${instanceName}`, {
+  const qrRes = await fetch(`${normalizedUrl}/instance/qrcode/${instanceName}`, {
     headers: { 'apikey': apiKey },
   });
   const qrData = await safeJsonParse(qrRes, 'Evolution QR');
