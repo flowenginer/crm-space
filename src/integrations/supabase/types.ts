@@ -1541,6 +1541,39 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_logs: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          event_type: string
+          id: string
+          instance_id: string | null
+          payload: Json
+          processed: boolean | null
+          provider: string
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          event_type: string
+          id?: string
+          instance_id?: string | null
+          payload: Json
+          processed?: boolean | null
+          provider: string
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          instance_id?: string | null
+          payload?: Json
+          processed?: boolean | null
+          provider?: string
+        }
+        Relationships: []
+      }
       whatsapp_channels: {
         Row: {
           battery_level: number | null
@@ -1549,6 +1582,8 @@ export type Database = {
           deleted_at: string | null
           department_id: string | null
           id: string
+          instance_id: string | null
+          instance_token: string | null
           is_deleted: boolean | null
           last_sync_at: string | null
           messages_received: number | null
@@ -1557,11 +1592,14 @@ export type Database = {
           messages_sent_today: number | null
           name: string
           phone: string
+          provider_id: string | null
           qr_code: string | null
           qr_expires_at: string | null
+          session_data: Json | null
           status: string | null
           type: string | null
           updated_at: string
+          webhook_url: string | null
         }
         Insert: {
           battery_level?: number | null
@@ -1570,6 +1608,8 @@ export type Database = {
           deleted_at?: string | null
           department_id?: string | null
           id?: string
+          instance_id?: string | null
+          instance_token?: string | null
           is_deleted?: boolean | null
           last_sync_at?: string | null
           messages_received?: number | null
@@ -1578,11 +1618,14 @@ export type Database = {
           messages_sent_today?: number | null
           name: string
           phone: string
+          provider_id?: string | null
           qr_code?: string | null
           qr_expires_at?: string | null
+          session_data?: Json | null
           status?: string | null
           type?: string | null
           updated_at?: string
+          webhook_url?: string | null
         }
         Update: {
           battery_level?: number | null
@@ -1591,6 +1634,8 @@ export type Database = {
           deleted_at?: string | null
           department_id?: string | null
           id?: string
+          instance_id?: string | null
+          instance_token?: string | null
           is_deleted?: boolean | null
           last_sync_at?: string | null
           messages_received?: number | null
@@ -1599,11 +1644,14 @@ export type Database = {
           messages_sent_today?: number | null
           name?: string
           phone?: string
+          provider_id?: string | null
           qr_code?: string | null
           qr_expires_at?: string | null
+          session_data?: Json | null
           status?: string | null
           type?: string | null
           updated_at?: string
+          webhook_url?: string | null
         }
         Relationships: [
           {
@@ -1613,7 +1661,50 @@ export type Database = {
             referencedRelation: "departments"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "whatsapp_channels_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_providers"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      whatsapp_providers: {
+        Row: {
+          api_key: string | null
+          api_secret: string | null
+          base_url: string
+          code: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          api_key?: string | null
+          api_secret?: string | null
+          base_url: string
+          code: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          api_key?: string | null
+          api_secret?: string | null
+          base_url?: string
+          code?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {
@@ -1631,6 +1722,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_unread: { Args: { conv_id: string }; Returns: undefined }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
