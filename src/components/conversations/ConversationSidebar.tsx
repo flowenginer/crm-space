@@ -278,6 +278,36 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     }
   });
 
+  // Fetch profile photo from WhatsApp (hook must be before early returns)
+  const fetchPhoto = async () => {
+    if (!conversation?.channel_id || !conversation?.contact?.phone || conversation?.contact?.avatar_url) return;
+    
+    setIsFetchingPhoto(true);
+    try {
+      const result = await fetchContactProfile(conversation.channel_id, conversation.contact.phone);
+      if (result.success && result.profilePictureUrl) {
+        // Update contact avatar_url in database
+        await supabase
+          .from('contacts')
+          .update({ avatar_url: result.profilePictureUrl })
+          .eq('id', conversation.contact.id);
+        
+        queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      }
+    } catch (error) {
+      console.error('Error fetching profile photo:', error);
+    } finally {
+      setIsFetchingPhoto(false);
+    }
+  };
+
+  // Fetch photo on mount if not already fetched (before early returns)
+  useEffect(() => {
+    if (conversation?.channel_id && conversation?.contact?.phone && !conversation?.contact?.avatar_url) {
+      fetchPhoto();
+    }
+  }, [conversation?.channel_id, conversation?.contact?.phone, conversation?.contact?.avatar_url]);
+
   // Loading state
   if (loadingConversation) {
     return (
@@ -327,36 +357,6 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     }
     return format(d, "dd/MM/yyyy, HH:mm", { locale: ptBR });
   };
-
-  // Fetch profile photo from WhatsApp
-  const fetchPhoto = async () => {
-    if (!conversation?.channel_id || !contact.phone || contact.avatar_url) return;
-    
-    setIsFetchingPhoto(true);
-    try {
-      const result = await fetchContactProfile(conversation.channel_id, contact.phone);
-      if (result.success && result.profilePictureUrl) {
-        // Update contact avatar_url in database
-        await supabase
-          .from('contacts')
-          .update({ avatar_url: result.profilePictureUrl })
-          .eq('id', contact.id);
-        
-        queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
-      }
-    } catch (error) {
-      console.error('Error fetching profile photo:', error);
-    } finally {
-      setIsFetchingPhoto(false);
-    }
-  };
-
-  // Fetch photo on mount if not already fetched
-  useEffect(() => {
-    if (conversation?.channel_id && contact?.phone && !contact.avatar_url) {
-      fetchPhoto();
-    }
-  }, [conversation?.channel_id, contact?.phone, contact?.avatar_url]);
 
   return (
     <div className="w-[350px] bg-card border-l border-border flex flex-col h-full overflow-hidden">
