@@ -675,14 +675,14 @@ async function getEvolutionQRCode(baseUrl: string, instanceName: string, apiKey:
     return { connected: true };
   }
 
-  // Get QR Code
-  const qrRes = await fetch(`${normalizedUrl}/instance/qrcode/${instanceName}`, {
+  // Get QR Code - Evolution API v2 uses /instance/connect endpoint
+  const qrRes = await fetch(`${normalizedUrl}/instance/connect/${instanceName}`, {
     headers: { 'apikey': apiKey },
   });
   const qrData = await safeJsonParse(qrRes, 'Evolution QR');
 
   return {
-    qrCode: qrData.qrcode?.base64 || qrData.base64,
+    qrCode: qrData.qrcode?.base64 || qrData.base64 || qrData.code,
     connected: false,
   };
 }
