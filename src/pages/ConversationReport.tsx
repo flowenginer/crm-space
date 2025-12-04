@@ -373,12 +373,12 @@ export default function ConversationReportPage() {
 
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Status</label>
-              <Select value={filters.status} onValueChange={(v) => handleFilterChange('status', v)}>
+              <Select value={filters.status || 'all'} onValueChange={(v) => handleFilterChange('status', v === 'all' ? '' : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                   {statusOptions.map(opt => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
@@ -393,12 +393,12 @@ export default function ConversationReportPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Canal</label>
-              <Select value={filters.channel} onValueChange={(v) => handleFilterChange('channel', v)}>
+              <Select value={filters.channel || 'all'} onValueChange={(v) => handleFilterChange('channel', v === 'all' ? '' : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                   {channels.map(ch => (
                     <SelectItem key={ch.id} value={ch.id}>
                       {ch.name}
@@ -410,12 +410,12 @@ export default function ConversationReportPage() {
 
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Agente</label>
-              <Select value={filters.agent} onValueChange={(v) => handleFilterChange('agent', v)}>
+              <Select value={filters.agent || 'all'} onValueChange={(v) => handleFilterChange('agent', v === 'all' ? '' : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                   {agents.map(agent => (
                     <SelectItem key={agent.id} value={agent.id}>
                       {agent.full_name}
@@ -427,12 +427,12 @@ export default function ConversationReportPage() {
 
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Departamento</label>
-              <Select value={filters.department} onValueChange={(v) => handleFilterChange('department', v)}>
+              <Select value={filters.department || 'all'} onValueChange={(v) => handleFilterChange('department', v === 'all' ? '' : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                   {departments.map(dept => (
                     <SelectItem key={dept.id} value={dept.id}>
                       {dept.name}
@@ -444,12 +444,12 @@ export default function ConversationReportPage() {
 
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Etiqueta</label>
-              <Select value={filters.tag} onValueChange={(v) => handleFilterChange('tag', v)}>
+              <Select value={filters.tag || 'all'} onValueChange={(v) => handleFilterChange('tag', v === 'all' ? '' : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas</SelectItem>
+                  <SelectItem value="all">Todas</SelectItem>
                   {tags.map(tag => (
                     <SelectItem key={tag.id} value={tag.id}>
                       <div className="flex items-center gap-2">
