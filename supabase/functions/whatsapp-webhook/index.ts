@@ -386,6 +386,13 @@ function normalizeMessage(provider: WhatsAppProvider, payload: any): NormalizedM
 function normalizeZAPIMessage(payload: any): NormalizedMessage | null {
   if (!payload.phone) return null;
 
+  // Ignorar mensagens de grupos (telefones que começam com 120363 são IDs de grupo)
+  const phone = payload.phone?.replace(/\D/g, "") || "";
+  if (phone.startsWith("120363") || payload.isGroup || payload.isGroupMsg) {
+    console.log(`[Webhook ZAPI] Ignoring group message from: ${phone}`);
+    return null;
+  }
+
   const messageType = detectZAPIMessageType(payload);
   
   return {
@@ -437,8 +444,21 @@ function normalizeUAZAPIMessage(payload: any): NormalizedMessage | null {
   const msg = payload.data || payload.message || payload;
   if (!msg) return null;
 
-  let from = msg.from || msg.remoteJid || msg.phone || "";
-  from = from.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
+  let rawFrom = msg.from || msg.remoteJid || msg.phone || "";
+  
+  // Ignorar mensagens de grupos (@g.us = grupo)
+  if (rawFrom.includes("@g.us") || msg.isGroup || msg.isGroupMsg) {
+    console.log(`[Webhook UAZAPI] Ignoring group message from: ${rawFrom}`);
+    return null;
+  }
+  
+  let from = rawFrom.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
+  
+  // Ignorar IDs que começam com 120363 (grupos)
+  if (from.startsWith("120363")) {
+    console.log(`[Webhook UAZAPI] Ignoring group message from ID: ${from}`);
+    return null;
+  }
 
   const messageType = detectUAZAPIMessageType(msg);
 
@@ -493,8 +513,21 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
   const msg = payload.data;
   if (!msg?.key) return null;
 
-  let from = msg.key.remoteJid || "";
-  from = from.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
+  const rawRemoteJid = msg.key.remoteJid || "";
+  
+  // Ignorar mensagens de grupos (@g.us = grupo)
+  if (rawRemoteJid.includes("@g.us")) {
+    console.log(`[Webhook Evolution] Ignoring group message from: ${rawRemoteJid}`);
+    return null;
+  }
+  
+  let from = rawRemoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
+  
+  // Ignorar IDs que começam com 120363 (grupos)
+  if (from.startsWith("120363")) {
+    console.log(`[Webhook Evolution] Ignoring group message from ID: ${from}`);
+    return null;
+  }
 
   const messageType = detectEvolutionMessageType(msg);
 

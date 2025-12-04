@@ -60,6 +60,7 @@ import { useConversations, useMessages, useSendMessage, useDeleteMessage, useRea
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
+import { whatsappService } from '@/lib/whatsapp';
 import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
@@ -725,8 +726,31 @@ export default function Conversations() {
       return;
     }
 
+    // Buscar dados da conversa para envio via WhatsApp
+    const selectedConv = conversations?.find(c => c.id === selectedConversationId);
+    const channelId = selectedConv?.channel_id;
+    const contactPhone = selectedConv?.contact?.phone;
+
     try {
       setIsUploading(true);
+      
+      // Função auxiliar para enviar via WhatsApp
+      const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string) => {
+        if (channelId && contactPhone) {
+          try {
+            await whatsappService.sendMessage(
+              channelId, 
+              contactPhone, 
+              content, 
+              type as 'text' | 'image' | 'audio' | 'video' | 'document',
+              mediaUrl ? { mediaUrl, filename: content } : undefined
+            );
+          } catch (whatsappError) {
+            console.error('[WhatsApp Send Error]', whatsappError);
+            // Continua mesmo se falhar - a mensagem fica salva no banco
+          }
+        }
+      };
       
       // Send text message first if exists
       if (hasText && !hasFiles) {
@@ -737,6 +761,10 @@ export default function Conversations() {
           message_type: 'text',
           reply_to_message_id: replyingTo?.id,
         });
+        
+        // Enviar via WhatsApp
+        await sendViaWhatsApp(messageInput.trim(), 'text');
+        
         setMessageInput('');
         setReplyingTo(null);
       } else if (hasFiles) {
@@ -763,6 +791,9 @@ export default function Conversations() {
             media_mime_type: result.mimeType,
             reply_to_message_id: replyingTo?.id,
           });
+          
+          // Enviar via WhatsApp
+          await sendViaWhatsApp(file.name, messageType, result.url);
         }
         
         // Send text after files if exists
@@ -773,6 +804,9 @@ export default function Conversations() {
             is_from_me: true,
             message_type: 'text',
           });
+          
+          // Enviar via WhatsApp
+          await sendViaWhatsApp(messageInput.trim(), 'text');
         }
         
         setMessageInput('');
