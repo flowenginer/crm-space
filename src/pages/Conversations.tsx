@@ -40,6 +40,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
+import { StartConversation } from '@/components/conversations/StartConversation';
 
 // Mock Data
 const mockConversations = [
@@ -529,40 +530,16 @@ export default function Conversations() {
             </div>
           </>
         ) : (
-          /* Empty State */
-          <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-purple-50/50 to-pink-50/50 p-8">
-            <div className="text-center max-w-md">
-              <div className="w-24 h-24 icon-gradient rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl">
-                <MessageSquare size={40} className="text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-foreground mb-2">
-                Selecione uma conversa
-              </h3>
-              <p className="text-muted-foreground mb-8">
-                Escolha uma conversa da lista ou inicie uma nova para começar
-              </p>
-
-              {/* New Conversation Form */}
-              <div className="bg-card rounded-2xl shadow-elevated border border-border/50 p-6">
-                <label className="block text-sm font-medium text-foreground mb-3 text-left">
-                  Iniciar nova conversa
-                </label>
-                <div className="flex gap-2">
-                  <div className="flex items-center gap-2 bg-muted border border-border/50 rounded-xl px-3 py-2">
-                    <span className="text-sm text-muted-foreground">🇧🇷 +55</span>
-                  </div>
-                  <Input
-                    type="tel"
-                    placeholder="(00) 00000-0000"
-                    className="flex-1 h-11 rounded-xl"
-                  />
-                  <button className="p-3 btn-gradient text-white rounded-xl hover:shadow-lg transition-all">
-                    <Send size={20} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          /* Empty State with Start Conversation */
+          <StartConversation 
+            onConversationCreated={(conversationId) => {
+              // Find the conversation in mock data or reload
+              const conv = mockConversations.find(c => c.id === conversationId);
+              if (conv) {
+                setSelectedConversation(conv);
+              }
+            }}
+          />
         )}
       </div>
 
