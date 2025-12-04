@@ -245,9 +245,18 @@ function ConversationItem({ conversation, isSelected, onClick }: ConversationIte
       <div className="flex items-start gap-3">
         {/* Avatar */}
         <div className="relative flex-shrink-0">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold shadow-md">
-            {contactName.charAt(0).toUpperCase()}
-          </div>
+          {conversation.contact?.avatar_url ? (
+            <img
+              src={conversation.contact.avatar_url}
+              alt={contactName}
+              loading="lazy"
+              className="w-12 h-12 rounded-full object-cover shadow-md"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold shadow-md">
+              {contactName.charAt(0).toUpperCase()}
+            </div>
+          )}
           {isOnline && (
             <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-success rounded-full border-2 border-card"></div>
           )}
