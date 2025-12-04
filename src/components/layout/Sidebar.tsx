@@ -15,6 +15,7 @@ import {
   Menu,
   LucideIcon,
   CalendarClock,
+  ClipboardList,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -43,6 +44,7 @@ const navItems: NavItem[] = [
   { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.read' },
   { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.read' },
   { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.read' },
+  { title: 'Atendimentos', href: '/relatorios/atendimentos', icon: ClipboardList, permission: 'reports.view' },
   { title: 'Relatórios', href: '/reports', icon: BarChart3, permission: 'reports.view' },
   { title: 'Configurações', href: '/settings', icon: Settings, permission: 'settings.view' },
 ];
