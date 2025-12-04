@@ -841,13 +841,17 @@ function AddTagModal({
   onAddTag: (tagId: string) => void;
 }) {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#8B5CF6');
   const [newTagVisibility, setNewTagVisibility] = useState<'public' | 'private'>('private');
   const [isCreating, setIsCreating] = useState(false);
   const queryClient = useQueryClient();
 
-  const availableTags = allTags.filter(tag => !currentTagIds.includes(tag.id));
+  // Filter tags based on search and current tags
+  const availableTags = allTags
+    .filter(tag => !currentTagIds.includes(tag.id))
+    .filter(tag => tag.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const colors = [
     '#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16', 
@@ -902,6 +906,7 @@ function AddTagModal({
 
   const handleClose = () => {
     setShowCreateForm(false);
+    setSearchQuery('');
     setNewTagName('');
     setNewTagColor('#8B5CF6');
     onClose();
@@ -919,14 +924,44 @@ function AddTagModal({
         <div className="py-4">
           {!showCreateForm ? (
             <>
-              {/* Existing Tags List */}
-              {availableTags.length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">
-                  Todas as etiquetas já foram adicionadas
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
-                  {availableTags.map((tag) => (
+              {/* Search Input */}
+              <div className="relative mb-4">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Buscar etiqueta..."
+                  className="pl-9"
+                  autoFocus
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Tags List */}
+              <div className="space-y-1 max-h-60 overflow-y-auto mb-4">
+                {availableTags.length === 0 ? (
+                  <div className="text-center py-4">
+                    {searchQuery ? (
+                      <p className="text-muted-foreground text-sm">
+                        Nenhuma etiqueta encontrada para "{searchQuery}"
+                      </p>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">
+                        Todas as etiquetas já foram adicionadas
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  availableTags.map((tag) => (
                     <button
                       key={tag.id}
                       onClick={() => {
@@ -947,8 +982,22 @@ function AddTagModal({
                         <span className="text-xs text-muted-foreground">🏢</span>
                       )}
                     </button>
-                  ))}
-                </div>
+                  ))
+                )}
+              </div>
+
+              {/* Quick create from search */}
+              {searchQuery && availableTags.length === 0 && (
+                <button
+                  onClick={() => {
+                    setNewTagName(searchQuery);
+                    setShowCreateForm(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors mb-2"
+                >
+                  <Plus size={16} />
+                  Criar "{searchQuery}"
+                </button>
               )}
               
               {/* Create New Tag Button */}

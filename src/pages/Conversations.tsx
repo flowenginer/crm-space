@@ -40,7 +40,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
-import { useConversations, useMessages, useSendMessage, type Conversation, type Message } from '@/hooks/useConversations';
+import { useConversations, useMessages, useSendMessage, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -324,13 +324,13 @@ export default function Conversations() {
   const [searchQuery, setSearchQuery] = useState('');
   const [channelFilter, setChannelFilter] = useState('all');
   const [sortFilter, setSortFilter] = useState('newest');
-  const [quickFilter, setQuickFilter] = useState('all');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(false);
   const isMobile = useIsMobile();
 
-  // Fetch real conversations from database
-  const { data: conversations = [], isLoading: conversationsLoading } = useConversations();
+  // Fetch real conversations from database with filter
+  const { data: conversations = [], isLoading: conversationsLoading } = useConversations(quickFilter);
   const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedConversationId);
   const sendMessage = useSendMessage();
 
@@ -444,7 +444,7 @@ export default function Conversations() {
 
           {/* Quick Filters */}
           <div className="flex gap-2">
-            {['all', 'mine', 'unassigned'].map((filter) => (
+            {(['all', 'mine', 'unassigned'] as const).map((filter) => (
               <button
                 key={filter}
                 onClick={() => setQuickFilter(filter)}
