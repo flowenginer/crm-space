@@ -1741,6 +1741,13 @@ export type Database = {
         }
         Returns: undefined
       }
+      merge_duplicate_conversations: {
+        Args: {
+          p_duplicate_conversation_id: string
+          p_keep_conversation_id: string
+        }
+        Returns: undefined
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
