@@ -40,21 +40,34 @@ serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const pathParts = url.pathname.split("/");
-    const provider = pathParts[pathParts.length - 1] as WhatsAppProvider;
+    const provider = url.searchParams.get("provider") as WhatsAppProvider || "evolution";
 
     const payload = await req.json();
     
     console.log(`[Webhook] Received from ${provider}:`, JSON.stringify(payload).substring(0, 500));
 
-    // Log webhook for debugging
+    // Extract instance ID
     const instanceId = extractInstanceId(provider, payload);
+    
+    // Determine event type
+    const eventType = getEventType(provider, payload);
+    
+    // Log webhook for debugging
     await supabase.from("webhook_logs").insert({
       provider,
-      event_type: payload.event || payload.type || "message",
+      event_type: eventType,
       instance_id: instanceId,
       payload,
     });
+
+    // Handle connection status updates
+    if (isConnectionEvent(provider, payload)) {
+      console.log(`[Webhook] Processing connection event for instance: ${instanceId}`);
+      await handleConnectionEvent(supabase, provider, instanceId, payload);
+      return new Response(JSON.stringify({ success: true, message: "Connection event processed" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Check if this is a message event
     if (!isMessageEvent(provider, payload)) {
@@ -218,6 +231,112 @@ serve(async (req) => {
     });
   }
 });
+
+function getEventType(provider: WhatsAppProvider, payload: any): string {
+  switch (provider) {
+    case "zapi":
+      return payload.type || payload.event || "message";
+    case "uazapi":
+      return payload.event || payload.type || "message";
+    case "evolution":
+      return payload.event || "message";
+    default:
+      return "unknown";
+  }
+}
+
+function isConnectionEvent(provider: WhatsAppProvider, payload: any): boolean {
+  switch (provider) {
+    case "zapi":
+      // Z-API connection events
+      return payload.type === "connection_update" || 
+             payload.event === "connection" ||
+             payload.connected !== undefined;
+    case "uazapi":
+      // UAZAPI connection events
+      return payload.event === "connection.update" || 
+             payload.event === "status" ||
+             payload.type === "connection";
+    case "evolution":
+      // Evolution API connection events
+      return payload.event === "connection.update";
+    default:
+      return false;
+  }
+}
+
+async function handleConnectionEvent(
+  supabase: any, 
+  provider: WhatsAppProvider, 
+  instanceId: string, 
+  payload: any
+): Promise<void> {
+  if (!instanceId) {
+    console.log("[Webhook] No instance ID for connection event");
+    return;
+  }
+
+  let newStatus: "connected" | "disconnected" = "disconnected";
+  let ownerPhone: string | null = null;
+
+  switch (provider) {
+    case "zapi":
+      newStatus = payload.connected === true ? "connected" : "disconnected";
+      ownerPhone = payload.phone || payload.owner;
+      break;
+    case "uazapi":
+      const uazapiState = payload.data?.state || payload.state;
+      newStatus = uazapiState === "open" || uazapiState === "connected" ? "connected" : "disconnected";
+      ownerPhone = payload.data?.wuid?.replace("@s.whatsapp.net", "") || 
+                   payload.owner?.replace("@s.whatsapp.net", "");
+      break;
+    case "evolution":
+      const evolutionState = payload.data?.state || payload.state;
+      newStatus = evolutionState === "open" ? "connected" : "disconnected";
+      // Extract phone from sender field or wuid
+      ownerPhone = payload.sender?.replace("@s.whatsapp.net", "") || 
+                   payload.data?.wuid?.replace("@s.whatsapp.net", "") ||
+                   payload.data?.owner?.replace("@s.whatsapp.net", "");
+      break;
+  }
+
+  console.log(`[Webhook] Connection update - Instance: ${instanceId}, Status: ${newStatus}, Phone: ${ownerPhone}`);
+
+  // Find channel by instance ID
+  const { data: channel, error: channelError } = await supabase
+    .from("whatsapp_channels")
+    .select("id, name, phone, status")
+    .eq("instance_id", instanceId)
+    .eq("is_deleted", false)
+    .single();
+
+  if (channelError || !channel) {
+    console.log(`[Webhook] Channel not found for connection update: ${instanceId}`);
+    return;
+  }
+
+  // Only update if status changed
+  const updateData: any = {
+    status: newStatus,
+    last_sync_at: new Date().toISOString(),
+  };
+
+  // Update phone if we got one and current is empty or placeholder
+  if (ownerPhone && (!channel.phone || channel.phone === "Aguardando conexão" || channel.phone === "Não identificado")) {
+    updateData.phone = ownerPhone;
+  }
+
+  const { error: updateError } = await supabase
+    .from("whatsapp_channels")
+    .update(updateData)
+    .eq("id", channel.id);
+
+  if (updateError) {
+    console.error(`[Webhook] Error updating channel status:`, updateError);
+  } else {
+    console.log(`[Webhook] Channel ${channel.name} status updated to ${newStatus}`);
+  }
+}
 
 function extractInstanceId(provider: WhatsAppProvider, payload: any): string {
   switch (provider) {
