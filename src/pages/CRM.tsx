@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -34,6 +34,7 @@ import {
   Paperclip,
   Users,
   X,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,6 +66,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { usePipelines, usePipelineStages, useDeals as useDealsHook, useCreateDeal, useUpdateDeal } from '@/hooks/useDeals';
+import { useTeam } from '@/hooks/useTeam';
 
 interface Stage {
   id: string;
@@ -93,48 +96,7 @@ const mockStages: Stage[] = [
   { id: '6', name: 'FECHADO', order: 6, color: '#BBF7D0' },
 ];
 
-const initialDeals: Deal[] = [
-  {
-    id: '1',
-    contactName: 'Jonadabe Silva',
-    value: null,
-    stageId: '1',
-    description: '',
-    lastActivity: '2025-12-03T14:30:00',
-    contactId: 'contact-1',
-    tags: ['Urgente'],
-  },
-  {
-    id: '2',
-    contactName: 'Eduardo Santos',
-    value: null,
-    stageId: '2',
-    description: '',
-    lastActivity: '2025-12-02T15:00:00',
-    contactId: 'contact-2',
-    tags: ['Follow-up'],
-  },
-  {
-    id: '3',
-    contactName: 'Ricardo Gri',
-    value: 899.0,
-    stageId: '2',
-    description: '',
-    lastActivity: '2025-12-02T16:00:00',
-    contactId: 'contact-3',
-    tags: ['VIP'],
-  },
-  {
-    id: '4',
-    contactName: 'Arnon Nunes',
-    value: 10.0,
-    stageId: '2',
-    description: 'teste',
-    lastActivity: '2025-12-01T10:00:00',
-    contactId: 'contact-4',
-    tags: [],
-  },
-];
+const initialDeals: Deal[] = [];
 
 const teamMembers = ['D', 'I', 'L', 'M', 'R'];
 

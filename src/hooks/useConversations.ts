@@ -1,0 +1,145 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+
+export interface Conversation {
+  id: string;
+  contact_id: string;
+  channel_id: string | null;
+  assigned_to: string | null;
+  department_id: string | null;
+  status: string | null;
+  is_unread: boolean | null;
+  unread_count: number | null;
+  last_message_at: string | null;
+  last_message_preview: string | null;
+  lead_status: string | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  closed_by: string | null;
+  contact?: {
+    id: string;
+    full_name: string;
+    phone: string;
+    email: string | null;
+    avatar_url: string | null;
+    is_online: boolean | null;
+  } | null;
+  assignee?: { id: string; full_name: string | null } | null;
+  channel?: { id: string; name: string } | null;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_id: string | null;
+  contact_id: string | null;
+  is_from_me: boolean | null;
+  content: string | null;
+  message_type: string | null;
+  media_url: string | null;
+  media_mime_type: string | null;
+  status: string | null;
+  whatsapp_message_id: string | null;
+  created_at: string;
+}
+
+export function useConversations() {
+  return useQuery({
+    queryKey: ['conversations'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select(`
+          *,
+          contact:contacts(id, full_name, phone, email, avatar_url, is_online),
+          assignee:profiles!conversations_assigned_to_fkey(id, full_name),
+          channel:whatsapp_channels(id, name)
+        `)
+        .eq('status', 'open')
+        .order('last_message_at', { ascending: false });
+
+      if (error) throw error;
+      return data as Conversation[];
+    },
+  });
+}
+
+export function useMessages(conversationId: string | null) {
+  return useQuery({
+    queryKey: ['messages', conversationId],
+    queryFn: async () => {
+      if (!conversationId) return [];
+      
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return data as Message[];
+    },
+    enabled: !!conversationId,
+  });
+}
+
+export function useSendMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (message: {
+      conversation_id: string;
+      content: string;
+      is_from_me?: boolean;
+      message_type?: string;
+    }) => {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: message.conversation_id,
+          content: message.content,
+          is_from_me: message.is_from_me ?? true,
+          message_type: message.message_type || 'text',
+          status: 'sent',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update conversation last message
+      await supabase
+        .from('conversations')
+        .update({
+          last_message_at: new Date().toISOString(),
+          last_message_preview: message.content.substring(0, 100),
+        })
+        .eq('id', message.conversation_id);
+
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['messages', variables.conversation_id] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    },
+  });
+}
+
+export function useUpdateConversation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: Partial<Conversation> & { id: string }) => {
+      const { error } = await supabase
+        .from('conversations')
+        .update(data)
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    },
+  });
+}
