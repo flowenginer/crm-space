@@ -966,6 +966,33 @@ export type Database = {
           },
         ]
       }
+      permission_definitions: {
+        Row: {
+          category: string
+          created_at: string | null
+          description: string | null
+          id: string
+          permission_key: string
+          permission_name: string
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          permission_key: string
+          permission_name: string
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          permission_key?: string
+          permission_name?: string
+        }
+        Relationships: []
+      }
       pipeline_stages: {
         Row: {
           color: string | null
@@ -1033,11 +1060,18 @@ export type Database = {
           department_id: string | null
           full_name: string | null
           id: string
+          invited_at: string | null
+          invited_by: string | null
+          is_active: boolean | null
           is_available: boolean | null
           is_online: boolean | null
+          last_login_at: string | null
           last_seen_at: string | null
+          login_count: number | null
           max_conversations: number | null
+          permissions: Json | null
           phone: string | null
+          role: string | null
           updated_at: string
         }
         Insert: {
@@ -1047,11 +1081,18 @@ export type Database = {
           department_id?: string | null
           full_name?: string | null
           id: string
+          invited_at?: string | null
+          invited_by?: string | null
+          is_active?: boolean | null
           is_available?: boolean | null
           is_online?: boolean | null
+          last_login_at?: string | null
           last_seen_at?: string | null
+          login_count?: number | null
           max_conversations?: number | null
+          permissions?: Json | null
           phone?: string | null
+          role?: string | null
           updated_at?: string
         }
         Update: {
@@ -1061,11 +1102,18 @@ export type Database = {
           department_id?: string | null
           full_name?: string | null
           id?: string
+          invited_at?: string | null
+          invited_by?: string | null
+          is_active?: boolean | null
           is_available?: boolean | null
           is_online?: boolean | null
+          last_login_at?: string | null
           last_seen_at?: string | null
+          login_count?: number | null
           max_conversations?: number | null
+          permissions?: Json | null
           phone?: string | null
+          role?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1074,6 +1122,13 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1166,6 +1221,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      role_definitions: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          description: string | null
+          icon: string | null
+          id: string
+          is_system: boolean | null
+          order_position: number | null
+          permissions: Json | null
+          role_key: string
+          role_name: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          order_position?: number | null
+          permissions?: Json | null
+          role_key: string
+          role_name: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          order_position?: number | null
+          permissions?: Json | null
+          role_key?: string
+          role_name?: string
+        }
+        Relationships: []
       }
       scheduled_messages: {
         Row: {
@@ -1319,6 +1413,70 @@ export type Database = {
           },
         ]
       }
+      user_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string | null
+          department_id: string | null
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string
+          role: string
+          status: string | null
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          email: string
+          expires_at: string
+          id?: string
+          invited_by: string
+          role?: string
+          status?: string | null
+          token: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string
+          role?: string
+          status?: string | null
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_invites_accepted_by_fkey"
+            columns: ["accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_invites_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_invites_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -1416,6 +1574,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_user_permission: {
+        Args: { permission_key: string; user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
