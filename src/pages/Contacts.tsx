@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   X,
   Users,
+  Loader2,
 } from 'lucide-react';
 import {
   Dialog,
@@ -31,202 +32,44 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { toast } from '@/hooks/use-toast';
-
-interface Contact {
-  id: string;
-  fullName: string;
-  phone: string;
-  email: string;
-  state: string;
-  city: string;
-  leadStatus: 'new' | 'active' | 'qualified' | 'unqualified' | 'client';
-  tags: string[];
-  firstContact: string;
-  lastInteraction: string;
-  assignedTo: { id: string; name: string; avatar: string | null };
-  department: string;
-  avatarUrl: string | null;
-  isOnline: boolean;
-}
-
-interface TagItem {
-  name: string;
-  color: string;
-  count: number;
-}
-
-const mockTags: TagItem[] = [
-  { name: 'Urgente', color: '#EF4444', count: 234 },
-  { name: 'VIP', color: '#F59E0B', count: 89 },
-  { name: 'Follow-up', color: '#3B82F6', count: 567 },
-  { name: 'Cliente', color: '#10B981', count: 1243 },
-  { name: 'Lead', color: '#8B5CF6', count: 2456 },
-  { name: 'Novo Lead', color: '#8B5CF6', count: 890 },
-  { name: 'Recorrente', color: '#14B8A6', count: 345 },
-];
+import { toast } from 'sonner';
+import { useContacts, useCreateContact, useUpdateContact, useDeleteContact, type Contact } from '@/hooks/useContacts';
+import { useTags, useCreateTag, useDeleteTag, useAddTagToContact, useRemoveTagFromContact } from '@/hooks/useTags';
+import { useDepartments } from '@/hooks/useDepartments';
+import { useTeam } from '@/hooks/useTeam';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const brazilianStates = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
 ];
 
-const mockContacts: Contact[] = [
-  {
-    id: '1',
-    fullName: 'Fernando TR Terraplanagem Rincón',
-    phone: '+55 (21) 98533-2473',
-    email: 'fernando@terraplanagem.com',
-    state: 'RJ',
-    city: 'Rio de Janeiro',
-    leadStatus: 'qualified',
-    tags: ['Urgente', 'VIP', 'Follow-up'],
-    firstContact: '2025-11-15T10:00:00',
-    lastInteraction: '2025-12-03T15:19:00',
-    assignedTo: { id: 'user-1', name: 'Diego', avatar: null },
-    department: 'Vendas',
-    avatarUrl: null,
-    isOnline: true,
-  },
-  {
-    id: '2',
-    fullName: 'Fernando Cofsevicz',
-    phone: '+55 (21) 97654-3210',
-    email: 'fernando.cofsevicz@email.com',
-    state: 'SP',
-    city: 'São Paulo',
-    leadStatus: 'new',
-    tags: ['Novo Lead'],
-    firstContact: '2025-12-01T08:00:00',
-    lastInteraction: '2025-12-03T12:49:00',
-    assignedTo: { id: 'user-2', name: 'Ian', avatar: null },
-    department: 'Pré-vendas',
-    avatarUrl: null,
-    isOnline: true,
-  },
-  {
-    id: '3',
-    fullName: 'Fernando Serpa',
-    phone: '+55 (11) 99876-5432',
-    email: 'fserpa@empresa.com.br',
-    state: 'SP',
-    city: 'Campinas',
-    leadStatus: 'client',
-    tags: ['Cliente', 'Recorrente'],
-    firstContact: '2025-10-20T14:30:00',
-    lastInteraction: '2025-12-03T06:53:00',
-    assignedTo: { id: 'user-1', name: 'Diego', avatar: null },
-    department: 'Vendas',
-    avatarUrl: null,
-    isOnline: false,
-  },
-  {
-    id: '4',
-    fullName: 'Maria Silva Santos',
-    phone: '+55 (21) 99999-8888',
-    email: 'maria.silva@gmail.com',
-    state: 'RJ',
-    city: 'Niterói',
-    leadStatus: 'active',
-    tags: ['Follow-up'],
-    firstContact: '2025-11-25T09:00:00',
-    lastInteraction: '2025-12-02T14:30:00',
-    assignedTo: { id: 'user-3', name: 'Lara', avatar: null },
-    department: 'Vendas',
-    avatarUrl: null,
-    isOnline: false,
-  },
-  {
-    id: '5',
-    fullName: 'João Pedro Oliveira',
-    phone: '+55 (31) 98765-4321',
-    email: 'joao.oliveira@empresa.com',
-    state: 'MG',
-    city: 'Belo Horizonte',
-    leadStatus: 'qualified',
-    tags: ['VIP', 'Urgente'],
-    firstContact: '2025-11-10T11:00:00',
-    lastInteraction: '2025-12-01T16:45:00',
-    assignedTo: { id: 'user-2', name: 'Ian', avatar: null },
-    department: 'Vendas',
-    avatarUrl: null,
-    isOnline: true,
-  },
-  {
-    id: '6',
-    fullName: 'Ana Carolina Mendes',
-    phone: '+55 (27) 99888-7777',
-    email: 'ana.mendes@hotmail.com',
-    state: 'ES',
-    city: 'Vitória',
-    leadStatus: 'new',
-    tags: ['Novo Lead'],
-    firstContact: '2025-12-02T16:00:00',
-    lastInteraction: '2025-12-03T09:30:00',
-    assignedTo: { id: 'user-3', name: 'Lara', avatar: null },
-    department: 'Pré-vendas',
-    avatarUrl: null,
-    isOnline: false,
-  },
-  {
-    id: '7',
-    fullName: 'Ricardo Almeida Costa',
-    phone: '+55 (71) 97777-6666',
-    email: 'ricardo.costa@empresa.com',
-    state: 'BA',
-    city: 'Salvador',
-    leadStatus: 'client',
-    tags: ['Cliente', 'VIP'],
-    firstContact: '2025-09-15T10:00:00',
-    lastInteraction: '2025-12-01T11:00:00',
-    assignedTo: { id: 'user-1', name: 'Diego', avatar: null },
-    department: 'Pós-vendas',
-    avatarUrl: null,
-    isOnline: true,
-  },
-  {
-    id: '8',
-    fullName: 'Carla Rodrigues Lima',
-    phone: '+55 (41) 98666-5555',
-    email: 'carla.lima@gmail.com',
-    state: 'PR',
-    city: 'Curitiba',
-    leadStatus: 'unqualified',
-    tags: [],
-    firstContact: '2025-11-20T14:00:00',
-    lastInteraction: '2025-11-25T10:00:00',
-    assignedTo: { id: 'user-2', name: 'Ian', avatar: null },
-    department: 'Vendas',
-    avatarUrl: null,
-    isOnline: false,
-  },
-];
+type LeadStatus = 'new' | 'active' | 'qualified' | 'unqualified' | 'client';
 
-const getLeadStatusLabel = (status: Contact['leadStatus']) => {
-  const labels: Record<Contact['leadStatus'], string> = {
+const getLeadStatusLabel = (status: string | null) => {
+  const labels: Record<string, string> = {
     new: 'Novo',
     active: 'Ativo',
     qualified: 'Qualificado',
     unqualified: 'Não qualificado',
     client: 'Cliente',
   };
-  return labels[status];
+  return labels[status || 'new'] || 'Novo';
 };
 
-const getLeadStatusColor = (status: Contact['leadStatus']) => {
-  const colors: Record<Contact['leadStatus'], string> = {
+const getLeadStatusColor = (status: string | null) => {
+  const colors: Record<string, string> = {
     new: 'bg-blue-100 text-blue-700',
     active: 'bg-yellow-100 text-yellow-700',
     qualified: 'bg-green-100 text-green-700',
     unqualified: 'bg-muted text-muted-foreground',
     client: 'bg-primary/10 text-primary',
   };
-  return colors[status];
+  return colors[status || 'new'] || 'bg-muted text-muted-foreground';
 };
 
-const getTagColor = (tagName: string) => {
-  const tag = mockTags.find((t) => t.name === tagName);
-  if (!tag) return 'bg-muted text-muted-foreground';
+const getTagColorClass = (color: string | null) => {
+  if (!color) return 'bg-muted text-muted-foreground';
   
   const colorMap: Record<string, string> = {
     '#EF4444': 'bg-red-100 text-red-700',
@@ -235,12 +78,25 @@ const getTagColor = (tagName: string) => {
     '#10B981': 'bg-green-100 text-green-700',
     '#8B5CF6': 'bg-purple-100 text-purple-700',
     '#14B8A6': 'bg-teal-100 text-teal-700',
+    '#EC4899': 'bg-pink-100 text-pink-700',
   };
-  return colorMap[tag.color] || 'bg-muted text-muted-foreground';
+  return colorMap[color] || 'bg-muted text-muted-foreground';
 };
 
 export default function Contacts() {
-  const [contacts] = useState<Contact[]>(mockContacts);
+  const { data: contacts = [], isLoading: contactsLoading } = useContacts();
+  const { data: tags = [], isLoading: tagsLoading } = useTags();
+  const { data: team = [] } = useTeam();
+  const { data: departments = [] } = useDepartments();
+  
+  const createContact = useCreateContact();
+  const updateContact = useUpdateContact();
+  const deleteContact = useDeleteContact();
+  const createTag = useCreateTag();
+  const deleteTag = useDeleteTag();
+  const addTagToContact = useAddTagToContact();
+  const removeTagFromContact = useRemoveTagFromContact();
+
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
@@ -259,29 +115,56 @@ export default function Contacts() {
   const [isEditing, setIsEditing] = useState(false);
   const [importStep, setImportStep] = useState(1);
 
+  // Form state
+  const [formData, setFormData] = useState({
+    full_name: '',
+    phone: '',
+    email: '',
+    birth_date: '',
+    cpf_cnpj: '',
+    person_type: 'individual',
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: '',
+    state: '',
+    zip_code: '',
+    country: 'Brasil',
+    lead_status: 'new',
+    assigned_to: '',
+    department_id: '',
+    origin: '',
+    notes: '',
+  });
+
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#8B5CF6');
+
   // Filter contacts
   const filteredContacts = contacts.filter((contact) => {
     const matchesSearch =
       searchQuery === '' ||
-      contact.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      contact.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       contact.phone.includes(searchQuery) ||
-      contact.email.toLowerCase().includes(searchQuery.toLowerCase());
+      (contact.email?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
     const matchesState = stateFilter === '' || contact.state === stateFilter;
-    const matchesStatus = statusFilter === '' || contact.leadStatus === statusFilter;
-    const matchesAssigned = assignedFilter === '' || contact.assignedTo.name === assignedFilter;
+    const matchesStatus = statusFilter === '' || contact.lead_status === statusFilter;
+    const matchesAssigned = assignedFilter === '' || contact.assigned_to === assignedFilter;
     const matchesTags =
-      selectedTags.length === 0 || selectedTags.some((tag) => contact.tags.includes(tag));
+      selectedTags.length === 0 || selectedTags.some((tagId) => contact.tags?.some(t => t.id === tagId));
     return matchesSearch && matchesState && matchesStatus && matchesAssigned && matchesTags;
   });
 
-  const totalContacts = 95590;
-  const totalPages = Math.ceil(totalContacts / perPage);
+  const totalContacts = contacts.length;
+  const paginatedContacts = filteredContacts.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const totalPages = Math.ceil(filteredContacts.length / perPage);
 
   const handleSelectAll = () => {
-    if (selectedContacts.length === filteredContacts.length) {
+    if (selectedContacts.length === paginatedContacts.length) {
       setSelectedContacts([]);
     } else {
-      setSelectedContacts(filteredContacts.map((c) => c.id));
+      setSelectedContacts(paginatedContacts.map((c) => c.id));
     }
   };
 
@@ -294,21 +177,101 @@ export default function Contacts() {
   const handleNewContact = () => {
     setIsEditing(false);
     setSelectedContact(null);
+    setFormData({
+      full_name: '',
+      phone: '',
+      email: '',
+      birth_date: '',
+      cpf_cnpj: '',
+      person_type: 'individual',
+      street: '',
+      number: '',
+      complement: '',
+      neighborhood: '',
+      city: '',
+      state: '',
+      zip_code: '',
+      country: 'Brasil',
+      lead_status: 'new',
+      assigned_to: '',
+      department_id: '',
+      origin: '',
+      notes: '',
+    });
     setShowContactModal(true);
   };
 
   const handleEditContact = (contact: Contact) => {
     setIsEditing(true);
     setSelectedContact(contact);
+    setFormData({
+      full_name: contact.full_name,
+      phone: contact.phone,
+      email: contact.email || '',
+      birth_date: contact.birth_date || '',
+      cpf_cnpj: contact.cpf_cnpj || '',
+      person_type: contact.person_type || 'individual',
+      street: contact.street || '',
+      number: contact.number || '',
+      complement: contact.complement || '',
+      neighborhood: contact.neighborhood || '',
+      city: contact.city || '',
+      state: contact.state || '',
+      zip_code: contact.zip_code || '',
+      country: contact.country || 'Brasil',
+      lead_status: contact.lead_status || 'new',
+      assigned_to: contact.assigned_to || '',
+      department_id: contact.department_id || '',
+      origin: contact.origin || '',
+      notes: contact.notes || '',
+    });
     setShowContactModal(true);
   };
 
-  const handleDeleteContact = (contactId: string) => {
-    toast({ title: 'Contato excluído', description: 'O contato foi removido com sucesso.' });
+  const handleSaveContact = async () => {
+    if (!formData.full_name || !formData.phone) {
+      toast.error('Nome e telefone são obrigatórios');
+      return;
+    }
+
+    try {
+      if (isEditing && selectedContact) {
+        await updateContact.mutateAsync({
+          id: selectedContact.id,
+          ...formData,
+          email: formData.email || null,
+          birth_date: formData.birth_date || null,
+          assigned_to: formData.assigned_to || null,
+          department_id: formData.department_id || null,
+        });
+        toast.success('Contato atualizado com sucesso!');
+      } else {
+        await createContact.mutateAsync({
+          ...formData,
+          email: formData.email || null,
+          birth_date: formData.birth_date || null,
+          assigned_to: formData.assigned_to || null,
+          department_id: formData.department_id || null,
+        });
+        toast.success('Contato criado com sucesso!');
+      }
+      setShowContactModal(false);
+    } catch (error) {
+      toast.error('Erro ao salvar contato');
+    }
+  };
+
+  const handleDeleteContact = async (contactId: string) => {
+    try {
+      await deleteContact.mutateAsync(contactId);
+      toast.success('Contato excluído com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao excluir contato');
+    }
   };
 
   const handleOpenChat = (contact: Contact) => {
-    toast({ title: 'Abrindo conversa', description: `Iniciando chat com ${contact.fullName}` });
+    toast.info(`Abrindo conversa com ${contact.full_name}`);
   };
 
   const clearFilters = () => {
@@ -319,11 +282,36 @@ export default function Contacts() {
     setSelectedTags([]);
   };
 
-  const toggleTagFilter = (tagName: string) => {
+  const toggleTagFilter = (tagId: string) => {
     setSelectedTags((prev) =>
-      prev.includes(tagName) ? prev.filter((t) => t !== tagName) : [...prev, tagName]
+      prev.includes(tagId) ? prev.filter((t) => t !== tagId) : [...prev, tagId]
     );
   };
+
+  const handleCreateTag = async () => {
+    if (!newTagName.trim()) {
+      toast.error('Digite o nome da etiqueta');
+      return;
+    }
+    try {
+      await createTag.mutateAsync({ name: newTagName, color: newTagColor });
+      setNewTagName('');
+      toast.success('Etiqueta criada com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao criar etiqueta');
+    }
+  };
+
+  const handleDeleteTag = async (tagId: string) => {
+    try {
+      await deleteTag.mutateAsync(tagId);
+      toast.success('Etiqueta excluída!');
+    } catch (error) {
+      toast.error('Erro ao excluir etiqueta');
+    }
+  };
+
+  const isLoading = contactsLoading || tagsLoading;
 
   return (
     <div className="space-y-6">
@@ -402,23 +390,27 @@ export default function Contacts() {
             {showTagsDropdown && (
               <div className="absolute top-full left-0 mt-2 w-64 bg-card rounded-xl border border-border shadow-elevated z-50">
                 <div className="p-3 space-y-2">
-                  {mockTags.map((tag) => (
-                    <label
-                      key={tag.name}
-                      className="flex items-center gap-2 p-2 hover:bg-muted rounded-lg cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={selectedTags.includes(tag.name)}
-                        onCheckedChange={() => toggleTagFilter(tag.name)}
-                      />
-                      <span
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: tag.color }}
-                      />
-                      <span className="flex-1 text-sm text-foreground">{tag.name}</span>
-                      <span className="text-xs text-muted-foreground">{tag.count}</span>
-                    </label>
-                  ))}
+                  {tags.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-2">Nenhuma etiqueta cadastrada</p>
+                  ) : (
+                    tags.map((tag) => (
+                      <label
+                        key={tag.id}
+                        className="flex items-center gap-2 p-2 hover:bg-muted rounded-lg cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={selectedTags.includes(tag.id)}
+                          onCheckedChange={() => toggleTagFilter(tag.id)}
+                        />
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: tag.color || '#8B5CF6' }}
+                        />
+                        <span className="flex-1 text-sm text-foreground">{tag.name}</span>
+                        <span className="text-xs text-muted-foreground">{tag.usage_count || 0}</span>
+                      </label>
+                    ))
+                  )}
                 </div>
               </div>
             )}
@@ -431,10 +423,9 @@ export default function Contacts() {
             className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
           >
             <option value="">Responsável</option>
-            <option value="Diego">Diego</option>
-            <option value="Ian">Ian</option>
-            <option value="Lara">Lara</option>
-            <option value="Michel">Michel</option>
+            {team.map((member) => (
+              <option key={member.id} value={member.id}>{member.full_name}</option>
+            ))}
           </select>
 
           {/* State Filter */}
@@ -518,261 +509,311 @@ export default function Contacts() {
         </div>
       )}
 
-      {/* Contacts Table */}
-      <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-muted/50 border-b border-border">
-                <th className="w-12 px-4 py-4">
-                  <Checkbox
-                    checked={selectedContacts.length === filteredContacts.length && filteredContacts.length > 0}
-                    onCheckedChange={handleSelectAll}
-                  />
-                </th>
-                <th className="text-left px-4 py-4">
-                  <button className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
-                    Nome
-                    <ArrowUpDown size={14} />
-                  </button>
-                </th>
-                <th className="text-left px-4 py-4">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    WhatsApp
-                  </span>
-                </th>
-                <th className="text-left px-4 py-4">
-                  <button className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
-                    Estado
-                    <ArrowUpDown size={14} />
-                  </button>
-                </th>
-                <th className="text-left px-4 py-4">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Status
-                  </span>
-                </th>
-                <th className="text-left px-4 py-4">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Etiquetas
-                  </span>
-                </th>
-                <th className="text-left px-4 py-4">
-                  <button className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
-                    1ª Conexão
-                    <ArrowUpDown size={14} />
-                  </button>
-                </th>
-                <th className="text-left px-4 py-4">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Atendente
-                  </span>
-                </th>
-                <th className="text-left px-4 py-4">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Dept.
-                  </span>
-                </th>
-                <th className="text-center px-4 py-4">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Ações
-                  </span>
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-border/50">
-              {filteredContacts.map((contact) => (
-                <tr key={contact.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-4">
+      {/* Loading State */}
+      {isLoading ? (
+        <div className="bg-card rounded-2xl border border-border shadow-sm p-8">
+          <div className="flex items-center justify-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <span className="text-muted-foreground">Carregando contatos...</span>
+          </div>
+        </div>
+      ) : contacts.length === 0 ? (
+        /* Empty State - No contacts at all */
+        <div className="bg-card rounded-2xl border border-border shadow-sm">
+          <div className="text-center py-16">
+            <div className="mx-auto h-20 w-20 rounded-2xl bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center mb-6">
+              <Users className="h-10 w-10 text-primary" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">Nenhum contato cadastrado</h3>
+            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+              Comece adicionando seu primeiro contato ou importe uma lista de contatos de uma planilha.
+            </p>
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="flex items-center gap-2 px-6 py-3 border border-border bg-card rounded-xl text-sm font-medium text-foreground hover:bg-muted transition-all"
+              >
+                <Upload size={18} />
+                Importar Contatos
+              </button>
+              <button
+                onClick={handleNewContact}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-xl font-medium hover:shadow-lg transition-all"
+              >
+                <Plus size={18} />
+                Adicionar Contato
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Contacts Table */
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-muted/50 border-b border-border">
+                  <th className="w-12 px-4 py-4">
                     <Checkbox
-                      checked={selectedContacts.includes(contact.id)}
-                      onCheckedChange={() => handleSelectContact(contact.id)}
+                      checked={selectedContacts.length === paginatedContacts.length && paginatedContacts.length > 0}
+                      onCheckedChange={handleSelectAll}
                     />
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-pink-500 flex items-center justify-center text-primary-foreground font-semibold shadow-lg">
-                          {contact.fullName.charAt(0)}
-                        </div>
-                        {contact.isOnline && (
-                          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-card" />
-                        )}
-                      </div>
-                      <div>
-                        <button
-                          onClick={() => handleEditContact(contact)}
-                          className="font-semibold text-foreground hover:text-primary transition-colors text-left"
-                        >
-                          {contact.fullName}
-                        </button>
-                        <p className="text-xs text-muted-foreground">{contact.email}</p>
-                      </div>
-                    </div>
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <button
-                      onClick={() => handleOpenChat(contact)}
-                      className="flex items-center gap-2 text-sm text-foreground hover:text-green-600 transition-colors"
-                    >
-                      <MessageCircle size={16} className="text-green-600" />
-                      {contact.phone}
+                  </th>
+                  <th className="text-left px-4 py-4">
+                    <button className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+                      Nome
+                      <ArrowUpDown size={14} />
                     </button>
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <span className="text-sm text-foreground">{contact.state}</span>
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getLeadStatusColor(contact.leadStatus)}`}>
-                      {getLeadStatusLabel(contact.leadStatus)}
+                  </th>
+                  <th className="text-left px-4 py-4">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      WhatsApp
                     </span>
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <div className="flex flex-wrap gap-1">
-                      {contact.tags.slice(0, 2).map((tag) => (
-                        <span key={tag} className={`px-2 py-0.5 rounded-full text-xs font-medium ${getTagColor(tag)}`}>
-                          {tag}
-                        </span>
-                      ))}
-                      {contact.tags.length > 2 && (
-                        <span className="px-2 py-0.5 bg-muted text-muted-foreground rounded-full text-xs font-medium">
-                          +{contact.tags.length - 2}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <span className="text-sm text-foreground">
-                      {new Date(contact.firstContact).toLocaleDateString('pt-BR')}
+                  </th>
+                  <th className="text-left px-4 py-4">
+                    <button className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+                      Estado
+                      <ArrowUpDown size={14} />
+                    </button>
+                  </th>
+                  <th className="text-left px-4 py-4">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Status
                     </span>
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-pink-500 flex items-center justify-center text-primary-foreground text-xs font-semibold">
-                        {contact.assignedTo.name.charAt(0)}
-                      </div>
-                      <span className="text-sm text-foreground">{contact.assignedTo.name}</span>
-                    </div>
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <span className="px-2.5 py-1 bg-muted text-muted-foreground rounded-lg text-xs font-medium">
-                      {contact.department}
+                  </th>
+                  <th className="text-left px-4 py-4">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Etiquetas
                     </span>
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <div className="flex items-center justify-center gap-1">
-                      <button
-                        onClick={() => handleOpenChat(contact)}
-                        className="p-2 hover:bg-green-500/10 rounded-lg transition-colors"
-                        title="Abrir conversa"
-                      >
-                        <MessageCircle size={18} className="text-green-600" />
-                      </button>
-                      <button
-                        onClick={() => handleEditContact(contact)}
-                        className="p-2 hover:bg-primary/10 rounded-lg transition-colors"
-                        title="Editar"
-                      >
-                        <Edit3 size={18} className="text-primary" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteContact(contact.id)}
-                        className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 size={18} className="text-destructive" />
-                      </button>
-                    </div>
-                  </td>
+                  </th>
+                  <th className="text-left px-4 py-4">
+                    <button className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+                      1ª Conexão
+                      <ArrowUpDown size={14} />
+                    </button>
+                  </th>
+                  <th className="text-left px-4 py-4">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Atendente
+                    </span>
+                  </th>
+                  <th className="text-left px-4 py-4">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Dept.
+                    </span>
+                  </th>
+                  <th className="text-center px-4 py-4">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Ações
+                    </span>
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
 
-        {/* Pagination */}
-        <div className="px-6 py-4 border-t border-border flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Mostrando</span>
-            <select
-              value={perPage}
-              onChange={(e) => setPerPage(Number(e.target.value))}
-              className="px-2 py-1 border border-border rounded-lg text-sm bg-background"
-            >
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={200}>200</option>
-            </select>
-            <span>de {totalContacts.toLocaleString('pt-BR')} contatos</span>
-          </div>
+              <tbody className="divide-y divide-border/50">
+                {paginatedContacts.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="text-center py-16">
+                      <div className="mx-auto h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
+                        <Users className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-foreground">Nenhum contato encontrado</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Ajuste os filtros ou adicione um novo contato
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedContacts.map((contact) => (
+                    <tr key={contact.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-4">
+                        <Checkbox
+                          checked={selectedContacts.includes(contact.id)}
+                          onCheckedChange={() => handleSelectContact(contact.id)}
+                        />
+                      </td>
 
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="p-2 hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button className="w-10 h-10 bg-primary text-primary-foreground rounded-lg font-medium">
-              {currentPage}
-            </button>
-            {currentPage < totalPages && (
-              <>
-                <button
-                  onClick={() => setCurrentPage(currentPage + 1)}
-                  className="w-10 h-10 hover:bg-muted rounded-lg font-medium text-foreground"
-                >
-                  {currentPage + 1}
-                </button>
-                {currentPage + 1 < totalPages && (
-                  <button
-                    onClick={() => setCurrentPage(currentPage + 2)}
-                    className="w-10 h-10 hover:bg-muted rounded-lg font-medium text-foreground"
-                  >
-                    {currentPage + 2}
-                  </button>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-pink-500 flex items-center justify-center text-primary-foreground font-semibold shadow-lg">
+                              {contact.full_name.charAt(0)}
+                            </div>
+                            {contact.is_online && (
+                              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-card" />
+                            )}
+                          </div>
+                          <div>
+                            <button
+                              onClick={() => handleEditContact(contact)}
+                              className="font-semibold text-foreground hover:text-primary transition-colors text-left"
+                            >
+                              {contact.full_name}
+                            </button>
+                            <p className="text-xs text-muted-foreground">{contact.email || '-'}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <button
+                          onClick={() => handleOpenChat(contact)}
+                          className="flex items-center gap-2 text-sm text-foreground hover:text-green-600 transition-colors"
+                        >
+                          <MessageCircle size={16} className="text-green-600" />
+                          {contact.phone}
+                        </button>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <span className="text-sm text-foreground">{contact.state || '-'}</span>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getLeadStatusColor(contact.lead_status)}`}>
+                          {getLeadStatusLabel(contact.lead_status)}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="flex flex-wrap gap-1">
+                          {(contact.tags || []).slice(0, 2).map((tag) => (
+                            <span key={tag.id} className={`px-2 py-0.5 rounded-full text-xs font-medium ${getTagColorClass(tag.color)}`}>
+                              {tag.name}
+                            </span>
+                          ))}
+                          {(contact.tags || []).length > 2 && (
+                            <span className="px-2 py-0.5 bg-muted text-muted-foreground rounded-full text-xs font-medium">
+                              +{contact.tags!.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <span className="text-sm text-foreground">
+                          {contact.first_contact_at ? new Date(contact.first_contact_at).toLocaleDateString('pt-BR') : '-'}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {contact.assignee ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-pink-500 flex items-center justify-center text-primary-foreground text-xs font-semibold">
+                              {contact.assignee.full_name?.charAt(0) || '?'}
+                            </div>
+                            <span className="text-sm text-foreground">{contact.assignee.full_name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {contact.department ? (
+                          <span className="px-2.5 py-1 bg-muted text-muted-foreground rounded-lg text-xs font-medium">
+                            {contact.department.name}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleOpenChat(contact)}
+                            className="p-2 hover:bg-green-500/10 rounded-lg transition-colors"
+                            title="Abrir conversa"
+                          >
+                            <MessageCircle size={18} className="text-green-600" />
+                          </button>
+                          <button
+                            onClick={() => handleEditContact(contact)}
+                            className="p-2 hover:bg-primary/10 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Edit3 size={18} className="text-primary" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteContact(contact.id)}
+                            className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 size={18} className="text-destructive" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
-                {currentPage + 3 < totalPages && <span className="px-2 text-muted-foreground">...</span>}
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  className="w-10 h-10 hover:bg-muted rounded-lg font-medium text-foreground"
-                >
-                  {totalPages}
-                </button>
-              </>
-            )}
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="p-2 hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
-            >
-              <ChevronRight size={18} />
-            </button>
+              </tbody>
+            </table>
           </div>
-        </div>
-      </div>
 
-      {/* Empty State */}
-      {filteredContacts.length === 0 && (
-        <div className="text-center py-16">
-          <div className="mx-auto h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-            <Users className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-semibold text-foreground">Nenhum contato encontrado</h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Ajuste os filtros ou adicione um novo contato
-          </p>
+          {/* Pagination */}
+          {filteredContacts.length > 0 && (
+            <div className="px-6 py-4 border-t border-border flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Mostrando</span>
+                <select
+                  value={perPage}
+                  onChange={(e) => setPerPage(Number(e.target.value))}
+                  className="px-2 py-1 border border-border rounded-lg text-sm bg-background"
+                >
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
+                </select>
+                <span>de {filteredContacts.length.toLocaleString('pt-BR')} contatos</span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button className="w-10 h-10 bg-primary text-primary-foreground rounded-lg font-medium">
+                  {currentPage}
+                </button>
+                {currentPage < totalPages && (
+                  <>
+                    <button
+                      onClick={() => setCurrentPage(currentPage + 1)}
+                      className="w-10 h-10 hover:bg-muted rounded-lg font-medium text-foreground"
+                    >
+                      {currentPage + 1}
+                    </button>
+                    {currentPage + 1 < totalPages && (
+                      <button
+                        onClick={() => setCurrentPage(currentPage + 2)}
+                        className="w-10 h-10 hover:bg-muted rounded-lg font-medium text-foreground"
+                      >
+                        {currentPage + 2}
+                      </button>
+                    )}
+                    {currentPage + 3 < totalPages && <span className="px-2 text-muted-foreground">...</span>}
+                    <button
+                      onClick={() => setCurrentPage(totalPages)}
+                      className="w-10 h-10 hover:bg-muted rounded-lg font-medium text-foreground"
+                    >
+                      {totalPages}
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-2 hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -795,7 +836,7 @@ export default function Contacts() {
               <TabsContent value="basic" className="space-y-4">
                 <div className="flex items-center gap-6">
                   <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-pink-500 flex items-center justify-center text-primary-foreground text-3xl font-bold shadow-xl">
-                    {selectedContact?.fullName?.charAt(0) || 'N'}
+                    {formData.full_name?.charAt(0) || 'N'}
                   </div>
                   <div>
                     <button className="px-4 py-2 border border-border rounded-lg text-sm font-medium text-foreground hover:bg-muted">
@@ -813,7 +854,8 @@ export default function Contacts() {
                     <input
                       type="text"
                       placeholder="Ex: Fernando Silva Santos"
-                      defaultValue={selectedContact?.fullName}
+                      value={formData.full_name}
+                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     />
                   </div>
@@ -825,7 +867,8 @@ export default function Contacts() {
                     <input
                       type="tel"
                       placeholder="+55 (00) 00000-0000"
-                      defaultValue={selectedContact?.phone}
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     />
                   </div>
@@ -835,7 +878,8 @@ export default function Contacts() {
                     <input
                       type="email"
                       placeholder="email@exemplo.com"
-                      defaultValue={selectedContact?.email}
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     />
                   </div>
@@ -844,6 +888,8 @@ export default function Contacts() {
                     <label className="block text-sm font-medium text-foreground mb-2">Data de nascimento</label>
                     <input
                       type="date"
+                      value={formData.birth_date}
+                      onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     />
                   </div>
@@ -853,6 +899,8 @@ export default function Contacts() {
                     <input
                       type="text"
                       placeholder="000.000.000-00"
+                      value={formData.cpf_cnpj}
+                      onChange={(e) => setFormData({ ...formData, cpf_cnpj: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     />
                   </div>
@@ -861,11 +909,23 @@ export default function Contacts() {
                     <label className="block text-sm font-medium text-foreground mb-2">Tipo de pessoa</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2">
-                        <input type="radio" name="personType" value="individual" defaultChecked />
+                        <input
+                          type="radio"
+                          name="personType"
+                          value="individual"
+                          checked={formData.person_type === 'individual'}
+                          onChange={(e) => setFormData({ ...formData, person_type: e.target.value })}
+                        />
                         <span className="text-sm text-foreground">Pessoa física</span>
                       </label>
                       <label className="flex items-center gap-2">
-                        <input type="radio" name="personType" value="company" />
+                        <input
+                          type="radio"
+                          name="personType"
+                          value="company"
+                          checked={formData.person_type === 'company'}
+                          onChange={(e) => setFormData({ ...formData, person_type: e.target.value })}
+                        />
                         <span className="text-sm text-foreground">Pessoa jurídica</span>
                       </label>
                     </div>
@@ -877,66 +937,77 @@ export default function Contacts() {
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">CEP</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="00000-000"
-                        className="flex-1 px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                      />
-                      <button className="px-4 py-2.5 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors">
-                        <Search size={18} />
-                      </button>
-                    </div>
+                    <input
+                      type="text"
+                      placeholder="00000-000"
+                      value={formData.zip_code}
+                      onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                    />
                   </div>
-
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-foreground mb-2">Logradouro</label>
                     <input
                       type="text"
                       placeholder="Rua, Avenida..."
+                      value={formData.street}
+                      onChange={(e) => setFormData({ ...formData, street: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     />
                   </div>
+                </div>
 
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">Número</label>
                     <input
                       type="text"
                       placeholder="123"
+                      value={formData.number}
+                      onChange={(e) => setFormData({ ...formData, number: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     />
                   </div>
-
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-foreground mb-2">Complemento</label>
                     <input
                       type="text"
-                      placeholder="Apto, Bloco, etc."
+                      placeholder="Apto, Sala, Bloco..."
+                      value={formData.complement}
+                      onChange={(e) => setFormData({ ...formData, complement: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     />
                   </div>
+                </div>
 
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">Bairro</label>
                     <input
                       type="text"
                       placeholder="Centro"
+                      value={formData.neighborhood}
+                      onChange={(e) => setFormData({ ...formData, neighborhood: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     />
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">Cidade</label>
                     <input
                       type="text"
-                      placeholder="Rio de Janeiro"
+                      placeholder="São Paulo"
+                      value={formData.city}
+                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     />
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">Estado</label>
-                    <select className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background">
+                    <select
+                      value={formData.state}
+                      onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                    >
                       <option value="">Selecione</option>
                       {brazilianStates.map((state) => (
                         <option key={state} value={state}>{state}</option>
@@ -944,14 +1015,25 @@ export default function Contacts() {
                     </select>
                   </div>
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">País</label>
+                  <input
+                    type="text"
+                    value={formData.country}
+                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                  />
+                </div>
               </TabsContent>
 
               <TabsContent value="crm" className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Status Lead</label>
+                    <label className="block text-sm font-medium text-foreground mb-2">Status do Lead</label>
                     <select
-                      defaultValue={selectedContact?.leadStatus || 'new'}
+                      value={formData.lead_status}
+                      onChange={(e) => setFormData({ ...formData, lead_status: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     >
                       <option value="new">Novo</option>
@@ -963,35 +1045,47 @@ export default function Contacts() {
                   </div>
 
                   <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">Origem</label>
+                    <select
+                      value={formData.origin}
+                      onChange={(e) => setFormData({ ...formData, origin: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                    >
+                      <option value="">Selecione</option>
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="instagram">Instagram</option>
+                      <option value="facebook">Facebook</option>
+                      <option value="website">Website</option>
+                      <option value="indicacao">Indicação</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </div>
+
+                  <div>
                     <label className="block text-sm font-medium text-foreground mb-2">Atendente responsável</label>
-                    <select className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background">
-                      <option value="">Não atribuído</option>
-                      <option value="diego">Diego</option>
-                      <option value="ian">Ian</option>
-                      <option value="lara">Lara</option>
+                    <select
+                      value={formData.assigned_to}
+                      onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                    >
+                      <option value="">Selecione</option>
+                      {team.map((member) => (
+                        <option key={member.id} value={member.id}>{member.full_name}</option>
+                      ))}
                     </select>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">Departamento</label>
-                    <select className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background">
-                      <option value="vendas">Vendas</option>
-                      <option value="pre-vendas">Pré-vendas</option>
-                      <option value="pos-vendas">Pós-vendas</option>
-                      <option value="suporte">Suporte</option>
-                      <option value="financeiro">Financeiro</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Origem</label>
-                    <select className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background">
-                      <option value="whatsapp">WhatsApp</option>
-                      <option value="site">Site</option>
-                      <option value="instagram">Instagram</option>
-                      <option value="facebook">Facebook</option>
-                      <option value="indicacao">Indicação</option>
-                      <option value="outro">Outro</option>
+                    <select
+                      value={formData.department_id}
+                      onChange={(e) => setFormData({ ...formData, department_id: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                    >
+                      <option value="">Selecione</option>
+                      {departments.map((dept) => (
+                        <option key={dept.id} value={dept.id}>{dept.name}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -1000,11 +1094,14 @@ export default function Contacts() {
                     <div className="flex flex-wrap gap-2 mb-2">
                       {(selectedContact?.tags || []).map((tag) => (
                         <span
-                          key={tag}
+                          key={tag.id}
                           className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-medium flex items-center gap-1"
                         >
-                          {tag}
-                          <button className="hover:text-primary/70">
+                          {tag.name}
+                          <button 
+                            className="hover:text-primary/70"
+                            onClick={() => removeTagFromContact.mutate({ contactId: selectedContact!.id, tagId: tag.id })}
+                          >
                             <X size={14} />
                           </button>
                         </span>
@@ -1021,6 +1118,8 @@ export default function Contacts() {
                     <textarea
                       rows={4}
                       placeholder="Anotações sobre o contato..."
+                      value={formData.notes}
+                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none bg-background"
                     />
                   </div>
@@ -1086,7 +1185,12 @@ export default function Contacts() {
             >
               Cancelar
             </button>
-            <button className="px-6 py-2 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-lg font-medium hover:shadow-lg transition-all">
+            <button
+              onClick={handleSaveContact}
+              disabled={createContact.isPending || updateContact.isPending}
+              className="px-6 py-2 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-lg font-medium hover:shadow-lg transition-all disabled:opacity-50"
+            >
+              {(createContact.isPending || updateContact.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin inline" />}
               {isEditing ? 'Salvar alterações' : 'Criar contato'}
             </button>
           </DialogFooter>
@@ -1213,41 +1317,62 @@ export default function Contacts() {
           </DialogHeader>
 
           <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              {mockTags.map((tag) => (
-                <div key={tag.name} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: tag.color }} />
-                    <span className="font-medium text-foreground">{tag.name}</span>
-                    <span className="text-xs text-muted-foreground">({tag.count} contatos)</span>
+            {tagsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : tags.length === 0 ? (
+              <div className="text-center py-8">
+                <Tag className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground">Nenhuma etiqueta cadastrada</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {tags.map((tag) => (
+                  <div key={tag.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: tag.color || '#8B5CF6' }} />
+                      <span className="font-medium text-foreground">{tag.name}</span>
+                      <span className="text-xs text-muted-foreground">({tag.usage_count || 0} contatos)</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button className="p-1.5 hover:bg-muted rounded-lg transition-colors">
+                        <Edit3 size={14} className="text-muted-foreground" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteTag(tag.id)}
+                        className="p-1.5 hover:bg-destructive/10 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={14} className="text-destructive" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button className="p-1.5 hover:bg-muted rounded-lg transition-colors">
-                      <Edit3 size={14} className="text-muted-foreground" />
-                    </button>
-                    <button className="p-1.5 hover:bg-destructive/10 rounded-lg transition-colors">
-                      <Trash2 size={14} className="text-destructive" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             <div className="pt-4 border-t border-border">
               <label className="block text-sm font-medium text-foreground mb-2">Nova etiqueta</label>
               <div className="flex gap-2">
                 <input
                   type="color"
-                  defaultValue="#8B5CF6"
+                  value={newTagColor}
+                  onChange={(e) => setNewTagColor(e.target.value)}
                   className="w-12 h-10 rounded-lg border border-border cursor-pointer"
                 />
                 <input
                   type="text"
                   placeholder="Nome da etiqueta"
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
                   className="flex-1 px-4 py-2 border border-border rounded-lg bg-background"
                 />
-                <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90">
-                  <Plus size={18} />
+                <button
+                  onClick={handleCreateTag}
+                  disabled={createTag.isPending}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {createTag.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus size={18} />}
                 </button>
               </div>
             </div>
