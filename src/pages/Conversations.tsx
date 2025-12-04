@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search,
@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   Loader2,
   Calendar,
+  StickyNote,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,7 +44,8 @@ import { StartConversation } from '@/components/conversations/StartConversation'
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { useConversations, useMessages, useSendMessage, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
-import { formatDistanceToNow } from 'date-fns';
+import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
+import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // Mock Data for reference (will be replaced by real data)
@@ -317,6 +319,44 @@ function MessageBubble({ message }: MessageBubbleProps) {
   );
 }
 
+// Internal Note Card Component
+interface InternalNoteCardProps {
+  note: InternalNote;
+}
+
+function InternalNoteCard({ note }: InternalNoteCardProps) {
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[85%] bg-amber-400 dark:bg-amber-500 rounded-2xl rounded-tr-sm p-4 shadow-lg">
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-amber-500/30 dark:border-amber-600/30">
+          <StickyNote size={14} className="text-amber-800 dark:text-amber-900" />
+          <span className="text-xs font-bold text-amber-800 dark:text-amber-900">
+            Nota interna
+          </span>
+        </div>
+
+        {/* Author */}
+        <div className="text-sm font-semibold text-amber-900 mb-1">
+          {note.author?.full_name || 'Equipe'}:
+        </div>
+
+        {/* Content */}
+        <p className="text-amber-900 whitespace-pre-wrap text-sm">
+          {note.content}
+        </p>
+
+        {/* Time */}
+        <div className="text-right mt-2">
+          <span className="text-xs text-amber-700 dark:text-amber-800">
+            {format(new Date(note.created_at), 'HH:mm')}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Conversations() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
@@ -330,15 +370,27 @@ export default function Conversations() {
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
   const isMobile = useIsMobile();
 
   // Fetch real conversations from database with filter
   const { data: conversations = [], isLoading: conversationsLoading } = useConversations(quickFilter);
   const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedConversationId);
+  const { data: internalNotes = [], isLoading: notesLoading } = useInternalNotes(selectedConversationId);
   const sendMessage = useSendMessage();
+  const createInternalNote = useCreateInternalNote();
 
   // Find selected conversation from real data
   const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
+
+  // Combine messages and internal notes, sorted by created_at
+  const allChatItems = useMemo(() => {
+    const msgItems = messages.map(m => ({ ...m, itemType: 'message' as const }));
+    const noteItems = internalNotes.map(n => ({ ...n, itemType: 'note' as const }));
+    return [...msgItems, ...noteItems].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+  }, [messages, internalNotes]);
 
   // Handle URL param for conversation selection
   useEffect(() => {
@@ -363,6 +415,7 @@ export default function Conversations() {
   const handleSelectConversation = (conv: Conversation) => {
     setSelectedConversationId(conv.id);
     setSearchParams({ id: conv.id });
+    setIsInternalNoteMode(false);
     if (isMobile) {
       setShowMobileChat(true);
     }
@@ -375,12 +428,21 @@ export default function Conversations() {
   const handleSendMessage = () => {
     if (!messageInput.trim() || !selectedConversationId) return;
     
-    sendMessage.mutate({
-      conversation_id: selectedConversationId,
-      content: messageInput.trim(),
-      is_from_me: true,
-    });
-    setMessageInput('');
+    if (isInternalNoteMode) {
+      createInternalNote.mutate({
+        conversationId: selectedConversationId,
+        content: messageInput.trim(),
+      });
+      setMessageInput('');
+      setIsInternalNoteMode(false);
+    } else {
+      sendMessage.mutate({
+        conversation_id: selectedConversationId,
+        content: messageInput.trim(),
+        is_from_me: true,
+      });
+      setMessageInput('');
+    }
   };
 
   return (
@@ -545,11 +607,11 @@ export default function Conversations() {
 
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
-              {messagesLoading ? (
+              {(messagesLoading || notesLoading) ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
                 </div>
-              ) : messages.length === 0 ? (
+              ) : allChatItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                   <MessageCircle size={48} className="mb-4 opacity-50" />
                   <p>Nenhuma mensagem ainda</p>
@@ -564,12 +626,35 @@ export default function Conversations() {
                     <div className="flex-1 h-px bg-border"></div>
                   </div>
 
-                  {messages.map((msg) => (
-                    <MessageBubble key={msg.id} message={msg} />
+                  {allChatItems.map((item) => (
+                    item.itemType === 'note' ? (
+                      <InternalNoteCard key={`note-${item.id}`} note={item as InternalNote} />
+                    ) : (
+                      <MessageBubble key={`msg-${item.id}`} message={item as Message} />
+                    )
                   ))}
                 </>
               )}
             </div>
+
+            {/* Internal Note Mode Banner */}
+            {isInternalNoteMode && (
+              <div className="flex items-center justify-between px-4 py-2 bg-amber-500/20 border-y border-amber-500/30">
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                  <StickyNote size={16} />
+                  <span className="text-sm font-medium">Modo Nota Interna</span>
+                  <span className="text-xs opacity-70">
+                    (Apenas a equipe verá esta mensagem)
+                  </span>
+                </div>
+                <button
+                  onClick={() => setIsInternalNoteMode(false)}
+                  className="p-1 hover:bg-amber-500/20 rounded"
+                >
+                  <X size={16} className="text-amber-600 dark:text-amber-400" />
+                </button>
+              </div>
+            )}
 
             {/* Message Input */}
             <div className="bg-card border-t border-border px-4 md:px-6 py-4">
@@ -587,10 +672,23 @@ export default function Conversations() {
                 >
                   <Calendar size={22} className="text-muted-foreground" />
                 </button>
+                {/* Internal Note Button */}
+                <button
+                  onClick={() => setIsInternalNoteMode(!isInternalNoteMode)}
+                  className={cn(
+                    'p-2 rounded-lg transition-colors',
+                    isInternalNoteMode 
+                      ? 'bg-amber-500 text-white' 
+                      : 'hover:bg-muted text-muted-foreground'
+                  )}
+                  title="Criar nota interna"
+                >
+                  <StickyNote size={22} />
+                </button>
 
                 <div className="flex-1">
                   <Textarea
-                    placeholder="Digite sua mensagem..."
+                    placeholder={isInternalNoteMode ? "Digite sua nota interna..." : "Digite sua mensagem..."}
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -599,7 +697,12 @@ export default function Conversations() {
                         handleSendMessage();
                       }
                     }}
-                    className="min-h-[44px] max-h-[120px] resize-none rounded-xl bg-muted/50 border-border/50"
+                    className={cn(
+                      'min-h-[44px] max-h-[120px] resize-none rounded-xl',
+                      isInternalNoteMode
+                        ? 'bg-amber-500/10 border-amber-500/30 placeholder:text-amber-600/50 dark:placeholder:text-amber-400/50'
+                        : 'bg-muted/50 border-border/50'
+                    )}
                     rows={1}
                   />
                 </div>
@@ -609,10 +712,15 @@ export default function Conversations() {
                 </button>
                 <button 
                   onClick={handleSendMessage}
-                  disabled={!messageInput.trim() || sendMessage.isPending}
-                  className="p-3 btn-gradient text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50"
+                  disabled={!messageInput.trim() || sendMessage.isPending || createInternalNote.isPending}
+                  className={cn(
+                    'p-3 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50',
+                    isInternalNoteMode ? 'bg-amber-500 hover:bg-amber-600' : 'btn-gradient'
+                  )}
                 >
-                  {sendMessage.isPending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                  {(sendMessage.isPending || createInternalNote.isPending) 
+                    ? <Loader2 size={20} className="animate-spin" /> 
+                    : <Send size={20} />}
                 </button>
               </div>
             </div>
