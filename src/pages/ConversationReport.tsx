@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   ClipboardList, Search, Calendar, Printer,
-  FileSpreadsheet, Loader2, ChevronLeft, ChevronRight, Eye
+  FileSpreadsheet, Loader2, ChevronLeft, ChevronRight, Eye, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -24,8 +24,6 @@ interface Filters {
   agent: string;
   department: string;
   tag: string;
-  closeReason: string;
-  leadStatus: string;
 }
 
 const initialFilters: Filters = {
@@ -38,8 +36,6 @@ const initialFilters: Filters = {
   agent: '',
   department: '',
   tag: '',
-  closeReason: '',
-  leadStatus: '',
 };
 
 const statusOptions = [
@@ -49,12 +45,49 @@ const statusOptions = [
 ];
 
 export default function ConversationReportPage() {
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(initialFilters);
   const [page, setPage] = useState(1);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const pageSize = 50;
+
+  // Setup realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel('conversation-report-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations'
+        },
+        (payload) => {
+          console.log('Realtime update:', payload);
+          // Invalidate query to refresh data
+          queryClient.invalidateQueries({ queryKey: ['conversation-report'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages'
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['conversation-report'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   // Fetch filter options
   const { data: channels = [] } = useQuery({
@@ -104,7 +137,7 @@ export default function ConversationReportPage() {
   });
 
   // Fetch report data
-  const { data: reportData, isLoading } = useQuery({
+  const { data: reportData, isLoading, refetch } = useQuery({
     queryKey: ['conversation-report', appliedFilters, page],
     queryFn: async () => {
       let query = supabase
@@ -116,6 +149,7 @@ export default function ConversationReportPage() {
           closed_at,
           close_reason,
           lead_status,
+          last_message_preview,
           contact:contacts(id, full_name, phone, lead_status),
           assigned_user:profiles!conversations_assigned_to_fkey(id, full_name),
           department:departments(id, name),
@@ -124,12 +158,15 @@ export default function ConversationReportPage() {
         `, { count: 'exact' })
         .order('created_at', { ascending: false });
 
+      // Apply date filters
       if (appliedFilters.startDate) {
         query = query.gte('created_at', `${appliedFilters.startDate}T00:00:00`);
       }
       if (appliedFilters.endDate) {
         query = query.lte('created_at', `${appliedFilters.endDate}T23:59:59`);
       }
+      
+      // Apply other filters
       if (appliedFilters.status) {
         query = query.eq('status', appliedFilters.status);
       }
@@ -142,9 +179,6 @@ export default function ConversationReportPage() {
       if (appliedFilters.channel) {
         query = query.eq('channel_id', appliedFilters.channel);
       }
-      if (appliedFilters.closeReason) {
-        query = query.eq('close_reason', appliedFilters.closeReason);
-      }
 
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
@@ -155,6 +189,7 @@ export default function ConversationReportPage() {
 
       let filtered = data || [];
       
+      // Client-side filtering for name and phone (more flexible search)
       if (appliedFilters.name) {
         const searchLower = appliedFilters.name.toLowerCase();
         filtered = filtered.filter(c => 
@@ -163,11 +198,13 @@ export default function ConversationReportPage() {
       }
       
       if (appliedFilters.phone) {
+        const phoneDigits = appliedFilters.phone.replace(/\D/g, '');
         filtered = filtered.filter(c => 
-          c.contact?.phone?.includes(appliedFilters.phone)
+          c.contact?.phone?.includes(phoneDigits)
         );
       }
 
+      // Filter by tag
       if (appliedFilters.tag) {
         filtered = filtered.filter(c => 
           c.tags?.some((t: any) => t.tag?.id === appliedFilters.tag)
@@ -179,15 +216,30 @@ export default function ConversationReportPage() {
         filtered.map(async (conv) => {
           const { data: firstMsg } = await supabase
             .from('messages')
-            .select('content')
+            .select('content, message_type')
             .eq('conversation_id', conv.id)
             .order('created_at', { ascending: true })
             .limit(1)
             .maybeSingle();
 
+          let firstMessageText = conv.last_message_preview || '';
+          if (firstMsg) {
+            if (firstMsg.message_type === 'audio') {
+              firstMessageText = '[Áudio]';
+            } else if (firstMsg.message_type === 'image') {
+              firstMessageText = '[Imagem]';
+            } else if (firstMsg.message_type === 'video') {
+              firstMessageText = '[Vídeo]';
+            } else if (firstMsg.message_type === 'document') {
+              firstMessageText = '[Documento]';
+            } else {
+              firstMessageText = firstMsg.content || '';
+            }
+          }
+
           return {
             ...conv,
-            first_message: firstMsg?.content || null,
+            first_message: firstMessageText,
             protocol_number: conv.id.slice(-6).toUpperCase()
           };
         })
@@ -198,7 +250,8 @@ export default function ConversationReportPage() {
         total: count || 0,
         totalPages: Math.ceil((count || 0) / pageSize)
       };
-    }
+    },
+    refetchOnWindowFocus: false,
   });
 
   const handleFilterChange = (key: keyof Filters, value: string) => {
@@ -212,12 +265,11 @@ export default function ConversationReportPage() {
     setSelectAll(false);
   };
 
-  const handleReset = () => {
-    setFilters(initialFilters);
-    setAppliedFilters(initialFilters);
-    setPage(1);
-    setSelectedRows(new Set());
-    setSelectAll(false);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refetch();
+    setIsRefreshing(false);
+    toast.success('Dados atualizados!');
   };
 
   const handleSelectRow = (id: string) => {
@@ -257,11 +309,9 @@ export default function ConversationReportPage() {
       'Canal': conv.channel?.name || '',
       'Agente': conv.assigned_user?.full_name || '',
       'Departamento': conv.department?.name || '',
-      'Status Lead': conv.contact?.lead_status || '',
       'Etiquetas': conv.tags?.map((t: any) => t.tag?.name).join(', ') || '',
       'Data Abertura': format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm'),
       'Data Fechamento': conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '',
-      'Motivo Fechamento': conv.close_reason || '',
       '1ª Mensagem': conv.first_message || '',
       'Status': conv.status === 'open' ? 'Ativo' : conv.status === 'pending' ? 'Pendente' : 'Fechado'
     }));
@@ -290,6 +340,9 @@ export default function ConversationReportPage() {
     if (digits.length >= 12) {
       return digits.replace(/(\d{2})(\d{2})(\d{4,5})(\d{4})/, '+$1 ($2) $3-$4');
     }
+    if (digits.length >= 10) {
+      return digits.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
+    }
     return phone;
   };
 
@@ -311,13 +364,29 @@ export default function ConversationReportPage() {
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
       <div className="bg-card border-b border-border px-6 py-4">
-        <div className="flex items-center gap-3">
-          <ClipboardList size={28} className="text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold">Consultar Atendimentos</h1>
-            <p className="text-sm text-muted-foreground">
-              Relatório detalhado de todos os atendimentos
-            </p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <ClipboardList size={28} className="text-primary" />
+            <div>
+              <h1 className="text-2xl font-bold">Consultar Atendimentos</h1>
+              <p className="text-sm text-muted-foreground">
+                Relatório detalhado de todos os atendimentos
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              Tempo real ativo
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+            >
+              <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+            </Button>
           </div>
         </div>
       </div>
@@ -509,6 +578,7 @@ export default function ConversationReportPage() {
                   <tr>
                     <td colSpan={12} className="px-4 py-12 text-center">
                       <Loader2 size={24} className="animate-spin mx-auto text-primary" />
+                      <p className="mt-2 text-sm text-muted-foreground">Carregando atendimentos...</p>
                     </td>
                   </tr>
                 ) : reportData?.conversations.length === 0 ? (
@@ -528,7 +598,7 @@ export default function ConversationReportPage() {
                           onCheckedChange={() => handleSelectRow(conv.id)}
                         />
                       </td>
-                      <td className="px-3 py-3 text-muted-foreground">{conv.protocol_number}</td>
+                      <td className="px-3 py-3 text-muted-foreground font-mono text-xs">{conv.protocol_number}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
                           {getStatusBadge(conv.status)}
@@ -566,18 +636,22 @@ export default function ConversationReportPage() {
                       <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">
                         {conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '-'}
                       </td>
-                      <td className="px-3 py-3 text-muted-foreground max-w-[150px]">
+                      <td className="px-3 py-3 text-muted-foreground max-w-[200px]">
                         <span className="truncate block" title={conv.first_message || ''}>
-                          {conv.first_message ? conv.first_message.slice(0, 40) + '...' : '-'}
+                          {conv.first_message 
+                            ? conv.first_message.length > 50 
+                              ? conv.first_message.slice(0, 50) + '...' 
+                              : conv.first_message
+                            : '-'}
                         </span>
                       </td>
                       <td className="px-3 py-3">
                         <button
                           onClick={() => window.open(`/conversations?id=${conv.id}`, '_blank')}
-                          className="p-2 hover:bg-muted rounded-lg"
+                          className="p-2 hover:bg-muted rounded-lg transition-colors"
                           title="Ver conversa"
                         >
-                          <Eye size={16} className="text-muted-foreground" />
+                          <Eye size={16} className="text-muted-foreground hover:text-primary" />
                         </button>
                       </td>
                     </tr>
@@ -617,6 +691,14 @@ export default function ConversationReportPage() {
                   <ChevronRight size={16} />
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* Summary footer */}
+          {reportData && reportData.conversations.length > 0 && (
+            <div className="px-4 py-2 bg-muted/30 border-t border-border text-xs text-muted-foreground">
+              Total: {reportData.total} atendimento(s) | 
+              Última atualização: {format(new Date(), 'HH:mm:ss', { locale: ptBR })}
             </div>
           )}
         </div>
