@@ -18,6 +18,8 @@ import {
   ClipboardList,
   Sun,
   Moon,
+  Megaphone,
+  Target,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -46,6 +48,10 @@ const navItems: NavItem[] = [
   { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.read' },
   { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.read' },
   { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.read' },
+  // Marketing
+  { title: 'Meta Ads', href: '/meta-ads', icon: Megaphone, permission: 'reports.view' },
+  { title: 'Relatório Campanhas', href: '/relatorios/campanhas', icon: Target, permission: 'reports.view' },
+  // Relatórios
   { title: 'Atendimentos', href: '/relatorios/atendimentos', icon: ClipboardList, permission: 'reports.view' },
   { title: 'Relatórios', href: '/reports', icon: BarChart3, permission: 'reports.view' },
   { title: 'Configurações', href: '/settings', icon: Settings, permission: 'settings.view' },
