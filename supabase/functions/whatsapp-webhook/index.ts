@@ -263,6 +263,15 @@ serve(async (req) => {
       });
     }
 
+    // Handle presence updates (online/offline status)
+    if (isPresenceEvent(provider, payload)) {
+      console.log(`[Webhook] Processing presence event`);
+      await handlePresenceEvent(supabase, provider, payload);
+      return new Response(JSON.stringify({ success: true, message: "Presence event processed" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Handle message status updates (ACK events - delivered, read)
     if (isMessageStatusEvent(provider, payload)) {
       console.log(`[Webhook] Processing message status event`);
@@ -800,6 +809,95 @@ async function handleConnectionEvent(
     console.error(`[Webhook] Error updating channel status:`, updateError);
   } else {
     console.log(`[Webhook] Channel ${channel.name} status updated to ${newStatus}`);
+  }
+}
+
+// =====================================================
+// PRESENCE EVENTS - Detectar online/offline dos contatos
+// =====================================================
+
+function isPresenceEvent(provider: WhatsAppProvider, payload: any): boolean {
+  switch (provider) {
+    case "zapi":
+      return payload.type === "presence" || payload.event === "presence.update";
+    case "uazapi":
+      return payload.event === "presence.update";
+    case "evolution":
+      const evolutionEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
+      return evolutionEvent === "presence.update";
+    default:
+      return false;
+  }
+}
+
+async function handlePresenceEvent(
+  supabase: any,
+  provider: WhatsAppProvider,
+  payload: any
+): Promise<void> {
+  console.log(`[Webhook] Processing presence event:`, JSON.stringify(payload).substring(0, 500));
+  
+  // Extrair dados de presença baseado no provider
+  let remoteJid: string | null = null;
+  let presence: string | null = null;
+  
+  switch (provider) {
+    case "evolution":
+      remoteJid = payload.data?.remoteJid || payload.data?.id;
+      presence = payload.data?.presence;
+      break;
+    case "zapi":
+      remoteJid = payload.phone || payload.sender;
+      presence = payload.status || payload.presence;
+      break;
+    case "uazapi":
+      remoteJid = payload.data?.id || payload.data?.remoteJid;
+      presence = payload.data?.presence;
+      break;
+  }
+  
+  if (!remoteJid || !presence) {
+    console.log(`[Webhook] No remoteJid or presence in event`);
+    return;
+  }
+  
+  // Extrair número do telefone do remoteJid
+  const phone = remoteJid
+    .replace("@s.whatsapp.net", "")
+    .replace("@lid", "")
+    .replace("@c.us", "");
+  
+  // Determinar se está online
+  // Valores possíveis: "available", "unavailable", "composing", "recording", "paused"
+  const isOnline = presence === "available" || presence === "composing" || presence === "recording";
+  
+  console.log(`[Webhook] Presence update - Phone: ${phone}, Presence: ${presence}, IsOnline: ${isOnline}`);
+  
+  // Atualizar contato
+  const { data: contact, error: findError } = await supabase
+    .from("contacts")
+    .select("id, full_name")
+    .eq("phone", phone)
+    .single();
+  
+  if (findError || !contact) {
+    console.log(`[Webhook] Contact not found for presence update: ${phone}`);
+    return;
+  }
+  
+  const { error: updateError } = await supabase
+    .from("contacts")
+    .update({
+      is_online: isOnline,
+      last_seen_at: isOnline ? null : new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", contact.id);
+  
+  if (updateError) {
+    console.error(`[Webhook] Error updating contact presence:`, updateError);
+  } else {
+    console.log(`[Webhook] Contact ${contact.full_name} presence updated to: ${isOnline ? 'online' : 'offline'}`);
   }
 }
 
