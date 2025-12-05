@@ -67,7 +67,7 @@ import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
-import { useConversations, useMessages, useSendMessage, useDeleteMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
+import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
@@ -404,20 +404,24 @@ interface MessageBubbleProps {
   message: Message;
   onReply?: (message: Message) => void;
   onDelete?: (message: Message) => void;
+  onEdit?: (message: Message, newText: string) => void;
   onReact?: (messageId: string, emoji: string) => void;
 }
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
-function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubbleProps) {
+function MessageBubble({ message, onReply, onDelete, onEdit, onReact }: MessageBubbleProps) {
   const [showActions, setShowActions] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editText, setEditText] = useState(message.content || '');
   const [showImagePreview, setShowImagePreview] = useState(false);
   const isMe = message.is_from_me;
   const hasMedia = message.media_url && message.message_type !== 'text';
   const isDeleted = message.is_deleted;
+  const isTextMessage = message.message_type === 'text';
   const reactions = (message.reactions || []) as { emoji: string; user_id: string }[];
   const replyTo = message.reply_to?.[0];
 
@@ -436,6 +440,18 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
   const handleConfirmDelete = () => {
     onDelete?.(message);
     setShowDeleteConfirm(false);
+  };
+
+  const handleConfirmEdit = () => {
+    if (editText.trim() && editText.trim() !== message.content) {
+      onEdit?.(message, editText.trim());
+    }
+    setShowEditDialog(false);
+  };
+
+  const openEditDialog = () => {
+    setEditText(message.content || '');
+    setShowEditDialog(true);
   };
 
   return (
@@ -459,6 +475,15 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
             >
               <Trash2 size={14} className="text-muted-foreground hover:text-destructive" />
             </button>
+            {isTextMessage && (
+              <button 
+                onClick={openEditDialog}
+                className="p-1.5 hover:bg-muted rounded-full transition-colors"
+                title="Editar"
+              >
+                <Pencil size={14} className="text-muted-foreground" />
+              </button>
+            )}
             <button 
               onClick={() => onReply?.(message)}
               className="p-1.5 hover:bg-muted rounded-full transition-colors"
@@ -690,6 +715,41 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
         </DialogContent>
       </Dialog>
 
+      {/* Edit Message Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil size={20} className="text-primary" />
+              Editar mensagem
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              placeholder="Digite a nova mensagem..."
+              className="min-h-[100px] resize-none"
+              autoFocus
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowEditDialog(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmEdit}
+              disabled={!editText.trim() || editText.trim() === message.content}
+            >
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Image Preview Dialog */}
       <Dialog open={showImagePreview} onOpenChange={setShowImagePreview}>
         <DialogContent className="max-w-4xl p-0 bg-black/90 border-none">
@@ -861,6 +921,7 @@ export default function Conversations() {
   const { isPinned, togglePin } = useTogglePinConversation();
   const sendMessage = useSendMessage();
   const deleteMessage = useDeleteMessage();
+  const editMessage = useEditMessage();
   const reactToMessage = useReactToMessage();
   const createInternalNote = useCreateInternalNote();
   const updateInternalNote = useUpdateInternalNote();
@@ -1308,6 +1369,26 @@ export default function Conversations() {
       contactPhone: selectedConv?.contact?.phone,
     });
     toast.success('Mensagem apagada');
+  };
+
+  const handleEditMessage = async (message: Message, newText: string) => {
+    if (!selectedConversationId) return;
+    
+    const selectedConv = conversations?.find(c => c.id === selectedConversationId);
+    
+    try {
+      await editMessage.mutateAsync({ 
+        messageId: message.id, 
+        conversationId: selectedConversationId,
+        newText,
+        whatsappMessageId: message.whatsapp_message_id,
+        channelId: selectedConv?.channel_id,
+        contactPhone: selectedConv?.contact?.phone,
+      });
+      toast.success('Mensagem editada');
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao editar mensagem');
+    }
   };
 
   const handleReactToMessage = async (messageId: string, emoji: string) => {
@@ -1962,6 +2043,7 @@ export default function Conversations() {
                         message={item as Message}
                         onReply={handleReplyMessage}
                         onDelete={handleDeleteMessage}
+                        onEdit={handleEditMessage}
                         onReact={handleReactToMessage}
                       />
                     )

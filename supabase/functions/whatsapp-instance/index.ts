@@ -10,7 +10,7 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage';
   providerCode?: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -23,9 +23,10 @@ interface CreateInstanceRequest {
   type?: 'text' | 'image' | 'audio' | 'video' | 'document';
   mediaUrl?: string;
   quotedMessageId?: string;
-  // For deleteMessage action
+  // For deleteMessage/editMessage action
   whatsappMessageId?: string;
   remoteJid?: string;
+  newText?: string;
 }
 
 interface ProviderConfig {
@@ -460,6 +461,105 @@ async function deleteZAPIMessage(
   });
   
   const data = await safeJsonParse(response, 'Z-API Delete');
+  
+  return {
+    success: true,
+    data,
+  };
+}
+
+// =====================================================
+// EDIT MESSAGE FUNCTIONS
+// =====================================================
+async function editEvolutionMessage(
+  baseUrl: string,
+  instanceName: string,
+  apiKey: string,
+  messageId: string,
+  remoteJid: string,
+  newText: string
+) {
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  
+  console.log('[Evolution] Editing message:', { instanceName, messageId, remoteJid, newText });
+  
+  const endpoint = `${normalizedUrl}/chat/updateMessage/${instanceName}`;
+  const body = {
+    number: remoteJid.replace('@s.whatsapp.net', ''),
+    text: newText,
+    key: {
+      remoteJid: remoteJid,
+      fromMe: true,
+      id: messageId,
+    },
+  };
+  
+  console.log('[Evolution] Edit Request:', { endpoint, body });
+  
+  const response = await fetch(endpoint, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': apiKey,
+    },
+    body: JSON.stringify(body),
+  });
+  
+  const data = await safeJsonParse(response, 'Evolution Edit');
+  
+  return {
+    success: true,
+    data,
+  };
+}
+
+async function editUAZAPIMessage(
+  baseUrl: string,
+  instanceName: string,
+  adminToken: string,
+  messageId: string,
+  remoteJid: string,
+  newText: string
+) {
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  
+  console.log('[UAZAPI] Editing message:', { instanceName, messageId, remoteJid, newText });
+  
+  const endpoint = `${normalizedUrl}/chat/updateMessage/${instanceName}`;
+  const body = {
+    number: remoteJid.replace('@s.whatsapp.net', ''),
+    text: newText,
+    key: {
+      remoteJid: remoteJid,
+      fromMe: true,
+      id: messageId,
+    },
+  };
+  
+  console.log('[UAZAPI] Edit Request:', { endpoint, body });
+  
+  let response = await fetch(endpoint, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'admintoken': adminToken,
+    },
+    body: JSON.stringify(body),
+  });
+  
+  if (response.status === 401) {
+    console.log('[UAZAPI] 401 with admintoken, trying apikey...');
+    response = await fetch(endpoint, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': adminToken,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+  
+  const data = await safeJsonParse(response, 'UAZAPI Edit');
   
   return {
     success: true,
@@ -1547,6 +1647,97 @@ serve(async (req) => {
       } catch (deleteError: any) {
         console.error('[WhatsApp Delete] Error:', deleteError);
         result = { success: false, error: deleteError.message };
+      }
+
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // =====================================================
+    // EDIT MESSAGE ACTION - Editar mensagem no WhatsApp
+    // =====================================================
+    if (action === 'editMessage') {
+      const { channelId, whatsappMessageId, remoteJid, phone, newText } = body as CreateInstanceRequest & { phone?: string; newText?: string };
+      
+      if (!channelId || !whatsappMessageId || !newText) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'channelId, whatsappMessageId e newText são obrigatórios' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      
+      console.log('[WhatsApp Instance] Edit message request:', { channelId, whatsappMessageId, remoteJid, newText });
+      
+      // Get channel data with provider
+      const { data: channel, error: channelError } = await supabase
+        .from('whatsapp_channels')
+        .select('*, provider:whatsapp_providers(*)')
+        .eq('id', channelId)
+        .single();
+      
+      if (channelError || !channel) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+      
+      const channelProvider = channel.provider as any;
+      if (!channelProvider) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Provedor do canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      
+      console.log('[WhatsApp Edit] Channel:', { instanceId: channel.instance_id, provider: channelProvider.code });
+      
+      let result;
+      
+      try {
+        switch (channelProvider.code) {
+          case 'evolution':
+            if (!remoteJid && !phone) {
+              result = { success: false, error: 'remoteJid ou phone é obrigatório para Evolution API' };
+            } else {
+              const jid = remoteJid || (phone?.replace(/\D/g, '') + '@s.whatsapp.net');
+              result = await editEvolutionMessage(
+                channelProvider.base_url,
+                channel.instance_id!,
+                channelProvider.admin_token,
+                whatsappMessageId,
+                jid,
+                newText
+              );
+            }
+            break;
+          case 'uazapi':
+            if (!remoteJid && !phone) {
+              result = { success: false, error: 'remoteJid ou phone é obrigatório para UAZAPI' };
+            } else {
+              const jid = remoteJid || (phone?.replace(/\D/g, '') + '@s.whatsapp.net');
+              result = await editUAZAPIMessage(
+                channelProvider.base_url,
+                channel.instance_id!,
+                channelProvider.admin_token,
+                whatsappMessageId,
+                jid,
+                newText
+              );
+            }
+            break;
+          case 'zapi':
+            // Z-API doesn't support message editing
+            result = { success: false, error: 'Z-API não suporta edição de mensagens' };
+            break;
+          default:
+            result = { success: false, error: 'Provedor desconhecido' };
+        }
+      } catch (editError: any) {
+        console.error('[WhatsApp Edit] Error:', editError);
+        result = { success: false, error: editError.message };
       }
 
       return new Response(
