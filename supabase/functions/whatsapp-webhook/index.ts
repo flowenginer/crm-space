@@ -500,7 +500,7 @@ serve(async (req) => {
     // Find or create contact
     let { data: contact } = await supabase
       .from("contacts")
-      .select("id")
+      .select("id, full_name, phone")
       .eq("phone", normalizedMessage.from)
       .single();
 
@@ -513,7 +513,7 @@ serve(async (req) => {
           origin: "whatsapp",
           first_contact_at: new Date().toISOString(),
         })
-        .select("id")
+        .select("id, full_name, phone")
         .single();
 
       if (contactError) {
@@ -521,6 +521,27 @@ serve(async (req) => {
         throw contactError;
       }
       contact = newContact;
+      console.log(`[Webhook] Created new contact: ${contact.full_name} (${contact.phone})`);
+    } else {
+      // =====================================================
+      // ATUALIZAR NOME DO CONTATO se tiver um pushName real
+      // e o nome atual for genérico (começa com "WhatsApp")
+      // =====================================================
+      const currentName = contact.full_name || '';
+      const hasGenericName = currentName.startsWith('WhatsApp ') || !currentName;
+      const hasBetterName = normalizedMessage.fromName && normalizedMessage.fromName.trim().length > 0;
+      
+      if (hasGenericName && hasBetterName) {
+        console.log(`[Webhook] Updating contact name from "${currentName}" to "${normalizedMessage.fromName}"`);
+        await supabase
+          .from("contacts")
+          .update({ 
+            full_name: normalizedMessage.fromName,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", contact.id);
+        contact.full_name = normalizedMessage.fromName;
+      }
     }
 
     // Find or create conversation
