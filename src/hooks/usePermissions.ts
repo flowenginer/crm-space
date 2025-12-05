@@ -30,6 +30,7 @@ export function usePermissions() {
   // Fetch user profile with role
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ['profile-permissions', user?.id],
+    staleTime: 300000, // 5 minutes cache - user profile rarely changes
     queryFn: async () => {
       if (!user?.id) return null;
       
@@ -48,6 +49,7 @@ export function usePermissions() {
   // Fetch role definition
   const { data: roleDefinition, isLoading: roleLoading } = useQuery({
     queryKey: ['roleDefinition', profile?.role],
+    staleTime: 300000, // 5 minutes cache - role definitions rarely change
     queryFn: async () => {
       if (!profile?.role) return null;
       

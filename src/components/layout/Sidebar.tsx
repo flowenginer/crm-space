@@ -73,10 +73,11 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   // Fetch pending scheduled messages count
   const { data: pendingCount } = useQuery({
     queryKey: ['pending-scheduled-count'],
+    staleTime: 30000, // 30 seconds cache
     queryFn: async () => {
       const { count, error } = await supabase
         .from('scheduled_messages')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('status', 'scheduled');
       if (error) throw error;
       return count || 0;

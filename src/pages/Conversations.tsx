@@ -1092,21 +1092,21 @@ export default function Conversations() {
     return map;
   }, [conversations]);
 
-  // Fetch last message for each conversation (OPTIMIZED - single query instead of N+1)
-  const conversationIds = conversations.map(c => c.id);
+  // Fetch last message for each conversation (OPTIMIZED - limited scope)
+  // Only fetch for first 50 visible conversations to reduce query size
+  const visibleConversationIds = useMemo(() => conversations.slice(0, 50).map(c => c.id), [conversations]);
   const { data: lastMessages = [] } = useQuery({
-    queryKey: ['last-messages', conversationIds.length > 0 ? conversationIds.slice(0, 10).join(',') : 'empty'],
+    queryKey: ['last-messages', visibleConversationIds.length > 0 ? visibleConversationIds.slice(0, 5).join(',') : 'empty'],
     queryFn: async (): Promise<{ conversation_id: string; is_from_me: boolean }[]> => {
-      if (conversationIds.length === 0) return [];
+      if (visibleConversationIds.length === 0) return [];
       
-      // Single optimized query - get all messages for these conversations, ordered
-      // Then group in JS (more efficient than N+1 queries)
+      // Optimized query - only fetch for visible conversations, limit results
       const { data } = await supabase
         .from('messages')
-        .select('conversation_id, is_from_me, created_at')
-        .in('conversation_id', conversationIds)
+        .select('conversation_id, is_from_me')
+        .in('conversation_id', visibleConversationIds)
         .order('created_at', { ascending: false })
-        .limit(conversationIds.length * 2); // Get enough to ensure we have at least 1 per conversation
+        .limit(100); // Fixed limit to prevent massive queries
       
       // Group by conversation_id and get first (most recent) for each
       const grouped = new Map<string, { conversation_id: string; is_from_me: boolean }>();
@@ -1120,8 +1120,8 @@ export default function Conversations() {
       });
       return Array.from(grouped.values());
     },
-    enabled: conversationIds.length > 0,
-    staleTime: 30000, // 30 seconds cache
+    enabled: visibleConversationIds.length > 0,
+    staleTime: 60000, // 1 minute cache - this data changes less frequently
   });
 
   // Create a map for quick lookup of last message info
