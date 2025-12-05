@@ -101,6 +101,11 @@ const App = () => (
                   <CampaignReport />
                 </ProtectedRoute>
               } />
+              <Route path="/relatorio-campanhas" element={
+                <ProtectedRoute permission="reports.view">
+                  <CampaignReport />
+                </ProtectedRoute>
+              } />
               <Route path="/meta-ads" element={
                 <ProtectedRoute permission="reports.view">
                   <MetaAdsManager />
