@@ -307,8 +307,8 @@ export default function LiveMonitorPage() {
       </div>
 
       {/* Kanban Board */}
-      <div className="p-6 overflow-x-auto">
-        <div className="flex gap-4" style={{ minWidth: 'max-content' }}>
+      <div className="p-6">
+        <div className="flex flex-wrap gap-4">
           {isLoading ? (
             Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="w-72 flex-shrink-0">
