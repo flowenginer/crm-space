@@ -51,10 +51,11 @@ export async function sendWhatsAppMessage(
   phone: string,
   content: string,
   type: 'text' | 'image' | 'audio' | 'video' | 'document' = 'text',
-  mediaUrl?: string
+  mediaUrl?: string,
+  quotedMessageId?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    console.log('[Instance Creator] Sending message:', { channelId, phone, type });
+    console.log('[Instance Creator] Sending message:', { channelId, phone, type, quotedMessageId });
     
     const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
       body: {
@@ -64,6 +65,7 @@ export async function sendWhatsAppMessage(
         content,
         type,
         mediaUrl,
+        quotedMessageId,
       },
     });
 

@@ -1139,7 +1139,7 @@ export default function Conversations() {
       const assigneeName = selectedConv?.assignee?.full_name;
       
       // Função auxiliar para enviar via WhatsApp (Edge Function - sem CORS)
-      const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string): Promise<string | undefined> => {
+      const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string, quotedMsgId?: string): Promise<string | undefined> => {
         if (channelId && contactPhone) {
           try {
             // Add agent signature for text messages when there's an assigned agent
@@ -1153,7 +1153,8 @@ export default function Conversations() {
               contactPhone, 
               formattedContent, 
               type as 'text' | 'image' | 'audio' | 'video' | 'document',
-              mediaUrl
+              mediaUrl,
+              quotedMsgId
             );
             if (!result.success) {
               console.error('[WhatsApp Send Error]', result.error);
@@ -1169,10 +1170,13 @@ export default function Conversations() {
         return undefined;
       };
       
+      // Get the whatsapp_message_id of the message being replied to
+      const quotedWhatsAppId = replyingTo?.whatsapp_message_id || undefined;
+      
       // Send text message first if exists
       if (hasText && !hasFiles) {
         // Primeiro envia via WhatsApp para obter o messageId
-        const whatsappMessageId = await sendViaWhatsApp(messageInput.trim(), 'text');
+        const whatsappMessageId = await sendViaWhatsApp(messageInput.trim(), 'text', undefined, quotedWhatsAppId);
         
         // Salva no banco com o whatsapp_message_id
         sendMessage.mutate({
@@ -1202,7 +1206,7 @@ export default function Conversations() {
           }
 
           // Primeiro envia via WhatsApp para obter o messageId
-          const whatsappMessageId = await sendViaWhatsApp(file.name, messageType, result.url);
+          const whatsappMessageId = await sendViaWhatsApp(file.name, messageType, result.url, quotedWhatsAppId);
 
           sendMessage.mutate({
             conversation_id: selectedConversationId,
@@ -1218,7 +1222,7 @@ export default function Conversations() {
         
         // Send text after files if exists
         if (hasText) {
-          const whatsappMessageId = await sendViaWhatsApp(messageInput.trim(), 'text');
+          const whatsappMessageId = await sendViaWhatsApp(messageInput.trim(), 'text', undefined, undefined);
           
           sendMessage.mutate({
             conversation_id: selectedConversationId,
