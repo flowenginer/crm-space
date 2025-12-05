@@ -1159,10 +1159,15 @@ export default function Conversations() {
         const contactName = conv.contact?.full_name || '';
         const contactPhone = conv.contact?.phone || '';
         const firstContactDate = conv.contact?.first_contact_at || conv.contact?.created_at;
+        const isPinnedConv = pinnedIds.has(conv.id);
         
-        // Pinned filter
-        if (quickFilter === 'pinned' && !pinnedIds.has(conv.id)) {
-          return false;
+        // Pinned filter logic:
+        // - If quickFilter is 'pinned', only show pinned conversations
+        // - If quickFilter is NOT 'pinned', hide pinned conversations (they only appear in 'Fixadas')
+        if (quickFilter === 'pinned') {
+          if (!isPinnedConv) return false;
+        } else {
+          if (isPinnedConv) return false;
         }
         
         // Date filter (MASTER filter - applied first)
@@ -1207,12 +1212,6 @@ export default function Conversations() {
         return true;
       })
       .sort((a, b) => {
-        // Pinned conversations always first
-        const aIsPinned = pinnedIds.has(a.id);
-        const bIsPinned = pinnedIds.has(b.id);
-        if (aIsPinned && !bIsPinned) return -1;
-        if (!aIsPinned && bIsPinned) return 1;
-        
         switch (sortFilter) {
           case 'unread':
             // Unread first, then by date
@@ -1227,6 +1226,17 @@ export default function Conversations() {
         }
       });
   }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter, customDateRange, pinnedConversations, quickFilter]);
+
+  // Calculate unread count for pinned conversations (for notification badge)
+  const pinnedUnreadCount = useMemo(() => {
+    const pinnedIds = new Set(pinnedConversations.map(p => p.conversation_id));
+    return conversations.filter(conv => 
+      pinnedIds.has(conv.id) && 
+      conv.is_unread && 
+      // Don't count the currently selected conversation if user is viewing it
+      !(quickFilter === 'pinned' && selectedConversationId === conv.id)
+    ).length;
+  }, [conversations, pinnedConversations, quickFilter, selectedConversationId]);
 
   // Conversation action handlers
   const handleMarkAsUnread = () => {
@@ -1970,13 +1980,19 @@ export default function Conversations() {
                 key={filter}
                 onClick={() => setQuickFilter(filter)}
                 className={cn(
-                  'flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-colors',
+                  'flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-colors relative',
                   quickFilter === filter
                     ? 'text-primary bg-accent'
                     : 'text-muted-foreground hover:bg-muted'
                 )}
               >
                 {filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : 'Não atribuídas'}
+                {/* Red notification badge for pinned conversations with unread messages */}
+                {filter === 'pinned' && quickFilter !== 'pinned' && pinnedUnreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                    {pinnedUnreadCount > 9 ? '9+' : pinnedUnreadCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>
