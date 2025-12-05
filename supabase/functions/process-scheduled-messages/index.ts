@@ -32,15 +32,55 @@ interface WhatsAppChannel {
   provider: WhatsAppProvider | WhatsAppProvider[] | null
 }
 
-// Send message via Evolution API - supports text, audio, image, document
-async function sendEvolutionMessage(
+// Send text message via Evolution API
+async function sendEvolutionText(
   baseUrl: string,
   instanceName: string,
   apiKey: string,
   phone: string,
-  content: string,
+  content: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, '')
+    const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
+    
+    const url = `${baseUrl}/message/sendText/${instanceName}`
+    const body = { number: formattedPhone, text: content }
+    
+    console.log(`[Scheduled] Sending text via Evolution to ${formattedPhone}`)
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': apiKey,
+      },
+      body: JSON.stringify(body),
+    })
+
+    const data = await response.json()
+    console.log(`[Scheduled] Evolution text response:`, JSON.stringify(data))
+
+    if (response.ok && data.key?.id) {
+      return { success: true, messageId: data.key.id }
+    } else {
+      return { success: false, error: data.message || data.error || 'Unknown error' }
+    }
+  } catch (error) {
+    console.error('[Scheduled] Evolution text send error:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+  }
+}
+
+// Send media message via Evolution API
+async function sendEvolutionMedia(
+  baseUrl: string,
+  instanceName: string,
+  apiKey: string,
+  phone: string,
   messageType: string,
-  mediaUrl?: string
+  mediaUrl: string,
+  caption?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const cleanPhone = phone.replace(/\D/g, '')
@@ -50,46 +90,41 @@ async function sendEvolutionMessage(
     let body: Record<string, unknown>
     
     console.log(`[Scheduled] Sending ${messageType} via Evolution to ${formattedPhone}`)
-    console.log(`[Scheduled] Media URL: ${mediaUrl || 'none'}`)
+    console.log(`[Scheduled] Media URL: ${mediaUrl}`)
 
     // Determine the endpoint and body based on message type
-    if (mediaUrl && messageType === 'audio') {
+    if (messageType === 'audio') {
+      // Audio does NOT support caption in Evolution API
       url = `${baseUrl}/message/sendWhatsAppAudio/${instanceName}`
       body = {
         number: formattedPhone,
         audio: mediaUrl,
       }
-    } else if (mediaUrl && messageType === 'image') {
+    } else if (messageType === 'image') {
       url = `${baseUrl}/message/sendMedia/${instanceName}`
       body = {
         number: formattedPhone,
         mediatype: 'image',
         media: mediaUrl,
-        caption: content || undefined,
+        caption: caption || undefined,
       }
-    } else if (mediaUrl && messageType === 'video') {
+    } else if (messageType === 'video') {
       url = `${baseUrl}/message/sendMedia/${instanceName}`
       body = {
         number: formattedPhone,
         mediatype: 'video',
         media: mediaUrl,
-        caption: content || undefined,
+        caption: caption || undefined,
       }
-    } else if (mediaUrl && messageType === 'document') {
+    } else {
+      // Document
       url = `${baseUrl}/message/sendMedia/${instanceName}`
       body = {
         number: formattedPhone,
         mediatype: 'document',
         media: mediaUrl,
         fileName: 'documento',
-        caption: content || undefined,
-      }
-    } else {
-      // Default: send text
-      url = `${baseUrl}/message/sendText/${instanceName}`
-      body = {
-        number: formattedPhone,
-        text: content,
+        caption: caption || undefined,
       }
     }
 
@@ -106,7 +141,7 @@ async function sendEvolutionMessage(
     })
 
     const data = await response.json()
-    console.log(`[Scheduled] Evolution response:`, JSON.stringify(data))
+    console.log(`[Scheduled] Evolution media response:`, JSON.stringify(data))
 
     if (response.ok && data.key?.id) {
       return { success: true, messageId: data.key.id }
@@ -114,19 +149,55 @@ async function sendEvolutionMessage(
       return { success: false, error: data.message || data.error || 'Unknown error' }
     }
   } catch (error) {
-    console.error('[Scheduled] Evolution send error:', error)
+    console.error('[Scheduled] Evolution media send error:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Network error' }
   }
 }
 
-// Send message via Z-API - supports text, audio, image, document
-async function sendZAPIMessage(
+// Send text message via Z-API
+async function sendZAPIText(
   instanceId: string,
   token: string,
   phone: string,
-  content: string,
+  content: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, '')
+    const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
+    
+    const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`
+    const body = { phone: formattedPhone, message: content }
+    
+    console.log(`[Scheduled] Sending text via Z-API to ${formattedPhone}`)
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    const data = await response.json()
+    console.log(`[Scheduled] Z-API text response:`, JSON.stringify(data))
+
+    if (response.ok && data.zapiMessageId) {
+      return { success: true, messageId: data.zapiMessageId }
+    } else {
+      return { success: false, error: data.message || 'Unknown error' }
+    }
+  } catch (error) {
+    console.error('[Scheduled] Z-API text send error:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+  }
+}
+
+// Send media message via Z-API
+async function sendZAPIMedia(
+  instanceId: string,
+  token: string,
+  phone: string,
   messageType: string,
-  mediaUrl?: string
+  mediaUrl: string,
+  caption?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const cleanPhone = phone.replace(/\D/g, '')
@@ -137,21 +208,20 @@ async function sendZAPIMessage(
     
     console.log(`[Scheduled] Sending ${messageType} via Z-API to ${formattedPhone}`)
 
-    if (mediaUrl && messageType === 'audio') {
+    if (messageType === 'audio') {
+      // Audio does NOT support caption in Z-API
       url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-audio`
       body = { phone: formattedPhone, audio: mediaUrl }
-    } else if (mediaUrl && messageType === 'image') {
+    } else if (messageType === 'image') {
       url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-image`
-      body = { phone: formattedPhone, image: mediaUrl, caption: content || undefined }
-    } else if (mediaUrl && messageType === 'video') {
+      body = { phone: formattedPhone, image: mediaUrl, caption: caption || undefined }
+    } else if (messageType === 'video') {
       url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-video`
-      body = { phone: formattedPhone, video: mediaUrl, caption: content || undefined }
-    } else if (mediaUrl && messageType === 'document') {
+      body = { phone: formattedPhone, video: mediaUrl, caption: caption || undefined }
+    } else {
+      // Document
       url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-document/pdf`
       body = { phone: formattedPhone, document: mediaUrl, fileName: 'documento' }
-    } else {
-      url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`
-      body = { phone: formattedPhone, message: content }
     }
     
     const response = await fetch(url, {
@@ -161,7 +231,7 @@ async function sendZAPIMessage(
     })
 
     const data = await response.json()
-    console.log(`[Scheduled] Z-API response:`, JSON.stringify(data))
+    console.log(`[Scheduled] Z-API media response:`, JSON.stringify(data))
 
     if (response.ok && data.zapiMessageId) {
       return { success: true, messageId: data.zapiMessageId }
@@ -169,7 +239,7 @@ async function sendZAPIMessage(
       return { success: false, error: data.message || 'Unknown error' }
     }
   } catch (error) {
-    console.error('[Scheduled] Z-API send error:', error)
+    console.error('[Scheduled] Z-API media send error:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Network error' }
   }
 }
@@ -298,7 +368,8 @@ Deno.serve(async (req) => {
         }
 
         // Send message via WhatsApp API
-        let sendResult: { success: boolean; messageId?: string; error?: string }
+        let sendResult: { success: boolean; messageId?: string; error?: string } = { success: true }
+        let lastMessageId: string | undefined
 
         console.log(`[Scheduled] Sending via provider: ${provider.code}`)
         
@@ -307,28 +378,78 @@ Deno.serve(async (req) => {
         console.log(`[Scheduled] Using API key: ${apiKey ? 'present' : 'missing'}`)
 
         const msgType = scheduled.message_type || 'text'
+        const hasText = scheduled.content && scheduled.content.trim().length > 0
+        const hasMedia = scheduled.media_url && scheduled.media_url.length > 0
+        
+        // For audio messages, we need to send text separately (audio doesn't support caption)
+        // For image/video/document, we can include caption but still send text separately for reliability
+        const needsSeparateTextMessage = hasText && hasMedia && (msgType === 'audio' || msgType === 'text')
 
-        if (provider.code === 'evolution') {
-          sendResult = await sendEvolutionMessage(
-            provider.base_url,
-            typedChannel.instance_id,
-            apiKey,
-            contactPhone,
-            scheduled.content,
-            msgType,
-            scheduled.media_url || undefined
-          )
-        } else if (provider.code === 'zapi') {
-          sendResult = await sendZAPIMessage(
-            typedChannel.instance_id,
-            typedChannel.instance_token,
-            contactPhone,
-            scheduled.content,
-            msgType,
-            scheduled.media_url || undefined
-          )
-        } else {
-          sendResult = { success: false, error: `Provider ${provider.code} not supported` }
+        console.log(`[Scheduled] Has text: ${hasText}, Has media: ${hasMedia}, Type: ${msgType}, Separate text: ${needsSeparateTextMessage}`)
+
+        // Step 1: Send text message first if we have both text and media
+        if (hasText && (needsSeparateTextMessage || !hasMedia)) {
+          console.log(`[Scheduled] Sending text message...`)
+          
+          if (provider.code === 'evolution') {
+            sendResult = await sendEvolutionText(
+              provider.base_url,
+              typedChannel.instance_id,
+              apiKey,
+              contactPhone,
+              scheduled.content
+            )
+          } else if (provider.code === 'zapi') {
+            sendResult = await sendZAPIText(
+              typedChannel.instance_id,
+              typedChannel.instance_token,
+              contactPhone,
+              scheduled.content
+            )
+          } else {
+            sendResult = { success: false, error: `Provider ${provider.code} not supported` }
+          }
+
+          if (sendResult.success) {
+            lastMessageId = sendResult.messageId
+            console.log(`[Scheduled] Text sent successfully! WhatsApp ID: ${sendResult.messageId}`)
+          }
+        }
+
+        // Step 2: Send media if we have it and text was successful (or no text)
+        if (sendResult.success && hasMedia) {
+          console.log(`[Scheduled] Sending media message...`)
+          
+          // For image/video/document, include caption only if we didn't send text separately
+          const caption = (msgType !== 'audio' && !needsSeparateTextMessage) ? scheduled.content : undefined
+          
+          if (provider.code === 'evolution') {
+            sendResult = await sendEvolutionMedia(
+              provider.base_url,
+              typedChannel.instance_id,
+              apiKey,
+              contactPhone,
+              msgType,
+              scheduled.media_url!,
+              caption
+            )
+          } else if (provider.code === 'zapi') {
+            sendResult = await sendZAPIMedia(
+              typedChannel.instance_id,
+              typedChannel.instance_token,
+              contactPhone,
+              msgType,
+              scheduled.media_url!,
+              caption
+            )
+          } else {
+            sendResult = { success: false, error: `Provider ${provider.code} not supported` }
+          }
+
+          if (sendResult.success) {
+            lastMessageId = sendResult.messageId
+            console.log(`[Scheduled] Media sent successfully! WhatsApp ID: ${sendResult.messageId}`)
+          }
         }
 
         if (!sendResult.success) {
@@ -348,7 +469,7 @@ Deno.serve(async (req) => {
           continue
         }
 
-        console.log(`[Scheduled] Message sent successfully! WhatsApp ID: ${sendResult.messageId}`)
+        console.log(`[Scheduled] All messages sent successfully!`)
 
         // Insert the message into the messages table
         const { error: insertError } = await supabase
@@ -358,10 +479,10 @@ Deno.serve(async (req) => {
             contact_id: scheduled.contact_id,
             content: scheduled.content,
             media_url: scheduled.media_url,
-            message_type: scheduled.content ? 'text' : 'media',
+            message_type: hasMedia ? msgType : 'text',
             is_from_me: true,
             status: 'sent',
-            whatsapp_message_id: sendResult.messageId,
+            whatsapp_message_id: lastMessageId,
             created_at: new Date().toISOString()
           })
 
