@@ -50,6 +50,73 @@ interface NormalizedMessage {
 }
 
 // =====================================================
+// PHONE VALIDATION FUNCTIONS
+// =====================================================
+
+/**
+ * Validates if a phone number is a valid Brazilian phone
+ * Brazilian phones: start with 55, have 12-13 digits total
+ * This filters out LID (Linked IDs) from Evolution API
+ */
+function isValidBrazilianPhone(phone: string): boolean {
+  const digits = phone.replace(/\D/g, '');
+  
+  // Must start with 55 (Brazil country code)
+  if (!digits.startsWith('55')) {
+    return false;
+  }
+  
+  // Must have 12-13 digits (55 + 10-11 local digits)
+  if (digits.length < 12 || digits.length > 13) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Attempts to extract a valid Brazilian phone from various payload locations
+ * Returns the phone number or null if no valid phone found
+ */
+function extractValidPhoneFromPayload(msg: any, rawRemoteJid: string): string | null {
+  // Priority 1: remoteJidAlt (real number when LID is used)
+  if (msg.key?.remoteJidAlt) {
+    const altPhone = msg.key.remoteJidAlt
+      .replace("@s.whatsapp.net", "")
+      .replace("@c.us", "")
+      .replace(/\D/g, "");
+    
+    if (isValidBrazilianPhone(altPhone)) {
+      console.log(`[Webhook] Found valid phone in remoteJidAlt: ${altPhone}`);
+      return altPhone;
+    }
+  }
+  
+  // Priority 2: Main remoteJid
+  const mainPhone = rawRemoteJid
+    .replace("@s.whatsapp.net", "")
+    .replace("@c.us", "")
+    .replace("@lid", "")
+    .replace(/\D/g, "");
+  
+  if (isValidBrazilianPhone(mainPhone)) {
+    return mainPhone;
+  }
+  
+  // Priority 3: Check referral data for phone (Meta Ads sometimes includes it)
+  if (msg.contextInfo?.referral?.phone) {
+    const referralPhone = msg.contextInfo.referral.phone.replace(/\D/g, "");
+    if (isValidBrazilianPhone(referralPhone)) {
+      console.log(`[Webhook] Found valid phone in referral data: ${referralPhone}`);
+      return referralPhone;
+    }
+  }
+  
+  // No valid phone found
+  return null;
+}
+
+// =====================================================
 // MEDIA UPLOAD FUNCTIONS
 // =====================================================
 
