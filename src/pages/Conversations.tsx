@@ -34,6 +34,9 @@ import {
   PinOff,
   Tag,
   Plus,
+  Globe,
+  Lock,
+  Building2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -80,7 +83,7 @@ import { ptBR } from 'date-fns/locale';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { toast } from 'sonner';
 import { useTeam } from '@/hooks/useTeam';
-import { useTags, useAddTagToContact, useRemoveTagFromContact, useCreateTag } from '@/hooks/useTags';
+import { useTags, useAddTagToContact, useRemoveTagFromContact, useCreateTag, TagVisibility } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
@@ -928,6 +931,9 @@ export default function Conversations() {
   const [showCreateTagModal, setShowCreateTagModal] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#8B5CF6');
+  const [newTagDescription, setNewTagDescription] = useState('');
+  const [newTagVisibility, setNewTagVisibility] = useState<TagVisibility>('public');
+  const [newTagDepartmentId, setNewTagDepartmentId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -2639,50 +2645,189 @@ export default function Conversations() {
 
       {/* Create Tag Modal */}
       <Dialog open={showCreateTagModal} onOpenChange={setShowCreateTagModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Criar nova etiqueta</DialogTitle>
+            <DialogTitle>Nova Etiqueta</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Crie uma nova etiqueta para organizar seus contatos e conversas
+            </p>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* Name */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Nome da etiqueta</label>
+              <label className="text-sm font-medium">Nome da Etiqueta *</label>
               <Input
                 value={newTagName}
                 onChange={(e) => setNewTagName(e.target.value)}
-                placeholder="Ex: Cliente VIP"
+                placeholder="Ex: Cliente VIP, Urgente, Follow-up..."
               />
             </div>
+            
+            {/* Color */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Cor</label>
-              <div className="flex gap-2 flex-wrap">
-                {['#8B5CF6', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#6366F1', '#14B8A6'].map(color => (
+              <div className="flex flex-wrap gap-2">
+                {['#8B5CF6', '#EC4899', '#EF4444', '#F97316', '#EAB308', '#22C55E', '#14B8A6', '#06B6D4', '#3B82F6', '#6366F1', '#A855F7', '#64748B'].map(color => (
                   <button
                     key={color}
                     onClick={() => setNewTagColor(color)}
                     className={cn(
-                      'w-8 h-8 rounded-full transition-all',
-                      newTagColor === color ? 'ring-2 ring-offset-2 ring-primary' : 'hover:scale-110'
+                      'w-8 h-8 rounded-lg transition-all hover:scale-110 flex items-center justify-center',
+                      newTagColor === color ? 'ring-2 ring-offset-2 ring-primary' : ''
                     )}
                     style={{ backgroundColor: color }}
-                  />
+                  >
+                    {newTagColor === color && <Check size={16} className="text-white" />}
+                  </button>
                 ))}
               </div>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="color"
+                  value={newTagColor}
+                  onChange={(e) => setNewTagColor(e.target.value)}
+                  className="w-10 h-10 rounded-lg cursor-pointer border-0"
+                />
+                <Input
+                  value={newTagColor}
+                  onChange={(e) => setNewTagColor(e.target.value)}
+                  className="flex-1 font-mono text-sm"
+                  placeholder="#8B5CF6"
+                />
+              </div>
             </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Descrição (opcional)</label>
+              <Textarea
+                value={newTagDescription}
+                onChange={(e) => setNewTagDescription(e.target.value)}
+                placeholder="Descreva quando usar esta etiqueta..."
+                rows={2}
+              />
+            </div>
+
+            {/* Visibility */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Visibilidade</label>
+              <div className="space-y-2">
+                {/* Public Option */}
+                <label
+                  className={cn(
+                    'flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer border-2 transition-colors',
+                    newTagVisibility === 'public' ? 'border-green-500' : 'border-transparent'
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="tag-visibility"
+                    value="public"
+                    checked={newTagVisibility === 'public'}
+                    onChange={() => setNewTagVisibility('public')}
+                    className="sr-only"
+                  />
+                  <div className="w-9 h-9 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                    <Globe size={18} className="text-green-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-foreground text-sm">Pública</div>
+                    <div className="text-xs text-muted-foreground">Visível para toda a equipe</div>
+                  </div>
+                  {newTagVisibility === 'public' && <Check size={16} className="text-green-500 flex-shrink-0" />}
+                </label>
+
+                {/* Private Option */}
+                <label
+                  className={cn(
+                    'flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer border-2 transition-colors',
+                    newTagVisibility === 'private' ? 'border-purple-500' : 'border-transparent'
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="tag-visibility"
+                    value="private"
+                    checked={newTagVisibility === 'private'}
+                    onChange={() => setNewTagVisibility('private')}
+                    className="sr-only"
+                  />
+                  <div className="w-9 h-9 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                    <Lock size={18} className="text-purple-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-foreground text-sm">Privada</div>
+                    <div className="text-xs text-muted-foreground">Visível apenas para você</div>
+                  </div>
+                  {newTagVisibility === 'private' && <Check size={16} className="text-purple-500 flex-shrink-0" />}
+                </label>
+
+                {/* Department Option */}
+                <label
+                  className={cn(
+                    'flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer border-2 transition-colors',
+                    newTagVisibility === 'department' ? 'border-blue-500' : 'border-transparent'
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="tag-visibility"
+                    value="department"
+                    checked={newTagVisibility === 'department'}
+                    onChange={() => setNewTagVisibility('department')}
+                    className="sr-only"
+                  />
+                  <div className="w-9 h-9 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                    <Building2 size={18} className="text-blue-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-foreground text-sm">Departamento</div>
+                    <div className="text-xs text-muted-foreground">Visível para o departamento selecionado</div>
+                  </div>
+                  {newTagVisibility === 'department' && <Check size={16} className="text-blue-500 flex-shrink-0" />}
+                </label>
+              </div>
+
+              {/* Department Select */}
+              {newTagVisibility === 'department' && (
+                <Select value={newTagDepartmentId} onValueChange={setNewTagDepartmentId}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Selecione o departamento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* Preview */}
             <div className="pt-2">
               <p className="text-sm text-muted-foreground">Pré-visualização:</p>
               <span 
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium mt-2"
-                style={{ 
-                  backgroundColor: `${newTagColor}20`,
-                  color: newTagColor
-                }}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium mt-2 text-white"
+                style={{ backgroundColor: newTagColor }}
               >
                 {newTagName || 'Nome da etiqueta'}
               </span>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => { setShowCreateTagModal(false); setNewTagName(''); setNewTagColor('#8B5CF6'); }}>
+            <Button 
+              variant="ghost" 
+              onClick={() => { 
+                setShowCreateTagModal(false); 
+                setNewTagName(''); 
+                setNewTagColor('#8B5CF6'); 
+                setNewTagDescription('');
+                setNewTagVisibility('public');
+                setNewTagDepartmentId('');
+              }}
+            >
               Cancelar
             </Button>
             <Button 
@@ -2692,16 +2837,35 @@ export default function Conversations() {
                   toast.error('Digite um nome para a etiqueta');
                   return;
                 }
+                if (newTagVisibility === 'department' && !newTagDepartmentId) {
+                  toast.error('Selecione um departamento');
+                  return;
+                }
                 createTag.mutate(
-                  { name: newTagName.trim(), color: newTagColor },
+                  { 
+                    name: newTagName.trim(), 
+                    color: newTagColor,
+                    description: newTagDescription.trim() || null,
+                    visibility: newTagVisibility,
+                    department_id: newTagVisibility === 'department' ? newTagDepartmentId : null,
+                  },
                   {
                     onSuccess: () => {
                       toast.success('Etiqueta criada com sucesso!');
                       setShowCreateTagModal(false);
                       setNewTagName('');
                       setNewTagColor('#8B5CF6');
+                      setNewTagDescription('');
+                      setNewTagVisibility('public');
+                      setNewTagDepartmentId('');
                     },
-                    onError: () => toast.error('Erro ao criar etiqueta'),
+                    onError: (error: any) => {
+                      if (error.code === '23505') {
+                        toast.error('Já existe uma etiqueta com este nome');
+                      } else {
+                        toast.error('Erro ao criar etiqueta');
+                      }
+                    },
                   }
                 );
               }}
