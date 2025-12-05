@@ -709,6 +709,8 @@ export default function Conversations() {
   const [searchQuery, setSearchQuery] = useState('');
   const [channelFilter, setChannelFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('all');
+  const [customDateRange, setCustomDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
   const [sortFilter, setSortFilter] = useState('newest');
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned'>('all');
   const [showFilters, setShowFilters] = useState(false);
@@ -843,6 +845,11 @@ export default function Conversations() {
         const lastMonthStart = startOfMonth(subMonths(now, 1));
         const lastMonthEnd = endOfMonth(subMonths(now, 1));
         return isWithinInterval(date, { start: lastMonthStart, end: lastMonthEnd });
+      case 'custom':
+        if (!customDateRange.from) return true;
+        const rangeStart = startOfDay(customDateRange.from);
+        const rangeEnd = customDateRange.to ? endOfDay(customDateRange.to) : endOfDay(customDateRange.from);
+        return isWithinInterval(date, { start: rangeStart, end: rangeEnd });
       default:
         return true;
     }
@@ -911,7 +918,7 @@ export default function Conversations() {
             return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
         }
       });
-  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter]);
+  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter, customDateRange]);
 
   // Conversation action handlers
   const handleMarkAsUnread = () => {
@@ -1372,10 +1379,23 @@ export default function Conversations() {
         {/* Filters */}
         <div className="px-4 py-3 border-b border-border space-y-3">
           {/* Date Filter (Master) */}
-          <Select value={dateFilter} onValueChange={setDateFilter}>
+          <Select 
+            value={dateFilter} 
+            onValueChange={(value) => {
+              setDateFilter(value);
+              if (value === 'custom') {
+                setShowCustomDatePicker(true);
+              }
+            }}
+          >
             <SelectTrigger className="w-full h-10 rounded-lg">
               <Calendar size={14} className="mr-2 text-muted-foreground" />
-              <SelectValue placeholder="Data do primeiro contato" />
+              <SelectValue placeholder="Data do primeiro contato">
+                {dateFilter === 'custom' && customDateRange.from 
+                  ? `${format(customDateRange.from, 'dd/MM/yy')}${customDateRange.to ? ` - ${format(customDateRange.to, 'dd/MM/yy')}` : ''}`
+                  : undefined
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as datas</SelectItem>
@@ -1385,8 +1405,77 @@ export default function Conversations() {
               <SelectItem value="last_week">Semana passada</SelectItem>
               <SelectItem value="this_month">Este mês</SelectItem>
               <SelectItem value="last_month">Mês passado</SelectItem>
+              <SelectItem value="custom">Período personalizado...</SelectItem>
             </SelectContent>
           </Select>
+
+          {/* Custom Date Range Picker */}
+          {showCustomDatePicker && (
+            <div className="p-3 bg-muted/50 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Selecione o período</span>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    setShowCustomDatePicker(false);
+                    if (!customDateRange.from) {
+                      setDateFilter('all');
+                    }
+                  }}
+                >
+                  <X size={16} />
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="flex-1 justify-start text-left font-normal">
+                      <Calendar size={14} className="mr-2" />
+                      {customDateRange.from ? format(customDateRange.from, 'dd/MM/yyyy') : 'Data inicial'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <div className="p-3 pointer-events-auto">
+                      <input
+                        type="date"
+                        className="w-full px-3 py-2 border rounded-md bg-background"
+                        value={customDateRange.from ? format(customDateRange.from, 'yyyy-MM-dd') : ''}
+                        onChange={(e) => setCustomDateRange(prev => ({ ...prev, from: e.target.value ? new Date(e.target.value + 'T00:00:00') : undefined }))}
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="flex-1 justify-start text-left font-normal">
+                      <Calendar size={14} className="mr-2" />
+                      {customDateRange.to ? format(customDateRange.to, 'dd/MM/yyyy') : 'Data final'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <div className="p-3 pointer-events-auto">
+                      <input
+                        type="date"
+                        className="w-full px-3 py-2 border rounded-md bg-background"
+                        value={customDateRange.to ? format(customDateRange.to, 'yyyy-MM-dd') : ''}
+                        onChange={(e) => setCustomDateRange(prev => ({ ...prev, to: e.target.value ? new Date(e.target.value + 'T00:00:00') : undefined }))}
+                        min={customDateRange.from ? format(customDateRange.from, 'yyyy-MM-dd') : undefined}
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <Button 
+                size="sm" 
+                className="w-full"
+                disabled={!customDateRange.from}
+                onClick={() => setShowCustomDatePicker(false)}
+              >
+                Aplicar filtro
+              </Button>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <Select value={channelFilter} onValueChange={setChannelFilter}>
@@ -1429,8 +1518,16 @@ export default function Conversations() {
               {dateFilter !== 'all' && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
                   <Calendar size={12} />
-                  {dateFilter === 'today' ? 'Hoje' : dateFilter === 'yesterday' ? 'Ontem' : dateFilter === 'this_week' ? 'Esta semana' : dateFilter === 'last_week' ? 'Sem. passada' : dateFilter === 'this_month' ? 'Este mês' : 'Mês passado'}
-                  <button onClick={() => setDateFilter('all')} className="ml-1 hover:text-primary-foreground">
+                  {dateFilter === 'today' ? 'Hoje' : 
+                   dateFilter === 'yesterday' ? 'Ontem' : 
+                   dateFilter === 'this_week' ? 'Esta semana' : 
+                   dateFilter === 'last_week' ? 'Sem. passada' : 
+                   dateFilter === 'this_month' ? 'Este mês' : 
+                   dateFilter === 'last_month' ? 'Mês passado' :
+                   dateFilter === 'custom' && customDateRange.from ? 
+                     `${format(customDateRange.from, 'dd/MM')}${customDateRange.to ? ` - ${format(customDateRange.to, 'dd/MM')}` : ''}` : 
+                   'Personalizado'}
+                  <button onClick={() => { setDateFilter('all'); setCustomDateRange({ from: undefined, to: undefined }); setShowCustomDatePicker(false); }} className="ml-1 hover:text-primary-foreground">
                     <X size={12} />
                   </button>
                 </span>
@@ -1448,6 +1545,8 @@ export default function Conversations() {
                 onClick={() => {
                   setDateFilter('all');
                   setChannelFilter('all');
+                  setCustomDateRange({ from: undefined, to: undefined });
+                  setShowCustomDatePicker(false);
                   handleClearAdvancedFilters();
                 }}
                 className="text-xs text-muted-foreground hover:text-foreground underline"
