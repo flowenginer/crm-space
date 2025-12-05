@@ -26,7 +26,10 @@ import {
   Truck,
   Receipt,
   GitCompare,
+  Facebook,
+  ExternalLink,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   DropdownMenu,
@@ -232,6 +235,7 @@ const datePresets = [
 ];
 
 export default function Reports() {
+  const navigate = useNavigate();
   const [selectedAgent, setSelectedAgent] = useState('Diego');
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 6),
@@ -390,6 +394,23 @@ export default function Reports() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+      </div>
+
+      {/* Quick Access - Special Reports */}
+      <div className="flex items-center gap-4">
+        <button
+          onClick={() => navigate('/relatorios/campanhas')}
+          className="flex items-center gap-3 px-4 py-3 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-600/20 rounded-xl transition-all group"
+        >
+          <div className="p-2 bg-blue-600 rounded-lg group-hover:scale-110 transition-transform">
+            <Facebook size={18} className="text-white" />
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-medium text-foreground">Meta Ads - Campanhas</p>
+            <p className="text-xs text-muted-foreground">Leads e conversões de anúncios</p>
+          </div>
+          <ExternalLink size={16} className="text-blue-600 ml-2" />
+        </button>
       </div>
 
       {/* Tabs */}
