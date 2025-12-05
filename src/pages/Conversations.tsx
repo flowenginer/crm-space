@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search,
   Edit3,
@@ -932,7 +932,14 @@ function InternalNoteCard({ note, onUpdate }: InternalNoteCardProps) {
 }
 
 export default function Conversations() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  // Debug: Log when component renders
+  console.log('[DEBUG] Conversations component rendering', { 
+    timestamp: Date.now(),
+    url: window.location.href 
+  });
+  
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   // Derive selected conversation ID directly from URL - no state needed
   const selectedConversationId = searchParams.get('id');
   const [messageInput, setMessageInput] = useState('');
@@ -1473,16 +1480,25 @@ export default function Conversations() {
   };
 
   const handleSelectConversation = useCallback((conv: Conversation) => {
-    // Only update URL - the useEffect will handle state update
+    // Debug log to track the issue
+    console.log('[DEBUG] handleSelectConversation called:', {
+      convId: conv.id,
+      currentId: searchParams.get('id'),
+      pathname: window.location.pathname,
+      search: window.location.search
+    });
+    
+    // Use navigate instead of setSearchParams for more stable navigation
     const currentId = searchParams.get('id');
     if (currentId !== conv.id) {
-      setSearchParams({ id: conv.id }, { replace: true });
+      console.log('[DEBUG] Navigating to:', `/conversations?id=${conv.id}`);
+      navigate(`/conversations?id=${conv.id}`, { replace: true });
     }
     setIsInternalNoteMode(false);
     if (isMobile) {
       setShowMobileChat(true);
     }
-  }, [searchParams, setSearchParams, isMobile]);
+  }, [searchParams, navigate, isMobile]);
 
   const handleBackToList = () => {
     setShowMobileChat(false);
@@ -2842,7 +2858,7 @@ export default function Conversations() {
           /* Empty State with Start Conversation */
           <StartConversation 
             onConversationCreated={(conversationId) => {
-              setSearchParams({ id: conversationId }, { replace: true });
+              navigate(`/conversations?id=${conversationId}`, { replace: true });
             }}
           />
         )}
