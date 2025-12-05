@@ -1,10 +1,11 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 const NotFound = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [isRedirecting, setIsRedirecting] = useState(true);
 
   useEffect(() => {
     // Check if the URL has encoded query params in the path (common issue)
@@ -17,8 +18,15 @@ const NotFound = () => {
       return;
     }
     
+    // Not a malformed URL, show 404
+    setIsRedirecting(false);
     console.error("404 Error: User attempted to access non-existent route:", location.pathname);
   }, [location.pathname, navigate]);
+
+  // Don't render anything while checking/redirecting
+  if (isRedirecting) {
+    return null;
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted">
