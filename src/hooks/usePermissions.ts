@@ -150,23 +150,40 @@ export function usePermissions() {
   };
 }
 
-// Hook to fetch all available roles
+// Hook to fetch all available roles (otimizado)
 export function useRoles() {
   return useQuery({
     queryKey: ['roles'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('role_definitions')
-        .select('*')
+        .select('id, role_key, role_name, description, color, icon, permissions, order_position, is_system')
         .order('order_position');
       
       if (error) throw error;
       return data as RoleDefinition[];
     },
+    staleTime: 300000, // 5 minutes cache - roles rarely change
   });
 }
 
-// Hook to fetch all users (for admin/supervisor)
+// Hook to fetch all users (for admin/supervisor) - otimizado
+const USER_FIELDS = `
+  id,
+  full_name,
+  phone,
+  role,
+  department_id,
+  avatar_url,
+  is_online,
+  is_active,
+  is_available,
+  current_conversations,
+  max_conversations,
+  last_seen_at,
+  created_at
+`;
+
 export function useUsers(search?: string, filterRole?: string) {
   return useQuery({
     queryKey: ['users', search, filterRole],
@@ -174,7 +191,7 @@ export function useUsers(search?: string, filterRole?: string) {
       let query = supabase
         .from('profiles')
         .select(`
-          *,
+          ${USER_FIELDS},
           department:departments(id, name)
         `)
         .order('full_name');
@@ -191,6 +208,7 @@ export function useUsers(search?: string, filterRole?: string) {
       if (error) throw error;
       return data;
     },
+    staleTime: 30000, // 30 seconds cache
   });
 }
 

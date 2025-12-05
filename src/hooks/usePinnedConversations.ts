@@ -18,15 +18,17 @@ export function usePinnedConversations() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
 
+      // Otimizado: selecionar apenas campos necessários
       const { data, error } = await supabase
         .from('pinned_conversations')
-        .select('*')
+        .select('id, user_id, conversation_id, pinned_at')
         .eq('user_id', user.id)
         .order('pinned_at', { ascending: false });
 
       if (error) throw error;
       return data as PinnedConversation[];
     },
+    staleTime: 60000, // 1 minute cache
   });
 
   // Realtime subscription
