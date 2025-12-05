@@ -4,9 +4,10 @@ import { cn } from '@/lib/utils';
 interface AnimatedCounterProps {
   value: number;
   className?: string;
+  showParentheses?: boolean;
 }
 
-export function AnimatedCounter({ value, className }: AnimatedCounterProps) {
+export function AnimatedCounter({ value, className, showParentheses = true }: AnimatedCounterProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const prevValueRef = useRef(value);
 
@@ -31,7 +32,7 @@ export function AnimatedCounter({ value, className }: AnimatedCounterProps) {
         className
       )}
     >
-      {value}
+      {showParentheses ? `(${value})` : value}
     </span>
   );
 }
