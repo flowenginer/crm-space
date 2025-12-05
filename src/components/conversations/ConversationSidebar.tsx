@@ -321,7 +321,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     }
   };
 
-  // Start new conversation with phone number
+  // Start new conversation with phone number (same logic as StartConversation component)
   const handleStartNewConversation = async () => {
     if (!newConversationPhone.trim()) {
       toast.error('Digite um número de telefone');
@@ -335,35 +335,70 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
       return;
     }
 
-    // Format with country code
-    const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-    // Also try without country code for matching
-    const phoneWithoutCountry = formattedPhone.startsWith('55') ? formattedPhone.slice(2) : formattedPhone;
+    // Format with country code (same as cleanBrazilianPhone)
+    const formattedPhone = cleanPhone.startsWith('55') && cleanPhone.length >= 12 
+      ? cleanPhone 
+      : `55${cleanPhone}`;
+    const phoneWithoutCountry = formattedPhone.slice(2);
+
+    console.log('[Sidebar] Searching for phone:', { cleanPhone, formattedPhone, phoneWithoutCountry });
 
     setIsStartingConversation(true);
     try {
-      // STEP 1: Search for contact with various phone formats
-      const { data: contacts } = await supabase
+      // STEP 1: Search for contact with various phone formats (exact matches)
+      const { data: contacts, error: contactError } = await supabase
         .from('contacts')
-        .select('id, phone')
-        .or(`phone.eq.${formattedPhone},phone.eq.${phoneWithoutCountry},phone.ilike.%${phoneWithoutCountry}`);
+        .select('id, phone, full_name')
+        .or(`phone.eq.${formattedPhone},phone.eq.${phoneWithoutCountry}`);
+
+      if (contactError) {
+        console.error('[Sidebar] Contact search error:', contactError);
+        throw contactError;
+      }
+
+      console.log('[Sidebar] Found contacts:', contacts);
 
       const existingContact = contacts && contacts.length > 0 ? contacts[0] : null;
 
       if (existingContact) {
-        // STEP 2: Check if this contact has ANY conversation
-        const { data: existingConv } = await supabase
+        // STEP 2: Check if this contact has an existing conversation (open or pending first, then any)
+        const { data: existingConv, error: convError } = await supabase
           .from('conversations')
           .select('id, status')
           .eq('contact_id', existingContact.id)
+          .in('status', ['open', 'pending'])
           .order('last_message_at', { ascending: false })
           .limit(1)
           .maybeSingle();
+
+        if (convError) {
+          console.error('[Sidebar] Conversation search error:', convError);
+          throw convError;
+        }
+
+        console.log('[Sidebar] Found conversation:', existingConv);
 
         if (existingConv) {
           // FOUND! Navigate directly to existing conversation
           navigate(`/conversations?id=${existingConv.id}`);
           toast.info('Conversa existente encontrada!');
+          setNewConversationPhone('');
+          setIsStartingConversation(false);
+          return;
+        }
+
+        // No open/pending - check for any conversation
+        const { data: anyConv } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_id', existingContact.id)
+          .order('last_message_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (anyConv) {
+          navigate(`/conversations?id=${anyConv.id}`);
+          toast.info('Conversa encontrada!');
           setNewConversationPhone('');
           setIsStartingConversation(false);
           return;
@@ -377,10 +412,11 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
       }
 
       // STEP 3: No contact found - show channel selector to create both
+      console.log('[Sidebar] No contact found, showing channel selector');
       setPendingContactForConversation({ phone: formattedPhone });
       setShowChannelSelector(true);
     } catch (error) {
-      console.error('Error searching contact:', error);
+      console.error('[Sidebar] Error searching contact:', error);
       toast.error('Erro ao buscar contato');
     } finally {
       setIsStartingConversation(false);
