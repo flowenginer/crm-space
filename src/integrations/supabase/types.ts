@@ -179,6 +179,7 @@ export type Database = {
           id: string
           is_blocked: boolean | null
           is_online: boolean | null
+          is_typing: boolean | null
           last_interaction_at: string | null
           last_seen_at: string | null
           lead_score: number | null
@@ -213,6 +214,7 @@ export type Database = {
           id?: string
           is_blocked?: boolean | null
           is_online?: boolean | null
+          is_typing?: boolean | null
           last_interaction_at?: string | null
           last_seen_at?: string | null
           lead_score?: number | null
@@ -247,6 +249,7 @@ export type Database = {
           id?: string
           is_blocked?: boolean | null
           is_online?: boolean | null
+          is_typing?: boolean | null
           last_interaction_at?: string | null
           last_seen_at?: string | null
           lead_score?: number | null

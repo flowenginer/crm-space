@@ -867,11 +867,12 @@ async function handlePresenceEvent(
     .replace("@lid", "")
     .replace("@c.us", "");
   
-  // Determinar se está online
+  // Determinar se está online e se está digitando
   // Valores possíveis: "available", "unavailable", "composing", "recording", "paused"
   const isOnline = presence === "available" || presence === "composing" || presence === "recording";
+  const isTyping = presence === "composing" || presence === "recording";
   
-  console.log(`[Webhook] Presence update - Phone: ${phone}, Presence: ${presence}, IsOnline: ${isOnline}`);
+  console.log(`[Webhook] Presence update - Phone: ${phone}, Presence: ${presence}, IsOnline: ${isOnline}, IsTyping: ${isTyping}`);
   
   // Atualizar contato
   const { data: contact, error: findError } = await supabase
@@ -889,6 +890,7 @@ async function handlePresenceEvent(
     .from("contacts")
     .update({
       is_online: isOnline,
+      is_typing: isTyping,
       last_seen_at: isOnline ? null : new Date().toISOString(),
       updated_at: new Date().toISOString()
     })
@@ -897,7 +899,7 @@ async function handlePresenceEvent(
   if (updateError) {
     console.error(`[Webhook] Error updating contact presence:`, updateError);
   } else {
-    console.log(`[Webhook] Contact ${contact.full_name} presence updated to: ${isOnline ? 'online' : 'offline'}`);
+    console.log(`[Webhook] Contact ${contact.full_name} presence: online=${isOnline}, typing=${isTyping}`);
   }
 }
 
