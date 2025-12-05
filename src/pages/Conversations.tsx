@@ -423,9 +423,16 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
           setShowFullEmojiPicker(false);
         }}
       >
-        {/* Action buttons - left side for received messages (absolute positioning) */}
+        {/* Action buttons - right side for received messages (inside conversation area) */}
         {!isMe && !isDeleted && (
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full pr-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            <button 
+              onClick={() => onReply?.(message)}
+              className="p-1.5 hover:bg-muted rounded-full transition-colors bg-background/80 backdrop-blur-sm"
+              title="Responder"
+            >
+              <Reply size={16} className="text-muted-foreground" />
+            </button>
             <Popover open={showReactionPicker} onOpenChange={setShowReactionPicker}>
               <PopoverTrigger asChild>
                 <button 
@@ -435,7 +442,7 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
                   <Smile size={16} className="text-muted-foreground" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" side="top" align="start">
+              <PopoverContent className="w-auto p-0" side="top" align="end">
                 {showFullEmojiPicker ? (
                   <EmojiPicker
                     onEmojiClick={handleEmojiReaction}
@@ -468,13 +475,6 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
                 )}
               </PopoverContent>
             </Popover>
-            <button 
-              onClick={() => onReply?.(message)}
-              className="p-1.5 hover:bg-muted rounded-full transition-colors bg-background/80 backdrop-blur-sm"
-              title="Responder"
-            >
-              <Reply size={16} className="text-muted-foreground" />
-            </button>
           </div>
         )}
 
@@ -605,22 +605,22 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
           )}
         </div>
 
-        {/* Action buttons - right side for sent messages (absolute positioning) */}
+        {/* Action buttons - left side for sent messages (inside conversation area) */}
         {isMe && !isDeleted && (
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-            <button 
-              onClick={() => onReply?.(message)}
-              className="p-1.5 hover:bg-muted rounded-full transition-colors bg-background/80 backdrop-blur-sm"
-              title="Responder"
-            >
-              <Reply size={16} className="text-muted-foreground" />
-            </button>
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full pr-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
             <button 
               onClick={() => setShowDeleteConfirm(true)}
               className="p-1.5 hover:bg-destructive/20 rounded-full transition-colors bg-background/80 backdrop-blur-sm"
               title="Apagar"
             >
               <Trash2 size={16} className="text-destructive" />
+            </button>
+            <button 
+              onClick={() => onReply?.(message)}
+              className="p-1.5 hover:bg-muted rounded-full transition-colors bg-background/80 backdrop-blur-sm"
+              title="Responder"
+            >
+              <Reply size={16} className="text-muted-foreground" />
             </button>
           </div>
         )}
