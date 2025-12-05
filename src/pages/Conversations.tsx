@@ -933,9 +933,8 @@ function InternalNoteCard({ note, onUpdate }: InternalNoteCardProps) {
 
 export default function Conversations() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
-    searchParams.get('id')
-  );
+  // Derive selected conversation ID directly from URL - no state needed
+  const selectedConversationId = searchParams.get('id');
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [channelFilter, setChannelFilter] = useState('all');
@@ -945,7 +944,7 @@ export default function Conversations() {
   const [sortFilter, setSortFilter] = useState('newest');
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned'>('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [showMobileChat, setShowMobileChat] = useState(false);
+  const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -1181,21 +1180,6 @@ export default function Conversations() {
     }, 100);
     return () => clearTimeout(timeout);
   }, [allChatItems.length, selectedConversationId, scrollToBottom]);
-
-  // Handle URL param for conversation selection - URL is the source of truth
-  useEffect(() => {
-    const idFromUrl = searchParams.get('id');
-    if (idFromUrl !== selectedConversationId) {
-      if (idFromUrl) {
-        setSelectedConversationId(idFromUrl);
-        if (isMobile) {
-          setShowMobileChat(true);
-        }
-      } else {
-        setSelectedConversationId(null);
-      }
-    }
-  }, [searchParams, selectedConversationId, isMobile]);
 
   // Reset selection mode when changing conversation
   useEffect(() => {
