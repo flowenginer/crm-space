@@ -279,7 +279,10 @@ export default function CRM() {
           </div>
 
           <div className="flex items-center -space-x-2">
-            {teamMembers?.slice(0, 5).map((member) => (
+            {/* Mostra apenas vendedores (role = vendedor) */}
+            {teamMembers
+              ?.filter((member) => member.role === 'vendedor')
+              .map((member) => (
               <div
                 key={member.id}
                 onClick={() => {
