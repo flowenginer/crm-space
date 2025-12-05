@@ -44,7 +44,10 @@ export function useChannels() {
       const { data, error } = await supabase
         .from('whatsapp_channels')
         .select(`
-          *,
+          id, name, phone, channel_id, type, status, qr_code, qr_expires_at,
+          battery_level, last_sync_at, messages_sent, messages_sent_today,
+          messages_received, messages_received_today, department_id, provider_id,
+          instance_id, instance_token, webhook_url, is_deleted, created_at, updated_at,
           department:departments(id, name),
           provider:whatsapp_providers(id, name, code, base_url, api_key, api_secret)
         `)
@@ -54,6 +57,7 @@ export function useChannels() {
       if (error) throw error;
       return data as WhatsAppChannel[];
     },
+    staleTime: 60000,
   });
 }
 
@@ -64,7 +68,8 @@ export function useDeletedChannels() {
       const { data, error } = await supabase
         .from('whatsapp_channels')
         .select(`
-          *,
+          id, name, phone, status, department_id, provider_id,
+          instance_id, is_deleted, deleted_at, created_at,
           department:departments(id, name),
           provider:whatsapp_providers(id, name, code)
         `)
@@ -74,6 +79,7 @@ export function useDeletedChannels() {
       if (error) throw error;
       return data as WhatsAppChannel[];
     },
+    staleTime: 60000,
   });
 }
 

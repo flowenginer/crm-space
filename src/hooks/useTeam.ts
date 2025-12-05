@@ -22,7 +22,8 @@ export function useTeam() {
       const { data, error } = await supabase
         .from('profiles')
         .select(`
-          *,
+          id, full_name, avatar_url, phone, department_id,
+          is_online, last_seen_at, is_active, role, created_at, updated_at,
           department:departments(id, name)
         `)
         .order('full_name');
@@ -44,6 +45,7 @@ export function useTeam() {
         role: roleMap[member.id] || 'user'
       })) as TeamMember[];
     },
+    staleTime: 60000,
   });
 }
 
