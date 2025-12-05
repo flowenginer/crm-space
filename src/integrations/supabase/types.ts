@@ -1994,6 +1994,7 @@ export type Database = {
       }
       increment_unread: { Args: { conv_id: string }; Returns: undefined }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_lid_contact: { Args: { phone: string }; Returns: boolean }
       merge_duplicate_contacts: {
         Args: {
           p_duplicate_contact_id: string
