@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { normalizePhoneForStorage, getPhoneSearchVariations } from '@/utils/phone';
+import { toast } from 'sonner';
 
 export interface Contact {
   id: string;
@@ -74,16 +76,51 @@ export function useContacts() {
   });
 }
 
+/**
+ * Busca contato existente pelo telefone (verifica múltiplas variações do formato)
+ */
+export async function findContactByPhone(phone: string): Promise<Contact | null> {
+  const variations = getPhoneSearchVariations(phone);
+  
+  // Build OR query for all variations
+  const orConditions = variations.map(v => `phone.eq.${v}`).join(',');
+  
+  const { data } = await supabase
+    .from('contacts')
+    .select('*')
+    .or(orConditions)
+    .limit(1)
+    .maybeSingle();
+  
+  return data as Contact | null;
+}
+
 export function useCreateContact() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (contact: Partial<Contact>) => {
+      if (!contact.phone) {
+        throw new Error('Telefone é obrigatório');
+      }
+
+      // Normalizar telefone para formato padrão
+      const normalizedPhone = normalizePhoneForStorage(contact.phone);
+      
+      // Verificar se já existe um contato com esse telefone
+      const existingContact = await findContactByPhone(normalizedPhone);
+      
+      if (existingContact) {
+        toast.error(`Já existe um contato com este telefone: ${existingContact.full_name}`);
+        throw new Error(`Contato já existe: ${existingContact.full_name} (${existingContact.phone})`);
+      }
+
+      // Criar o contato com telefone normalizado
       const { data, error } = await supabase
         .from('contacts')
         .insert({
           full_name: contact.full_name!,
-          phone: contact.phone!,
+          phone: normalizedPhone,
           email: contact.email,
           state: contact.state,
           city: contact.city,
@@ -100,12 +137,23 @@ export function useCreateContact() {
           zip_code: contact.zip_code,
           country: contact.country || 'Brasil',
           person_type: contact.person_type || 'individual',
-          origin: contact.origin,
+          origin: contact.origin || 'manual',
         })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // Se for erro de duplicata (constraint), tentar buscar o existente
+        if (error.code === '23505') {
+          const existing = await findContactByPhone(normalizedPhone);
+          if (existing) {
+            toast.error(`Contato já existe: ${existing.full_name}`);
+            throw new Error(`Contato duplicado: ${existing.full_name}`);
+          }
+        }
+        throw error;
+      }
+      
       return data;
     },
     onSuccess: () => {
@@ -118,8 +166,23 @@ export function useUpdateContact() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, tags, assignee, department, custom_fields, ...contact }: Partial<Contact> & { id: string }) => {
+    mutationFn: async ({ id, tags, assignee, department, custom_fields, phone, ...contact }: Partial<Contact> & { id: string }) => {
       const updateData: Record<string, unknown> = { ...contact };
+      
+      // Se estiver atualizando o telefone, normalizar e verificar duplicatas
+      if (phone) {
+        const normalizedPhone = normalizePhoneForStorage(phone);
+        
+        // Verificar se já existe outro contato com esse telefone
+        const existingContact = await findContactByPhone(normalizedPhone);
+        if (existingContact && existingContact.id !== id) {
+          toast.error(`Já existe outro contato com este telefone: ${existingContact.full_name}`);
+          throw new Error(`Telefone já em uso por: ${existingContact.full_name}`);
+        }
+        
+        updateData.phone = normalizedPhone;
+      }
+      
       if (custom_fields !== undefined) {
         updateData.custom_fields = custom_fields;
       }

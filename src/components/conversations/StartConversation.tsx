@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { MessageSquare, Send, Loader2, Phone, User, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatBrazilianPhone, cleanBrazilianPhone, isValidBrazilianPhone } from '@/utils/phone';
+import { formatBrazilianPhone, normalizePhoneForStorage, getPhoneSearchVariations, isValidBrazilianPhone } from '@/utils/phone';
 
 interface StartConversationProps {
   onConversationCreated?: (conversationId: string) => void;
@@ -54,13 +54,15 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
     setIsLoading(true);
     try {
-      const cleanPhone = cleanBrazilianPhone(phoneNumber);
+      const normalizedPhone = normalizePhoneForStorage(phoneNumber);
+      const searchVariations = getPhoneSearchVariations(normalizedPhone);
       
-      // Search contact by phone
+      // Search contact by phone using all variations
+      const orConditions = searchVariations.map(v => `phone.eq.${v}`).join(',');
       const { data: contact, error } = await supabase
         .from('contacts')
         .select('*')
-        .or(`phone.eq.${cleanPhone},phone.eq.${cleanPhone.slice(2)}`)
+        .or(orConditions)
         .maybeSingle();
 
       if (error) throw error;
@@ -89,7 +91,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
         setShowSearchResult(true);
       } else {
         // No contact found - show channel selector to create both
-        setPendingContact({ phone: cleanPhone });
+        setPendingContact({ phone: normalizedPhone });
         setShowChannelSelector(true);
       }
     } catch (error) {
@@ -106,7 +108,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
     setShowChannelSelector(false);
     
     try {
-      const cleanPhone = cleanBrazilianPhone(phoneNumber);
+      const normalizedPhone = normalizePhoneForStorage(phoneNumber);
       const { data: { user } } = await supabase.auth.getUser();
       
       let contactId: string;
@@ -114,23 +116,55 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
       if (existingContact?.id) {
         contactId = existingContact.id;
       } else {
-        // Create new contact
-        const { data: newContact, error: contactError } = await supabase
+        // Verificar duplicata uma última vez antes de criar
+        const searchVariations = getPhoneSearchVariations(normalizedPhone);
+        const orConditions = searchVariations.map(v => `phone.eq.${v}`).join(',');
+        const { data: existingByPhone } = await supabase
           .from('contacts')
-          .insert({
-            phone: cleanPhone,
-            full_name: `+${cleanPhone}`,
-            lead_status: 'new',
-            origin: 'manual',
-            first_contact_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
-
-        if (contactError) throw contactError;
+          .select('id, full_name')
+          .or(orConditions)
+          .maybeSingle();
         
-        contactId = newContact.id;
-        toast.success('Novo contato criado!');
+        if (existingByPhone) {
+          toast.info(`Contato já existe: ${existingByPhone.full_name}`);
+          contactId = existingByPhone.id;
+        } else {
+          // Create new contact with normalized phone
+          const { data: newContact, error: contactError } = await supabase
+            .from('contacts')
+            .insert({
+              phone: normalizedPhone,
+              full_name: `+${normalizedPhone}`,
+              lead_status: 'new',
+              origin: 'manual',
+              first_contact_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (contactError) {
+            // Se for erro de constraint de duplicata, buscar o existente
+            if (contactError.code === '23505') {
+              const { data: foundContact } = await supabase
+                .from('contacts')
+                .select('id, full_name')
+                .or(orConditions)
+                .maybeSingle();
+              
+              if (foundContact) {
+                toast.info(`Contato encontrado: ${foundContact.full_name}`);
+                contactId = foundContact.id;
+              } else {
+                throw contactError;
+              }
+            } else {
+              throw contactError;
+            }
+          } else {
+            contactId = newContact.id;
+            toast.success('Novo contato criado!');
+          }
+        }
       }
 
       // Create new conversation with selected channel
