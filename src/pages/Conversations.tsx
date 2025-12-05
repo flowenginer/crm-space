@@ -415,7 +415,7 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
   return (
     <>
       <div 
-        className={cn('flex group relative', isMe ? 'justify-end' : 'justify-start')}
+        className={cn('flex group items-end gap-1', isMe ? 'justify-end' : 'justify-start')}
         onMouseEnter={() => setShowActions(true)}
         onMouseLeave={() => { 
           setShowActions(false); 
@@ -423,58 +423,23 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
           setShowFullEmojiPicker(false);
         }}
       >
-        {/* Action buttons - right side for received messages (inside conversation area) */}
-        {!isMe && !isDeleted && (
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        {/* Action buttons - left side for sent messages */}
+        {isMe && !isDeleted && (
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity mb-2">
+            <button 
+              onClick={() => setShowDeleteConfirm(true)}
+              className="p-1.5 hover:bg-destructive/20 rounded-full transition-colors"
+              title="Apagar"
+            >
+              <Trash2 size={14} className="text-muted-foreground hover:text-destructive" />
+            </button>
             <button 
               onClick={() => onReply?.(message)}
-              className="p-1.5 hover:bg-muted rounded-full transition-colors bg-background/80 backdrop-blur-sm"
+              className="p-1.5 hover:bg-muted rounded-full transition-colors"
               title="Responder"
             >
-              <Reply size={16} className="text-muted-foreground" />
+              <Reply size={14} className="text-muted-foreground" />
             </button>
-            <Popover open={showReactionPicker} onOpenChange={setShowReactionPicker}>
-              <PopoverTrigger asChild>
-                <button 
-                  className="p-1.5 hover:bg-muted rounded-full transition-colors bg-background/80 backdrop-blur-sm"
-                  title="Reagir"
-                >
-                  <Smile size={16} className="text-muted-foreground" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" side="top" align="end">
-                {showFullEmojiPicker ? (
-                  <EmojiPicker
-                    onEmojiClick={handleEmojiReaction}
-                    theme={Theme.AUTO}
-                    lazyLoadEmojis
-                    searchPlaceholder="Buscar emoji..."
-                    width={320}
-                    height={350}
-                  />
-                ) : (
-                  <div className="p-2">
-                    <div className="flex gap-1 mb-2">
-                      {QUICK_REACTIONS.map(emoji => (
-                        <button 
-                          key={emoji}
-                          onClick={() => { onReact?.(message.id, emoji); setShowReactionPicker(false); }}
-                          className="text-xl hover:bg-muted p-1.5 rounded transition-colors"
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() => setShowFullEmojiPicker(true)}
-                      className="w-full text-xs text-muted-foreground hover:text-foreground py-1 border-t border-border"
-                    >
-                      Mais emojis...
-                    </button>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
           </div>
         )}
 
@@ -605,23 +570,58 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
           )}
         </div>
 
-        {/* Action buttons - left side for sent messages (inside conversation area) */}
-        {isMe && !isDeleted && (
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full pr-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-            <button 
-              onClick={() => setShowDeleteConfirm(true)}
-              className="p-1.5 hover:bg-destructive/20 rounded-full transition-colors bg-background/80 backdrop-blur-sm"
-              title="Apagar"
-            >
-              <Trash2 size={16} className="text-destructive" />
-            </button>
+        {/* Action buttons - right side for received messages */}
+        {!isMe && !isDeleted && (
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity mb-2">
             <button 
               onClick={() => onReply?.(message)}
-              className="p-1.5 hover:bg-muted rounded-full transition-colors bg-background/80 backdrop-blur-sm"
+              className="p-1.5 hover:bg-muted rounded-full transition-colors"
               title="Responder"
             >
-              <Reply size={16} className="text-muted-foreground" />
+              <Reply size={14} className="text-muted-foreground" />
             </button>
+            <Popover open={showReactionPicker} onOpenChange={setShowReactionPicker}>
+              <PopoverTrigger asChild>
+                <button 
+                  className="p-1.5 hover:bg-muted rounded-full transition-colors"
+                  title="Reagir"
+                >
+                  <Smile size={14} className="text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" side="top" align="end">
+                {showFullEmojiPicker ? (
+                  <EmojiPicker
+                    onEmojiClick={handleEmojiReaction}
+                    theme={Theme.AUTO}
+                    lazyLoadEmojis
+                    searchPlaceholder="Buscar emoji..."
+                    width={320}
+                    height={350}
+                  />
+                ) : (
+                  <div className="p-2">
+                    <div className="flex gap-1 mb-2">
+                      {QUICK_REACTIONS.map(emoji => (
+                        <button 
+                          key={emoji}
+                          onClick={() => { onReact?.(message.id, emoji); setShowReactionPicker(false); }}
+                          className="text-xl hover:bg-muted p-1.5 rounded transition-colors"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setShowFullEmojiPicker(true)}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground py-1 border-t border-border"
+                    >
+                      Mais emojis...
+                    </button>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
           </div>
         )}
       </div>
