@@ -17,6 +17,22 @@ export interface Conversation {
   updated_at: string;
   closed_at: string | null;
   closed_by: string | null;
+  referral_source: string | null;
+  referral_data: {
+    ctwaClid?: string;
+    sourceId?: string;
+    sourceType?: string;
+    sourceUrl?: string;
+    headline?: string;
+    body?: string;
+    mediaType?: string;
+    imageUrl?: string;
+    videoUrl?: string;
+    thumbnailUrl?: string;
+    showAdAttribution?: boolean;
+    adName?: string;
+    campaignName?: string;
+  } | null;
   contact?: {
     id: string;
     full_name: string;
@@ -27,6 +43,9 @@ export interface Conversation {
     is_typing: boolean | null;
     first_contact_at: string | null;
     created_at: string;
+    origin?: string | null;
+    origin_campaign?: string | null;
+    referral_data?: any | null;
   } | null;
   assignee?: { id: string; full_name: string | null } | null;
   channel?: { id: string; name: string } | null;
@@ -69,7 +88,7 @@ export function useConversations(filter?: AssignmentFilter) {
         .from('conversations')
         .select(`
           *,
-          contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at),
+          contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data),
           assignee:profiles!conversations_assigned_to_fkey(id, full_name),
           channel:whatsapp_channels(id, name)
         `)

@@ -382,6 +382,16 @@ function ConversationItem({ conversation, isSelected, isPinned, onClick, onToggl
                 </div>
               )}
               
+              {/* Meta Ads Badge */}
+              {(conversation.referral_source === 'meta_ads' || conversation.contact?.origin === 'meta_ads') && (
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-600/20 rounded-full" title={conversation.referral_data?.headline || conversation.contact?.origin_campaign || 'Meta Ads'}>
+                  <svg className="w-3 h-3 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                  </svg>
+                  <span className="text-xs text-blue-600 font-medium">Ads</span>
+                </div>
+              )}
+              
               {/* First Contact Date */}
               {firstContactDate && (
                 <div className="flex items-center gap-1 px-2 py-0.5 bg-muted rounded-full">
@@ -952,6 +962,7 @@ export default function Conversations() {
     tagIds: [] as string[],
     protocolNumber: '',
     departmentId: 'all',
+    origin: 'all' as 'all' | 'meta_ads' | 'whatsapp',
   });
   const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
@@ -1287,6 +1298,16 @@ export default function Conversations() {
           return false;
         }
         
+        // Origin filter (Meta Ads, WhatsApp)
+        if (advancedFilters.origin !== 'all') {
+          const convOrigin = conv.referral_source || conv.contact?.origin;
+          if (advancedFilters.origin === 'meta_ads') {
+            if (convOrigin !== 'meta_ads') return false;
+          } else if (advancedFilters.origin === 'whatsapp') {
+            if (convOrigin === 'meta_ads') return false;
+          }
+        }
+        
         return true;
       })
       .sort((a, b) => {
@@ -1454,6 +1475,7 @@ export default function Conversations() {
       tagIds: [],
       protocolNumber: '',
       departmentId: 'all',
+      origin: 'all',
     });
   };
 
@@ -2953,6 +2975,51 @@ export default function Conversations() {
                 }) : (
                   <p className="text-sm text-muted-foreground">Nenhum departamento cadastrado</p>
                 )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Origem do Lead
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setAdvancedFilters(prev => ({ ...prev, origin: 'all' }))}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                    advancedFilters.origin === 'all' 
+                      ? 'bg-primary text-white' 
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  )}
+                >
+                  Todas
+                </button>
+                <button
+                  onClick={() => setAdvancedFilters(prev => ({ ...prev, origin: 'meta_ads' }))}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5',
+                    advancedFilters.origin === 'meta_ads' 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-blue-600/20 text-blue-600 hover:bg-blue-600/30'
+                  )}
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                  </svg>
+                  Meta Ads ({conversations.filter(c => c.referral_source === 'meta_ads' || c.contact?.origin === 'meta_ads').length})
+                </button>
+                <button
+                  onClick={() => setAdvancedFilters(prev => ({ ...prev, origin: 'whatsapp' }))}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5',
+                    advancedFilters.origin === 'whatsapp' 
+                      ? 'bg-green-600 text-white' 
+                      : 'bg-green-600/20 text-green-600 hover:bg-green-600/30'
+                  )}
+                >
+                  <MessageCircle size={14} />
+                  Orgânico
+                </button>
               </div>
             </div>
           </div>
