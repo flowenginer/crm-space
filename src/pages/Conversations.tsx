@@ -785,6 +785,41 @@ export default function Conversations() {
 
   // Find selected conversation from real data
   const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
+  
+  // Track contact typing status with realtime
+  const [contactIsTyping, setContactIsTyping] = useState(false);
+  
+  useEffect(() => {
+    if (!selectedConversation?.contact?.id) {
+      setContactIsTyping(false);
+      return;
+    }
+    
+    // Set initial typing status from conversation data
+    setContactIsTyping(selectedConversation.contact.is_typing ?? false);
+    
+    // Subscribe to realtime contact updates for typing status
+    const channel = supabase
+      .channel(`contact-typing:${selectedConversation.contact.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'contacts',
+          filter: `id=eq.${selectedConversation.contact.id}`,
+        },
+        (payload) => {
+          const newTyping = (payload.new as any)?.is_typing ?? false;
+          setContactIsTyping(newTyping);
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedConversation?.contact?.id, selectedConversation?.contact?.is_typing]);
 
   // Mark conversation as read when selected
   useEffect(() => {
@@ -1807,6 +1842,22 @@ export default function Conversations() {
                 </>
               )}
             </div>
+
+            {/* Contact Typing Indicator */}
+            {contactIsTyping && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-t border-border">
+                <div className="flex items-center gap-1.5">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-2 h-2 bg-primary rounded-full animate-bounce" />
+                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    {selectedConversation?.contact?.full_name || 'Contato'} está digitando...
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Internal Note Mode Banner */}
             {isInternalNoteMode && (
