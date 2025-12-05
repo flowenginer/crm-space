@@ -56,6 +56,32 @@ export default function ScheduledMessagesPage() {
   
   const queryClient = useQueryClient();
 
+  // Realtime subscription for automatic updates
+  useEffect(() => {
+    const channel = supabase
+      .channel('scheduled-messages-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scheduled_messages'
+        },
+        (payload) => {
+          console.log('Scheduled message updated:', payload);
+          // Invalidate queries to refetch data
+          queryClient.invalidateQueries({ queryKey: ['all-scheduled-messages'] });
+          queryClient.invalidateQueries({ queryKey: ['scheduled-messages-stats'] });
+          queryClient.invalidateQueries({ queryKey: ['pending-scheduled-count'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   // Fetch scheduled messages with auto-refresh every 30 seconds
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['all-scheduled-messages', statusFilter, dateFilter, agentFilter, search, page],
