@@ -32,6 +32,8 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Tag,
+  Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -71,13 +73,14 @@ import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEdi
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
 import { formatDistanceToNow, format, isToday, isYesterday, startOfDay, startOfWeek, startOfMonth, subDays, subWeeks, subMonths, endOfDay, endOfWeek, endOfMonth, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { toast } from 'sonner';
 import { useTeam } from '@/hooks/useTeam';
-import { useTags } from '@/hooks/useTags';
+import { useTags, useAddTagToContact, useRemoveTagFromContact } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
@@ -920,6 +923,7 @@ export default function Conversations() {
     protocolNumber: '',
     departmentId: 'all',
   });
+  const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -937,6 +941,8 @@ export default function Conversations() {
   const { data: internalNotes = [], isLoading: notesLoading } = useInternalNotes(selectedConversationId);
   const { data: teamMembers = [] } = useTeam();
   const { data: tags = [] } = useTags();
+  const addTagToContact = useAddTagToContact();
+  const removeTagFromContact = useRemoveTagFromContact();
   const { data: departments = [] } = useDepartments();
   const { data: channels = [] } = useChannels();
   const { data: pinnedConversations = [] } = usePinnedConversations();
@@ -956,6 +962,21 @@ export default function Conversations() {
 
   // Find selected conversation from real data
   const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
+  
+  // Fetch contact tags for the selected conversation
+  const { data: contactTags = [], refetch: refetchContactTags } = useQuery({
+    queryKey: ['contact-tags', selectedConversation?.contact?.id],
+    queryFn: async () => {
+      if (!selectedConversation?.contact?.id) return [];
+      const { data, error } = await supabase
+        .from('contact_tags')
+        .select('tag:tags(*)')
+        .eq('contact_id', selectedConversation.contact.id);
+      if (error) throw error;
+      return (data || []).map((ct: any) => ct.tag).filter(Boolean);
+    },
+    enabled: !!selectedConversation?.contact?.id,
+  });
   
   // Track contact typing status with realtime
   const [contactIsTyping, setContactIsTyping] = useState(false);
@@ -1956,6 +1977,79 @@ export default function Conversations() {
                       </p>
                     )}
                   </div>
+                </div>
+
+                {/* Contact Tags in Header */}
+                <div className="flex-1 mx-4 min-w-0 hidden md:flex items-center gap-1.5 flex-wrap">
+                  {contactTags.map((tag: any) => (
+                    <span 
+                      key={tag.id}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{ 
+                        backgroundColor: `${tag.color || '#8B5CF6'}20`,
+                        color: tag.color || '#8B5CF6'
+                      }}
+                    >
+                      {tag.name}
+                      <button 
+                        onClick={() => {
+                          if (selectedConversation?.contact?.id) {
+                            removeTagFromContact.mutate(
+                              { contactId: selectedConversation.contact.id, tagId: tag.id },
+                              { onSuccess: () => refetchContactTags() }
+                            );
+                          }
+                        }}
+                        className="hover:opacity-70"
+                        disabled={removeTagFromContact.isPending}
+                      >
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+                  
+                  <Popover open={showHeaderTagPopover} onOpenChange={setShowHeaderTagPopover}>
+                    <PopoverTrigger asChild>
+                      <button className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                        <Plus size={10} />
+                        Etiqueta
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="start">
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground mb-2">Adicionar etiqueta</p>
+                        {tags
+                          .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
+                          .slice(0, 10)
+                          .map((tag: any) => (
+                            <button
+                              key={tag.id}
+                              onClick={() => {
+                                if (selectedConversation?.contact?.id) {
+                                  addTagToContact.mutate(
+                                    { contactId: selectedConversation.contact.id, tagId: tag.id },
+                                    { onSuccess: () => { refetchContactTags(); setShowHeaderTagPopover(false); } }
+                                  );
+                                }
+                              }}
+                              disabled={addTagToContact.isPending}
+                              className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-left text-sm"
+                            >
+                              <span 
+                                className="w-3 h-3 rounded-full flex-shrink-0" 
+                                style={{ backgroundColor: tag.color || '#8B5CF6' }}
+                              />
+                              <span className="truncate">{tag.name}</span>
+                            </button>
+                          ))}
+                        {tags.filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id)).length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center py-2">
+                            Todas etiquetas adicionadas
+                          </p>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 <div className="flex items-center gap-1">
