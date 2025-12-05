@@ -678,8 +678,12 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
           </div>
         )}
 
+      </div>
+
+      {/* Footer: Action Buttons */}
+      <div className="p-3 border-t border-border space-y-2">
         {/* Start New Conversation */}
-        <div className="p-3 border-b border-border">
+        <div className="pb-2 border-b border-border">
           <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             Iniciar nova conversa
           </label>
@@ -713,10 +717,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
             Digite o número com DDD para iniciar uma conversa
           </p>
         </div>
-      </div>
 
-      {/* Footer: Action Buttons */}
-      <div className="p-3 border-t border-border space-y-1.5">
         <Button
           onClick={() => setShowScheduleModal(true)}
           variant="outline"
