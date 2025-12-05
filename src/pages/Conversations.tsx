@@ -2098,11 +2098,29 @@ export default function Conversations() {
               <div className="flex items-center justify-between px-4 py-2 bg-primary/10 border-y border-primary/30">
                 <div className="flex items-center gap-2 text-primary flex-1 min-w-0">
                   <Reply size={16} />
+                  {/* Image thumbnail for image messages */}
+                  {replyingTo.message_type === 'image' && replyingTo.media_url && (
+                    <img 
+                      src={replyingTo.media_url} 
+                      alt="Imagem" 
+                      className="w-10 h-10 rounded object-cover flex-shrink-0"
+                    />
+                  )}
                   <div className="flex flex-col min-w-0">
                     <span className="text-xs font-medium">Respondendo</span>
                     <span className="text-xs opacity-70 truncate">
-                      {replyingTo.content?.substring(0, 60) || 'Mídia'}
-                      {replyingTo.content && replyingTo.content.length > 60 ? '...' : ''}
+                      {replyingTo.message_type === 'image' 
+                        ? (replyingTo.content && replyingTo.content !== '[Imagem]' 
+                            ? replyingTo.content.substring(0, 60) 
+                            : 'Imagem')
+                        : replyingTo.message_type === 'audio'
+                          ? '🎤 Áudio'
+                          : replyingTo.message_type === 'video'
+                            ? '🎬 Vídeo'
+                            : replyingTo.message_type === 'document'
+                              ? '📄 Documento'
+                              : (replyingTo.content?.substring(0, 60) || 'Mídia')}
+                      {replyingTo.message_type === 'text' && replyingTo.content && replyingTo.content.length > 60 ? '...' : ''}
                     </span>
                   </div>
                 </div>
