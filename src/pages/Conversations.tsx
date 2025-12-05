@@ -78,6 +78,29 @@ import { useTags } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 
+// Helper function to linkify URLs in text
+const linkifyText = (text: string) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  
+  return parts.map((part, index) => {
+    if (urlRegex.test(part)) {
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:opacity-80 break-all"
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+};
+
 // Mock Data for reference (will be replaced by real data)
 const mockConversations = [
   {
@@ -538,10 +561,10 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
                 
                 {/* Text content */}
                 {message.content && message.message_type === 'text' && (
-                  <p className="text-sm leading-relaxed">{message.content}</p>
+                  <p className="text-sm leading-relaxed">{linkifyText(message.content)}</p>
                 )}
                 {message.content && message.message_type !== 'text' && message.message_type !== 'document' && message.message_type !== 'audio' && message.message_type !== 'video' && message.message_type !== 'image' && (
-                  <p className="text-sm leading-relaxed mt-1">{message.content}</p>
+                  <p className="text-sm leading-relaxed mt-1">{linkifyText(message.content)}</p>
                 )}
               </>
             )}
