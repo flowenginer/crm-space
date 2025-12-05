@@ -162,7 +162,7 @@ async function sendEvolutionMessage(
 async function sendUAZAPIMessage(
   baseUrl: string,
   instanceName: string,
-  adminToken: string,
+  instanceToken: string,
   phone: string,
   content: string,
   type: string,
@@ -170,96 +170,71 @@ async function sendUAZAPIMessage(
   quotedMessageId?: string
 ) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
-  const formattedPhone = phone.replace(/\D/g, '') + '@s.whatsapp.net';
+  const formattedPhone = phone.replace(/\D/g, '');
   
   console.log('[UAZAPI] Sending message:', { instanceName, phone: formattedPhone, type, quotedMessageId });
   
   let endpoint = '';
   let body: any = {};
   
-  // Add quoted context if available - include remoteJid for media messages
-  const quotedContext = quotedMessageId ? {
-    quoted: {
-      key: {
-        remoteJid: formattedPhone,
-        id: quotedMessageId
-      }
-    }
-  } : {};
-  
+  // UAZAPI usa token da instância e endpoints diferentes
+  // Docs: https://docs.uazapi.com/endpoint/post/message~text
   if (type === 'text') {
-    endpoint = `${normalizedUrl}/message/sendText/${instanceName}`;
+    endpoint = `${normalizedUrl}/message/text`;
     body = {
-      number: formattedPhone,
-      text: content,
-      ...quotedContext,
+      phone: formattedPhone,
+      message: content,
+      ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
     };
   } else if (type === 'image') {
-    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
+    endpoint = `${normalizedUrl}/message/image`;
     body = {
-      number: formattedPhone,
-      mediatype: 'image',
-      media: mediaUrl,
+      phone: formattedPhone,
+      image: mediaUrl,
       caption: content || '',
-      ...quotedContext,
+      ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
     };
   } else if (type === 'audio') {
-    endpoint = `${normalizedUrl}/message/sendWhatsAppAudio/${instanceName}`;
+    endpoint = `${normalizedUrl}/message/audio`;
     body = {
-      number: formattedPhone,
+      phone: formattedPhone,
       audio: mediaUrl,
-      ...quotedContext,
+      ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
     };
   } else if (type === 'video') {
-    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
+    endpoint = `${normalizedUrl}/message/video`;
     body = {
-      number: formattedPhone,
-      mediatype: 'video',
-      media: mediaUrl,
+      phone: formattedPhone,
+      video: mediaUrl,
       caption: content || '',
-      ...quotedContext,
+      ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
     };
   } else if (type === 'document') {
-    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
+    endpoint = `${normalizedUrl}/message/document`;
     body = {
-      number: formattedPhone,
-      mediatype: 'document',
-      media: mediaUrl,
+      phone: formattedPhone,
+      document: mediaUrl,
       fileName: content || 'document',
-      ...quotedContext,
+      ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
     };
   }
   
   console.log('[UAZAPI] Request:', { endpoint, body });
   
-  // Try with admintoken first
-  let response = await fetch(endpoint, {
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'admintoken': adminToken,
+      'token': instanceToken,
     },
     body: JSON.stringify(body),
   });
-  
-  // If 401, try with apikey
-  if (response.status === 401) {
-    console.log('[UAZAPI] 401 with admintoken, trying apikey...');
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': adminToken,
-      },
-      body: JSON.stringify(body),
-    });
-  }
   
   const data = await safeJsonParse(response, 'UAZAPI Send');
   
   return {
     success: true,
-    messageId: data.key?.id || data.id,
+    messageId: data.key?.id || data.id || data.messageId,
     data,
   };
 }
@@ -652,117 +627,141 @@ async function fetchZAPIInstances(config: ProviderConfig) {
 }
 
 // =====================================================
-// UAZAPI (baseado em Evolution API)
+// UAZAPI - Endpoints corretos conforme docs.uazapi.com
 // =====================================================
 async function createUAZAPIInstance(config: ProviderConfig, instanceName: string, webhookUrl: string) {
   const baseUrl = normalizeBaseUrl(config.baseUrl);
   console.log('[UAZAPI] Creating instance:', instanceName, 'at', baseUrl);
-  console.log('[UAZAPI] Token (primeiros 8 chars):', config.adminToken?.substring(0, 8) + '...');
+  console.log('[UAZAPI] Admin Token (primeiros 8 chars):', config.adminToken?.substring(0, 8) + '...');
   
-  const url = `${baseUrl}/instance/create`;
-  console.log('[UAZAPI] Request URL:', url);
-  
-  const requestBody = {
-    instanceName: instanceName,
-    qrcode: true,
-    integration: 'WHATSAPP-BAILEYS',
-    rejectCall: true,
-    msgCall: 'No momento não podemos atender ligações.',
-    groupsIgnore: false,
-    alwaysOnline: false,
-    readMessages: false,
-    readStatus: false,
-    syncFullHistory: false,
-    webhook: {
-      url: webhookUrl,
-      byEvents: false,
-      base64: true,
-      events: ['QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'SEND_MESSAGE'],
-    },
-  };
-  console.log('[UAZAPI] Request body:', JSON.stringify(requestBody));
-  
-  // UAZAPI usa 'admintoken' como header principal
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'admintoken': config.adminToken,
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  // If 401, try with 'apikey' header (Evolution API format)
-  if (response.status === 401) {
-    console.log('[UAZAPI] 401 with admintoken header, trying apikey...');
-    const retryResponse = await fetch(url, {
+  try {
+    // PASSO 1: Criar instância via /instance/init (com admintoken)
+    // Docs: https://docs.uazapi.com/endpoint/post/instance~init
+    const initUrl = `${baseUrl}/instance/init`;
+    console.log('[UAZAPI] Step 1 - Init instance:', initUrl);
+    
+    const initResponse = await fetch(initUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': config.adminToken,
+        'admintoken': config.adminToken,
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({ name: instanceName }),
     });
-
-    if (retryResponse.status === 401) {
-      const errorText = await retryResponse.text();
-      console.log('[UAZAPI] Still 401 after trying both auth methods:', errorText);
-      return { 
-        success: false, 
-        error: 'Token inválido ou sem permissão. Verifique se o Admin Token está correto.' 
-      };
+    
+    const initData = await safeJsonParse(initResponse, 'UAZAPI Init');
+    console.log('[UAZAPI] Init response:', initData);
+    
+    // O init retorna o token da instância específica
+    const instanceToken = initData.token || initData.instance?.token;
+    if (!instanceToken) {
+      return { success: false, error: 'Token da instância não retornado pelo servidor' };
     }
-
-    const data = await safeJsonParse(retryResponse, 'UAZAPI Create (apikey)');
-    if (data.error || !data.instance) {
-      return { success: false, error: data.error || data.message || 'Falha ao criar instância' };
-    }
+    
+    // PASSO 2: Conectar instância para gerar QRCode via /instance/connect (com token da instância)
+    // Docs: https://docs.uazapi.com/endpoint/post/instance~connect
+    const connectUrl = `${baseUrl}/instance/connect`;
+    console.log('[UAZAPI] Step 2 - Connect instance:', connectUrl);
+    
+    const connectResponse = await fetch(connectUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'token': instanceToken,
+      },
+      body: JSON.stringify({}), // Body vazio gera QRCode
+    });
+    
+    const connectData = await safeJsonParse(connectResponse, 'UAZAPI Connect');
+    console.log('[UAZAPI] Connect response:', connectData);
+    
+    // PASSO 3: Configurar webhook via /webhooks/url (com token da instância)
+    const webhookUrlEndpoint = `${baseUrl}/webhooks/url`;
+    console.log('[UAZAPI] Step 3 - Set webhook:', webhookUrlEndpoint, 'to', webhookUrl);
+    
+    const webhookResponse = await fetch(webhookUrlEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'token': instanceToken,
+      },
+      body: JSON.stringify({ url: webhookUrl }),
+    });
+    
+    const webhookData = await safeJsonParse(webhookResponse, 'UAZAPI Webhook');
+    console.log('[UAZAPI] Webhook response:', webhookData);
+    
     return {
       success: true,
-      instanceId: data.instance.instanceName || instanceName,
-      token: data.hash?.apikey || data.token || config.adminToken,
-      qrCode: data.qrcode?.base64,
+      instanceId: instanceName,
+      token: instanceToken, // IMPORTANTE: Token da instância para operações futuras
+      qrCode: connectData.qrcode || connectData.qr || connectData.base64,
     };
+  } catch (err: any) {
+    console.error('[UAZAPI] Create error:', err);
+    return { success: false, error: err.message };
   }
-
-  const data = await safeJsonParse(response, 'UAZAPI Create');
-
-  if (data.error || !data.instance) {
-    return { success: false, error: data.error || data.message || 'Falha ao criar instância' };
-  }
-
-  return {
-    success: true,
-    instanceId: data.instance.instanceName || instanceName,
-    token: data.hash?.apikey || data.token || config.adminToken,
-    qrCode: data.qrcode?.base64,
-  };
 }
 
-async function getUAZAPIQRCode(baseUrl: string, instanceName: string, token: string) {
+async function getUAZAPIQRCode(baseUrl: string, instanceName: string, instanceToken: string) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   console.log('[UAZAPI] Getting QR code for:', instanceName, 'at', normalizedUrl);
   
-  // UAZAPI usa 'admintoken' para operações administrativas
-  const statusRes = await fetch(`${normalizedUrl}/instance/connectionState/${instanceName}`, {
-    headers: { 'admintoken': token },
-  });
-  const statusData = await safeJsonParse(statusRes, 'UAZAPI Status');
-
-  if (statusData.instance?.state === 'open') {
-    return { connected: true };
+  if (!instanceToken) {
+    return { success: false, error: 'Token da instância não fornecido' };
   }
-
-  // Get QR Code
-  const qrRes = await fetch(`${normalizedUrl}/instance/qrcode/${instanceName}`, {
-    headers: { 'admintoken': token },
-  });
-  const qrData = await safeJsonParse(qrRes, 'UAZAPI QR');
-
-  return {
-    qrCode: qrData.qrcode?.base64 || qrData.base64,
-    connected: false,
-  };
+  
+  try {
+    // Verificar status atual via /instance/status (com token da instância)
+    // Docs: https://docs.uazapi.com/endpoint/get/instance~status
+    const statusUrl = `${normalizedUrl}/instance/status`;
+    console.log('[UAZAPI] Checking status:', statusUrl);
+    
+    const statusResponse = await fetch(statusUrl, {
+      headers: { 'token': instanceToken },
+    });
+    
+    const statusData = await safeJsonParse(statusResponse, 'UAZAPI Status');
+    console.log('[UAZAPI] Status response:', statusData);
+    
+    // Se já conectado, retornar
+    if (statusData.state === 'connected' || statusData.state === 'open') {
+      return { connected: true, ownerJid: statusData.owner };
+    }
+    
+    // Se tem QRCode no status, retornar
+    if (statusData.qrcode || statusData.qr) {
+      return {
+        qrCode: statusData.qrcode || statusData.qr,
+        connected: false,
+      };
+    }
+    
+    // Se desconectado, chamar /instance/connect novamente para gerar novo QRCode
+    // Docs: https://docs.uazapi.com/endpoint/post/instance~connect
+    const connectUrl = `${normalizedUrl}/instance/connect`;
+    console.log('[UAZAPI] Reconnecting to get new QR:', connectUrl);
+    
+    const connectResponse = await fetch(connectUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'token': instanceToken,
+      },
+      body: JSON.stringify({}),
+    });
+    
+    const connectData = await safeJsonParse(connectResponse, 'UAZAPI Reconnect');
+    console.log('[UAZAPI] Reconnect response:', connectData);
+    
+    return {
+      qrCode: connectData.qrcode || connectData.qr || connectData.base64,
+      connected: false,
+    };
+  } catch (err: any) {
+    console.error('[UAZAPI] GetQRCode error:', err);
+    return { success: false, error: err.message };
+  }
 }
 
 async function fetchUAZAPIInstances(config: ProviderConfig) {
@@ -770,35 +769,26 @@ async function fetchUAZAPIInstances(config: ProviderConfig) {
   console.log('[UAZAPI] Fetching all instances from:', baseUrl);
   
   try {
-    // UAZAPI usa 'admintoken' como header principal
-    const response = await fetch(`${baseUrl}/instance/fetchInstances`, {
+    // GET /admin/instances com admintoken
+    // Docs: https://docs.uazapi.com (admin endpoints)
+    const url = `${baseUrl}/admin/instances`;
+    console.log('[UAZAPI] Fetching instances:', url);
+    
+    const response = await fetch(url, {
       headers: { 'admintoken': config.adminToken },
     });
     
-    if (response.status === 401) {
-      // Fallback para 'apikey'
-      console.log('[UAZAPI] 401 with admintoken, trying apikey...');
-      const retryRes = await fetch(`${baseUrl}/instance/fetchInstances`, {
-        headers: { 'apikey': config.adminToken },
-      });
-      
-      if (!retryRes.ok) {
-        const text = await retryRes.text();
-        return { success: false, error: `HTTP ${retryRes.status}: ${text.substring(0, 100)}` };
-      }
-      
-      const data = await retryRes.json();
-      return { success: true, instances: data };
-    }
-    
     if (!response.ok) {
       const text = await response.text();
+      console.log('[UAZAPI] Fetch instances error:', response.status, text);
       return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 100)}` };
     }
     
     const data = await response.json();
+    console.log('[UAZAPI] Instances found:', data);
     return { success: true, instances: data };
   } catch (err: any) {
+    console.error('[UAZAPI] FetchInstances error:', err);
     return { success: false, error: err.message };
   }
 }
@@ -808,78 +798,65 @@ async function testUAZAPIConnection(config: ProviderConfig) {
   console.log('[UAZAPI] Testing connection to:', baseUrl);
   
   try {
-    // UAZAPI usa 'admintoken' como header principal
-    const response = await fetch(`${baseUrl}/instance/fetchInstances`, {
+    // Testar conexão com /admin/instances (requer admintoken válido)
+    const url = `${baseUrl}/admin/instances`;
+    console.log('[UAZAPI] Test URL:', url);
+    
+    const response = await fetch(url, {
       headers: { 'admintoken': config.adminToken },
     });
     
     console.log('[UAZAPI] Test response status:', response.status);
     
-    if (response.status === 401) {
-      // Fallback para 'apikey'
-      console.log('[UAZAPI] 401 with admintoken, trying apikey...');
-      const retryRes = await fetch(`${baseUrl}/instance/fetchInstances`, {
-        headers: { 'apikey': config.adminToken },
-      });
-      
-      if (retryRes.status === 401) {
-        return { 
-          success: false, 
-          error: 'Token inválido. Verifique se você está usando o Admin Token correto da sua conta UAZAPI.' 
-        };
-      }
-      
-      if (retryRes.ok) {
-        const data = await retryRes.json();
-        return { success: true, message: `Conexão OK! ${Array.isArray(data) ? data.length : 0} instância(s) encontrada(s).` };
-      }
+    if (response.status === 401 || response.status === 403) {
+      return { 
+        success: false, 
+        error: 'Admin Token inválido. Verifique se você está usando o Admin Token correto da sua conta UAZAPI.' 
+      };
     }
     
     if (response.ok) {
       const data = await response.json();
-      return { success: true, message: `Conexão OK! ${Array.isArray(data) ? data.length : 0} instância(s) encontrada(s).` };
+      const count = Array.isArray(data) ? data.length : 0;
+      return { success: true, message: `Conexão OK! ${count} instância(s) encontrada(s).` };
     }
     
     const text = await response.text();
     return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 100)}` };
   } catch (err: any) {
+    console.error('[UAZAPI] TestConnection error:', err);
     return { success: false, error: `Erro de conexão: ${err.message}` };
   }
 }
 
-async function deleteUAZAPIInstance(config: ProviderConfig, instanceName: string) {
+async function deleteUAZAPIInstance(config: ProviderConfig, instanceName: string, instanceToken?: string) {
   const baseUrl = normalizeBaseUrl(config.baseUrl);
   console.log('[UAZAPI] Deleting instance:', instanceName);
   
   try {
-    // UAZAPI usa 'admintoken' como header principal
-    const response = await fetch(`${baseUrl}/instance/delete/${instanceName}`, {
-      method: 'DELETE',
-      headers: { 'admintoken': config.adminToken },
-    });
+    // DELETE /instance/delete com token da instância
+    // Docs: https://docs.uazapi.com/endpoint/delete/instance~delete
+    const url = `${baseUrl}/instance/delete`;
+    console.log('[UAZAPI] Delete URL:', url);
     
-    if (response.status === 401) {
-      // Fallback para 'apikey'
-      console.log('[UAZAPI] 401 with admintoken, trying apikey...');
-      const retryRes = await fetch(`${baseUrl}/instance/delete/${instanceName}`, {
-        method: 'DELETE',
-        headers: { 'apikey': config.adminToken },
-      });
-      
-      if (!retryRes.ok) {
-        const text = await retryRes.text();
-        return { success: false, error: `HTTP ${retryRes.status}: ${text.substring(0, 100)}` };
-      }
-      return { success: true };
-    }
+    // Priorizar token da instância, fallback para admintoken
+    const authToken = instanceToken || config.adminToken;
+    const headerName = instanceToken ? 'token' : 'admintoken';
+    
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: { [headerName]: authToken },
+    });
     
     if (!response.ok) {
       const text = await response.text();
+      console.log('[UAZAPI] Delete error:', response.status, text);
       return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 100)}` };
     }
     
     return { success: true };
   } catch (err: any) {
+    console.error('[UAZAPI] DeleteInstance error:', err);
     return { success: false, error: err.message };
   }
 }
@@ -1027,47 +1004,49 @@ async function deleteEvolutionInstance(config: ProviderConfig, instanceName: str
 // =====================================================
 // GET INSTANCE STATUS (para verificar conexão sem CORS)
 // =====================================================
-async function getUAZAPIStatus(config: ProviderConfig, instanceName: string) {
+async function getUAZAPIStatus(config: ProviderConfig, instanceName: string, instanceToken?: string) {
   const baseUrl = normalizeBaseUrl(config.baseUrl);
   console.log('[UAZAPI] Getting status for:', instanceName);
   
+  // Priorizar token da instância se disponível
+  const authToken = instanceToken || config.adminToken;
+  
+  if (!authToken) {
+    return { success: false, error: 'Token não fornecido' };
+  }
+  
   try {
-    const response = await fetch(`${baseUrl}/instance/connectionState/${instanceName}`, {
-      headers: { 'admintoken': config.adminToken },
+    // GET /instance/status com token da instância
+    // Docs: https://docs.uazapi.com/endpoint/get/instance~status
+    const url = `${baseUrl}/instance/status`;
+    console.log('[UAZAPI] Status URL:', url);
+    
+    const response = await fetch(url, {
+      headers: { 'token': authToken },
     });
     
-    if (response.status === 401) {
-      const retryRes = await fetch(`${baseUrl}/instance/connectionState/${instanceName}`, {
-        headers: { 'apikey': config.adminToken },
-      });
-      
-      if (!retryRes.ok) {
-        return { success: false, error: 'Falha ao obter status' };
-      }
-      
-      const data = await retryRes.json();
-      const state = data.instance?.state || data.state;
-      return { 
-        success: true, 
-        status: state === 'open' ? 'connected' : 'disconnected',
-        state,
-        ownerJid: data.instance?.owner || data.ownerJid
-      };
-    }
-    
     if (!response.ok) {
-      return { success: false, error: `HTTP ${response.status}` };
+      const text = await response.text();
+      console.log('[UAZAPI] Status error:', response.status, text);
+      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 100)}` };
     }
     
     const data = await response.json();
-    const state = data.instance?.state || data.state;
+    console.log('[UAZAPI] Status response:', data);
+    
+    // Mapear estados da UAZAPI
+    const state = data.state || data.status || 'disconnected';
+    const isConnected = state === 'connected' || state === 'open';
+    
     return { 
       success: true, 
-      status: state === 'open' ? 'connected' : 'disconnected',
+      status: isConnected ? 'connected' : 'disconnected',
       state,
-      ownerJid: data.instance?.owner || data.ownerJid
+      ownerJid: data.owner || data.ownerJid,
+      qrcode: data.qrcode || data.qr,
     };
   } catch (err: any) {
+    console.error('[UAZAPI] GetStatus error:', err);
     return { success: false, error: err.message };
   }
 }
@@ -1258,63 +1237,31 @@ async function setEvolutionSettings(config: ProviderConfig, instanceName: string
   }
 }
 
-async function setUAZAPIWebhook(config: ProviderConfig, instanceName: string, webhookUrl: string) {
+async function setUAZAPIWebhook(config: ProviderConfig, instanceName: string, webhookUrl: string, instanceToken?: string) {
   const baseUrl = normalizeBaseUrl(config.baseUrl);
   console.log('[UAZAPI] Setting webhook for:', instanceName, 'URL:', webhookUrl);
   
+  // Priorizar token da instância se disponível
+  const authToken = instanceToken || config.adminToken;
+  
+  if (!authToken) {
+    return { success: false, error: 'Token não fornecido' };
+  }
+  
   try {
-    const response = await fetch(`${baseUrl}/webhook/set/${instanceName}`, {
+    // POST /webhooks/url com token da instância
+    // Docs: https://docs.uazapi.com
+    const url = `${baseUrl}/webhooks/url`;
+    console.log('[UAZAPI] SetWebhook URL:', url);
+    
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'admintoken': config.adminToken,
+        'token': authToken,
       },
-      body: JSON.stringify({
-        url: webhookUrl,
-        webhook_by_events: false,
-        webhook_base64: true,
-        events: [
-          'QRCODE_UPDATED',
-          'MESSAGES_UPSERT',
-          'MESSAGES_UPDATE',
-          'CONNECTION_UPDATE',
-          'SEND_MESSAGE'
-        ]
-      }),
+      body: JSON.stringify({ url: webhookUrl }),
     });
-    
-    // Try apikey if admintoken fails
-    if (response.status === 401) {
-      console.log('[UAZAPI] 401 with admintoken, trying apikey...');
-      const retryRes = await fetch(`${baseUrl}/webhook/set/${instanceName}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': config.adminToken,
-        },
-        body: JSON.stringify({
-          url: webhookUrl,
-          webhook_by_events: false,
-          webhook_base64: true,
-          events: [
-            'QRCODE_UPDATED',
-            'MESSAGES_UPSERT',
-            'MESSAGES_UPDATE',
-            'CONNECTION_UPDATE',
-            'SEND_MESSAGE'
-          ]
-        }),
-      });
-      
-      const text = await retryRes.text();
-      console.log('[UAZAPI SetWebhook] Retry response:', retryRes.status, text);
-      
-      if (!retryRes.ok) {
-        return { success: false, error: `HTTP ${retryRes.status}: ${text.substring(0, 200)}` };
-      }
-      
-      return { success: true, message: 'Webhook configurado com sucesso!' };
-    }
     
     const text = await response.text();
     console.log('[UAZAPI SetWebhook] Response:', response.status, text);
@@ -1421,7 +1368,7 @@ serve(async (req) => {
             result = await sendUAZAPIMessage(
               provider.base_url,
               channel.instance_id!,
-              provider.admin_token,
+              channel.instance_token || provider.admin_token,
               phone,
               content || '',
               messageType,
@@ -1860,7 +1807,7 @@ serve(async (req) => {
           result = { success: false, error: 'Z-API não suporta exclusão via API' };
           break;
         case 'uazapi':
-          result = await deleteUAZAPIInstance(config, instanceId!);
+          result = await deleteUAZAPIInstance(config, instanceId!, instanceToken);
           break;
         case 'evolution':
           result = await deleteEvolutionInstance(config, instanceId!);
@@ -1875,7 +1822,7 @@ serve(async (req) => {
           result = { success: false, error: 'Z-API não suporta verificação de status via esta API' };
           break;
         case 'uazapi':
-          result = await getUAZAPIStatus(config, instanceId!);
+          result = await getUAZAPIStatus(config, instanceId!, instanceToken);
           break;
         case 'evolution':
           result = await getEvolutionStatus(config, instanceId!);
@@ -1893,7 +1840,7 @@ serve(async (req) => {
           result = { success: false, error: 'Z-API não suporta reconfiguração de webhook via esta API' };
           break;
         case 'uazapi':
-          result = await setUAZAPIWebhook(config, instanceId!, finalWebhookUrl);
+          result = await setUAZAPIWebhook(config, instanceId!, finalWebhookUrl, instanceToken);
           break;
         case 'evolution':
           result = await setEvolutionWebhook(config, instanceId!, finalWebhookUrl);
