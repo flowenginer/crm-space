@@ -555,7 +555,7 @@ export function ScheduleMessageModal({
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Digite sua mensagem..."
-                className="border-0 bg-transparent min-h-[100px] resize-none focus-visible:ring-0"
+                className="border-0 bg-transparent min-h-[200px] flex-1 resize-none focus-visible:ring-0"
               />
             </div>
 
