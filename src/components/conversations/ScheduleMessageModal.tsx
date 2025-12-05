@@ -256,19 +256,63 @@ export function ScheduleMessageModal({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      let mediaUrl = null;
+      let mediaUrl: string | null = null;
       let messageType = 'text';
 
-      // Note: File/audio upload would require storage bucket setup
-      // For now, we'll just save the message content
+      // Upload audio if present
       if (audioBlob) {
         messageType = 'audio';
-        toast.info('Upload de áudio será implementado em breve');
+        const audioFileName = `scheduled_audio_${Date.now()}.webm`;
+        const { data: audioData, error: audioError } = await supabase.storage
+          .from('conversation-attachments')
+          .upload(`scheduled/${audioFileName}`, audioBlob, {
+            contentType: 'audio/webm',
+            cacheControl: '3600'
+          });
+        
+        if (audioError) {
+          console.error('Audio upload error:', audioError);
+          toast.error('Erro ao fazer upload do áudio');
+          setIsLoading(false);
+          return;
+        }
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('conversation-attachments')
+          .getPublicUrl(`scheduled/${audioFileName}`);
+        mediaUrl = publicUrl;
+        console.log('Audio uploaded:', publicUrl);
       }
 
-      if (attachedFiles.length > 0) {
-        messageType = attachedFiles[0].type.startsWith('image/') ? 'image' : 'document';
-        toast.info(`Upload de ${attachedFiles.length} arquivo(s) será implementado em breve`);
+      // Upload first file if present (for now, we send one file per scheduled message)
+      if (attachedFiles.length > 0 && !audioBlob) {
+        const file = attachedFiles[0];
+        messageType = file.type.startsWith('image/') ? 'image' : 
+                      file.type.startsWith('audio/') ? 'audio' : 
+                      file.type.startsWith('video/') ? 'video' : 'document';
+        
+        const fileExt = file.name.split('.').pop() || 'bin';
+        const fileName = `scheduled_file_${Date.now()}.${fileExt}`;
+        
+        const { data: fileData, error: fileError } = await supabase.storage
+          .from('conversation-attachments')
+          .upload(`scheduled/${fileName}`, file, {
+            contentType: file.type,
+            cacheControl: '3600'
+          });
+        
+        if (fileError) {
+          console.error('File upload error:', fileError);
+          toast.error('Erro ao fazer upload do arquivo');
+          setIsLoading(false);
+          return;
+        }
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('conversation-attachments')
+          .getPublicUrl(`scheduled/${fileName}`);
+        mediaUrl = publicUrl;
+        console.log('File uploaded:', publicUrl);
       }
 
       // Add signature if enabled
@@ -292,6 +336,7 @@ export function ScheduleMessageModal({
           channel_id: finalChannelId,
           content: finalMessage || '',
           media_url: mediaUrl,
+          message_type: messageType,
           scheduled_for: scheduledFor.toISOString(),
           status: 'scheduled',
           created_by: user?.id

@@ -56,7 +56,7 @@ export default function ScheduledMessagesPage() {
   
   const queryClient = useQueryClient();
 
-  // Fetch scheduled messages
+  // Fetch scheduled messages with auto-refresh every 30 seconds
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['all-scheduled-messages', statusFilter, dateFilter, agentFilter, search, page],
     queryFn: async () => {
@@ -127,7 +127,8 @@ export default function ScheduledMessagesPage() {
         total: count || 0,
         totalPages: Math.ceil((count || 0) / pageSize)
       };
-    }
+    },
+    refetchInterval: 30000 // Refresh every 30 seconds
   });
 
   // Fetch team members for filter
