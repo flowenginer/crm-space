@@ -1004,6 +1004,38 @@ export default function Conversations() {
     },
   });
 
+  // Fetch conversation tags for counting
+  const { data: conversationTagsCount = [] } = useQuery({
+    queryKey: ['conversation-tags-count'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('conversation_tags')
+        .select('tag_id, conversation_id');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Create a map of tag counts
+  const tagCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    conversationTagsCount.forEach(ct => {
+      map.set(ct.tag_id, (map.get(ct.tag_id) || 0) + 1);
+    });
+    return map;
+  }, [conversationTagsCount]);
+
+  // Create a map of department counts from conversations
+  const departmentCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    conversations.forEach(conv => {
+      if (conv.department_id) {
+        map.set(conv.department_id, (map.get(conv.department_id) || 0) + 1);
+      }
+    });
+    return map;
+  }, [conversations]);
+
   // Fetch last message for each conversation (for not_replied and client_not_replied filters)
   const conversationIds = conversations.map(c => c.id);
   const { data: lastMessages = [] } = useQuery({
@@ -2846,27 +2878,33 @@ export default function Conversations() {
                 Filtrar por etiqueta
               </label>
               <div className="flex flex-wrap gap-2">
-                {tags.length > 0 ? tags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    onClick={() => {
-                      setAdvancedFilters(prev => ({
-                        ...prev,
-                        tagIds: prev.tagIds.includes(tag.id)
-                          ? prev.tagIds.filter(id => id !== tag.id)
-                          : [...prev.tagIds, tag.id]
-                      }));
-                    }}
-                    className={cn(
-                      'px-3 py-1.5 border rounded-lg text-sm transition-colors',
-                      advancedFilters.tagIds.includes(tag.id)
-                        ? 'border-primary bg-accent text-primary'
-                        : 'border-border hover:border-primary'
-                    )}
-                  >
-                    {tag.name}
-                  </button>
-                )) : (
+                {tags.length > 0 ? tags.map((tag) => {
+                  const count = tagCountMap.get(tag.id) || 0;
+                  const isSelected = advancedFilters.tagIds.includes(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      onClick={() => {
+                        setAdvancedFilters(prev => ({
+                          ...prev,
+                          tagIds: prev.tagIds.includes(tag.id)
+                            ? prev.tagIds.filter(id => id !== tag.id)
+                            : [...prev.tagIds, tag.id]
+                        }));
+                      }}
+                      className={cn(
+                        'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                        isSelected ? 'text-white' : 'text-white/90 hover:opacity-80'
+                      )}
+                      style={{ 
+                        backgroundColor: tag.color || '#8B5CF6',
+                        opacity: isSelected ? 1 : 0.7
+                      }}
+                    >
+                      {tag.name} ({count})
+                    </button>
+                  );
+                }) : (
                   <p className="text-sm text-muted-foreground">Nenhuma etiqueta cadastrada</p>
                 )}
               </div>
@@ -2890,26 +2928,29 @@ export default function Conversations() {
                 Departamento
               </label>
               <div className="flex flex-wrap gap-2">
-                {departments.length > 0 ? departments.map((dept) => (
-                  <button
-                    key={dept.id}
-                    onClick={() => setAdvancedFilters(prev => ({ 
-                      ...prev, 
-                      departmentId: prev.departmentId === dept.id ? 'all' : dept.id 
-                    }))}
-                    className={cn(
-                      'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                      advancedFilters.departmentId === dept.id
-                        ? 'text-white'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    )}
-                    style={{ 
-                      backgroundColor: advancedFilters.departmentId === dept.id ? (dept.color || '#8B5CF6') : undefined 
-                    }}
-                  >
-                    {dept.name}
-                  </button>
-                )) : (
+                {departments.length > 0 ? departments.map((dept) => {
+                  const count = departmentCountMap.get(dept.id) || 0;
+                  const isSelected = advancedFilters.departmentId === dept.id;
+                  return (
+                    <button
+                      key={dept.id}
+                      onClick={() => setAdvancedFilters(prev => ({ 
+                        ...prev, 
+                        departmentId: prev.departmentId === dept.id ? 'all' : dept.id 
+                      }))}
+                      className={cn(
+                        'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                        isSelected ? 'text-white' : 'text-white/90 hover:opacity-80'
+                      )}
+                      style={{ 
+                        backgroundColor: dept.color || '#8B5CF6',
+                        opacity: isSelected ? 1 : 0.7
+                      }}
+                    >
+                      {dept.name} ({count})
+                    </button>
+                  );
+                }) : (
                   <p className="text-sm text-muted-foreground">Nenhum departamento cadastrado</p>
                 )}
               </div>
