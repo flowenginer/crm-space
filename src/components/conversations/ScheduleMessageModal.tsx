@@ -335,7 +335,7 @@ export function ScheduleMessageModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg bg-background border-border max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl w-full bg-background border-border max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Calendar size={20} className="text-primary" />
@@ -428,8 +428,8 @@ export function ScheduleMessageModal({
                       <div className="absolute top-full left-0 mt-2 z-50">
                         <EmojiPicker
                           onEmojiClick={handleEmojiSelect}
-                          width={300}
-                          height={350}
+                          width={380}
+                          height={450}
                         />
                       </div>
                     </>
