@@ -335,7 +335,7 @@ export function ScheduleMessageModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl w-full bg-background border-border max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl w-full bg-background border-border min-h-[70vh] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Calendar size={20} className="text-primary" />
@@ -349,7 +349,7 @@ export function ScheduleMessageModal({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="bg-muted mb-4">
+          <TabsList className="bg-muted mb-4 w-full grid grid-cols-2">
             <TabsTrigger value="new" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               Nova Mensagem
             </TabsTrigger>
@@ -422,14 +422,15 @@ export function ScheduleMessageModal({
                     <>
                       {/* Overlay to close emoji picker */}
                       <div 
-                        className="fixed inset-0 z-40" 
+                        className="fixed inset-0 z-[100] bg-black/20" 
                         onClick={() => setShowEmojiPicker(false)}
                       />
-                      <div className="absolute top-full left-0 mt-2 z-50">
+                      {/* Emoji picker centered on screen */}
+                      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[101] shadow-2xl rounded-lg overflow-hidden">
                         <EmojiPicker
                           onEmojiClick={handleEmojiSelect}
-                          width={380}
-                          height={450}
+                          width={400}
+                          height={500}
                         />
                       </div>
                     </>
