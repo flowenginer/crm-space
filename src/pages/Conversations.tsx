@@ -413,11 +413,15 @@ interface MessageBubbleProps {
   onEdit?: (message: Message, newText: string) => void;
   onReact?: (messageId: string, emoji: string) => void;
   onScrollToMessage?: (messageId: string) => void;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (messageId: string) => void;
+  onEnterSelectionMode?: (message: Message) => void;
 }
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
-function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollToMessage }: MessageBubbleProps) {
+function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollToMessage, isSelectionMode, isSelected, onToggleSelect, onEnterSelectionMode }: MessageBubbleProps) {
   const [showActions, setShowActions] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
@@ -461,25 +465,47 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
     setShowEditDialog(true);
   };
 
+  const handleDeleteClick = () => {
+    // Enter selection mode with this message selected
+    onEnterSelectionMode?.(message);
+  };
+
   return (
     <>
       <div 
         data-message-id={message.id}
-        className={cn('flex group items-end gap-1', isMe ? 'justify-end' : 'justify-start')}
-        onMouseEnter={() => setShowActions(true)}
+        className={cn(
+          'flex group items-end gap-1', 
+          isMe ? 'justify-end' : 'justify-start',
+          isSelectionMode && 'cursor-pointer'
+        )}
+        onMouseEnter={() => !isSelectionMode && setShowActions(true)}
         onMouseLeave={() => { 
           setShowActions(false); 
           setShowReactionPicker(false); 
           setShowFullEmojiPicker(false);
         }}
+        onClick={isSelectionMode ? () => onToggleSelect?.(message.id) : undefined}
       >
+        {/* Checkbox for selection mode */}
+        {isSelectionMode && (
+          <div className={cn(
+            'flex items-center justify-center w-6 h-6 rounded-full border-2 transition-all mr-2 mb-2 flex-shrink-0',
+            isSelected 
+              ? 'bg-primary border-primary' 
+              : 'border-muted-foreground/40 hover:border-primary/60'
+          )}>
+            {isSelected && <Check size={14} className="text-primary-foreground" />}
+          </div>
+        )}
+        
         {/* Action buttons - left side for sent messages */}
-        {isMe && !isDeleted && (
+        {isMe && !isDeleted && !isSelectionMode && (
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity mb-2">
             <button 
-              onClick={() => setShowDeleteConfirm(true)}
+              onClick={handleDeleteClick}
               className="p-1.5 hover:bg-destructive/20 rounded-full transition-colors"
-              title="Apagar"
+              title="Apagar (clique para selecionar múltiplas)"
             >
               <Trash2 size={14} className="text-muted-foreground hover:text-destructive" />
             </button>
@@ -934,6 +960,8 @@ export default function Conversations() {
   const [newTagDescription, setNewTagDescription] = useState('');
   const [newTagVisibility, setNewTagVisibility] = useState<TagVisibility>('public');
   const [newTagDepartmentId, setNewTagDepartmentId] = useState('');
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -1075,6 +1103,12 @@ export default function Conversations() {
       }
     }
   }, [searchParams]);
+
+  // Reset selection mode when changing conversation
+  useEffect(() => {
+    setIsSelectionMode(false);
+    setSelectedMessageIds(new Set());
+  }, [selectedConversationId]);
 
   // Helper function to check date filter
   const isWithinDateFilter = (contactDate: string | null | undefined): boolean => {
@@ -1430,6 +1464,55 @@ export default function Conversations() {
       contactPhone: selectedConv?.contact?.phone,
     });
     toast.success('Mensagem apagada');
+  };
+
+  // Selection mode handlers for bulk delete
+  const handleEnterSelectionMode = (message: Message) => {
+    setIsSelectionMode(true);
+    setSelectedMessageIds(new Set([message.id]));
+  };
+
+  const handleToggleMessageSelect = (messageId: string) => {
+    setSelectedMessageIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId);
+      } else {
+        newSet.add(messageId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const myMessageIds = messages.filter(m => m.is_from_me && !m.is_deleted).map(m => m.id);
+    setSelectedMessageIds(new Set(myMessageIds));
+  };
+
+  const handleCancelSelection = () => {
+    setIsSelectionMode(false);
+    setSelectedMessageIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectedConversationId || selectedMessageIds.size === 0) return;
+    
+    const selectedConv = conversations?.find(c => c.id === selectedConversationId);
+    const messagesToDelete = messages.filter(m => selectedMessageIds.has(m.id));
+    
+    // Delete each message
+    for (const message of messagesToDelete) {
+      deleteMessage.mutate({ 
+        messageId: message.id, 
+        conversationId: selectedConversationId,
+        whatsappMessageId: message.whatsapp_message_id,
+        channelId: selectedConv?.channel_id,
+        contactPhone: selectedConv?.contact?.phone,
+      });
+    }
+    
+    toast.success(`${selectedMessageIds.size} mensagem(ns) apagada(s)`);
+    handleCancelSelection();
   };
 
   const handleEditMessage = async (message: Message, newText: string) => {
@@ -2152,8 +2235,48 @@ export default function Conversations() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-              </div>
             </div>
+            </div>
+
+            {/* Selection Mode Toolbar */}
+            {isSelectionMode && (
+              <div className="flex items-center justify-between px-4 py-2 bg-destructive/10 border-y border-destructive/30">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-destructive">
+                    <Trash2 size={16} />
+                    <span className="text-sm font-medium">
+                      {selectedMessageIds.size} selecionada(s)
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleSelectAll}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Selecionar todas minhas
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCancelSelection}
+                    className="h-8"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleBulkDelete}
+                    disabled={selectedMessageIds.size === 0}
+                    className="h-8 gap-1"
+                  >
+                    <Trash2 size={14} />
+                    Apagar ({selectedMessageIds.size})
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Messages Area with Drag & Drop */}
             <div 
@@ -2223,6 +2346,10 @@ export default function Conversations() {
                         onEdit={handleEditMessage}
                         onReact={handleReactToMessage}
                         onScrollToMessage={handleScrollToMessage}
+                        isSelectionMode={isSelectionMode}
+                        isSelected={selectedMessageIds.has(item.id)}
+                        onToggleSelect={handleToggleMessageSelect}
+                        onEnterSelectionMode={handleEnterSelectionMode}
                       />
                     )
                   ))}
