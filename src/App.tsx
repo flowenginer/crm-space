@@ -25,6 +25,7 @@ import Settings from "@/pages/Settings";
 import ScheduledMessages from "@/pages/ScheduledMessages";
 import LiveMonitor from "@/pages/LiveMonitor";
 import ConversationReport from "@/pages/ConversationReport";
+import CampaignReport from "@/pages/CampaignReport";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -92,6 +93,11 @@ const App = () => (
               <Route path="/relatorios/atendimentos" element={
                 <ProtectedRoute permission="reports.view">
                   <ConversationReport />
+                </ProtectedRoute>
+              } />
+              <Route path="/relatorios/campanhas" element={
+                <ProtectedRoute permission="reports.view">
+                  <CampaignReport />
                 </ProtectedRoute>
               } />
             </Route>
