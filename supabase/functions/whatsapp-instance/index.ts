@@ -22,6 +22,7 @@ interface CreateInstanceRequest {
   content?: string;
   type?: 'text' | 'image' | 'audio' | 'video' | 'document';
   mediaUrl?: string;
+  quotedMessageId?: string;
 }
 
 interface ProviderConfig {
@@ -70,21 +71,32 @@ async function sendEvolutionMessage(
   phone: string,
   content: string,
   type: string,
-  mediaUrl?: string
+  mediaUrl?: string,
+  quotedMessageId?: string
 ) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   const formattedPhone = phone.replace(/\D/g, '') + '@s.whatsapp.net';
   
-  console.log('[Evolution] Sending message:', { instanceName, phone: formattedPhone, type });
+  console.log('[Evolution] Sending message:', { instanceName, phone: formattedPhone, type, quotedMessageId });
   
   let endpoint = '';
   let body: any = {};
+  
+  // Add quoted context if available
+  const quotedContext = quotedMessageId ? {
+    quoted: {
+      key: {
+        id: quotedMessageId
+      }
+    }
+  } : {};
   
   if (type === 'text') {
     endpoint = `${normalizedUrl}/message/sendText/${instanceName}`;
     body = {
       number: formattedPhone,
       text: content,
+      ...quotedContext,
     };
   } else if (type === 'image') {
     endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
@@ -93,12 +105,14 @@ async function sendEvolutionMessage(
       mediatype: 'image',
       media: mediaUrl,
       caption: content || '',
+      ...quotedContext,
     };
   } else if (type === 'audio') {
     endpoint = `${normalizedUrl}/message/sendWhatsAppAudio/${instanceName}`;
     body = {
       number: formattedPhone,
       audio: mediaUrl,
+      ...quotedContext,
     };
   } else if (type === 'video') {
     endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
@@ -107,6 +121,7 @@ async function sendEvolutionMessage(
       mediatype: 'video',
       media: mediaUrl,
       caption: content || '',
+      ...quotedContext,
     };
   } else if (type === 'document') {
     endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
@@ -115,6 +130,7 @@ async function sendEvolutionMessage(
       mediatype: 'document',
       media: mediaUrl,
       fileName: content || 'document',
+      ...quotedContext,
     };
   }
   
@@ -145,21 +161,32 @@ async function sendUAZAPIMessage(
   phone: string,
   content: string,
   type: string,
-  mediaUrl?: string
+  mediaUrl?: string,
+  quotedMessageId?: string
 ) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   const formattedPhone = phone.replace(/\D/g, '') + '@s.whatsapp.net';
   
-  console.log('[UAZAPI] Sending message:', { instanceName, phone: formattedPhone, type });
+  console.log('[UAZAPI] Sending message:', { instanceName, phone: formattedPhone, type, quotedMessageId });
   
   let endpoint = '';
   let body: any = {};
+  
+  // Add quoted context if available
+  const quotedContext = quotedMessageId ? {
+    quoted: {
+      key: {
+        id: quotedMessageId
+      }
+    }
+  } : {};
   
   if (type === 'text') {
     endpoint = `${normalizedUrl}/message/sendText/${instanceName}`;
     body = {
       number: formattedPhone,
       text: content,
+      ...quotedContext,
     };
   } else if (type === 'image') {
     endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
@@ -168,12 +195,14 @@ async function sendUAZAPIMessage(
       mediatype: 'image',
       media: mediaUrl,
       caption: content || '',
+      ...quotedContext,
     };
   } else if (type === 'audio') {
     endpoint = `${normalizedUrl}/message/sendWhatsAppAudio/${instanceName}`;
     body = {
       number: formattedPhone,
       audio: mediaUrl,
+      ...quotedContext,
     };
   } else if (type === 'video') {
     endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
@@ -182,6 +211,7 @@ async function sendUAZAPIMessage(
       mediatype: 'video',
       media: mediaUrl,
       caption: content || '',
+      ...quotedContext,
     };
   } else if (type === 'document') {
     endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
@@ -190,6 +220,7 @@ async function sendUAZAPIMessage(
       mediatype: 'document',
       media: mediaUrl,
       fileName: content || 'document',
+      ...quotedContext,
     };
   }
   
@@ -234,11 +265,12 @@ async function sendZAPIMessage(
   phone: string,
   content: string,
   type: string,
-  mediaUrl?: string
+  mediaUrl?: string,
+  quotedMessageId?: string
 ) {
   const formattedPhone = phone.replace(/\D/g, '');
   
-  console.log('[Z-API] Sending message:', { instanceId, phone: formattedPhone, type });
+  console.log('[Z-API] Sending message:', { instanceId, phone: formattedPhone, type, quotedMessageId });
   
   let endpoint = '';
   let body: any = {};
@@ -250,6 +282,7 @@ async function sendZAPIMessage(
     body = {
       phone: formattedPhone,
       message: content,
+      ...(quotedMessageId && { messageId: quotedMessageId }),
     };
   } else if (type === 'image') {
     endpoint = `${baseUrl}/send-image`;
@@ -257,12 +290,14 @@ async function sendZAPIMessage(
       phone: formattedPhone,
       image: mediaUrl,
       caption: content || '',
+      ...(quotedMessageId && { messageId: quotedMessageId }),
     };
   } else if (type === 'audio') {
     endpoint = `${baseUrl}/send-audio`;
     body = {
       phone: formattedPhone,
       audio: mediaUrl,
+      ...(quotedMessageId && { messageId: quotedMessageId }),
     };
   } else if (type === 'video') {
     endpoint = `${baseUrl}/send-video`;
@@ -270,12 +305,14 @@ async function sendZAPIMessage(
       phone: formattedPhone,
       video: mediaUrl,
       caption: content || '',
+      ...(quotedMessageId && { messageId: quotedMessageId }),
     };
   } else if (type === 'document') {
     endpoint = `${baseUrl}/send-document/${formattedPhone}`;
     body = {
       document: mediaUrl,
       fileName: content || 'document',
+      ...(quotedMessageId && { messageId: quotedMessageId }),
     };
   }
   
@@ -1077,7 +1114,7 @@ serve(async (req) => {
     const body: CreateInstanceRequest = await req.json();
     console.log('[WhatsApp Instance] Request:', body);
 
-    const { action, providerCode, instanceName, instanceId, instanceToken, webhookUrl, channelId, phone, content, type, mediaUrl } = body;
+    const { action, providerCode, instanceName, instanceId, instanceToken, webhookUrl, channelId, phone, content, type, mediaUrl, quotedMessageId } = body;
 
     // =====================================================
     // SEND ACTION - Rota especial que busca dados do canal
@@ -1143,7 +1180,8 @@ serve(async (req) => {
               phone,
               content || '',
               messageType,
-              mediaUrl
+              mediaUrl,
+              quotedMessageId
             );
             break;
           case 'uazapi':
@@ -1154,7 +1192,8 @@ serve(async (req) => {
               phone,
               content || '',
               messageType,
-              mediaUrl
+              mediaUrl,
+              quotedMessageId
             );
             break;
           case 'zapi':
@@ -1165,7 +1204,8 @@ serve(async (req) => {
               phone,
               content || '',
               messageType,
-              mediaUrl
+              mediaUrl,
+              quotedMessageId
             );
             break;
           default:

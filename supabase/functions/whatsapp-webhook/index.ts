@@ -458,6 +458,22 @@ serve(async (req) => {
         }
       }
 
+      // Find reply_to_message_id if quotedMessageId exists (for fromMe messages)
+      let replyToMessageIdFromMe = null;
+      if (normalizedMessage.quotedMessageId) {
+        console.log(`[Webhook] Looking for quoted message in fromMe: ${normalizedMessage.quotedMessageId}`);
+        const { data: quotedMsgFromMe } = await supabase
+          .from("messages")
+          .select("id")
+          .eq("whatsapp_message_id", normalizedMessage.quotedMessageId)
+          .single();
+        
+        if (quotedMsgFromMe) {
+          replyToMessageIdFromMe = quotedMsgFromMe.id;
+          console.log(`[Webhook] Found quoted message for fromMe, reply_to_message_id: ${replyToMessageIdFromMe}`);
+        }
+      }
+
       // Salvar mensagem enviada
       const { error: msgError } = await supabase.from("messages").insert({
         conversation_id: conversation.id,
@@ -469,6 +485,7 @@ serve(async (req) => {
         status: "sent",
         whatsapp_message_id: normalizedMessage.originalId,
         created_at: normalizedMessage.timestamp.toISOString(),
+        reply_to_message_id: replyToMessageIdFromMe,
       });
 
       if (msgError) {
@@ -668,6 +685,24 @@ serve(async (req) => {
       }
     }
 
+    // Find reply_to_message_id if quotedMessageId exists
+    let replyToMessageId = null;
+    if (normalizedMessage.quotedMessageId) {
+      console.log(`[Webhook] Looking for quoted message: ${normalizedMessage.quotedMessageId}`);
+      const { data: quotedMsg } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("whatsapp_message_id", normalizedMessage.quotedMessageId)
+        .single();
+      
+      if (quotedMsg) {
+        replyToMessageId = quotedMsg.id;
+        console.log(`[Webhook] Found quoted message, reply_to_message_id: ${replyToMessageId}`);
+      } else {
+        console.log(`[Webhook] Quoted message not found in database`);
+      }
+    }
+
     // Save message
     const { error: msgError } = await supabase.from("messages").insert({
       conversation_id: conversation.id,
@@ -680,6 +715,7 @@ serve(async (req) => {
       status: "delivered",
       whatsapp_message_id: normalizedMessage.originalId,
       created_at: normalizedMessage.timestamp.toISOString(),
+      reply_to_message_id: replyToMessageId,
     });
 
     if (msgError) {
