@@ -10,6 +10,25 @@ const corsHeaders = {
 type WhatsAppProvider = "zapi" | "uazapi" | "evolution";
 type MessageType = "text" | "image" | "audio" | "video" | "document" | "sticker" | "location" | "contact";
 
+// =====================================================
+// REFERRAL DATA - Meta Ads / Click-to-WhatsApp
+// =====================================================
+interface ReferralData {
+  ctwaClid?: string;        // Click-to-WhatsApp Click ID
+  sourceId?: string;        // ID do anúncio/post
+  sourceType?: string;      // 'ad' | 'post'
+  sourceUrl?: string;       // URL do anúncio
+  headline?: string;        // Título do anúncio
+  body?: string;            // Texto do anúncio
+  mediaType?: string;       // 'image' | 'video'
+  imageUrl?: string;        // URL da imagem
+  videoUrl?: string;        // URL do vídeo
+  thumbnailUrl?: string;    // URL da thumbnail
+  showAdAttribution?: boolean;
+  adName?: string;          // Nome do anúncio
+  campaignName?: string;    // Nome da campanha
+}
+
 interface NormalizedMessage {
   id: string;
   provider: WhatsAppProvider;
@@ -27,6 +46,7 @@ interface NormalizedMessage {
   quotedMessageId?: string;
   status: string;
   originalId: string;
+  referralData?: ReferralData;
 }
 
 // =====================================================
@@ -200,6 +220,72 @@ function extractEvolutionMediaBase64(msg: any): { base64: string | null; mimetyp
   }
   
   return { base64: null, mimetype: null };
+}
+
+// =====================================================
+// EXTRACT REFERRAL DATA - Click-to-WhatsApp / Meta Ads
+// =====================================================
+function extractReferralData(msg: any): ReferralData | null {
+  const message = msg.message;
+  if (!message) return null;
+  
+  // Tentar encontrar contextInfo em diferentes locais
+  const contextInfo = 
+    msg.contextInfo ||
+    message.contextInfo ||
+    message.extendedTextMessage?.contextInfo ||
+    message.messageContextInfo ||
+    message.imageMessage?.contextInfo ||
+    message.videoMessage?.contextInfo ||
+    message.documentMessage?.contextInfo;
+  
+  if (!contextInfo) return null;
+  
+  // Verificar se há dados de anúncio
+  const hasAdData = contextInfo.showAdAttribution || 
+                    contextInfo.entryPointConversionSource || 
+                    contextInfo.adReplyInfo ||
+                    contextInfo.externalAdReply ||
+                    contextInfo.ctwaClid;
+  
+  if (!hasAdData) return null;
+  
+  // Extrair dados de diferentes formatos do Evolution API
+  const entryPoint = contextInfo.entryPointConversionSource || {};
+  const adReply = contextInfo.adReplyInfo || contextInfo.externalAdReply || {};
+  
+  const referralData: ReferralData = {
+    ctwaClid: contextInfo.ctwaClid || entryPoint.ctwaClid,
+    sourceId: entryPoint.sourceId || adReply.sourceId,
+    sourceType: entryPoint.sourceType || adReply.sourceType || (contextInfo.showAdAttribution ? 'ad' : undefined),
+    sourceUrl: entryPoint.sourceUrl || adReply.sourceUrl,
+    headline: adReply.headline || adReply.title,
+    body: adReply.body || adReply.description,
+    mediaType: adReply.mediaType,
+    imageUrl: adReply.thumbnail || adReply.thumbnailUrl || adReply.imageUrl,
+    videoUrl: adReply.videoUrl,
+    thumbnailUrl: adReply.thumbnail || adReply.thumbnailUrl,
+    showAdAttribution: contextInfo.showAdAttribution === true,
+    adName: adReply.adName || adReply.title,
+    campaignName: adReply.campaignName,
+  };
+  
+  // Limpar campos undefined
+  Object.keys(referralData).forEach(key => {
+    if (referralData[key as keyof ReferralData] === undefined) {
+      delete referralData[key as keyof ReferralData];
+    }
+  });
+  
+  // Verificar se temos pelo menos um dado útil
+  if (Object.keys(referralData).length === 0 || 
+      (Object.keys(referralData).length === 1 && referralData.showAdAttribution === false)) {
+    return null;
+  }
+  
+  console.log(`[Webhook] 📣 REFERRAL DATA DETECTED (Meta Ads):`, JSON.stringify(referralData));
+  
+  return referralData;
 }
 
 serve(async (req) => {
@@ -637,13 +723,30 @@ serve(async (req) => {
       .single();
 
     if (!contact) {
+      // Preparar dados de origem baseado em referral (Meta Ads)
+      let origin = "whatsapp";
+      let originCampaign: string | null = null;
+      let referralDataJson: any = null;
+      
+      if (normalizedMessage.referralData) {
+        origin = "meta_ads";
+        originCampaign = normalizedMessage.referralData.headline || 
+                         normalizedMessage.referralData.adName || 
+                         normalizedMessage.referralData.campaignName ||
+                         (normalizedMessage.referralData.ctwaClid ? `CTWA ${normalizedMessage.referralData.ctwaClid.substring(0, 8)}` : null);
+        referralDataJson = normalizedMessage.referralData;
+        console.log(`[Webhook] 📣 New contact from Meta Ads! Campaign: ${originCampaign}`);
+      }
+      
       // Usar upsert para evitar duplicatas por race condition
       const { data: upsertedContact, error: contactError } = await supabase
         .from("contacts")
         .upsert({
           phone: normalizedMessage.from,
           full_name: contactName,
-          origin: "whatsapp",
+          origin: origin,
+          origin_campaign: originCampaign,
+          referral_data: referralDataJson,
           first_contact_at: new Date().toISOString(),
         }, {
           onConflict: 'phone',
@@ -662,13 +765,27 @@ serve(async (req) => {
             .eq("phone", normalizedMessage.from)
             .single();
           contact = existingContact;
+          
+          // Se o contato já existe mas tem dados de referral na mensagem atual, atualizar
+          if (normalizedMessage.referralData && existingContact) {
+            console.log(`[Webhook] 📣 Updating existing contact with Meta Ads data`);
+            await supabase
+              .from("contacts")
+              .update({
+                origin: "meta_ads",
+                origin_campaign: originCampaign,
+                referral_data: referralDataJson,
+                updated_at: new Date().toISOString()
+              })
+              .eq("id", existingContact.id);
+          }
         } else {
           console.error(`[Webhook] Error creating contact:`, contactError);
           throw contactError;
         }
       } else {
         contact = upsertedContact;
-        console.log(`[Webhook] Created/upserted contact: ${contact?.full_name} (${contact?.phone})`);
+        console.log(`[Webhook] Created/upserted contact: ${contact?.full_name} (${contact?.phone})${origin === 'meta_ads' ? ' [Meta Ads]' : ''}`);
       }
     }
     
@@ -712,6 +829,10 @@ serve(async (req) => {
       .single();
 
     if (!conversation) {
+      // Preparar dados de referral para a conversa
+      const conversationReferralSource = normalizedMessage.referralData ? "meta_ads" : null;
+      const conversationReferralData = normalizedMessage.referralData || null;
+      
       const { data: newConversation, error: convError } = await supabase
         .from("conversations")
         .insert({
@@ -722,6 +843,8 @@ serve(async (req) => {
           unread_count: 1,
           last_message_at: new Date().toISOString(),
           last_message_preview: normalizedMessage.content.substring(0, 100),
+          referral_source: conversationReferralSource,
+          referral_data: conversationReferralData,
         })
         .select("id")
         .single();
@@ -731,6 +854,10 @@ serve(async (req) => {
         throw convError;
       }
       conversation = newConversation;
+      
+      if (conversationReferralSource) {
+        console.log(`[Webhook] 📣 New conversation from Meta Ads!`);
+      }
     } else {
       // Update existing conversation
       await supabase.rpc("increment_unread", { conv_id: conversation.id });
@@ -1431,15 +1558,16 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
   const mediaData = extractEvolutionMediaBase64(msg);
   
   // Extract quotedMessageId from multiple possible locations
-  // contextInfo can be in: msg.contextInfo, msg.message.extendedTextMessage.contextInfo,
-  // msg.message.imageMessage.contextInfo, msg.message.audioMessage.contextInfo, etc.
   const quotedMessageId = extractEvolutionQuotedMessageId(msg);
+  
+  // Extract referral data (Meta Ads / Click-to-WhatsApp) - only for first message (not fromMe)
+  const referralData = !msg.key.fromMe ? extractReferralData(msg) : null;
   
   if (quotedMessageId) {
     console.log(`[Webhook Evolution] Found quotedMessageId: ${quotedMessageId}`);
   }
   
-  console.log(`[Webhook Evolution] Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}, HasBase64: ${!!mediaData.base64}, OriginalJid: ${rawRemoteJid}, RealJid: ${realRemoteJid}, QuotedId: ${quotedMessageId || 'none'}`);
+  console.log(`[Webhook Evolution] Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}, HasBase64: ${!!mediaData.base64}, OriginalJid: ${rawRemoteJid}, RealJid: ${realRemoteJid}, QuotedId: ${quotedMessageId || 'none'}, HasReferral: ${!!referralData}`);
 
   return {
     id: `evolution_${msg.key.id}`,
@@ -1458,6 +1586,7 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
     quotedMessageId: quotedMessageId,
     status: "delivered",
     originalId: msg.key.id,
+    referralData: referralData || undefined,
   };
 }
 

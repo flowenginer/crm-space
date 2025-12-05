@@ -191,6 +191,7 @@ export type Database = {
           origin_campaign: string | null
           person_type: string | null
           phone: string
+          referral_data: Json | null
           state: string | null
           street: string | null
           updated_at: string
@@ -226,6 +227,7 @@ export type Database = {
           origin_campaign?: string | null
           person_type?: string | null
           phone: string
+          referral_data?: Json | null
           state?: string | null
           street?: string | null
           updated_at?: string
@@ -261,6 +263,7 @@ export type Database = {
           origin_campaign?: string | null
           person_type?: string | null
           phone?: string
+          referral_data?: Json | null
           state?: string | null
           street?: string | null
           updated_at?: string
@@ -334,6 +337,8 @@ export type Database = {
           lead_status: string | null
           priority: string | null
           queue_id: string | null
+          referral_data: Json | null
+          referral_source: string | null
           sla_status: string | null
           status: string | null
           transfer_note: string | null
@@ -359,6 +364,8 @@ export type Database = {
           lead_status?: string | null
           priority?: string | null
           queue_id?: string | null
+          referral_data?: Json | null
+          referral_source?: string | null
           sla_status?: string | null
           status?: string | null
           transfer_note?: string | null
@@ -384,6 +391,8 @@ export type Database = {
           lead_status?: string | null
           priority?: string | null
           queue_id?: string | null
+          referral_data?: Json | null
+          referral_source?: string | null
           sla_status?: string | null
           status?: string | null
           transfer_note?: string | null
