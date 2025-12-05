@@ -2056,13 +2056,13 @@ export default function Conversations() {
                 key={filter}
                 onClick={() => setQuickFilter(filter)}
                 className={cn(
-                  'flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-colors relative flex items-center justify-center gap-1.5',
+                  'flex-1 py-2 px-2 text-sm font-medium rounded-lg transition-colors relative flex flex-col items-center justify-center min-h-[52px]',
                   quickFilter === filter
                     ? 'text-primary bg-accent'
                     : 'text-muted-foreground hover:bg-muted'
                 )}
               >
-                <span>{filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : 'Não atribuídas'}</span>
+                <span className="text-xs whitespace-nowrap">{filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : 'Não atribuídas'}</span>
                 <AnimatedCounter value={filterCounts[filter]} className="text-xs opacity-70" />
                 {/* Red notification badge for pinned conversations with unread messages */}
                 {filter === 'pinned' && quickFilter !== 'pinned' && pinnedUnreadCount > 0 && (
