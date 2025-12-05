@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Bell, Calendar, Menu, MessageCircle, Clock, UserPlus, AlertTriangle, ArrowRightLeft } from 'lucide-react';
+import { Search, Bell, Calendar, Menu, MessageCircle, Clock, UserPlus, AlertTriangle, ArrowRightLeft, CheckCheck, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -12,10 +12,11 @@ import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface HeaderProps {
   title: string;
@@ -40,6 +41,23 @@ interface Notification {
   timestamp: string;
 }
 
+const DISMISSED_NOTIFICATIONS_KEY = 'dismissed_notifications';
+
+// Get dismissed notifications from localStorage
+const getDismissedNotifications = (): string[] => {
+  try {
+    const stored = localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
+
+// Save dismissed notifications to localStorage
+const saveDismissedNotifications = (ids: string[]) => {
+  localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(ids));
+};
+
 export function Header({ title, onMenuClick }: HeaderProps) {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,9 +65,11 @@ export function Header({ title, onMenuClick }: HeaderProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [dismissedIds, setDismissedIds] = useState<string[]>(getDismissedNotifications);
   const searchRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
 
   // Fetch useful notifications: assignments, transfers, SLA alerts
   const { data: notifications = [] } = useQuery({
@@ -146,7 +166,26 @@ export function Header({ title, onMenuClick }: HeaderProps) {
     refetchInterval: 60000, // Refresh every minute
   });
 
-  const notificationCount = notifications.length;
+  // Filter out dismissed notifications
+  const visibleNotifications = notifications.filter(n => !dismissedIds.includes(n.id));
+  const notificationCount = visibleNotifications.length;
+
+  // Dismiss single notification
+  const dismissNotification = (notificationId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const newDismissedIds = [...dismissedIds, notificationId];
+    setDismissedIds(newDismissedIds);
+    saveDismissedNotifications(newDismissedIds);
+  };
+
+  // Dismiss all notifications
+  const dismissAllNotifications = () => {
+    const allIds = notifications.map(n => n.id);
+    const newDismissedIds = [...new Set([...dismissedIds, ...allIds])];
+    setDismissedIds(newDismissedIds);
+    saveDismissedNotifications(newDismissedIds);
+    toast.success('Todas as notificações foram marcadas como lidas');
+  };
 
   // Search function
   useEffect(() => {
@@ -384,53 +423,78 @@ export function Header({ title, onMenuClick }: HeaderProps) {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-80 p-0" align="end">
-            <div className="p-3 border-b border-border">
-              <h3 className="font-semibold text-foreground">Notificações</h3>
-              <p className="text-xs text-muted-foreground">
-                Atribuições, transferências e alertas
-              </p>
+            <div className="p-3 border-b border-border flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-foreground">Notificações</h3>
+                <p className="text-xs text-muted-foreground">
+                  Atribuições, transferências e alertas
+                </p>
+              </div>
+              {visibleNotifications.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={dismissAllNotifications}
+                  className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  title="Marcar todas como lidas"
+                >
+                  <CheckCheck size={14} className="mr-1" />
+                  Limpar
+                </Button>
+              )}
             </div>
             
             <div className="max-h-80 overflow-y-auto">
-              {notifications.length === 0 ? (
+              {visibleNotifications.length === 0 ? (
                 <div className="p-6 text-center text-muted-foreground text-sm">
                   <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p>Nenhuma notificação</p>
                 </div>
               ) : (
-                notifications.map((notification) => (
-                  <button
+                visibleNotifications.map((notification) => (
+                  <div
                     key={notification.id}
-                    onClick={() => handleNotificationClick(notification)}
-                    className="w-full flex items-start gap-3 p-3 hover:bg-muted transition-colors text-left border-b border-border/50 last:border-0"
+                    className="relative group flex items-start gap-3 p-3 hover:bg-muted transition-colors text-left border-b border-border/50 last:border-0"
                   >
-                    <div className={cn(
-                      "w-10 h-10 rounded-full bg-gradient-to-br flex items-center justify-center text-white font-semibold flex-shrink-0",
-                      getNotificationColor(notification.type)
-                    )}>
-                      {notification.contactName.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        {getNotificationIcon(notification.type)}
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {notification.contactName}
+                    <button
+                      onClick={() => handleNotificationClick(notification)}
+                      className="flex items-start gap-3 flex-1 min-w-0"
+                    >
+                      <div className={cn(
+                        "w-10 h-10 rounded-full bg-gradient-to-br flex items-center justify-center text-white font-semibold flex-shrink-0",
+                        getNotificationColor(notification.type)
+                      )}>
+                        {notification.contactName.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          {getNotificationIcon(notification.type)}
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {notification.contactName}
+                          </p>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {notification.message}
+                        </p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                          <Clock size={10} />
+                          {formatTime(notification.timestamp)}
                         </p>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {notification.message}
-                      </p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <Clock size={10} />
-                        {formatTime(notification.timestamp)}
-                      </p>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      onClick={(e) => dismissNotification(notification.id, e)}
+                      className="p-1 rounded hover:bg-muted-foreground/20 transition-colors opacity-0 group-hover:opacity-100 absolute top-2 right-2"
+                      title="Marcar como lida"
+                    >
+                      <X size={14} className="text-muted-foreground" />
+                    </button>
+                  </div>
                 ))
               )}
             </div>
             
-            {notifications.length > 0 && (
+            {visibleNotifications.length > 0 && (
               <div className="p-2 border-t border-border">
                 <Button
                   variant="ghost"
