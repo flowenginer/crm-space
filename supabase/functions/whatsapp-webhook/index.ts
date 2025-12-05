@@ -402,28 +402,137 @@ serve(async (req) => {
         });
       }
 
-      // Verificar se a mensagem já existe (evitar duplicatas)
-      const { data: existingMsg } = await supabase
+      // =====================================================
+      // PARA MENSAGENS fromMe: NÃO INSERIR - APENAS ATUALIZAR
+      // O frontend já insere a mensagem otimisticamente
+      // O webhook deve apenas atualizar com o whatsapp_message_id se necessário
+      // =====================================================
+      
+      // Primeiro, verificar se já existe uma mensagem com esse whatsapp_message_id
+      const { data: existingByWhatsappId } = await supabase
         .from("messages")
         .select("id")
         .eq("whatsapp_message_id", normalizedMessage.originalId)
-        .single();
+        .maybeSingle();
 
-      if (existingMsg) {
-        console.log(`[Webhook] Message already exists, skipping: ${normalizedMessage.originalId}`);
+      if (existingByWhatsappId) {
+        console.log(`[Webhook] FromMe message already has whatsapp_message_id, skipping: ${normalizedMessage.originalId}`);
         return new Response(JSON.stringify({ success: true, message: "Message already exists" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      // =====================================================
-      // UPLOAD MEDIA TO STORAGE (fromMe)
-      // =====================================================
-      let finalMediaUrl = normalizedMessage.mediaUrl;
+      // Buscar mensagem recente do frontend que ainda não tem whatsapp_message_id
+      // Procurar por mensagem do mesmo tipo, na mesma conversa, criada nos últimos 30 segundos
+      const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
       
-      // If media exists but no base64, fetch from Evolution API
+      const { data: pendingMessages } = await supabase
+        .from("messages")
+        .select("id, content, message_type, media_url, whatsapp_message_id")
+        .eq("conversation_id", conversation.id)
+        .eq("is_from_me", true)
+        .eq("message_type", normalizedMessage.type)
+        .is("whatsapp_message_id", null)
+        .gte("created_at", thirtySecondsAgo)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (pendingMessages && pendingMessages.length > 0) {
+        // Encontrar a mensagem que mais se parece (mesmo conteúdo ou mídia similar)
+        let matchedMessage = null;
+        
+        for (const msg of pendingMessages) {
+          // Para texto, comparar conteúdo
+          if (normalizedMessage.type === 'text' && msg.content === normalizedMessage.content) {
+            matchedMessage = msg;
+            break;
+          }
+          // Para mídia, qualquer mensagem pendente do mesmo tipo serve
+          if (normalizedMessage.type !== 'text' && msg.message_type === normalizedMessage.type) {
+            matchedMessage = msg;
+            break;
+          }
+        }
+
+        if (matchedMessage) {
+          console.log(`[Webhook] Found pending frontend message (id: ${matchedMessage.id}), updating with whatsapp_message_id: ${normalizedMessage.originalId}`);
+          
+          // Atualizar a mensagem existente com o whatsapp_message_id
+          const updateData: any = {
+            whatsapp_message_id: normalizedMessage.originalId,
+            status: "sent",
+          };
+
+          // Se for mídia e tivermos base64, fazer upload e atualizar URL
+          if (normalizedMessage.mediaUrl && !normalizedMessage.mediaBase64 && normalizedMessage.type !== 'text') {
+            console.log(`[Webhook] FromMe media without base64, fetching from Evolution API...`);
+            const provider = (channel as any).provider;
+            if (provider?.code === 'evolution' && provider?.base_url && provider?.admin_token) {
+              const mediaData = await fetchMediaBase64FromEvolution(
+                provider.base_url,
+                provider.admin_token,
+                channel.instance_id || '',
+                {
+                  id: normalizedMessage.originalId,
+                  remoteJid: normalizedMessage.from + '@s.whatsapp.net',
+                  fromMe: normalizedMessage.isFromMe
+                }
+              );
+              if (mediaData.base64) {
+                normalizedMessage.mediaBase64 = mediaData.base64;
+                normalizedMessage.mediaMimeType = mediaData.mimetype || normalizedMessage.mediaMimeType;
+              }
+            }
+          }
+
+          // Upload media if we have base64
+          if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
+            console.log(`[Webhook] Uploading media for fromMe message update...`);
+            const uploadedUrl = await uploadMediaToStorage(
+              supabase,
+              normalizedMessage.mediaBase64,
+              normalizedMessage.mediaMimeType,
+              conversation.id
+            );
+            if (uploadedUrl) {
+              updateData.media_url = uploadedUrl;
+              console.log(`[Webhook] FromMe media uploaded, updating URL`);
+            }
+          }
+
+          await supabase
+            .from("messages")
+            .update(updateData)
+            .eq("id", matchedMessage.id);
+
+          console.log(`[Webhook] Updated frontend message with whatsapp_message_id`);
+          return new Response(JSON.stringify({ success: true, message: "Frontend message updated" }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      // Se não encontrou mensagem pendente, pode ser que o frontend não inseriu ainda
+      // ou é uma mensagem enviada de outro dispositivo - nesse caso, inserir
+      console.log(`[Webhook] No pending frontend message found, checking if sent from another device...`);
+      
+      // Verificar novamente se já existe (pode ter sido inserido enquanto processávamos)
+      const { data: existingNow } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("whatsapp_message_id", normalizedMessage.originalId)
+        .maybeSingle();
+
+      if (existingNow) {
+        console.log(`[Webhook] Message was inserted while processing, skipping: ${normalizedMessage.originalId}`);
+        return new Response(JSON.stringify({ success: true, message: "Message already exists" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Upload media if needed for new insert
+      let finalMediaUrl = normalizedMessage.mediaUrl;
       if (normalizedMessage.mediaUrl && !normalizedMessage.mediaBase64 && normalizedMessage.type !== 'text') {
-        console.log(`[Webhook] FromMe media without base64, fetching from Evolution API...`);
         const provider = (channel as any).provider;
         if (provider?.code === 'evolution' && provider?.base_url && provider?.admin_token) {
           const mediaData = await fetchMediaBase64FromEvolution(
@@ -442,10 +551,8 @@ serve(async (req) => {
           }
         }
       }
-      
-      // Now upload if we have base64
+
       if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
-        console.log(`[Webhook] Uploading media for fromMe message...`);
         const uploadedUrl = await uploadMediaToStorage(
           supabase,
           normalizedMessage.mediaBase64,
@@ -454,28 +561,12 @@ serve(async (req) => {
         );
         if (uploadedUrl) {
           finalMediaUrl = uploadedUrl;
-          console.log(`[Webhook] FromMe media uploaded, using Supabase URL`);
         }
       }
 
-      // Check if message already exists (frontend might have already inserted it)
-      const { data: existingFromMeMsg } = await supabase
-        .from("messages")
-        .select("id")
-        .eq("whatsapp_message_id", normalizedMessage.originalId)
-        .single();
-
-      if (existingFromMeMsg) {
-        console.log(`[Webhook] FromMe message already exists (id: ${existingFromMeMsg.id}), skipping duplicate insert`);
-        return new Response(JSON.stringify({ success: true, message: "Message already exists" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      // Find reply_to_message_id if quotedMessageId exists (for fromMe messages)
+      // Find reply_to_message_id if quotedMessageId exists
       let replyToMessageIdFromMe = null;
       if (normalizedMessage.quotedMessageId) {
-        console.log(`[Webhook] Looking for quoted message in fromMe: ${normalizedMessage.quotedMessageId}`);
         const { data: quotedMsgFromMe } = await supabase
           .from("messages")
           .select("id")
@@ -484,11 +575,10 @@ serve(async (req) => {
         
         if (quotedMsgFromMe) {
           replyToMessageIdFromMe = quotedMsgFromMe.id;
-          console.log(`[Webhook] Found quoted message for fromMe, reply_to_message_id: ${replyToMessageIdFromMe}`);
         }
       }
 
-      // Salvar mensagem enviada
+      // Inserir apenas se for de outro dispositivo (não encontrou mensagem pendente)
       const { error: msgError } = await supabase.from("messages").insert({
         conversation_id: conversation.id,
         content: normalizedMessage.content,
@@ -503,6 +593,13 @@ serve(async (req) => {
       });
 
       if (msgError) {
+        // Se for erro de duplicata, ignorar
+        if (msgError.code === '23505') {
+          console.log(`[Webhook] Duplicate message (constraint), skipping`);
+          return new Response(JSON.stringify({ success: true, message: "Duplicate avoided" }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
         console.error(`[Webhook] Error saving fromMe message:`, msgError);
         throw msgError;
       }
@@ -517,18 +614,8 @@ serve(async (req) => {
         })
         .eq("id", conversation.id);
 
-      // Atualizar stats do canal
-      await supabase
-        .from("whatsapp_channels")
-        .update({
-          messages_sent: (channel as any).messages_sent + 1 || 1,
-          messages_sent_today: (channel as any).messages_sent_today + 1 || 1,
-          last_sync_at: new Date().toISOString(),
-        })
-        .eq("id", channel.id);
-
-      console.log(`[Webhook] FromMe message saved for conversation ${conversation.id}`);
-      return new Response(JSON.stringify({ success: true, message: "FromMe message saved" }), {
+      console.log(`[Webhook] FromMe message from other device saved for conversation ${conversation.id}`);
+      return new Response(JSON.stringify({ success: true, message: "FromMe message saved (other device)" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
