@@ -1332,27 +1332,28 @@ export default function Conversations() {
       
       // Send text message first if exists
       if (hasText && !hasFiles) {
-        // Primeiro envia via WhatsApp para obter o messageId
-        const whatsappMessageId = await sendViaWhatsApp(messageInput.trim(), 'text', undefined, quotedWhatsAppId);
+        const textContent = messageInput.trim();
         
-        // Salva no banco com o whatsapp_message_id
+        // INSTANT: Save to database first (optimistic update shows immediately)
         sendMessage.mutate({
           conversation_id: selectedConversationId,
-          content: messageInput.trim(),
+          content: textContent,
           is_from_me: true,
           message_type: 'text',
           reply_to_message_id: replyingTo?.id,
-          whatsapp_message_id: whatsappMessageId,
         });
         
+        // Clear input immediately for better UX
         setMessageInput('');
         setReplyingTo(null);
+        
+        // BACKGROUND: Send to WhatsApp (don't await)
+        sendViaWhatsApp(textContent, 'text', undefined, quotedWhatsAppId).catch(console.error);
       } else if (hasFiles) {
-        // Send each file as a separate message
+        // For files, we need to upload first (can't be avoided)
         for (const file of selectedFiles) {
           const result = await uploadAttachment(file, selectedConversationId);
           
-          // Determine message type based on file type
           let messageType = 'document';
           if (file.type.startsWith('image/')) {
             messageType = 'image';
@@ -1362,9 +1363,7 @@ export default function Conversations() {
             messageType = 'audio';
           }
 
-          // Primeiro envia via WhatsApp para obter o messageId
-          const whatsappMessageId = await sendViaWhatsApp(file.name, messageType, result.url, quotedWhatsAppId);
-
+          // INSTANT: Save to database first
           sendMessage.mutate({
             conversation_id: selectedConversationId,
             content: file.name,
@@ -1373,21 +1372,25 @@ export default function Conversations() {
             media_url: result.url,
             media_mime_type: result.mimeType,
             reply_to_message_id: replyingTo?.id,
-            whatsapp_message_id: whatsappMessageId,
           });
+
+          // BACKGROUND: Send to WhatsApp (don't await)
+          sendViaWhatsApp(file.name, messageType, result.url, quotedWhatsAppId).catch(console.error);
         }
         
         // Send text after files if exists
         if (hasText) {
-          const whatsappMessageId = await sendViaWhatsApp(messageInput.trim(), 'text', undefined, undefined);
+          const textContent = messageInput.trim();
           
           sendMessage.mutate({
             conversation_id: selectedConversationId,
-            content: messageInput.trim(),
+            content: textContent,
             is_from_me: true,
             message_type: 'text',
-            whatsapp_message_id: whatsappMessageId,
           });
+          
+          // BACKGROUND: Send to WhatsApp
+          sendViaWhatsApp(textContent, 'text', undefined, undefined).catch(console.error);
         }
         
         setMessageInput('');
@@ -1597,15 +1600,7 @@ export default function Conversations() {
             setIsUploading(true);
             const result = await uploadAttachment(audioFile, selectedConversationId);
             
-            // Send via WhatsApp
-            let whatsappMessageId: string | undefined;
-            if (channelId && contactPhone) {
-              const whatsappResult = await sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url);
-              if (whatsappResult.success) {
-                whatsappMessageId = whatsappResult.messageId;
-              }
-            }
-            
+            // INSTANT: Save to database first
             sendMessage.mutate({
               conversation_id: selectedConversationId,
               content: '',
@@ -1613,8 +1608,12 @@ export default function Conversations() {
               message_type: 'audio',
               media_url: result.url,
               media_mime_type: result.mimeType,
-              whatsapp_message_id: whatsappMessageId,
             });
+            
+            // BACKGROUND: Send via WhatsApp (don't await)
+            if (channelId && contactPhone) {
+              sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url).catch(console.error);
+            }
             
             toast.success('Áudio enviado!');
           } catch (error) {
