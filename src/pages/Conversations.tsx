@@ -994,6 +994,15 @@ export default function Conversations() {
   const updateInternalNote = useUpdateInternalNote();
   const updateConversation = useUpdateConversation();
 
+  // Get current user for filter counts
+  const { data: currentUser } = useQuery({
+    queryKey: ['current-user'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      return user;
+    },
+  });
+
   // Realtime subscriptions
   useRealtimeMessages(selectedConversationId);
   useRealtimeConversations();
@@ -1237,6 +1246,20 @@ export default function Conversations() {
       !(quickFilter === 'pinned' && selectedConversationId === conv.id)
     ).length;
   }, [conversations, pinnedConversations, quickFilter, selectedConversationId]);
+
+  // Calculate filter counts for each quick filter
+  const filterCounts = useMemo(() => {
+    const pinnedIds = new Set(pinnedConversations.map(p => p.conversation_id));
+    
+    const allCount = conversations.filter(conv => !pinnedIds.has(conv.id)).length;
+    const pinnedCount = pinnedConversations.length;
+    const mineCount = currentUser 
+      ? conversations.filter(conv => !pinnedIds.has(conv.id) && conv.assigned_to === currentUser.id).length 
+      : 0;
+    const unassignedCount = conversations.filter(conv => !pinnedIds.has(conv.id) && !conv.assigned_to).length;
+    
+    return { all: allCount, pinned: pinnedCount, mine: mineCount, unassigned: unassignedCount };
+  }, [conversations, pinnedConversations, currentUser]);
 
   // Conversation action handlers
   const handleMarkAsUnread = () => {
@@ -1980,13 +2003,14 @@ export default function Conversations() {
                 key={filter}
                 onClick={() => setQuickFilter(filter)}
                 className={cn(
-                  'flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-colors relative',
+                  'flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-colors relative flex flex-col items-center gap-0.5',
                   quickFilter === filter
                     ? 'text-primary bg-accent'
                     : 'text-muted-foreground hover:bg-muted'
                 )}
               >
-                {filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : 'Não atribuídas'}
+                <span>{filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : 'Não atribuídas'}</span>
+                <span className="text-[10px] opacity-70">{filterCounts[filter]}</span>
                 {/* Red notification badge for pinned conversations with unread messages */}
                 {filter === 'pinned' && quickFilter !== 'pinned' && pinnedUnreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
