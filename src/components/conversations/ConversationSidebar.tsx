@@ -622,46 +622,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
           </Select>
         </div>
 
-        {/* Tags */}
-        <div className="p-3 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-            Etiquetas
-          </label>
-          
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {contactTags.length === 0 ? (
-              <span className="text-xs text-muted-foreground">Nenhuma etiqueta</span>
-            ) : (
-              contactTags.map((tag: any) => (
-                <span 
-                  key={tag.id}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-                  style={{ 
-                    backgroundColor: `${tag.color || '#8B5CF6'}20`,
-                    color: tag.color || '#8B5CF6'
-                  }}
-                >
-                  {tag.name}
-                  <button 
-                    onClick={() => removeTag.mutate(tag.id)}
-                    className="hover:opacity-70"
-                    disabled={removeTag.isPending}
-                  >
-                    <X size={10} />
-                  </button>
-                </span>
-              ))
-            )}
-          </div>
-          
-          <button
-            onClick={() => setShowTagModal(true)}
-            className="text-primary hover:text-primary/80 text-xs font-medium flex items-center gap-1"
-          >
-            <Plus size={12} />
-            Adicionar etiqueta
-          </button>
-        </div>
+        {/* Tags - REMOVED - Now in header */}
 
         {/* Assigned User */}
         <div className="p-3 border-b border-border">
