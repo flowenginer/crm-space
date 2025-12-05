@@ -1030,7 +1030,7 @@ export default function Conversations() {
       
       return results;
     },
-    enabled: conversationIds.length > 0 && (sortFilter === 'not_replied' || sortFilter === 'client_not_replied'),
+    enabled: conversationIds.length > 0,
   });
 
   // Create a map for quick lookup of last message info
@@ -1311,6 +1311,71 @@ export default function Conversations() {
     
     return { all: allCount, pinned: pinnedCount, mine: mineCount, unassigned: unassignedCount };
   }, [conversations, pinnedConversations, currentUser]);
+
+  // Calculate date filter counts
+  const dateFilterCounts = useMemo(() => {
+    const now = new Date();
+    const counts = {
+      today: 0,
+      yesterday: 0,
+      this_week: 0,
+      last_week: 0,
+      this_month: 0,
+      last_month: 0,
+    };
+    
+    conversations.forEach(conv => {
+      const contactDate = conv.contact?.first_contact_at || conv.contact?.created_at;
+      if (!contactDate) return;
+      
+      const date = new Date(contactDate);
+      
+      if (isToday(date)) counts.today++;
+      if (isYesterday(date)) counts.yesterday++;
+      if (isWithinInterval(date, { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfDay(now) })) counts.this_week++;
+      
+      const lastWeekStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
+      const lastWeekEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
+      if (isWithinInterval(date, { start: lastWeekStart, end: lastWeekEnd })) counts.last_week++;
+      
+      if (isWithinInterval(date, { start: startOfMonth(now), end: endOfDay(now) })) counts.this_month++;
+      
+      const lastMonthStart = startOfMonth(subMonths(now, 1));
+      const lastMonthEnd = endOfMonth(subMonths(now, 1));
+      if (isWithinInterval(date, { start: lastMonthStart, end: lastMonthEnd })) counts.last_month++;
+    });
+    
+    return counts;
+  }, [conversations]);
+
+  // Calculate channel filter counts
+  const channelFilterCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    
+    conversations.forEach(conv => {
+      const channelId = conv.channel_id || 'no_channel';
+      counts[channelId] = (counts[channelId] || 0) + 1;
+    });
+    
+    return counts;
+  }, [conversations]);
+
+  // Calculate sort filter counts (unread, not_replied, client_not_replied)
+  const sortFilterCounts = useMemo(() => {
+    const unreadCount = conversations.filter(conv => conv.is_unread).length;
+    
+    // Count not replied (last message from client)
+    let notRepliedCount = 0;
+    let clientNotRepliedCount = 0;
+    
+    conversations.forEach(conv => {
+      const isFromMe = lastMessageMap.get(conv.id);
+      if (isFromMe === false) notRepliedCount++;
+      if (isFromMe === true) clientNotRepliedCount++;
+    });
+    
+    return { unread: unreadCount, not_replied: notRepliedCount, client_not_replied: clientNotRepliedCount };
+  }, [conversations, lastMessageMap]);
 
   // Conversation action handlers
   const handleMarkAsUnread = () => {
@@ -1890,12 +1955,12 @@ export default function Conversations() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as datas</SelectItem>
-              <SelectItem value="today">Hoje</SelectItem>
-              <SelectItem value="yesterday">Ontem</SelectItem>
-              <SelectItem value="this_week">Esta semana</SelectItem>
-              <SelectItem value="last_week">Semana passada</SelectItem>
-              <SelectItem value="this_month">Este mês</SelectItem>
-              <SelectItem value="last_month">Mês passado</SelectItem>
+              <SelectItem value="today">Hoje ({dateFilterCounts.today})</SelectItem>
+              <SelectItem value="yesterday">Ontem ({dateFilterCounts.yesterday})</SelectItem>
+              <SelectItem value="this_week">Esta semana ({dateFilterCounts.this_week})</SelectItem>
+              <SelectItem value="last_week">Semana passada ({dateFilterCounts.last_week})</SelectItem>
+              <SelectItem value="this_month">Este mês ({dateFilterCounts.this_month})</SelectItem>
+              <SelectItem value="last_month">Mês passado ({dateFilterCounts.last_month})</SelectItem>
               <SelectItem value="custom">Período personalizado...</SelectItem>
             </SelectContent>
           </Select>
@@ -1977,10 +2042,10 @@ export default function Conversations() {
                 <SelectItem value="all">Todos os canais</SelectItem>
                 {channels.map((channel) => (
                   <SelectItem key={channel.id} value={channel.id}>
-                    {channel.name}
+                    {channel.name} ({channelFilterCounts[channel.id] || 0})
                   </SelectItem>
                 ))}
-                <SelectItem value="no_channel">Sem canal</SelectItem>
+                <SelectItem value="no_channel">Sem canal ({channelFilterCounts['no_channel'] || 0})</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1991,9 +2056,9 @@ export default function Conversations() {
               <SelectContent>
                 <SelectItem value="newest">Mais novas</SelectItem>
                 <SelectItem value="oldest">Mais antigas</SelectItem>
-                <SelectItem value="unread">Não lidas</SelectItem>
-                <SelectItem value="not_replied">Não respondidas</SelectItem>
-                <SelectItem value="client_not_replied">Cliente não respondeu</SelectItem>
+                <SelectItem value="unread">Não lidas ({sortFilterCounts.unread})</SelectItem>
+                <SelectItem value="not_replied">Não respondidas ({sortFilterCounts.not_replied})</SelectItem>
+                <SelectItem value="client_not_replied">Cliente não respondeu ({sortFilterCounts.client_not_replied})</SelectItem>
               </SelectContent>
             </Select>
 
