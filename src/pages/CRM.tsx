@@ -279,30 +279,42 @@ export default function CRM() {
           </div>
 
           <div className="flex items-center -space-x-2">
-            {/* Mostra apenas vendedores (role = seller) */}
+            {/* Mostra apenas vendedores (role = seller) com badge de contagem */}
             {teamMembers
               ?.filter((member) => member.role === 'seller')
-              .map((member) => (
-              <div
-                key={member.id}
-                onClick={() => {
-                  if (filterAssignedTo === member.id) {
-                    setFilterAssignedTo(null);
-                  } else {
-                    setFilterAssignedTo(member.id);
-                  }
-                }}
-                className={cn(
-                  "w-9 h-9 rounded-full bg-gradient-to-br from-primary to-pink-500 border-2 flex items-center justify-center text-white text-xs font-bold shadow-lg hover:z-10 transition-all cursor-pointer hover:scale-110",
-                  filterAssignedTo === member.id 
-                    ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background scale-110 z-10" 
-                    : "border-background"
-                )}
-                title={`${member.full_name || 'Usuário'} - Clique para filtrar`}
-              >
-                {member.full_name?.charAt(0).toUpperCase() || 'U'}
-              </div>
-            ))}
+              .map((member) => {
+                const dealCount = deals?.filter(d => d.assigned_to === member.id && d.status === 'open').length || 0;
+                return (
+                  <div
+                    key={member.id}
+                    onClick={() => {
+                      if (filterAssignedTo === member.id) {
+                        setFilterAssignedTo(null);
+                      } else {
+                        setFilterAssignedTo(member.id);
+                      }
+                    }}
+                    className="relative"
+                  >
+                    <div
+                      className={cn(
+                        "w-9 h-9 rounded-full bg-gradient-to-br from-primary to-pink-500 border-2 flex items-center justify-center text-white text-xs font-bold shadow-lg hover:z-10 transition-all cursor-pointer hover:scale-110",
+                        filterAssignedTo === member.id 
+                          ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background scale-110 z-10" 
+                          : "border-background"
+                      )}
+                      title={`${member.full_name || 'Usuário'} - ${dealCount} negócios`}
+                    >
+                      {member.full_name?.charAt(0).toUpperCase() || 'U'}
+                    </div>
+                    {dealCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-background">
+                        {dealCount > 99 ? '99+' : dealCount}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             {filterAssignedTo && (
               <button
                 onClick={() => setFilterAssignedTo(null)}
