@@ -675,27 +675,53 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
     const connectData = await safeJsonParse(connectResponse, 'UAZAPI Connect');
     console.log('[UAZAPI] Connect response:', connectData);
     
-    // PASSO 3: Configurar webhook via /webhooks/url (com token da instância)
-    const webhookUrlEndpoint = `${baseUrl}/webhooks/url`;
-    console.log('[UAZAPI] Step 3 - Set webhook:', webhookUrlEndpoint, 'to', webhookUrl);
+    // PASSO 3: Configurar webhook via PUT /webhook (endpoint correto da UAZAPI)
+    // Tentar múltiplos endpoints pois a API pode variar
+    const webhookEndpoints = [
+      { url: `${baseUrl}/webhook`, method: 'PUT' },
+      { url: `${baseUrl}/webhook`, method: 'POST' },
+      { url: `${baseUrl}/webhooks`, method: 'PUT' },
+      { url: `${baseUrl}/webhooks/url`, method: 'PUT' },
+    ];
     
-    const webhookResponse = await fetch(webhookUrlEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'token': instanceToken,
-      },
-      body: JSON.stringify({ url: webhookUrl }),
-    });
+    let webhookConfigured = false;
+    for (const endpoint of webhookEndpoints) {
+      try {
+        console.log(`[UAZAPI] Step 3 - Trying webhook: ${endpoint.method} ${endpoint.url}`);
+        
+        const webhookResponse = await fetch(endpoint.url, {
+          method: endpoint.method,
+          headers: {
+            'Content-Type': 'application/json',
+            'token': instanceToken,
+          },
+          body: JSON.stringify({ url: webhookUrl, webhook: webhookUrl }),
+        });
+        
+        if (webhookResponse.ok) {
+          const webhookData = await webhookResponse.json();
+          console.log('[UAZAPI] Webhook configured successfully:', webhookData);
+          webhookConfigured = true;
+          break;
+        }
+      } catch (e) {
+        console.log(`[UAZAPI] Webhook endpoint ${endpoint.url} failed, trying next...`);
+      }
+    }
     
-    const webhookData = await safeJsonParse(webhookResponse, 'UAZAPI Webhook');
-    console.log('[UAZAPI] Webhook response:', webhookData);
+    if (!webhookConfigured) {
+      console.warn('[UAZAPI] Could not configure webhook automatically. Instance created but webhook may need manual config.');
+    }
+    
+    // Extrair QR code - pode estar em diferentes locais da resposta
+    const qrCode = connectData.instance?.qrcode || connectData.qrcode || connectData.qr || connectData.base64;
+    console.log('[UAZAPI] QR Code extracted:', qrCode ? 'Yes (length: ' + qrCode.length + ')' : 'No');
     
     return {
       success: true,
       instanceId: instanceName,
-      token: instanceToken, // IMPORTANTE: Token da instância para operações futuras
-      qrCode: connectData.qrcode || connectData.qr || connectData.base64,
+      token: instanceToken,
+      qrCode: qrCode,
     };
   } catch (err: any) {
     console.error('[UAZAPI] Create error:', err);
