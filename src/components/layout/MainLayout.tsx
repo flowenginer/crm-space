@@ -95,8 +95,8 @@ export function MainLayout() {
           />
         )}
         <main className={cn(
-          "flex-1 overflow-y-auto animate-fade-in",
-          isConversationsPage ? "p-0" : "p-6 md:p-8"
+          "flex-1 animate-fade-in",
+          isConversationsPage ? "p-0 overflow-hidden" : "p-6 md:p-8 overflow-y-auto"
         )}>
           <Outlet />
         </main>
