@@ -16,6 +16,8 @@ import {
   LucideIcon,
   CalendarClock,
   ClipboardList,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -58,7 +60,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const location = useLocation();
   const { profile, signOut } = useAuth();
   const isMobile = useIsMobile();
-  const { theme } = useTheme();
+  const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
   const { hasPermission, isAdmin, role: userRole, isLoading: permissionsLoading } = usePermissions();
 
@@ -156,23 +158,42 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             </div>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onToggle}
-          className={cn(
-            "h-9 w-9 transition-colors",
-            isDark 
-              ? "text-muted-foreground hover:text-foreground hover:bg-muted" 
-              : "text-white hover:bg-white/10"
+        <div className="flex items-center gap-1">
+          {/* Theme Toggle - visible when sidebar is expanded */}
+          {!isCollapsed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              className={cn(
+                "h-9 w-9 transition-colors",
+                isDark 
+                  ? "text-muted-foreground hover:text-foreground hover:bg-muted" 
+                  : "text-white hover:bg-white/10"
+              )}
+              title={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
+            >
+              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </Button>
           )}
-        >
-          {isCollapsed ? (
-            <Menu className="h-5 w-5" />
-          ) : (
-            <ChevronLeft className="h-5 w-5" />
-          )}
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggle}
+            className={cn(
+              "h-9 w-9 transition-colors",
+              isDark 
+                ? "text-muted-foreground hover:text-foreground hover:bg-muted" 
+                : "text-white hover:bg-white/10"
+            )}
+          >
+            {isCollapsed ? (
+              <Menu className="h-5 w-5" />
+            ) : (
+              <ChevronLeft className="h-5 w-5" />
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -312,19 +333,36 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           </div>
 
           {isCollapsed && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => signOut()}
-              className={cn(
-                "h-9 w-9 transition-colors",
-                isDark 
-                  ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10" 
-                  : "text-white hover:bg-red-500/30"
-              )}
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
+            <div className="flex flex-col gap-2">
+              {/* Theme Toggle when collapsed */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleTheme}
+                className={cn(
+                  "h-9 w-9 transition-colors",
+                  isDark 
+                    ? "text-muted-foreground hover:text-foreground hover:bg-muted" 
+                    : "text-white hover:bg-white/10"
+                )}
+                title={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
+              >
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => signOut()}
+                className={cn(
+                  "h-9 w-9 transition-colors",
+                  isDark 
+                    ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10" 
+                    : "text-white hover:bg-red-500/30"
+                )}
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
           )}
         </div>
       </div>
