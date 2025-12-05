@@ -642,7 +642,7 @@ async function createEvolutionInstance(config: ProviderConfig, instanceName: str
         url: webhookUrl,
         byEvents: false,
         base64: true,
-        events: ['QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'SEND_MESSAGE'],
+        events: ['QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'SEND_MESSAGE', 'PRESENCE_UPDATE'],
       },
     }),
   });
@@ -849,7 +849,8 @@ async function setEvolutionWebhook(config: ProviderConfig, instanceName: string,
         'MESSAGES_UPSERT',
         'MESSAGES_UPDATE', 
         'CONNECTION_UPDATE',
-        'SEND_MESSAGE'
+        'SEND_MESSAGE',
+        'PRESENCE_UPDATE'
       ]
     };
     
