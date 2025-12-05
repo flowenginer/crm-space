@@ -29,6 +29,7 @@ export interface CreateTagInput {
 export function useTags() {
   return useQuery({
     queryKey: ['tags'],
+    staleTime: 60000, // 1 minute cache
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
@@ -78,6 +79,7 @@ export function useTags() {
 export function useAllTags() {
   return useQuery({
     queryKey: ['all-tags'],
+    staleTime: 60000, // 1 minute cache
     queryFn: async () => {
       const { data, error } = await supabase
         .from('tags')
