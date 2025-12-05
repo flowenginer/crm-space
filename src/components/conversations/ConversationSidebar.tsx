@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { 
-  X, Phone, Loader2, CalendarClock, Plus, Save
+  X, Phone, Loader2, CalendarClock, Plus, Save, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -36,8 +37,11 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [isFetchingPhoto, setIsFetchingPhoto] = useState(false);
+  const [newConversationPhone, setNewConversationPhone] = useState('');
+  const [isStartingConversation, setIsStartingConversation] = useState(false);
   
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Fetch conversation with contact data
   const { data: conversation, isLoading: loadingConversation } = useQuery({
@@ -298,6 +302,87 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
       console.error('Error fetching profile photo:', error);
     } finally {
       setIsFetchingPhoto(false);
+    }
+  };
+
+  // Start new conversation with phone number
+  const handleStartNewConversation = async () => {
+    if (!newConversationPhone.trim()) {
+      toast.error('Digite um número de telefone');
+      return;
+    }
+
+    // Clean phone number
+    const cleanPhone = newConversationPhone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      toast.error('Número de telefone inválido');
+      return;
+    }
+
+    // Format with country code
+    const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+
+    setIsStartingConversation(true);
+    try {
+      // Check if contact exists
+      let { data: existingContact } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('phone', formattedPhone)
+        .maybeSingle();
+
+      let contactId = existingContact?.id;
+
+      // Create contact if doesn't exist
+      if (!contactId) {
+        const { data: newContact, error: contactError } = await supabase
+          .from('contacts')
+          .insert({
+            phone: formattedPhone,
+            full_name: `WhatsApp ${formattedPhone.slice(-4)}`,
+          })
+          .select('id')
+          .single();
+
+        if (contactError) throw contactError;
+        contactId = newContact.id;
+      }
+
+      // Check if conversation exists
+      let { data: existingConv } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_id', contactId)
+        .maybeSingle();
+
+      if (existingConv) {
+        // Navigate to existing conversation
+        navigate(`/conversations?id=${existingConv.id}`);
+        toast.success('Conversa existente aberta');
+      } else {
+        // Create new conversation
+        const { data: newConv, error: convError } = await supabase
+          .from('conversations')
+          .insert({
+            contact_id: contactId,
+            status: 'open',
+            channel_id: conversation?.channel_id,
+          })
+          .select('id')
+          .single();
+
+        if (convError) throw convError;
+        navigate(`/conversations?id=${newConv.id}`);
+        toast.success('Nova conversa criada!');
+      }
+
+      setNewConversationPhone('');
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    } catch (error) {
+      console.error('Error starting conversation:', error);
+      toast.error('Erro ao iniciar conversa');
+    } finally {
+      setIsStartingConversation(false);
     }
   };
 
@@ -592,6 +677,42 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
             </p>
           </div>
         )}
+
+        {/* Start New Conversation */}
+        <div className="p-3 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Iniciar nova conversa
+          </label>
+          <div className="flex gap-2">
+            <div className="flex items-center gap-1 px-2 bg-muted rounded-lg text-xs text-muted-foreground flex-shrink-0">
+              <span>BR</span>
+              <span>+55</span>
+            </div>
+            <Input
+              type="tel"
+              placeholder="(00) 00000-0000"
+              value={newConversationPhone}
+              onChange={(e) => setNewConversationPhone(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleStartNewConversation()}
+              className="h-9 text-sm flex-1"
+            />
+            <Button
+              onClick={handleStartNewConversation}
+              disabled={isStartingConversation || !newConversationPhone.trim()}
+              size="sm"
+              className="h-9 w-9 p-0 flex-shrink-0"
+            >
+              {isStartingConversation ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Send size={14} />
+              )}
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground text-center mt-1.5">
+            Digite o número com DDD para iniciar uma conversa
+          </p>
+        </div>
       </div>
 
       {/* Footer: Action Buttons */}
