@@ -280,6 +280,78 @@ export function useDeleteMessage() {
   });
 }
 
+export function useEditMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      messageId, 
+      conversationId,
+      newText,
+      whatsappMessageId,
+      channelId,
+      contactPhone 
+    }: { 
+      messageId: string; 
+      conversationId: string;
+      newText: string;
+      whatsappMessageId?: string | null;
+      channelId?: string | null;
+      contactPhone?: string | null;
+    }) => {
+      // Try to edit on WhatsApp first if we have the necessary info
+      if (whatsappMessageId && channelId && contactPhone) {
+        try {
+          // Format remoteJid for Evolution/UAZAPI
+          const remoteJid = contactPhone.replace(/\D/g, '') + '@s.whatsapp.net';
+          
+          console.log('[EditMessage] Editing on WhatsApp:', { whatsappMessageId, channelId, remoteJid, newText });
+          
+          const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+            body: {
+              action: 'editMessage',
+              channelId,
+              whatsappMessageId,
+              remoteJid,
+              phone: contactPhone,
+              newText,
+            }
+          });
+          
+          if (error) {
+            console.error('[EditMessage] WhatsApp edit error:', error);
+          } else if (!data?.success) {
+            console.warn('[EditMessage] WhatsApp edit failed:', data?.error);
+            // If the provider doesn't support editing, throw an error
+            if (data?.error?.includes('não suporta')) {
+              throw new Error(data.error);
+            }
+          } else {
+            console.log('[EditMessage] WhatsApp edit success');
+          }
+        } catch (e: any) {
+          console.error('[EditMessage] Error calling WhatsApp edit:', e);
+          throw e;
+        }
+      }
+
+      // Update locally
+      const { error } = await supabase
+        .from('messages')
+        .update({ 
+          content: newText,
+        })
+        .eq('id', messageId);
+
+      if (error) throw error;
+      return { messageId, conversationId };
+    },
+    onSuccess: (variables) => {
+      queryClient.invalidateQueries({ queryKey: ['messages', variables.conversationId] });
+    },
+  });
+}
+
 export function useReactToMessage() {
   const queryClient = useQueryClient();
 
