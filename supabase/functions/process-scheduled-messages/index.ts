@@ -21,6 +21,7 @@ interface WhatsAppProvider {
   code: string
   base_url: string
   api_key: string | null
+  admin_token: string | null
 }
 
 interface WhatsAppChannel {
@@ -171,7 +172,7 @@ Deno.serve(async (req) => {
             id,
             instance_id,
             instance_token,
-            provider:whatsapp_providers(code, base_url, api_key)
+            provider:whatsapp_providers(code, base_url, api_key, admin_token)
           `)
           .eq('id', scheduled.channel_id)
           .single()
@@ -238,12 +239,16 @@ Deno.serve(async (req) => {
         let sendResult: { success: boolean; messageId?: string; error?: string }
 
         console.log(`[Scheduled] Sending via provider: ${provider.code}`)
+        
+        // Use api_key or admin_token as fallback
+        const apiKey = provider.api_key || provider.admin_token || ''
+        console.log(`[Scheduled] Using API key: ${apiKey ? 'present' : 'missing'}`)
 
         if (provider.code === 'evolution') {
           sendResult = await sendEvolutionMessage(
             provider.base_url,
             typedChannel.instance_id,
-            provider.api_key || '',
+            apiKey,
             contactPhone,
             scheduled.content,
             scheduled.media_url || undefined
