@@ -311,7 +311,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   // Loading state
   if (loadingConversation) {
     return (
-      <div className="w-[350px] bg-card border-l border-border flex items-center justify-center">
+      <div className="w-[320px] bg-card border-l border-border flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -319,7 +319,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
   if (!conversation || !conversation.contact) {
     return (
-      <div className="w-[350px] bg-card border-l border-border flex items-center justify-center">
+      <div className="w-[320px] bg-card border-l border-border flex items-center justify-center">
         <p className="text-muted-foreground">Conversa não encontrada</p>
       </div>
     );
@@ -359,14 +359,14 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   };
 
   return (
-    <div className="w-[350px] bg-card border-l border-border flex flex-col h-full overflow-hidden">
+    <div className="w-[320px] bg-card border-l border-border flex flex-col h-full overflow-hidden">
       {/* Header: Contact Info - Horizontal Layout */}
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-4">
+      <div className="p-3 border-b border-border">
+        <div className="flex items-center gap-3">
           {/* Avatar - Left side */}
           {contact.avatar_url ? (
             <div 
-              className="w-16 h-16 rounded-full flex-shrink-0 cursor-pointer overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+              className="w-14 h-14 rounded-full flex-shrink-0 cursor-pointer overflow-hidden hover:ring-2 hover:ring-primary transition-all"
               onClick={() => setShowPhotoModal(true)}
             >
               <img 
@@ -376,11 +376,11 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
               />
             </div>
           ) : (
-            <div className="w-16 h-16 rounded-full flex-shrink-0 bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xl font-bold relative">
+            <div className="w-14 h-14 rounded-full flex-shrink-0 bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-lg font-bold relative">
               {contact.full_name?.charAt(0)?.toUpperCase() || '?'}
               {isFetchingPhoto && (
                 <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center">
-                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
                 </div>
               )}
             </div>
@@ -388,18 +388,18 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
           
           {/* Info - Right side */}
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-bold text-foreground truncate">
+            <h3 className="text-sm font-bold text-foreground line-clamp-2 leading-tight">
               {contact.full_name || 'Sem nome'}
             </h3>
             
-            <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-0.5">
-              <Phone size={12} />
-              {formatPhone(contact.phone)}
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+              <Phone size={10} className="flex-shrink-0" />
+              <span className="truncate">{formatPhone(contact.phone)}</span>
             </p>
             
             <button 
               onClick={() => setShowEditModal(true)}
-              className="text-primary hover:text-primary/80 text-xs font-medium mt-1.5"
+              className="text-primary hover:text-primary/80 text-xs font-medium mt-1"
             >
               Editar contato
             </button>
@@ -423,8 +423,8 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
         {/* Lead Status */}
-        <div className="p-4 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        <div className="p-3 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
             Status Lead
           </label>
           <Select 
@@ -432,7 +432,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
             onValueChange={(value) => updateLeadStatus.mutate(value)}
             disabled={updateLeadStatus.isPending}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full h-9 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -449,19 +449,19 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
         </div>
 
         {/* Tags */}
-        <div className="p-4 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        <div className="p-3 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
             Etiquetas
           </label>
           
-          <div className="flex flex-wrap gap-2 mb-3">
+          <div className="flex flex-wrap gap-1.5 mb-2">
             {contactTags.length === 0 ? (
-              <span className="text-sm text-muted-foreground">Nenhuma etiqueta</span>
+              <span className="text-xs text-muted-foreground">Nenhuma etiqueta</span>
             ) : (
               contactTags.map((tag: any) => (
                 <span 
                   key={tag.id}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
                   style={{ 
                     backgroundColor: `${tag.color || '#8B5CF6'}20`,
                     color: tag.color || '#8B5CF6'
@@ -473,7 +473,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
                     className="hover:opacity-70"
                     disabled={removeTag.isPending}
                   >
-                    <X size={12} />
+                    <X size={10} />
                   </button>
                 </span>
               ))
@@ -482,16 +482,16 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
           
           <button
             onClick={() => setShowTagModal(true)}
-            className="text-primary hover:text-primary/80 text-sm font-medium flex items-center gap-1"
+            className="text-primary hover:text-primary/80 text-xs font-medium flex items-center gap-1"
           >
-            <Plus size={14} />
+            <Plus size={12} />
             Adicionar etiqueta
           </button>
         </div>
 
         {/* Assigned User */}
-        <div className="p-4 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        <div className="p-3 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
             Atendente Responsável
           </label>
           <Select 
@@ -499,7 +499,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
             onValueChange={(value) => updateAssignedUser.mutate(value === 'unassigned' ? null : value)}
             disabled={updateAssignedUser.isPending}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full h-9 text-sm">
               <SelectValue placeholder="Selecionar atendente" />
             </SelectTrigger>
             <SelectContent>
@@ -507,10 +507,10 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
               {teamMembers.map((member) => (
                 <SelectItem key={member.id} value={member.id}>
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-[10px]">
                       {member.full_name?.charAt(0)?.toUpperCase() || '?'}
                     </div>
-                    {member.full_name}
+                    <span className="truncate">{member.full_name}</span>
                   </div>
                 </SelectItem>
               ))}
@@ -519,8 +519,8 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
         </div>
 
         {/* Department */}
-        <div className="p-4 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        <div className="p-3 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
             Departamento
           </label>
           <Select 
@@ -528,7 +528,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
             onValueChange={(value) => updateDepartment.mutate(value === 'none' ? null : value)}
             disabled={updateDepartment.isPending}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full h-9 text-sm">
               <SelectValue placeholder="Selecionar departamento" />
             </SelectTrigger>
             <SelectContent>
@@ -543,36 +543,36 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
         </div>
 
         {/* Additional Info */}
-        <div className="p-4 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+        <div className="p-3 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             Informações Adicionais
           </label>
           
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Email:</span>
-              <span className="text-sm text-foreground">
+          <div className="space-y-2.5">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-muted-foreground">Email</span>
+              <span className="text-sm text-foreground break-all">
                 {contact.email || '-'}
               </span>
             </div>
             
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Primeiro contato:</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-muted-foreground">Primeiro contato</span>
               <span className="text-sm text-foreground">
                 {formatDate(contact.first_contact_at)}
               </span>
             </div>
             
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Última interação:</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-muted-foreground">Última interação</span>
               <span className="text-sm text-foreground">
                 {formatDateTime(contact.last_interaction_at || conversation.last_message_at)}
               </span>
             </div>
 
             {contact.origin && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Origem:</span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs text-muted-foreground">Origem</span>
                 <span className="text-sm text-foreground capitalize">
                   {contact.origin}
                 </span>
@@ -583,11 +583,11 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
         {/* Notes */}
         {contact.notes && (
-          <div className="p-4 border-b border-border">
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <div className="p-3 border-b border-border">
+            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
               Observações
             </label>
-            <p className="text-sm text-muted-foreground bg-muted rounded-lg p-3">
+            <p className="text-xs text-muted-foreground bg-muted rounded-lg p-2">
               {contact.notes}
             </p>
           </div>
@@ -595,22 +595,24 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
       </div>
 
       {/* Footer: Action Buttons */}
-      <div className="p-4 border-t border-border space-y-2">
+      <div className="p-3 border-t border-border space-y-1.5">
         <Button
           onClick={() => setShowScheduleModal(true)}
           variant="outline"
-          className="w-full gap-2"
+          size="sm"
+          className="w-full gap-2 h-9 text-xs"
         >
-          <CalendarClock size={18} />
+          <CalendarClock size={14} />
           Agendar mensagem
         </Button>
         
         <Button
           onClick={() => setShowCloseModal(true)}
           variant="ghost"
-          className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 gap-2"
+          size="sm"
+          className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 gap-2 h-9 text-xs"
         >
-          <X size={18} />
+          <X size={14} />
           Fechar conversa
         </Button>
       </div>
