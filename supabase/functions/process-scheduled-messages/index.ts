@@ -9,6 +9,7 @@ interface ScheduledMessage {
   id: string
   content: string
   media_url: string | null
+  message_type: string | null
   scheduled_for: string
   channel_id: string
   contact_id: string
@@ -31,21 +32,69 @@ interface WhatsAppChannel {
   provider: WhatsAppProvider | WhatsAppProvider[] | null
 }
 
-// Send message via Evolution API
+// Send message via Evolution API - supports text, audio, image, document
 async function sendEvolutionMessage(
   baseUrl: string,
   instanceName: string,
   apiKey: string,
   phone: string,
   content: string,
+  messageType: string,
   mediaUrl?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const cleanPhone = phone.replace(/\D/g, '')
     const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
     
-    const url = `${baseUrl}/message/sendText/${instanceName}`
-    console.log(`[Scheduled] Sending via Evolution to ${formattedPhone}`)
+    let url: string
+    let body: Record<string, unknown>
+    
+    console.log(`[Scheduled] Sending ${messageType} via Evolution to ${formattedPhone}`)
+    console.log(`[Scheduled] Media URL: ${mediaUrl || 'none'}`)
+
+    // Determine the endpoint and body based on message type
+    if (mediaUrl && messageType === 'audio') {
+      url = `${baseUrl}/message/sendWhatsAppAudio/${instanceName}`
+      body = {
+        number: formattedPhone,
+        audio: mediaUrl,
+      }
+    } else if (mediaUrl && messageType === 'image') {
+      url = `${baseUrl}/message/sendMedia/${instanceName}`
+      body = {
+        number: formattedPhone,
+        mediatype: 'image',
+        media: mediaUrl,
+        caption: content || undefined,
+      }
+    } else if (mediaUrl && messageType === 'video') {
+      url = `${baseUrl}/message/sendMedia/${instanceName}`
+      body = {
+        number: formattedPhone,
+        mediatype: 'video',
+        media: mediaUrl,
+        caption: content || undefined,
+      }
+    } else if (mediaUrl && messageType === 'document') {
+      url = `${baseUrl}/message/sendMedia/${instanceName}`
+      body = {
+        number: formattedPhone,
+        mediatype: 'document',
+        media: mediaUrl,
+        fileName: 'documento',
+        caption: content || undefined,
+      }
+    } else {
+      // Default: send text
+      url = `${baseUrl}/message/sendText/${instanceName}`
+      body = {
+        number: formattedPhone,
+        text: content,
+      }
+    }
+
+    console.log(`[Scheduled] Evolution URL: ${url}`)
+    console.log(`[Scheduled] Evolution body: ${JSON.stringify(body)}`)
     
     const response = await fetch(url, {
       method: 'POST',
@@ -53,10 +102,7 @@ async function sendEvolutionMessage(
         'Content-Type': 'application/json',
         'apikey': apiKey,
       },
-      body: JSON.stringify({
-        number: formattedPhone,
-        text: content,
-      }),
+      body: JSON.stringify(body),
     })
 
     const data = await response.json()
@@ -65,7 +111,7 @@ async function sendEvolutionMessage(
     if (response.ok && data.key?.id) {
       return { success: true, messageId: data.key.id }
     } else {
-      return { success: false, error: data.message || 'Unknown error' }
+      return { success: false, error: data.message || data.error || 'Unknown error' }
     }
   } catch (error) {
     console.error('[Scheduled] Evolution send error:', error)
@@ -73,29 +119,45 @@ async function sendEvolutionMessage(
   }
 }
 
-// Send message via Z-API
+// Send message via Z-API - supports text, audio, image, document
 async function sendZAPIMessage(
   instanceId: string,
   token: string,
   phone: string,
-  content: string
+  content: string,
+  messageType: string,
+  mediaUrl?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const cleanPhone = phone.replace(/\D/g, '')
     const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
     
-    const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`
-    console.log(`[Scheduled] Sending via Z-API to ${formattedPhone}`)
+    let url: string
+    let body: Record<string, unknown>
+    
+    console.log(`[Scheduled] Sending ${messageType} via Z-API to ${formattedPhone}`)
+
+    if (mediaUrl && messageType === 'audio') {
+      url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-audio`
+      body = { phone: formattedPhone, audio: mediaUrl }
+    } else if (mediaUrl && messageType === 'image') {
+      url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-image`
+      body = { phone: formattedPhone, image: mediaUrl, caption: content || undefined }
+    } else if (mediaUrl && messageType === 'video') {
+      url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-video`
+      body = { phone: formattedPhone, video: mediaUrl, caption: content || undefined }
+    } else if (mediaUrl && messageType === 'document') {
+      url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-document/pdf`
+      body = { phone: formattedPhone, document: mediaUrl, fileName: 'documento' }
+    } else {
+      url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`
+      body = { phone: formattedPhone, message: content }
+    }
     
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        phone: formattedPhone,
-        message: content,
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     })
 
     const data = await response.json()
@@ -244,6 +306,8 @@ Deno.serve(async (req) => {
         const apiKey = provider.api_key || provider.admin_token || ''
         console.log(`[Scheduled] Using API key: ${apiKey ? 'present' : 'missing'}`)
 
+        const msgType = scheduled.message_type || 'text'
+
         if (provider.code === 'evolution') {
           sendResult = await sendEvolutionMessage(
             provider.base_url,
@@ -251,6 +315,7 @@ Deno.serve(async (req) => {
             apiKey,
             contactPhone,
             scheduled.content,
+            msgType,
             scheduled.media_url || undefined
           )
         } else if (provider.code === 'zapi') {
@@ -258,7 +323,9 @@ Deno.serve(async (req) => {
             typedChannel.instance_id,
             typedChannel.instance_token,
             contactPhone,
-            scheduled.content
+            scheduled.content,
+            msgType,
+            scheduled.media_url || undefined
           )
         } else {
           sendResult = { success: false, error: `Provider ${provider.code} not supported` }
