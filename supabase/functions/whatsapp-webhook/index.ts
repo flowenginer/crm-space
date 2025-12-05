@@ -1534,6 +1534,12 @@ function normalizeUAZAPIMessage(payload: any): NormalizedMessage | null {
     console.log(`[Webhook UAZAPI] Ignoring group message from ID: ${from}`);
     return null;
   }
+  
+  // Validate Brazilian phone to prevent LID contacts
+  if (!isValidBrazilianPhone(from)) {
+    console.log(`[Webhook UAZAPI] ⚠️ REJECTING message - Invalid phone (LID?): ${from}`);
+    return null;
+  }
 
   const messageType = detectUAZAPIMessageType(msg);
 
@@ -1595,24 +1601,30 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
 
   const rawRemoteJid = msg.key.remoteJid || "";
   
-  // CORREÇÃO: Verificar se está usando LID e obter o número real de remoteJidAlt
-  let realRemoteJid = rawRemoteJid;
-  if (rawRemoteJid.includes("@lid") && msg.key.remoteJidAlt) {
-    console.log(`[Webhook Evolution] LID detected! Using remoteJidAlt: ${msg.key.remoteJidAlt} instead of: ${rawRemoteJid}`);
-    realRemoteJid = msg.key.remoteJidAlt;
-  }
-  
-  if (realRemoteJid.includes("@g.us")) {
-    console.log(`[Webhook Evolution] Ignoring group message from: ${realRemoteJid}`);
+  // Filter out group messages
+  if (rawRemoteJid.includes("@g.us")) {
+    console.log(`[Webhook Evolution] Ignoring group message from: ${rawRemoteJid}`);
     return null;
   }
   
-  // Extrair número limpo removendo sufixos do WhatsApp
-  let from = realRemoteJid
-    .replace("@s.whatsapp.net", "")
-    .replace("@c.us", "")
-    .replace("@lid", "")
-    .replace(/\D/g, "");
+  // =====================================================
+  // CRITICAL: Phone validation to prevent LID contacts
+  // =====================================================
+  const validPhone = extractValidPhoneFromPayload(msg, rawRemoteJid);
+  
+  if (!validPhone) {
+    // Log the invalid phone for debugging
+    const extractedPhone = rawRemoteJid
+      .replace("@s.whatsapp.net", "")
+      .replace("@c.us", "")
+      .replace("@lid", "")
+      .replace(/\D/g, "");
+    
+    console.log(`[Webhook Evolution] ⚠️ REJECTING message - Invalid phone (LID?): ${extractedPhone}, rawJid: ${rawRemoteJid}, remoteJidAlt: ${msg.key.remoteJidAlt || 'none'}`);
+    return null;
+  }
+  
+  const from = validPhone;
   
   if (from.startsWith("120363")) {
     console.log(`[Webhook Evolution] Ignoring group message from ID: ${from}`);
@@ -1634,7 +1646,7 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
     console.log(`[Webhook Evolution] Found quotedMessageId: ${quotedMessageId}`);
   }
   
-  console.log(`[Webhook Evolution] Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}, HasBase64: ${!!mediaData.base64}, OriginalJid: ${rawRemoteJid}, RealJid: ${realRemoteJid}, QuotedId: ${quotedMessageId || 'none'}, HasReferral: ${!!referralData}`);
+  console.log(`[Webhook Evolution] ✅ Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}, HasBase64: ${!!mediaData.base64}, QuotedId: ${quotedMessageId || 'none'}, HasReferral: ${!!referralData}`);
 
   return {
     id: `evolution_${msg.key.id}`,
