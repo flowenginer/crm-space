@@ -71,3 +71,28 @@ export function useCreateInternalNote() {
     },
   });
 }
+
+export function useUpdateInternalNote() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ noteId, content, conversationId }: { noteId: string; content: string; conversationId: string }) => {
+      const { data, error } = await supabase
+        .from('internal_notes')
+        .update({ content })
+        .eq('id', noteId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { data, conversationId };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['internal-notes', result.conversationId] });
+      toast.success('Nota atualizada');
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar nota');
+    },
+  });
+}

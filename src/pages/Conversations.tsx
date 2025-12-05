@@ -29,6 +29,7 @@ import {
   Trash2,
   CornerDownRight,
   Download,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -66,7 +67,7 @@ import { ConversationSidebar } from '@/components/conversations/ConversationSide
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { supabase } from '@/integrations/supabase/client';
-import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
+import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
 import { formatDistanceToNow, format, isToday, isYesterday, startOfDay, startOfWeek, startOfMonth, subDays, subWeeks, subMonths, endOfDay, endOfWeek, endOfMonth, isWithinInterval } from 'date-fns';
@@ -688,18 +689,45 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
 // Internal Note Card Component
 interface InternalNoteCardProps {
   note: InternalNote;
+  onUpdate: (noteId: string, content: string) => void;
 }
 
-function InternalNoteCard({ note }: InternalNoteCardProps) {
+function InternalNoteCard({ note, onUpdate }: InternalNoteCardProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(note.content);
+
+  const handleSave = () => {
+    if (editContent.trim() && editContent !== note.content) {
+      onUpdate(note.id, editContent.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditContent(note.content);
+    setIsEditing(false);
+  };
+
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] bg-amber-400 dark:bg-amber-500 rounded-2xl rounded-tr-sm p-4 shadow-lg">
         {/* Header */}
-        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-amber-500/30 dark:border-amber-600/30">
-          <StickyNote size={14} className="text-amber-800 dark:text-amber-900" />
-          <span className="text-xs font-bold text-amber-800 dark:text-amber-900">
-            Nota interna
-          </span>
+        <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-amber-500/30 dark:border-amber-600/30">
+          <div className="flex items-center gap-2">
+            <StickyNote size={14} className="text-amber-800 dark:text-amber-900" />
+            <span className="text-xs font-bold text-amber-800 dark:text-amber-900">
+              Nota interna
+            </span>
+          </div>
+          {!isEditing && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="p-1 hover:bg-amber-500/50 rounded transition-colors"
+              title="Editar nota"
+            >
+              <Pencil size={12} className="text-amber-800 dark:text-amber-900" />
+            </button>
+          )}
         </div>
 
         {/* Author */}
@@ -708,9 +736,39 @@ function InternalNoteCard({ note }: InternalNoteCardProps) {
         </div>
 
         {/* Content */}
-        <p className="text-amber-900 whitespace-pre-wrap text-sm">
-          {note.content}
-        </p>
+        {isEditing ? (
+          <div className="space-y-2">
+            <Textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="min-h-[60px] bg-amber-100 border-amber-600 text-amber-900 text-sm resize-none"
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleCancel}
+                className="h-7 px-2 text-xs text-amber-800 hover:bg-amber-500/50"
+              >
+                <X size={12} className="mr-1" />
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSave}
+                className="h-7 px-2 text-xs bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                <Check size={12} className="mr-1" />
+                Salvar
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-amber-900 whitespace-pre-wrap text-sm">
+            {note.content}
+          </p>
+        )}
 
         {/* Time */}
         <div className="text-right mt-2">
@@ -776,6 +834,7 @@ export default function Conversations() {
   const deleteMessage = useDeleteMessage();
   const reactToMessage = useReactToMessage();
   const createInternalNote = useCreateInternalNote();
+  const updateInternalNote = useUpdateInternalNote();
   const updateConversation = useUpdateConversation();
 
   // Realtime subscriptions
@@ -1827,7 +1886,15 @@ export default function Conversations() {
 
                   {(messageSearchQuery ? filteredChatItems : allChatItems).map((item) => (
                     item.itemType === 'note' ? (
-                      <InternalNoteCard key={`note-${item.id}`} note={item as InternalNote} />
+                      <InternalNoteCard 
+                        key={`note-${item.id}`} 
+                        note={item as InternalNote} 
+                        onUpdate={(noteId, content) => updateInternalNote.mutate({ 
+                          noteId, 
+                          content, 
+                          conversationId: selectedConversationId! 
+                        })}
+                      />
                     ) : (
                       <MessageBubble 
                         key={`msg-${item.id}`} 
