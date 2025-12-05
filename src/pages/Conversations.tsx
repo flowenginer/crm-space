@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search,
   Edit3,
@@ -940,7 +940,8 @@ export default function Conversations() {
     search: window.location.search
   });
 
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   // Derive selected conversation ID directly from URL - no state needed
   const selectedConversationId = searchParams.get('id');
   
@@ -1495,15 +1496,19 @@ export default function Conversations() {
     
     const currentId = searchParams.get('id');
     if (currentId !== conv.id) {
-      console.log('[DEBUG] 🚀 Calling setSearchParams with:', { id: conv.id });
-      setSearchParams({ id: conv.id }, { replace: true });
-      console.log('[DEBUG] ✅ setSearchParams called');
+      console.log('[DEBUG] 🚀 Navigating with object format');
+      // Use navigate with object to prevent URL encoding issues
+      navigate(
+        { pathname: '/conversations', search: `?id=${conv.id}` },
+        { replace: true }
+      );
+      console.log('[DEBUG] ✅ navigate called');
     }
     setIsInternalNoteMode(false);
     if (isMobile) {
       setShowMobileChat(true);
     }
-  }, [searchParams, setSearchParams, isMobile]);
+  }, [searchParams, navigate, isMobile]);
 
   const handleBackToList = () => {
     setShowMobileChat(false);
@@ -2863,7 +2868,10 @@ export default function Conversations() {
           /* Empty State with Start Conversation */
           <StartConversation 
             onConversationCreated={(conversationId) => {
-              setSearchParams({ id: conversationId }, { replace: true });
+              navigate(
+                { pathname: '/conversations', search: `?id=${conversationId}` },
+                { replace: true }
+              );
             }}
           />
         )}
