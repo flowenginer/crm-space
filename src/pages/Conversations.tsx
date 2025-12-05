@@ -903,9 +903,10 @@ export default function Conversations() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const dragCounterRef = useRef(0);
+  const dragCounterRef = useRef<number>(0);
   const isSendingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
 
   // Fetch real conversations from database with filter
@@ -1353,6 +1354,10 @@ export default function Conversations() {
   // Message action handlers
   const handleReplyMessage = (message: Message) => {
     setReplyingTo(message);
+    // Focus the message input after setting reply
+    setTimeout(() => {
+      messageInputRef.current?.focus();
+    }, 0);
   };
 
   const handleDeleteMessage = async (message: Message) => {
@@ -2247,6 +2252,7 @@ export default function Conversations() {
 
                   <div className="flex-1">
                     <Textarea
+                      ref={messageInputRef}
                       placeholder={isInternalNoteMode ? "Digite sua nota interna..." : "Digite sua mensagem..."}
                       value={messageInput}
                       onChange={(e) => {
