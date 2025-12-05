@@ -406,11 +406,12 @@ interface MessageBubbleProps {
   onDelete?: (message: Message) => void;
   onEdit?: (message: Message, newText: string) => void;
   onReact?: (messageId: string, emoji: string) => void;
+  onScrollToMessage?: (messageId: string) => void;
 }
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
-function MessageBubble({ message, onReply, onDelete, onEdit, onReact }: MessageBubbleProps) {
+function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollToMessage }: MessageBubbleProps) {
   const [showActions, setShowActions] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
@@ -457,6 +458,7 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact }: MessageB
   return (
     <>
       <div 
+        data-message-id={message.id}
         className={cn('flex group items-end gap-1', isMe ? 'justify-end' : 'justify-start')}
         onMouseEnter={() => setShowActions(true)}
         onMouseLeave={() => { 
@@ -495,14 +497,15 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact }: MessageB
         )}
 
         <div className="flex flex-col max-w-[70%]">
-          {/* Reply reference */}
+          {/* Reply reference - clickable to scroll to original message */}
           {replyTo && !isDeleted && (
             <div 
+              onClick={() => onScrollToMessage?.(message.reply_to_message_id!)}
               className={cn(
-                'flex items-center gap-2 px-3 py-1.5 mb-1 rounded-t-xl text-xs border-l-2',
+                'flex items-center gap-2 px-3 py-1.5 mb-1 rounded-t-xl text-xs border-l-2 cursor-pointer transition-colors',
                 isMe 
-                  ? 'bg-purple-700/30 border-purple-400 text-purple-200' 
-                  : 'bg-muted/50 border-primary text-muted-foreground'
+                  ? 'bg-purple-700/30 border-purple-400 text-purple-200 hover:bg-purple-700/50' 
+                  : 'bg-muted/50 border-primary text-muted-foreground hover:bg-muted'
               )}
             >
               <CornerDownRight size={12} className="flex-shrink-0" />
@@ -1421,6 +1424,19 @@ export default function Conversations() {
     reactToMessage.mutate({ messageId, conversationId: selectedConversationId, emoji, userId: user.id });
   };
 
+  // Scroll to message when clicking on reply reference
+  const handleScrollToMessage = (messageId: string) => {
+    const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Add highlight effect
+      messageElement.classList.add('animate-pulse', 'ring-2', 'ring-primary', 'ring-offset-2', 'rounded-lg');
+      setTimeout(() => {
+        messageElement.classList.remove('animate-pulse', 'ring-2', 'ring-primary', 'ring-offset-2', 'rounded-lg');
+      }, 2000);
+    }
+  };
+
   // Emoji picker handler
   const handleEmojiClick = (emojiData: EmojiClickData) => {
     setMessageInput(prev => prev + emojiData.emoji);
@@ -2068,6 +2084,7 @@ export default function Conversations() {
                         onDelete={handleDeleteMessage}
                         onEdit={handleEditMessage}
                         onReact={handleReactToMessage}
+                        onScrollToMessage={handleScrollToMessage}
                       />
                     )
                   ))}
