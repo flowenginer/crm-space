@@ -86,10 +86,11 @@ async function sendEvolutionMessage(
   let endpoint = '';
   let body: any = {};
   
-  // Add quoted context if available
+  // Add quoted context if available - include remoteJid for media messages
   const quotedContext = quotedMessageId ? {
     quoted: {
       key: {
+        remoteJid: formattedPhone,
         id: quotedMessageId
       }
     }
@@ -176,10 +177,11 @@ async function sendUAZAPIMessage(
   let endpoint = '';
   let body: any = {};
   
-  // Add quoted context if available
+  // Add quoted context if available - include remoteJid for media messages
   const quotedContext = quotedMessageId ? {
     quoted: {
       key: {
+        remoteJid: formattedPhone,
         id: quotedMessageId
       }
     }
