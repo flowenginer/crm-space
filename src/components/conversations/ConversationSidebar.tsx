@@ -386,15 +386,15 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
             </div>
           )}
           
-          {/* Info - Right side */}
-          <div className="flex-1 min-w-0">
+          {/* Info - Centered in remaining space */}
+          <div className="flex-1 flex flex-col items-center justify-center text-center">
             <h3 className="text-sm font-bold text-foreground line-clamp-2 leading-tight">
               {contact.full_name || 'Sem nome'}
             </h3>
             
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
               <Phone size={10} className="flex-shrink-0" />
-              <span className="truncate">{formatPhone(contact.phone)}</span>
+              <span>{formatPhone(contact.phone)}</span>
             </p>
             
             <button 
