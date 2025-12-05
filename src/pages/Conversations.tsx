@@ -80,7 +80,7 @@ import { ptBR } from 'date-fns/locale';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { toast } from 'sonner';
 import { useTeam } from '@/hooks/useTeam';
-import { useTags, useAddTagToContact, useRemoveTagFromContact } from '@/hooks/useTags';
+import { useTags, useAddTagToContact, useRemoveTagFromContact, useCreateTag } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
@@ -924,6 +924,10 @@ export default function Conversations() {
     departmentId: 'all',
   });
   const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
+  const [showCreateTagModal, setShowCreateTagModal] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#8B5CF6');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -943,6 +947,7 @@ export default function Conversations() {
   const { data: tags = [] } = useTags();
   const addTagToContact = useAddTagToContact();
   const removeTagFromContact = useRemoveTagFromContact();
+  const createTag = useCreateTag();
   const { data: departments = [] } = useDepartments();
   const { data: channels = [] } = useChannels();
   const { data: pinnedConversations = [] } = usePinnedConversations();
@@ -2015,38 +2020,72 @@ export default function Conversations() {
                         Etiqueta
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-64 p-2" align="start">
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground mb-2">Adicionar etiqueta</p>
-                        {tags
-                          .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
-                          .slice(0, 10)
-                          .map((tag: any) => (
-                            <button
-                              key={tag.id}
-                              onClick={() => {
-                                if (selectedConversation?.contact?.id) {
-                                  addTagToContact.mutate(
-                                    { contactId: selectedConversation.contact.id, tagId: tag.id },
-                                    { onSuccess: () => { refetchContactTags(); setShowHeaderTagPopover(false); } }
-                                  );
-                                }
-                              }}
-                              disabled={addTagToContact.isPending}
-                              className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-left text-sm"
-                            >
-                              <span 
-                                className="w-3 h-3 rounded-full flex-shrink-0" 
-                                style={{ backgroundColor: tag.color || '#8B5CF6' }}
-                              />
-                              <span className="truncate">{tag.name}</span>
-                            </button>
-                          ))}
-                        {tags.filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id)).length === 0 && (
-                          <p className="text-xs text-muted-foreground text-center py-2">
-                            Todas etiquetas adicionadas
-                          </p>
-                        )}
+                    <PopoverContent className="w-72 p-3" align="start">
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">Adicionar etiqueta</p>
+                        
+                        {/* Search Input */}
+                        <div className="relative">
+                          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            type="text"
+                            placeholder="Buscar etiqueta..."
+                            value={tagSearchQuery}
+                            onChange={(e) => setTagSearchQuery(e.target.value)}
+                            className="h-8 pl-8 text-sm"
+                          />
+                        </div>
+                        
+                        {/* Tags List */}
+                        <div className="max-h-48 overflow-y-auto space-y-0.5">
+                          {tags
+                            .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
+                            .filter((t: any) => t.name.toLowerCase().includes(tagSearchQuery.toLowerCase()))
+                            .slice(0, 15)
+                            .map((tag: any) => (
+                              <button
+                                key={tag.id}
+                                onClick={() => {
+                                  if (selectedConversation?.contact?.id) {
+                                    addTagToContact.mutate(
+                                      { contactId: selectedConversation.contact.id, tagId: tag.id },
+                                      { onSuccess: () => { refetchContactTags(); setShowHeaderTagPopover(false); setTagSearchQuery(''); } }
+                                    );
+                                  }
+                                }}
+                                disabled={addTagToContact.isPending}
+                                className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-left text-sm"
+                              >
+                                <span 
+                                  className="w-3 h-3 rounded-full flex-shrink-0" 
+                                  style={{ backgroundColor: tag.color || '#8B5CF6' }}
+                                />
+                                <span className="truncate">{tag.name}</span>
+                              </button>
+                            ))}
+                          {tags
+                            .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
+                            .filter((t: any) => t.name.toLowerCase().includes(tagSearchQuery.toLowerCase()))
+                            .length === 0 && (
+                            <p className="text-xs text-muted-foreground text-center py-2">
+                              {tagSearchQuery ? 'Nenhuma etiqueta encontrada' : 'Todas etiquetas adicionadas'}
+                            </p>
+                          )}
+                        </div>
+                        
+                        {/* Create Tag Button */}
+                        <div className="pt-2 border-t">
+                          <button
+                            onClick={() => {
+                              setShowHeaderTagPopover(false);
+                              setShowCreateTagModal(true);
+                            }}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-left text-sm text-primary"
+                          >
+                            <Plus size={14} />
+                            <span>Criar nova etiqueta</span>
+                          </button>
+                        </div>
                       </div>
                     </PopoverContent>
                   </Popover>
@@ -2593,6 +2632,82 @@ export default function Conversations() {
             </Button>
             <Button className="btn-gradient text-white" onClick={handleApplyFilters}>
               Aplicar Filtros
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Tag Modal */}
+      <Dialog open={showCreateTagModal} onOpenChange={setShowCreateTagModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Criar nova etiqueta</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nome da etiqueta</label>
+              <Input
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                placeholder="Ex: Cliente VIP"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Cor</label>
+              <div className="flex gap-2 flex-wrap">
+                {['#8B5CF6', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#6366F1', '#14B8A6'].map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setNewTagColor(color)}
+                    className={cn(
+                      'w-8 h-8 rounded-full transition-all',
+                      newTagColor === color ? 'ring-2 ring-offset-2 ring-primary' : 'hover:scale-110'
+                    )}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="pt-2">
+              <p className="text-sm text-muted-foreground">Pré-visualização:</p>
+              <span 
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium mt-2"
+                style={{ 
+                  backgroundColor: `${newTagColor}20`,
+                  color: newTagColor
+                }}
+              >
+                {newTagName || 'Nome da etiqueta'}
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setShowCreateTagModal(false); setNewTagName(''); setNewTagColor('#8B5CF6'); }}>
+              Cancelar
+            </Button>
+            <Button 
+              className="btn-gradient text-white"
+              onClick={() => {
+                if (!newTagName.trim()) {
+                  toast.error('Digite um nome para a etiqueta');
+                  return;
+                }
+                createTag.mutate(
+                  { name: newTagName.trim(), color: newTagColor },
+                  {
+                    onSuccess: () => {
+                      toast.success('Etiqueta criada com sucesso!');
+                      setShowCreateTagModal(false);
+                      setNewTagName('');
+                      setNewTagColor('#8B5CF6');
+                    },
+                    onError: () => toast.error('Erro ao criar etiqueta'),
+                  }
+                );
+              }}
+              disabled={createTag.isPending || !newTagName.trim()}
+            >
+              {createTag.isPending ? 'Criando...' : 'Criar etiqueta'}
             </Button>
           </DialogFooter>
         </DialogContent>
