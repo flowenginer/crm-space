@@ -1004,6 +1004,42 @@ export default function Conversations() {
     },
   });
 
+  // Fetch last message for each conversation (for not_replied and client_not_replied filters)
+  const conversationIds = conversations.map(c => c.id);
+  const { data: lastMessages = [] } = useQuery({
+    queryKey: ['last-messages', conversationIds.join(',')],
+    queryFn: async () => {
+      if (conversationIds.length === 0) return [];
+      
+      // Get the last message for each conversation
+      const results: { conversation_id: string; is_from_me: boolean }[] = [];
+      
+      for (const convId of conversationIds) {
+        const { data } = await supabase
+          .from('messages')
+          .select('conversation_id, is_from_me')
+          .eq('conversation_id', convId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (data) {
+          results.push({ conversation_id: data.conversation_id, is_from_me: data.is_from_me ?? false });
+        }
+      }
+      
+      return results;
+    },
+    enabled: conversationIds.length > 0 && (sortFilter === 'not_replied' || sortFilter === 'client_not_replied'),
+  });
+
+  // Create a map for quick lookup of last message info
+  const lastMessageMap = useMemo(() => {
+    const map = new Map<string, boolean>();
+    lastMessages.forEach(m => map.set(m.conversation_id, m.is_from_me));
+    return map;
+  }, [lastMessages]);
+
   // Realtime subscriptions
   useRealtimeMessages(selectedConversationId);
   useRealtimeConversations();
@@ -1228,6 +1264,20 @@ export default function Conversations() {
             if (a.is_unread && !b.is_unread) return -1;
             if (!a.is_unread && b.is_unread) return 1;
             return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+          case 'not_replied':
+            // Conversations where last message is from client (not from me) first
+            const aLastIsFromClient = lastMessageMap.has(a.id) && !lastMessageMap.get(a.id);
+            const bLastIsFromClient = lastMessageMap.has(b.id) && !lastMessageMap.get(b.id);
+            if (aLastIsFromClient && !bLastIsFromClient) return -1;
+            if (!aLastIsFromClient && bLastIsFromClient) return 1;
+            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+          case 'client_not_replied':
+            // Conversations where last message is from me first
+            const aLastIsFromMe = lastMessageMap.has(a.id) && lastMessageMap.get(a.id);
+            const bLastIsFromMe = lastMessageMap.has(b.id) && lastMessageMap.get(b.id);
+            if (aLastIsFromMe && !bLastIsFromMe) return -1;
+            if (!aLastIsFromMe && bLastIsFromMe) return 1;
+            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
           case 'oldest':
             return new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
           case 'newest':
@@ -1235,7 +1285,7 @@ export default function Conversations() {
             return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
         }
       });
-  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter, customDateRange, pinnedConversations, quickFilter]);
+  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter, customDateRange, pinnedConversations, quickFilter, lastMessageMap]);
 
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
@@ -1942,6 +1992,8 @@ export default function Conversations() {
                 <SelectItem value="newest">Mais novas</SelectItem>
                 <SelectItem value="oldest">Mais antigas</SelectItem>
                 <SelectItem value="unread">Não lidas</SelectItem>
+                <SelectItem value="not_replied">Não respondidas</SelectItem>
+                <SelectItem value="client_not_replied">Cliente não respondeu</SelectItem>
               </SelectContent>
             </Select>
 
@@ -2004,14 +2056,14 @@ export default function Conversations() {
                 key={filter}
                 onClick={() => setQuickFilter(filter)}
                 className={cn(
-                  'flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-colors relative flex flex-col items-center gap-0.5',
+                  'flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-colors relative flex items-center justify-center gap-1.5',
                   quickFilter === filter
                     ? 'text-primary bg-accent'
                     : 'text-muted-foreground hover:bg-muted'
                 )}
               >
                 <span>{filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : 'Não atribuídas'}</span>
-                <AnimatedCounter value={filterCounts[filter]} className="text-[10px] opacity-70" />
+                <AnimatedCounter value={filterCounts[filter]} className="text-xs opacity-70" />
                 {/* Red notification badge for pinned conversations with unread messages */}
                 {filter === 'pinned' && quickFilter !== 'pinned' && pinnedUnreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
