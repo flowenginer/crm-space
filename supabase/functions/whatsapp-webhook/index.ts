@@ -399,13 +399,31 @@ serve(async (req) => {
     // Determine event type
     const eventType = getEventType(provider, payload);
     
-    // Log webhook for debugging
-    await supabase.from("webhook_logs").insert({
-      provider,
-      event_type: eventType,
-      instance_id: instanceId,
-      payload,
-    });
+    // =====================================================
+    // OTIMIZAÇÃO: Não logar eventos de presença/typing/qrcode
+    // Esses eventos são muito frequentes e sobrecarregam o banco
+    // =====================================================
+    const skipLogEvents = [
+      'presence.update', 'presence_update', 'PRESENCE_UPDATE',
+      'composing', 'recording', 'available', 'unavailable',
+      'qrcode.updated', 'qrcode_updated', 'QRCODE_UPDATED'
+    ];
+    
+    const normalizedEventType = eventType?.toLowerCase().replace(/_/g, '.') || '';
+    const shouldLog = !skipLogEvents.some(e => e.toLowerCase() === normalizedEventType) && 
+                      !normalizedEventType.includes('presence') &&
+                      !normalizedEventType.includes('typing') &&
+                      !normalizedEventType.includes('qrcode');
+    
+    if (shouldLog) {
+      // Log webhook for debugging (only important events)
+      await supabase.from("webhook_logs").insert({
+        provider,
+        event_type: eventType,
+        instance_id: instanceId,
+        payload,
+      });
+    }
 
     // Handle connection status updates
     if (isConnectionEvent(provider, payload)) {
