@@ -400,28 +400,54 @@ serve(async (req) => {
     const eventType = getEventType(provider, payload);
     
     // =====================================================
-    // OTIMIZAÇÃO: Não logar eventos de presença/typing/qrcode
-    // Esses eventos são muito frequentes e sobrecarregam o banco
+    // OTIMIZAÇÃO CRÍTICA: Filtrar eventos que sobrecarregam o banco
+    // Lista expandida baseada em análise de logs (32k+ eventos/dia)
     // =====================================================
-    const skipLogEvents = [
-      'presence.update', 'presence_update', 'PRESENCE_UPDATE',
-      'composing', 'recording', 'available', 'unavailable',
-      'qrcode.updated', 'qrcode_updated', 'QRCODE_UPDATED'
+    const normalizedEventType = eventType?.toLowerCase().replace(/_/g, '.') || '';
+    
+    // Eventos que NUNCA devem ser logados (alta frequência, baixo valor)
+    const neverLogPatterns = [
+      'presence', 'typing', 'composing', 'recording', 'available', 'unavailable',
+      'qrcode', 'connection', 'connecting', 'close', 'open',
+      'chats.set', 'chats.upsert', 'chats.update', 'chats.delete',
+      'contacts.set', 'contacts.upsert', 'contacts.update',
+      'groups.upsert', 'groups.update', 'group.participants',
+      'labels.edit', 'labels.association',
+      'call', 'blocklist'
     ];
     
-    const normalizedEventType = eventType?.toLowerCase().replace(/_/g, '.') || '';
-    const shouldLog = !skipLogEvents.some(e => e.toLowerCase() === normalizedEventType) && 
-                      !normalizedEventType.includes('presence') &&
-                      !normalizedEventType.includes('typing') &&
-                      !normalizedEventType.includes('qrcode');
+    // Verificar se deve pular o log
+    const shouldSkipLog = neverLogPatterns.some(pattern => 
+      normalizedEventType.includes(pattern)
+    );
+    
+    // messages.update só deve ser logado se for status importante (delivered, read, failed)
+    // Não logar status intermediários que geram muito volume
+    const isMessageUpdate = normalizedEventType.includes('messages.update');
+    const isImportantStatus = isMessageUpdate && payload.data?.some?.((item: any) => 
+      ['READ', 'DELIVERY_ACK', 'PLAYED', 'FAILED', 'ERROR'].includes(item?.update?.status)
+    );
+    
+    // Só logar eventos de mensagem importantes
+    const isImportantMessageEvent = 
+      normalizedEventType.includes('messages.upsert') || 
+      normalizedEventType.includes('send.message');
+    
+    const shouldLog = !shouldSkipLog && (isImportantMessageEvent || isImportantStatus);
     
     if (shouldLog) {
-      // Log webhook for debugging (only important events)
+      // Log webhook apenas para eventos importantes (reduz ~95% do volume)
       await supabase.from("webhook_logs").insert({
         provider,
         event_type: eventType,
         instance_id: instanceId,
-        payload,
+        payload: { 
+          // Resumir payload para economizar espaço
+          event: eventType,
+          from: payload.data?.[0]?.key?.remoteJid || payload.data?.key?.remoteJid,
+          isFromMe: payload.data?.[0]?.key?.fromMe || payload.data?.key?.fromMe,
+          type: payload.data?.[0]?.message ? Object.keys(payload.data[0].message)[0] : 'unknown'
+        },
       });
     }
 
