@@ -415,7 +415,6 @@ export function ScheduleMessageModal({
                   type="date"
                   value={scheduledDate}
                   onChange={(e) => setScheduledDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
                   className="bg-muted border-border"
                 />
               </div>
