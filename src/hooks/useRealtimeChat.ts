@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 
 interface TypingUser {
   userId: string;
@@ -27,16 +26,8 @@ export function useRealtimeMessages(conversationId: string | null) {
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          console.log('New message received:', payload);
           // Invalidate messages query to refresh the list
           queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
-          
-          // Show toast for messages not from the current user
-          if (payload.new && !payload.new.is_from_me) {
-            toast.info('Nova mensagem recebida', {
-              description: payload.new.content?.substring(0, 50) || 'Mídia recebida',
-            });
-          }
         }
       )
       .on(
