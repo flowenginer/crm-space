@@ -30,6 +30,8 @@ import {
   CornerDownRight,
   Download,
   Pencil,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -78,6 +80,7 @@ import { useTeam } from '@/hooks/useTeam';
 import { useTags } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
+import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
 
 // Helper function to linkify URLs in text
 const linkifyText = (text: string) => {
@@ -252,10 +255,12 @@ const mockMessages = [
 interface ConversationItemProps {
   conversation: Conversation;
   isSelected: boolean;
+  isPinned: boolean;
   onClick: () => void;
+  onTogglePin: () => void;
 }
 
-function ConversationItem({ conversation, isSelected, onClick }: ConversationItemProps) {
+function ConversationItem({ conversation, isSelected, isPinned, onClick, onTogglePin }: ConversationItemProps) {
   const contactName = conversation.contact?.full_name || 'Contato';
   const isOnline = conversation.contact?.is_online || false;
   const isUnread = conversation.is_unread || false;
@@ -285,7 +290,7 @@ function ConversationItem({ conversation, isSelected, onClick }: ConversationIte
     <div
       onClick={onClick}
       className={cn(
-        'p-4 border-b border-border/50 cursor-pointer transition-all duration-200',
+        'p-4 border-b border-border/50 cursor-pointer transition-all duration-200 group',
         isSelected ? 'bg-accent' : isUnread ? 'bg-purple-500/10' : 'hover:bg-muted/50'
       )}
     >
@@ -311,16 +316,37 @@ function ConversationItem({ conversation, isSelected, onClick }: ConversationIte
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className={cn(
-              'text-sm truncate',
-              isUnread ? 'font-semibold text-foreground' : 'font-medium text-foreground/80'
-            )}>
-              {contactName}
-            </h3>
-            <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
-              {formatTime(conversation.last_message_at)}
-            </span>
+          <div className="flex items-center justify-between mb-1 group/header">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {isPinned && (
+                <Pin size={12} className="text-primary flex-shrink-0" />
+              )}
+              <h3 className={cn(
+                'text-sm truncate',
+                isUnread ? 'font-semibold text-foreground' : 'font-medium text-foreground/80'
+              )}>
+                {contactName}
+              </h3>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePin();
+                }}
+                className="p-1 rounded opacity-0 group-hover/header:opacity-100 hover:bg-muted transition-all"
+                title={isPinned ? 'Desafixar' : 'Fixar'}
+              >
+                {isPinned ? (
+                  <PinOff size={14} className="text-muted-foreground" />
+                ) : (
+                  <Pin size={14} className="text-muted-foreground" />
+                )}
+              </button>
+              <span className="text-xs text-muted-foreground">
+                {formatTime(conversation.last_message_at)}
+              </span>
+            </div>
           </div>
 
           <p className={cn(
@@ -793,7 +819,7 @@ export default function Conversations() {
   const [customDateRange, setCustomDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
   const [sortFilter, setSortFilter] = useState('newest');
-  const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned'>('all');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -823,13 +849,16 @@ export default function Conversations() {
   const isMobile = useIsMobile();
 
   // Fetch real conversations from database with filter
-  const { data: conversations = [], isLoading: conversationsLoading } = useConversations(quickFilter);
+  const assignmentFilter: AssignmentFilter = quickFilter === 'pinned' ? 'all' : quickFilter;
+  const { data: conversations = [], isLoading: conversationsLoading } = useConversations(assignmentFilter);
   const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedConversationId);
   const { data: internalNotes = [], isLoading: notesLoading } = useInternalNotes(selectedConversationId);
   const { data: teamMembers = [] } = useTeam();
   const { data: tags = [] } = useTags();
   const { data: departments = [] } = useDepartments();
   const { data: channels = [] } = useChannels();
+  const { data: pinnedConversations = [] } = usePinnedConversations();
+  const { isPinned, togglePin } = useTogglePinConversation();
   const sendMessage = useSendMessage();
   const deleteMessage = useDeleteMessage();
   const reactToMessage = useReactToMessage();
@@ -974,11 +1003,18 @@ export default function Conversations() {
 
   // Filter conversations based on all filters (search, channel, sort, advanced, date)
   const filteredConversations = useMemo(() => {
+    const pinnedIds = new Set(pinnedConversations.map(p => p.conversation_id));
+    
     return conversations
       .filter((conv) => {
         const contactName = conv.contact?.full_name || '';
         const contactPhone = conv.contact?.phone || '';
         const firstContactDate = conv.contact?.first_contact_at || conv.contact?.created_at;
+        
+        // Pinned filter
+        if (quickFilter === 'pinned' && !pinnedIds.has(conv.id)) {
+          return false;
+        }
         
         // Date filter (MASTER filter - applied first)
         if (!isWithinDateFilter(firstContactDate)) {
@@ -1022,6 +1058,12 @@ export default function Conversations() {
         return true;
       })
       .sort((a, b) => {
+        // Pinned conversations always first
+        const aIsPinned = pinnedIds.has(a.id);
+        const bIsPinned = pinnedIds.has(b.id);
+        if (aIsPinned && !bIsPinned) return -1;
+        if (!aIsPinned && bIsPinned) return 1;
+        
         switch (sortFilter) {
           case 'unread':
             // Unread first, then by date
@@ -1035,7 +1077,7 @@ export default function Conversations() {
             return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
         }
       });
-  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter, customDateRange]);
+  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter, customDateRange, pinnedConversations, quickFilter]);
 
   // Conversation action handlers
   const handleMarkAsUnread = () => {
@@ -1689,7 +1731,7 @@ export default function Conversations() {
 
           {/* Quick Filters */}
           <div className="flex gap-2">
-            {(['all', 'mine', 'unassigned'] as const).map((filter) => (
+            {(['all', 'pinned', 'mine', 'unassigned'] as const).map((filter) => (
               <button
                 key={filter}
                 onClick={() => setQuickFilter(filter)}
@@ -1700,7 +1742,7 @@ export default function Conversations() {
                     : 'text-muted-foreground hover:bg-muted'
                 )}
               >
-                {filter === 'all' ? 'Todas' : filter === 'mine' ? 'Minhas' : 'Não atribuídas'}
+                {filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : 'Não atribuídas'}
               </button>
             ))}
           </div>
@@ -1723,7 +1765,12 @@ export default function Conversations() {
                 key={conv.id}
                 conversation={conv}
                 isSelected={selectedConversationId === conv.id}
+                isPinned={isPinned(conv.id)}
                 onClick={() => handleSelectConversation(conv)}
+                onTogglePin={() => {
+                  togglePin(conv.id);
+                  toast.success(isPinned(conv.id) ? 'Conversa desafixada' : 'Conversa fixada');
+                }}
               />
             ))
           )}
