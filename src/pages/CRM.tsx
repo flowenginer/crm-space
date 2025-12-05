@@ -282,12 +282,34 @@ export default function CRM() {
             {teamMembers?.slice(0, 5).map((member) => (
               <div
                 key={member.id}
-                className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-pink-500 border-2 border-background flex items-center justify-center text-white text-xs font-bold shadow-lg hover:z-10 transition-all cursor-pointer hover:scale-110"
-                title={member.full_name || 'Usuário'}
+                onClick={() => {
+                  if (filterAssignedTo === member.id) {
+                    setFilterAssignedTo(null);
+                  } else {
+                    setFilterAssignedTo(member.id);
+                  }
+                }}
+                className={cn(
+                  "w-9 h-9 rounded-full bg-gradient-to-br from-primary to-pink-500 border-2 flex items-center justify-center text-white text-xs font-bold shadow-lg hover:z-10 transition-all cursor-pointer hover:scale-110",
+                  filterAssignedTo === member.id 
+                    ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background scale-110 z-10" 
+                    : "border-background"
+                )}
+                title={`${member.full_name || 'Usuário'} - Clique para filtrar`}
               >
                 {member.full_name?.charAt(0).toUpperCase() || 'U'}
               </div>
             ))}
+            {filterAssignedTo && (
+              <button
+                onClick={() => setFilterAssignedTo(null)}
+                className="ml-2 px-2 py-1 text-xs bg-muted hover:bg-muted/80 rounded-full text-muted-foreground flex items-center gap-1"
+                title="Limpar filtro"
+              >
+                <X size={12} />
+                Limpar
+              </button>
+            )}
           </div>
 
           <Button onClick={() => { setInitialStageId(null); setShowAddDealModal(true); }} className="btn-gradient">
