@@ -325,14 +325,59 @@ serve(async (req) => {
       console.log(`[Webhook] Processing fromMe message to: ${normalizedMessage.from}`);
       
       // Para mensagens fromMe, o "from" é o destinatário (remoteJid)
-      const recipientPhone = normalizedMessage.from;
+      let recipientPhone = normalizedMessage.from;
       
-      // Buscar contato pelo telefone do destinatário
-      const { data: contact } = await supabase
+      // =====================================================
+      // CORREÇÃO LID: Se o telefone parece ser um LID (não é um número válido),
+      // buscar a conversa mais recente do canal para encontrar o contato real
+      // =====================================================
+      let contact = null;
+      let conversation = null;
+      
+      // Tentar buscar contato pelo telefone diretamente
+      const { data: directContact } = await supabase
         .from("contacts")
         .select("id")
         .eq("phone", recipientPhone)
         .single();
+      
+      if (directContact) {
+        contact = directContact;
+        // Buscar conversa existente com esse contato
+        const { data: conv } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("contact_id", contact.id)
+          .eq("channel_id", channel.id)
+          .in("status", ["open", "pending"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        conversation = conv;
+      } else {
+        // Contato não encontrado - pode ser um LID
+        // Buscar conversa mais recente deste canal com atividade recente
+        console.log(`[Webhook] Contact not found directly, searching by recent conversation for LID resolution...`);
+        
+        const { data: recentConv } = await supabase
+          .from("conversations")
+          .select(`
+            id,
+            contact:contacts!inner(id, phone)
+          `)
+          .eq("channel_id", channel.id)
+          .in("status", ["open", "pending"])
+          .order("last_message_at", { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (recentConv && recentConv.contact) {
+          console.log(`[Webhook] Found recent conversation with contact: ${(recentConv.contact as any).phone}`);
+          contact = { id: (recentConv.contact as any).id };
+          conversation = { id: recentConv.id };
+          recipientPhone = (recentConv.contact as any).phone;
+        }
+      }
 
       if (!contact) {
         console.log(`[Webhook] Contact not found for fromMe message: ${recipientPhone}`);
@@ -340,17 +385,6 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-
-      // Buscar conversa existente com esse contato
-      const { data: conversation } = await supabase
-        .from("conversations")
-        .select("id")
-        .eq("contact_id", contact.id)
-        .eq("channel_id", channel.id)
-        .in("status", ["open", "pending"])
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
 
       if (!conversation) {
         console.log(`[Webhook] No open conversation found for fromMe message`);
