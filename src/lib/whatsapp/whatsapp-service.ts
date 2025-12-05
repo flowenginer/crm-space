@@ -246,24 +246,52 @@ class WhatsAppService {
   // =====================================================
   private async saveIncomingMessage(channelId: string, msg: NormalizedMessage): Promise<void> {
     try {
-      // 1. Buscar ou criar contato
+      // 1. Buscar contato existente (verificar múltiplas variações do telefone)
+      const phoneVariations = [msg.from];
+      if (msg.from.startsWith('55')) {
+        phoneVariations.push(msg.from.slice(2));
+      } else {
+        phoneVariations.push(`55${msg.from}`);
+      }
+      
+      const orConditions = phoneVariations.map(v => `phone.eq.${v}`).join(',');
       let { data: contact } = await supabase
         .from('contacts')
         .select('id')
-        .eq('phone', msg.from)
+        .or(orConditions)
         .maybeSingle();
 
       if (!contact) {
-        const { data: newContact } = await supabase
+        // Usar upsert para evitar duplicatas por race condition
+        const { data: upsertedContact, error: contactError } = await supabase
           .from('contacts')
-          .insert({
+          .upsert({
             phone: msg.from,
             full_name: msg.fromName || msg.from,
             origin: 'whatsapp',
+          }, {
+            onConflict: 'phone',
+            ignoreDuplicates: false
           })
           .select('id')
           .single();
-        contact = newContact;
+        
+        if (contactError) {
+          // Se for erro de duplicata, buscar o contato existente
+          if (contactError.code === '23505') {
+            const { data: existingContact } = await supabase
+              .from('contacts')
+              .select('id')
+              .or(orConditions)
+              .maybeSingle();
+            contact = existingContact;
+          } else {
+            console.error('[WhatsApp] Error creating contact:', contactError);
+            return;
+          }
+        } else {
+          contact = upsertedContact;
+        }
       }
 
       if (!contact) {
