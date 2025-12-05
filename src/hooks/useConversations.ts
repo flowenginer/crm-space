@@ -24,6 +24,8 @@ export interface Conversation {
     email: string | null;
     avatar_url: string | null;
     is_online: boolean | null;
+    first_contact_at: string | null;
+    created_at: string;
   } | null;
   assignee?: { id: string; full_name: string | null } | null;
   channel?: { id: string; name: string } | null;
@@ -66,7 +68,7 @@ export function useConversations(filter?: AssignmentFilter) {
         .from('conversations')
         .select(`
           *,
-          contact:contacts(id, full_name, phone, email, avatar_url, is_online),
+          contact:contacts(id, full_name, phone, email, avatar_url, is_online, first_contact_at, created_at),
           assignee:profiles!conversations_assigned_to_fkey(id, full_name),
           channel:whatsapp_channels(id, name)
         `)

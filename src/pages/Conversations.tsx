@@ -69,13 +69,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
-import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
+import { formatDistanceToNow, format, isToday, isYesterday, startOfDay, startOfWeek, startOfMonth, subDays, subWeeks, subMonths, endOfDay, endOfWeek, endOfMonth, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { toast } from 'sonner';
 import { useTeam } from '@/hooks/useTeam';
 import { useTags } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useChannels } from '@/hooks/useChannels';
 
 // Mock Data for reference (will be replaced by real data)
 const mockConversations = [
@@ -235,11 +236,22 @@ function ConversationItem({ conversation, isSelected, onClick }: ConversationIte
   const isOnline = conversation.contact?.is_online || false;
   const isUnread = conversation.is_unread || false;
   const unreadCount = conversation.unread_count || 0;
+  const assigneeName = conversation.assignee?.full_name;
+  const firstContactDate = conversation.contact?.first_contact_at || conversation.contact?.created_at;
   
   const formatTime = (date: string | null) => {
     if (!date) return '';
     try {
       return formatDistanceToNow(new Date(date), { addSuffix: false, locale: ptBR });
+    } catch {
+      return '';
+    }
+  };
+
+  const formatFirstContact = (date: string | null) => {
+    if (!date) return '';
+    try {
+      return format(new Date(date), 'dd/MM/yy');
     } catch {
       return '';
     }
@@ -294,20 +306,39 @@ function ConversationItem({ conversation, isSelected, onClick }: ConversationIte
             {conversation.last_message_preview || 'Nova conversa'}
           </p>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             {/* Channel Badge */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <div className="flex items-center gap-1 px-2 py-0.5 bg-green-500/20 rounded-full">
                 <MessageCircle size={12} className="text-green-500" />
-                <span className="text-xs text-green-500 font-medium">
+                <span className="text-xs text-green-500 font-medium truncate max-w-[80px]">
                   {conversation.channel?.name || 'Chat'}
                 </span>
               </div>
+              
+              {/* Assignee Badge */}
+              {assigneeName && (
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/20 rounded-full">
+                  <span className="text-xs text-blue-500 font-medium truncate max-w-[60px]">
+                    {assigneeName.split(' ')[0]}
+                  </span>
+                </div>
+              )}
+              
+              {/* First Contact Date */}
+              {firstContactDate && (
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-muted rounded-full">
+                  <Calendar size={10} className="text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
+                    {formatFirstContact(firstContactDate)}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Unread Badge */}
             {isUnread && unreadCount > 0 && (
-              <div className="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+              <div className="w-5 h-5 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
                 <span className="text-xs text-primary-foreground font-bold">{unreadCount}</span>
               </div>
             )}
@@ -677,6 +708,7 @@ export default function Conversations() {
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [channelFilter, setChannelFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('all');
   const [sortFilter, setSortFilter] = useState('newest');
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned'>('all');
   const [showFilters, setShowFilters] = useState(false);
@@ -714,6 +746,7 @@ export default function Conversations() {
   const { data: teamMembers = [] } = useTeam();
   const { data: tags = [] } = useTags();
   const { data: departments = [] } = useDepartments();
+  const { data: channels = [] } = useChannels();
   const sendMessage = useSendMessage();
   const deleteMessage = useDeleteMessage();
   const reactToMessage = useReactToMessage();
@@ -780,12 +813,53 @@ export default function Conversations() {
     }
   }, [searchParams]);
 
-  // Filter conversations based on all filters (search, channel, sort, advanced)
+  // Helper function to check date filter
+  const isWithinDateFilter = (contactDate: string | null | undefined): boolean => {
+    if (dateFilter === 'all' || !contactDate) return true;
+    
+    const date = new Date(contactDate);
+    const now = new Date();
+    
+    switch (dateFilter) {
+      case 'today':
+        return isToday(date);
+      case 'yesterday':
+        return isYesterday(date);
+      case 'this_week':
+        return isWithinInterval(date, {
+          start: startOfWeek(now, { weekStartsOn: 0 }),
+          end: endOfDay(now),
+        });
+      case 'last_week':
+        const lastWeekStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
+        const lastWeekEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
+        return isWithinInterval(date, { start: lastWeekStart, end: lastWeekEnd });
+      case 'this_month':
+        return isWithinInterval(date, {
+          start: startOfMonth(now),
+          end: endOfDay(now),
+        });
+      case 'last_month':
+        const lastMonthStart = startOfMonth(subMonths(now, 1));
+        const lastMonthEnd = endOfMonth(subMonths(now, 1));
+        return isWithinInterval(date, { start: lastMonthStart, end: lastMonthEnd });
+      default:
+        return true;
+    }
+  };
+
+  // Filter conversations based on all filters (search, channel, sort, advanced, date)
   const filteredConversations = useMemo(() => {
     return conversations
       .filter((conv) => {
         const contactName = conv.contact?.full_name || '';
         const contactPhone = conv.contact?.phone || '';
+        const firstContactDate = conv.contact?.first_contact_at || conv.contact?.created_at;
+        
+        // Date filter (MASTER filter - applied first)
+        if (!isWithinDateFilter(firstContactDate)) {
+          return false;
+        }
         
         // Search filter (name or phone)
         if (searchQuery) {
@@ -796,15 +870,15 @@ export default function Conversations() {
           }
         }
         
-        // Channel filter - whatsapp_channels table means it's WhatsApp
+        // Channel filter - can be 'all', specific channel_id, or 'no_channel'
         if (channelFilter !== 'all') {
-          const hasWhatsAppChannel = !!conv.channel_id;
-          if (channelFilter === 'whatsapp' && !hasWhatsAppChannel) {
-            return false;
-          }
-          // Currently we only support WhatsApp, so email filter would return nothing
-          if (channelFilter === 'email' && hasWhatsAppChannel) {
-            return false;
+          if (channelFilter === 'no_channel') {
+            if (conv.channel_id) return false;
+          } else {
+            // Specific channel ID filter
+            if (conv.channel_id !== channelFilter) {
+              return false;
+            }
           }
         }
         
@@ -837,7 +911,7 @@ export default function Conversations() {
             return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
         }
       });
-  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters]);
+  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter]);
 
   // Conversation action handlers
   const handleMarkAsUnread = () => {
@@ -1297,6 +1371,23 @@ export default function Conversations() {
 
         {/* Filters */}
         <div className="px-4 py-3 border-b border-border space-y-3">
+          {/* Date Filter (Master) */}
+          <Select value={dateFilter} onValueChange={setDateFilter}>
+            <SelectTrigger className="w-full h-10 rounded-lg">
+              <Calendar size={14} className="mr-2 text-muted-foreground" />
+              <SelectValue placeholder="Data do primeiro contato" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as datas</SelectItem>
+              <SelectItem value="today">Hoje</SelectItem>
+              <SelectItem value="yesterday">Ontem</SelectItem>
+              <SelectItem value="this_week">Esta semana</SelectItem>
+              <SelectItem value="last_week">Semana passada</SelectItem>
+              <SelectItem value="this_month">Este mês</SelectItem>
+              <SelectItem value="last_month">Mês passado</SelectItem>
+            </SelectContent>
+          </Select>
+
           <div className="flex items-center gap-2">
             <Select value={channelFilter} onValueChange={setChannelFilter}>
               <SelectTrigger className="flex-1 h-10 rounded-lg">
@@ -1304,8 +1395,12 @@ export default function Conversations() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os canais</SelectItem>
-                <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
+                {channels.map((channel) => (
+                  <SelectItem key={channel.id} value={channel.id}>
+                    {channel.name}
+                  </SelectItem>
+                ))}
+                <SelectItem value="no_channel">Sem canal</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1327,6 +1422,40 @@ export default function Conversations() {
               <SlidersHorizontal size={18} className="text-muted-foreground" />
             </button>
           </div>
+
+          {/* Active Filters Indicator */}
+          {(dateFilter !== 'all' || channelFilter !== 'all' || advancedFilters.agentId !== 'all' || advancedFilters.departmentId !== 'all') && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {dateFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
+                  <Calendar size={12} />
+                  {dateFilter === 'today' ? 'Hoje' : dateFilter === 'yesterday' ? 'Ontem' : dateFilter === 'this_week' ? 'Esta semana' : dateFilter === 'last_week' ? 'Sem. passada' : dateFilter === 'this_month' ? 'Este mês' : 'Mês passado'}
+                  <button onClick={() => setDateFilter('all')} className="ml-1 hover:text-primary-foreground">
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {channelFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 text-green-600 dark:text-green-400 text-xs rounded-full">
+                  <MessageCircle size={12} />
+                  {channels.find(c => c.id === channelFilter)?.name || 'Sem canal'}
+                  <button onClick={() => setChannelFilter('all')} className="ml-1 hover:text-green-700">
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  setDateFilter('all');
+                  setChannelFilter('all');
+                  handleClearAdvancedFilters();
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground underline"
+              >
+                Limpar filtros
+              </button>
+            </div>
+          )}
 
           {/* Quick Filters */}
           <div className="flex gap-2">
