@@ -360,45 +360,51 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
   return (
     <div className="w-[350px] bg-card border-l border-border flex flex-col h-full overflow-hidden">
-      {/* Header: Contact Info */}
-      <div className="p-6 text-center border-b border-border">
-        {contact.avatar_url ? (
-          <div 
-            className="w-20 h-20 rounded-full mx-auto mb-4 cursor-pointer overflow-hidden hover:ring-2 hover:ring-primary transition-all"
-            onClick={() => setShowPhotoModal(true)}
-          >
-            <img 
-              src={contact.avatar_url} 
-              alt={contact.full_name || 'Avatar'} 
-              className="w-full h-full object-cover"
-            />
+      {/* Header: Contact Info - Horizontal Layout */}
+      <div className="p-4 border-b border-border">
+        <div className="flex items-center gap-4">
+          {/* Avatar - Left side */}
+          {contact.avatar_url ? (
+            <div 
+              className="w-16 h-16 rounded-full flex-shrink-0 cursor-pointer overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+              onClick={() => setShowPhotoModal(true)}
+            >
+              <img 
+                src={contact.avatar_url} 
+                alt={contact.full_name || 'Avatar'} 
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="w-16 h-16 rounded-full flex-shrink-0 bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xl font-bold relative">
+              {contact.full_name?.charAt(0)?.toUpperCase() || '?'}
+              {isFetchingPhoto && (
+                <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Info - Right side */}
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-bold text-foreground truncate">
+              {contact.full_name || 'Sem nome'}
+            </h3>
+            
+            <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-0.5">
+              <Phone size={12} />
+              {formatPhone(contact.phone)}
+            </p>
+            
+            <button 
+              onClick={() => setShowEditModal(true)}
+              className="text-primary hover:text-primary/80 text-xs font-medium mt-1.5"
+            >
+              Editar contato
+            </button>
           </div>
-        ) : (
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4 relative">
-            {contact.full_name?.charAt(0)?.toUpperCase() || '?'}
-            {isFetchingPhoto && (
-              <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center">
-                <Loader2 className="w-5 h-5 animate-spin text-white" />
-              </div>
-            )}
-          </div>
-        )}
-        
-        <h3 className="text-lg font-bold text-foreground mb-1">
-          {contact.full_name || 'Sem nome'}
-        </h3>
-        
-        <p className="text-sm text-muted-foreground flex items-center justify-center gap-2 mb-3">
-          <Phone size={14} />
-          {formatPhone(contact.phone)}
-        </p>
-        
-        <button 
-          onClick={() => setShowEditModal(true)}
-          className="text-primary hover:text-primary/80 text-sm font-medium"
-        >
-          Editar contato
-        </button>
+        </div>
       </div>
 
       {/* Photo Modal */}
