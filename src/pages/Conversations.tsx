@@ -1842,7 +1842,7 @@ export default function Conversations() {
     <div className="flex h-full w-full bg-background overflow-hidden">
       {/* Column 1: Conversations List */}
       <div className={cn(
-        'w-full md:w-[350px] md:min-w-[350px] md:max-w-[350px] bg-card border-r border-border flex flex-col flex-shrink-0',
+        'w-full md:w-[400px] md:min-w-[400px] md:max-w-[400px] bg-card border-r border-border flex flex-col flex-shrink-0',
         isMobile && showMobileChat ? 'hidden' : 'flex'
       )}>
         {/* Header */}
