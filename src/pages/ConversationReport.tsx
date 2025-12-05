@@ -490,6 +490,8 @@ export default function ConversationReportPage() {
                 value={filters.tag}
                 onChange={(value) => setFilters(prev => ({ ...prev, tag: value }))}
                 placeholder="Todas"
+                searchable
+                searchPlaceholder="Pesquisar etiqueta..."
               />
             </div>
 
