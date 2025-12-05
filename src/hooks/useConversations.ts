@@ -261,7 +261,9 @@ export function useSendMessage() {
     onSettled: (_, __, variables) => {
       // Always refetch after error or success to sync with server
       queryClient.invalidateQueries({ queryKey: ['messages', variables.conversation_id] });
+      queryClient.invalidateQueries({ queryKey: ['messages-paginated', variables.conversation_id] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
     },
   });
 }
@@ -339,6 +341,7 @@ export function useDeleteMessage() {
     },
     onSuccess: (variables) => {
       queryClient.invalidateQueries({ queryKey: ['messages', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['messages-paginated', variables.conversationId] });
     },
   });
 }
@@ -411,6 +414,7 @@ export function useEditMessage() {
     },
     onSuccess: (variables) => {
       queryClient.invalidateQueries({ queryKey: ['messages', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['messages-paginated', variables.conversationId] });
     },
   });
 }
@@ -465,6 +469,7 @@ export function useReactToMessage() {
     },
     onSuccess: (variables) => {
       queryClient.invalidateQueries({ queryKey: ['messages', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['messages-paginated', variables.conversationId] });
     },
   });
 }
@@ -507,6 +512,7 @@ export function useUpdateConversation() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
     },
   });
 }

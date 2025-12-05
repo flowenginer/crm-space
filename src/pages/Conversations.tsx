@@ -74,6 +74,8 @@ import { StartConversation } from '@/components/conversations/StartConversation'
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
+import { usePaginatedConversations } from '@/hooks/usePaginatedConversations';
+import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
@@ -996,12 +998,39 @@ export default function Conversations() {
   const isSendingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const conversationListRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
-  // Fetch real conversations from database with filter
+  // Fetch real conversations from database with filter (PAGINATED)
   const assignmentFilter: AssignmentFilter = quickFilter === 'pinned' ? 'all' : quickFilter;
-  const { data: conversations = [], isLoading: conversationsLoading } = useConversations(assignmentFilter);
-  const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedConversationId);
+  const { 
+    data: conversationsData, 
+    isLoading: conversationsLoading,
+    fetchNextPage: fetchNextConversations,
+    hasNextPage: hasMoreConversations,
+    isFetchingNextPage: isFetchingMoreConversations,
+  } = usePaginatedConversations(assignmentFilter);
+  
+  // Flatten paginated conversations
+  const conversations = useMemo(() => {
+    if (!conversationsData?.pages) return [];
+    return conversationsData.pages.flatMap(page => page.conversations);
+  }, [conversationsData]);
+
+  // Fetch messages with pagination
+  const {
+    data: messagesData,
+    isLoading: messagesLoading,
+    fetchNextPage: fetchOlderMessages,
+    hasNextPage: hasMoreMessages,
+    isFetchingNextPage: isFetchingMoreMessages,
+  } = usePaginatedMessages(selectedConversationId);
+  
+  // Get all messages in chronological order
+  const messages = useMemo(() => {
+    return getAllPaginatedMessages(messagesData?.pages);
+  }, [messagesData]);
   const { data: internalNotes = [], isLoading: notesLoading } = useInternalNotes(selectedConversationId);
   const { data: teamMembers = [] } = useTeam();
   const { data: tags = [] } = useTags();
@@ -1184,17 +1213,65 @@ export default function Conversations() {
     );
   }, [allChatItems, messageSearchQuery]);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when new messages arrive (not when loading older)
+  const prevMessagesLengthRef = useRef(0);
+  const isLoadingOlderRef = useRef(false);
+  
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      scrollToBottom();
-    }, 100);
-    return () => clearTimeout(timeout);
+    // Only auto-scroll if new messages were added (not older ones loaded)
+    if (allChatItems.length > prevMessagesLengthRef.current && !isLoadingOlderRef.current) {
+      const timeout = setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+      return () => clearTimeout(timeout);
+    }
+    prevMessagesLengthRef.current = allChatItems.length;
   }, [allChatItems.length, selectedConversationId, scrollToBottom]);
+
+  // Reset when conversation changes
+  useEffect(() => {
+    prevMessagesLengthRef.current = 0;
+    isLoadingOlderRef.current = false;
+    scrollToBottom();
+  }, [selectedConversationId]);
+
+  // Infinite scroll handler for conversations list
+  const handleConversationListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement;
+    const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    
+    // Load more when near bottom (within 200px)
+    if (scrollBottom < 200 && hasMoreConversations && !isFetchingMoreConversations) {
+      fetchNextConversations();
+    }
+  }, [hasMoreConversations, isFetchingMoreConversations, fetchNextConversations]);
+
+  // Infinite scroll handler for messages (load older on scroll up)
+  const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement;
+    
+    // Load more when near top (within 100px)
+    if (target.scrollTop < 100 && hasMoreMessages && !isFetchingMoreMessages) {
+      isLoadingOlderRef.current = true;
+      
+      // Save scroll position to restore after loading
+      const scrollHeightBefore = target.scrollHeight;
+      
+      fetchOlderMessages().then(() => {
+        // Restore scroll position after new messages are added
+        requestAnimationFrame(() => {
+          const scrollHeightAfter = target.scrollHeight;
+          const heightDiff = scrollHeightAfter - scrollHeightBefore;
+          target.scrollTop = heightDiff;
+          isLoadingOlderRef.current = false;
+        });
+      });
+    }
+  }, [hasMoreMessages, isFetchingMoreMessages, fetchOlderMessages]);
 
   // Reset selection mode when changing conversation
   useEffect(() => {
@@ -2212,7 +2289,11 @@ export default function Conversations() {
         </div>
 
         {/* Conversations List */}
-        <div className="flex-1 overflow-y-auto">
+        <div 
+          ref={conversationListRef}
+          className="flex-1 overflow-y-auto"
+          onScroll={handleConversationListScroll}
+        >
           {conversationsLoading ? (
             <div className="flex items-center justify-center p-8">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -2223,19 +2304,28 @@ export default function Conversations() {
               <p className="text-sm">Nenhuma conversa encontrada</p>
             </div>
           ) : (
-            filteredConversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conversation={conv}
-                isSelected={selectedConversationId === conv.id}
-                isPinned={isPinned(conv.id)}
-                onClick={() => handleSelectConversation(conv)}
-                onTogglePin={() => {
-                  togglePin(conv.id);
-                  toast.success(isPinned(conv.id) ? 'Conversa desafixada' : 'Conversa fixada');
-                }}
-              />
-            ))
+            <>
+              {filteredConversations.map((conv) => (
+                <ConversationItem
+                  key={conv.id}
+                  conversation={conv}
+                  isSelected={selectedConversationId === conv.id}
+                  isPinned={isPinned(conv.id)}
+                  onClick={() => handleSelectConversation(conv)}
+                  onTogglePin={() => {
+                    togglePin(conv.id);
+                    toast.success(isPinned(conv.id) ? 'Conversa desafixada' : 'Conversa fixada');
+                  }}
+                />
+              ))}
+              {/* Loading indicator for more conversations */}
+              {isFetchingMoreConversations && (
+                <div className="flex items-center justify-center p-4">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-sm text-muted-foreground">Carregando mais...</span>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -2509,7 +2599,9 @@ export default function Conversations() {
 
             {/* Messages Area with Drag & Drop */}
             <div 
+              ref={messagesContainerRef}
               className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 space-y-4 relative"
+              onScroll={handleMessagesScroll}
               onDragEnter={handleDragEnter}
               onDragLeave={handleDragLeave}
               onDragOver={handleDragOver}
@@ -2537,6 +2629,29 @@ export default function Conversations() {
                 </div>
               ) : (
                 <>
+                  {/* Loading indicator for older messages */}
+                  {isFetchingMoreMessages && (
+                    <div className="flex items-center justify-center py-3">
+                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                      <span className="ml-2 text-sm text-muted-foreground">Carregando mensagens anteriores...</span>
+                    </div>
+                  )}
+                  
+                  {/* Load more button (optional, for manual loading) */}
+                  {hasMoreMessages && !isFetchingMoreMessages && (
+                    <div className="flex items-center justify-center py-2">
+                      <button
+                        onClick={() => {
+                          isLoadingOlderRef.current = true;
+                          fetchOlderMessages();
+                        }}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Carregar mensagens anteriores
+                      </button>
+                    </div>
+                  )}
+
                   {/* Search Results Indicator */}
                   {messageSearchQuery && (
                     <div className="flex items-center justify-center py-2">
