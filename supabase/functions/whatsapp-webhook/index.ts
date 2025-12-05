@@ -458,6 +458,20 @@ serve(async (req) => {
         }
       }
 
+      // Check if message already exists (frontend might have already inserted it)
+      const { data: existingFromMeMsg } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("whatsapp_message_id", normalizedMessage.originalId)
+        .single();
+
+      if (existingFromMeMsg) {
+        console.log(`[Webhook] FromMe message already exists (id: ${existingFromMeMsg.id}), skipping duplicate insert`);
+        return new Response(JSON.stringify({ success: true, message: "Message already exists" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // Find reply_to_message_id if quotedMessageId exists (for fromMe messages)
       let replyToMessageIdFromMe = null;
       if (normalizedMessage.quotedMessageId) {
