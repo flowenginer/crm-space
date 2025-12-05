@@ -10,7 +10,7 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage';
   providerCode?: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -23,6 +23,9 @@ interface CreateInstanceRequest {
   type?: 'text' | 'image' | 'audio' | 'video' | 'document';
   mediaUrl?: string;
   quotedMessageId?: string;
+  // For deleteMessage action
+  whatsappMessageId?: string;
+  remoteJid?: string;
 }
 
 interface ProviderConfig {
@@ -332,6 +335,134 @@ async function sendZAPIMessage(
   return {
     success: true,
     messageId: data.messageId || data.zapiMessageId,
+    data,
+  };
+}
+
+// =====================================================
+// DELETE MESSAGE FUNCTIONS
+// =====================================================
+async function deleteEvolutionMessage(
+  baseUrl: string,
+  instanceName: string,
+  apiKey: string,
+  messageId: string,
+  remoteJid: string
+) {
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  
+  console.log('[Evolution] Deleting message:', { instanceName, messageId, remoteJid });
+  
+  const endpoint = `${normalizedUrl}/chat/deleteMessageForEveryone/${instanceName}`;
+  const body = {
+    id: messageId,
+    remoteJid: remoteJid,
+    fromMe: true,
+  };
+  
+  console.log('[Evolution] Delete Request:', { endpoint, body });
+  
+  const response = await fetch(endpoint, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': apiKey,
+    },
+    body: JSON.stringify(body),
+  });
+  
+  const data = await safeJsonParse(response, 'Evolution Delete');
+  
+  return {
+    success: true,
+    data,
+  };
+}
+
+async function deleteUAZAPIMessage(
+  baseUrl: string,
+  instanceName: string,
+  adminToken: string,
+  messageId: string,
+  remoteJid: string
+) {
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  
+  console.log('[UAZAPI] Deleting message:', { instanceName, messageId, remoteJid });
+  
+  const endpoint = `${normalizedUrl}/chat/deleteMessageForEveryone/${instanceName}`;
+  const body = {
+    id: messageId,
+    remoteJid: remoteJid,
+    fromMe: true,
+  };
+  
+  console.log('[UAZAPI] Delete Request:', { endpoint, body });
+  
+  let response = await fetch(endpoint, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      'admintoken': adminToken,
+    },
+    body: JSON.stringify(body),
+  });
+  
+  if (response.status === 401) {
+    console.log('[UAZAPI] 401 with admintoken, trying apikey...');
+    response = await fetch(endpoint, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': adminToken,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+  
+  const data = await safeJsonParse(response, 'UAZAPI Delete');
+  
+  return {
+    success: true,
+    data,
+  };
+}
+
+async function deleteZAPIMessage(
+  instanceId: string,
+  token: string,
+  clientToken: string,
+  messageId: string,
+  phone: string
+) {
+  const formattedPhone = phone.replace(/\D/g, '').replace('@s.whatsapp.net', '');
+  
+  console.log('[Z-API] Deleting message:', { instanceId, messageId, phone: formattedPhone });
+  
+  const baseUrl = `https://api.z-api.io/instances/${instanceId}/token/${token}`;
+  const endpoint = `${baseUrl}/delete-message`;
+  
+  const body = {
+    phone: formattedPhone,
+    messageId: messageId,
+    deleteEveryone: true,
+  };
+  
+  console.log('[Z-API] Delete Request:', { endpoint, body });
+  
+  const response = await fetch(endpoint, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      'Client-Token': clientToken || '',
+    },
+    body: JSON.stringify(body),
+  });
+  
+  const data = await safeJsonParse(response, 'Z-API Delete');
+  
+  return {
+    success: true,
     data,
   };
 }
@@ -1330,6 +1461,98 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
         );
       }
+    }
+
+    // =====================================================
+    // DELETE MESSAGE ACTION - Apagar mensagem no WhatsApp
+    // =====================================================
+    if (action === 'deleteMessage') {
+      const { channelId, whatsappMessageId, remoteJid, phone } = body as CreateInstanceRequest & { phone?: string };
+      
+      if (!channelId || !whatsappMessageId) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'channelId e whatsappMessageId são obrigatórios' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      
+      console.log('[WhatsApp Instance] Delete message request:', { channelId, whatsappMessageId, remoteJid });
+      
+      // Get channel data with provider
+      const { data: channel, error: channelError } = await supabase
+        .from('whatsapp_channels')
+        .select('*, provider:whatsapp_providers(*)')
+        .eq('id', channelId)
+        .single();
+      
+      if (channelError || !channel) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+      
+      const channelProvider = channel.provider as any;
+      if (!channelProvider) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Provedor do canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      
+      console.log('[WhatsApp Delete] Channel:', { instanceId: channel.instance_id, provider: channelProvider.code });
+      
+      let result;
+      
+      try {
+        switch (channelProvider.code) {
+          case 'evolution':
+            if (!remoteJid) {
+              result = { success: false, error: 'remoteJid é obrigatório para Evolution API' };
+            } else {
+              result = await deleteEvolutionMessage(
+                channelProvider.base_url,
+                channel.instance_id!,
+                channelProvider.admin_token,
+                whatsappMessageId,
+                remoteJid
+              );
+            }
+            break;
+          case 'uazapi':
+            if (!remoteJid) {
+              result = { success: false, error: 'remoteJid é obrigatório para UAZAPI' };
+            } else {
+              result = await deleteUAZAPIMessage(
+                channelProvider.base_url,
+                channel.instance_id!,
+                channelProvider.admin_token,
+                whatsappMessageId,
+                remoteJid
+              );
+            }
+            break;
+          case 'zapi':
+            result = await deleteZAPIMessage(
+              channel.instance_id!,
+              channel.instance_token!,
+              channelProvider.client_token,
+              whatsappMessageId,
+              phone || remoteJid || ''
+            );
+            break;
+          default:
+            result = { success: false, error: 'Provedor desconhecido' };
+        }
+      } catch (deleteError: any) {
+        console.error('[WhatsApp Delete] Error:', deleteError);
+        result = { success: false, error: deleteError.message };
+      }
+
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // =====================================================
