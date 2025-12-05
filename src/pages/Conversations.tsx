@@ -1641,10 +1641,10 @@ export default function Conversations() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-72px)] -m-6 md:-m-8 bg-background overflow-hidden">
+    <div className="flex h-full w-full bg-background overflow-hidden">
       {/* Column 1: Conversations List */}
       <div className={cn(
-        'w-full md:w-[350px] bg-card border-r border-border flex flex-col transition-all',
+        'w-full md:w-[350px] md:min-w-[350px] md:max-w-[350px] bg-card border-r border-border flex flex-col flex-shrink-0',
         isMobile && showMobileChat ? 'hidden' : 'flex'
       )}>
         {/* Header */}
@@ -1899,7 +1899,7 @@ export default function Conversations() {
 
       {/* Column 2: Chat Area */}
       <div className={cn(
-        'flex-1 flex flex-col bg-background',
+        'flex-1 flex flex-col bg-background min-w-0',
         isMobile && !showMobileChat ? 'hidden' : 'flex'
       )}>
         {selectedConversation ? (
@@ -2383,7 +2383,7 @@ export default function Conversations() {
 
       {/* Column 3: Contact Details (Desktop Only) */}
       {selectedConversation && (
-        <div className="hidden lg:flex">
+        <div className="hidden lg:flex flex-shrink-0">
           <ConversationSidebar conversationId={selectedConversation.id} />
         </div>
       )}
