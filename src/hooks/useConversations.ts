@@ -175,7 +175,7 @@ export function useSendMessage() {
 
       if (error) throw error;
 
-      // Update conversation last message
+      // Update conversation last message (fire and forget for speed)
       const preview = message.message_type === 'image' 
         ? '📷 Imagem' 
         : message.message_type === 'audio'
@@ -186,17 +186,61 @@ export function useSendMessage() {
         ? '📄 Documento'
         : message.content.substring(0, 100);
 
-      await supabase
+      supabase
         .from('conversations')
         .update({
           last_message_at: new Date().toISOString(),
           last_message_preview: preview,
         })
-        .eq('id', message.conversation_id);
+        .eq('id', message.conversation_id)
+        .then(() => {});
 
       return data;
     },
-    onSuccess: (_, variables) => {
+    // Optimistic update for instant UI feedback
+    onMutate: async (newMessage) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['messages', newMessage.conversation_id] });
+
+      // Snapshot the previous value
+      const previousMessages = queryClient.getQueryData<Message[]>(['messages', newMessage.conversation_id]);
+
+      // Optimistically update to the new value
+      const optimisticMessage: Message = {
+        id: `temp-${Date.now()}`,
+        conversation_id: newMessage.conversation_id,
+        sender_id: null,
+        contact_id: null,
+        is_from_me: newMessage.is_from_me ?? true,
+        content: newMessage.content,
+        message_type: newMessage.message_type || 'text',
+        media_url: newMessage.media_url || null,
+        media_mime_type: newMessage.media_mime_type || null,
+        status: 'sending',
+        whatsapp_message_id: null,
+        created_at: new Date().toISOString(),
+        reply_to_message_id: newMessage.reply_to_message_id || null,
+        reactions: null,
+        is_deleted: false,
+        deleted_at: null,
+        reply_to: null,
+      };
+
+      queryClient.setQueryData<Message[]>(
+        ['messages', newMessage.conversation_id],
+        (old) => [...(old || []), optimisticMessage]
+      );
+
+      return { previousMessages };
+    },
+    onError: (err, newMessage, context) => {
+      // Rollback on error
+      if (context?.previousMessages) {
+        queryClient.setQueryData(['messages', newMessage.conversation_id], context.previousMessages);
+      }
+    },
+    onSettled: (_, __, variables) => {
+      // Always refetch after error or success to sync with server
       queryClient.invalidateQueries({ queryKey: ['messages', variables.conversation_id] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
