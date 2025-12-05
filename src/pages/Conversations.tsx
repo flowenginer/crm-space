@@ -1052,6 +1052,7 @@ export default function Conversations() {
   // Get current user for filter counts
   const { data: currentUser } = useQuery({
     queryKey: ['current-user'],
+    staleTime: 300000, // 5 minutes cache - user rarely changes
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       return user;
@@ -1061,6 +1062,7 @@ export default function Conversations() {
   // Fetch conversation tags for counting
   const { data: conversationTagsCount = [] } = useQuery({
     queryKey: ['conversation-tags-count'],
+    staleTime: 30000, // 30 seconds cache
     queryFn: async () => {
       const { data, error } = await supabase
         .from('conversation_tags')
@@ -1140,6 +1142,7 @@ export default function Conversations() {
   // Fetch contact tags for the selected conversation
   const { data: contactTags = [], refetch: refetchContactTags } = useQuery({
     queryKey: ['contact-tags', selectedConversation?.contact?.id],
+    staleTime: 30000, // 30 seconds cache
     queryFn: async () => {
       if (!selectedConversation?.contact?.id) return [];
       const { data, error } = await supabase

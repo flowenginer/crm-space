@@ -18,6 +18,7 @@ export interface InternalNote {
 export function useInternalNotes(conversationId: string | null) {
   return useQuery({
     queryKey: ['internal-notes', conversationId],
+    staleTime: 30000, // 30 seconds cache
     queryFn: async () => {
       if (!conversationId) return [];
       
