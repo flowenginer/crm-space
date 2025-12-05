@@ -321,7 +321,7 @@ export default function Contacts() {
 
       // Invalidate queries and navigate
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      navigate(`/conversas?id=${conversationId}`);
+      navigate(`/conversations?id=${conversationId}`);
       
     } catch (error: any) {
       console.error('Error opening chat:', error);
