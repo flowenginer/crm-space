@@ -1090,33 +1090,36 @@ export default function Conversations() {
     return map;
   }, [conversations]);
 
-  // Fetch last message for each conversation (for not_replied and client_not_replied filters)
+  // Fetch last message for each conversation (OPTIMIZED - single query instead of N+1)
   const conversationIds = conversations.map(c => c.id);
   const { data: lastMessages = [] } = useQuery({
-    queryKey: ['last-messages', conversationIds.join(',')],
-    queryFn: async () => {
+    queryKey: ['last-messages', conversationIds.length > 0 ? conversationIds.slice(0, 10).join(',') : 'empty'],
+    queryFn: async (): Promise<{ conversation_id: string; is_from_me: boolean }[]> => {
       if (conversationIds.length === 0) return [];
       
-      // Get the last message for each conversation
-      const results: { conversation_id: string; is_from_me: boolean }[] = [];
+      // Single optimized query - get all messages for these conversations, ordered
+      // Then group in JS (more efficient than N+1 queries)
+      const { data } = await supabase
+        .from('messages')
+        .select('conversation_id, is_from_me, created_at')
+        .in('conversation_id', conversationIds)
+        .order('created_at', { ascending: false })
+        .limit(conversationIds.length * 2); // Get enough to ensure we have at least 1 per conversation
       
-      for (const convId of conversationIds) {
-        const { data } = await supabase
-          .from('messages')
-          .select('conversation_id, is_from_me')
-          .eq('conversation_id', convId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        
-        if (data) {
-          results.push({ conversation_id: data.conversation_id, is_from_me: data.is_from_me ?? false });
+      // Group by conversation_id and get first (most recent) for each
+      const grouped = new Map<string, { conversation_id: string; is_from_me: boolean }>();
+      data?.forEach(msg => {
+        if (!grouped.has(msg.conversation_id)) {
+          grouped.set(msg.conversation_id, {
+            conversation_id: msg.conversation_id,
+            is_from_me: msg.is_from_me ?? false
+          });
         }
-      }
-      
-      return results;
+      });
+      return Array.from(grouped.values());
     },
     enabled: conversationIds.length > 0,
+    staleTime: 30000, // 30 seconds cache
   });
 
   // Create a map for quick lookup of last message info

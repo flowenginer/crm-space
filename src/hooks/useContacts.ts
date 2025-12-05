@@ -36,6 +36,37 @@ export interface Contact {
   tags?: { id: string; name: string; color: string | null }[];
 }
 
+// Campos otimizados - não usar SELECT *
+const CONTACT_FIELDS = `
+  id,
+  full_name,
+  phone,
+  email,
+  state,
+  city,
+  lead_status,
+  first_contact_at,
+  last_interaction_at,
+  assigned_to,
+  department_id,
+  avatar_url,
+  is_online,
+  created_at,
+  updated_at,
+  notes,
+  cpf_cnpj,
+  birth_date,
+  street,
+  number,
+  complement,
+  neighborhood,
+  zip_code,
+  country,
+  person_type,
+  origin,
+  custom_fields
+`;
+
 export function useContacts() {
   return useQuery({
     queryKey: ['contacts'],
@@ -43,7 +74,7 @@ export function useContacts() {
       const { data, error } = await supabase
         .from('contacts')
         .select(`
-          *,
+          ${CONTACT_FIELDS},
           assignee:profiles!contacts_assigned_to_fkey(id, full_name),
           department:departments(id, name)
         `)
@@ -73,6 +104,7 @@ export function useContacts() {
 
       return data as Contact[];
     },
+    staleTime: 30000, // 30 seconds cache
   });
 }
 

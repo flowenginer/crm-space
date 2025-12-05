@@ -8,11 +8,27 @@ interface TypingUser {
   conversationId: string;
 }
 
+// Debounce helper to prevent excessive invalidations
+function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number) {
+  let timeoutId: NodeJS.Timeout | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), ms);
+  };
+}
+
 export function useRealtimeMessages(conversationId: string | null) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!conversationId) return;
+
+    // Debounced invalidation to prevent rapid-fire updates
+    const invalidateMessages = debounce(() => {
+      // Invalidate both old and new query keys for compatibility
+      queryClient.invalidateQueries({ queryKey: ['messages-paginated', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
+    }, 300);
 
     // Subscribe to new messages in the current conversation
     const channel = supabase
@@ -25,9 +41,8 @@ export function useRealtimeMessages(conversationId: string | null) {
           table: 'messages',
           filter: `conversation_id=eq.${conversationId}`,
         },
-        (payload) => {
-          // Invalidate messages query to refresh the list
-          queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
+        () => {
+          invalidateMessages();
         }
       )
       .on(
@@ -40,7 +55,7 @@ export function useRealtimeMessages(conversationId: string | null) {
         },
         () => {
           // Refresh messages on update (reactions, deletions, etc.)
-          queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
+          invalidateMessages();
         }
       )
       .subscribe();
@@ -55,6 +70,17 @@ export function useRealtimeConversations() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Debounced invalidation to prevent excessive updates
+    const invalidateConversations = debounce(() => {
+      // Invalidate paginated queries (primary)
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
+      // Also invalidate legacy query key for compatibility
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      // Invalidate last-messages for filter updates
+      queryClient.invalidateQueries({ queryKey: ['last-messages'] });
+    }, 500);
+
     // Subscribe to conversation updates
     const channel = supabase
       .channel('conversations-updates')
@@ -66,8 +92,8 @@ export function useRealtimeConversations() {
           table: 'conversations',
         },
         (payload) => {
-          console.log('Conversation updated:', payload);
-          queryClient.invalidateQueries({ queryKey: ['conversations'] });
+          console.log('Conversation updated:', payload.eventType);
+          invalidateConversations();
         }
       )
       .subscribe();
