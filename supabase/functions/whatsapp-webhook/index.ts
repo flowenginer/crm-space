@@ -1315,7 +1315,16 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
   // Extract base64 data if available
   const mediaData = extractEvolutionMediaBase64(msg);
   
-  console.log(`[Webhook Evolution] Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}, HasBase64: ${!!mediaData.base64}, OriginalJid: ${rawRemoteJid}, RealJid: ${realRemoteJid}`);
+  // Extract quotedMessageId from multiple possible locations
+  // contextInfo can be in: msg.contextInfo, msg.message.extendedTextMessage.contextInfo,
+  // msg.message.imageMessage.contextInfo, msg.message.audioMessage.contextInfo, etc.
+  const quotedMessageId = extractEvolutionQuotedMessageId(msg);
+  
+  if (quotedMessageId) {
+    console.log(`[Webhook Evolution] Found quotedMessageId: ${quotedMessageId}`);
+  }
+  
+  console.log(`[Webhook Evolution] Processing ${payload.event} - Type: ${messageType}, From: ${from}, FromMe: ${msg.key.fromMe}, HasBase64: ${!!mediaData.base64}, OriginalJid: ${rawRemoteJid}, RealJid: ${realRemoteJid}, QuotedId: ${quotedMessageId || 'none'}`);
 
   return {
     id: `evolution_${msg.key.id}`,
@@ -1331,10 +1340,54 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
     mediaMimeType: mediaData.mimetype || msg.message?.imageMessage?.mimetype || msg.message?.audioMessage?.mimetype || msg.message?.videoMessage?.mimetype || msg.message?.documentMessage?.mimetype,
     caption: msg.message?.imageMessage?.caption || msg.message?.videoMessage?.caption,
     timestamp: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000),
-    quotedMessageId: msg.message?.extendedTextMessage?.contextInfo?.stanzaId,
+    quotedMessageId: quotedMessageId,
     status: "delivered",
     originalId: msg.key.id,
   };
+}
+
+// Helper function to extract quotedMessageId from all possible locations in Evolution API payload
+function extractEvolutionQuotedMessageId(msg: any): string | undefined {
+  // Check msg.contextInfo first (for send.message events)
+  if (msg.contextInfo?.stanzaId) {
+    return msg.contextInfo.stanzaId;
+  }
+  
+  const message = msg.message;
+  if (!message) return undefined;
+  
+  // Check each message type for contextInfo.stanzaId
+  // Text messages
+  if (message.extendedTextMessage?.contextInfo?.stanzaId) {
+    return message.extendedTextMessage.contextInfo.stanzaId;
+  }
+  if (message.conversation && message.contextInfo?.stanzaId) {
+    return message.contextInfo.stanzaId;
+  }
+  
+  // Media messages
+  if (message.imageMessage?.contextInfo?.stanzaId) {
+    return message.imageMessage.contextInfo.stanzaId;
+  }
+  if (message.audioMessage?.contextInfo?.stanzaId) {
+    return message.audioMessage.contextInfo.stanzaId;
+  }
+  if (message.videoMessage?.contextInfo?.stanzaId) {
+    return message.videoMessage.contextInfo.stanzaId;
+  }
+  if (message.documentMessage?.contextInfo?.stanzaId) {
+    return message.documentMessage.contextInfo.stanzaId;
+  }
+  if (message.stickerMessage?.contextInfo?.stanzaId) {
+    return message.stickerMessage.contextInfo.stanzaId;
+  }
+  
+  // Check messageContextInfo as fallback (some Evolution versions use this)
+  if (message.messageContextInfo?.stanzaId) {
+    return message.messageContextInfo.stanzaId;
+  }
+  
+  return undefined;
 }
 
 function detectEvolutionMessageType(msg: any): MessageType {
