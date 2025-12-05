@@ -41,21 +41,69 @@ interface Notification {
   timestamp: string;
 }
 
-const DISMISSED_NOTIFICATIONS_KEY = 'dismissed_notifications';
+const DISMISSED_NOTIFICATIONS_KEY = 'dismissed_notifications_v2';
+const EXPIRATION_HOURS = 24;
 
-// Get dismissed notifications from localStorage
+interface DismissedNotification {
+  id: string;
+  dismissedAt: number; // timestamp
+}
+
+// Get dismissed notifications from localStorage, filtering out expired ones
 const getDismissedNotifications = (): string[] => {
+  try {
+    const stored = localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY);
+    if (!stored) return [];
+    
+    const dismissed: DismissedNotification[] = JSON.parse(stored);
+    const now = Date.now();
+    const expirationMs = EXPIRATION_HOURS * 60 * 60 * 1000;
+    
+    // Filter out expired notifications
+    const validDismissed = dismissed.filter(d => (now - d.dismissedAt) < expirationMs);
+    
+    // Save cleaned up list back to localStorage
+    if (validDismissed.length !== dismissed.length) {
+      localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(validDismissed));
+    }
+    
+    return validDismissed.map(d => d.id);
+  } catch {
+    return [];
+  }
+};
+
+// Save dismissed notifications with timestamps
+const saveDismissedNotification = (existingDismissed: DismissedNotification[], newId: string): DismissedNotification[] => {
+  const now = Date.now();
+  const expirationMs = EXPIRATION_HOURS * 60 * 60 * 1000;
+  
+  // Filter expired and add new
+  const validDismissed = existingDismissed.filter(d => (now - d.dismissedAt) < expirationMs);
+  
+  if (!validDismissed.find(d => d.id === newId)) {
+    validDismissed.push({ id: newId, dismissedAt: now });
+  }
+  
+  localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(validDismissed));
+  return validDismissed;
+};
+
+// Save multiple dismissed notifications
+const saveDismissedNotifications = (ids: string[]) => {
+  const now = Date.now();
+  const dismissed: DismissedNotification[] = ids.map(id => ({ id, dismissedAt: now }));
+  localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(dismissed));
+};
+
+// Get raw dismissed data for updates
+const getRawDismissedNotifications = (): DismissedNotification[] => {
   try {
     const stored = localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY);
     return stored ? JSON.parse(stored) : [];
   } catch {
     return [];
   }
-};
-
-// Save dismissed notifications to localStorage
-const saveDismissedNotifications = (ids: string[]) => {
-  localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(ids));
 };
 
 export function Header({ title, onMenuClick }: HeaderProps) {
@@ -173,17 +221,28 @@ export function Header({ title, onMenuClick }: HeaderProps) {
   // Dismiss single notification
   const dismissNotification = (notificationId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const newDismissedIds = [...dismissedIds, notificationId];
-    setDismissedIds(newDismissedIds);
-    saveDismissedNotifications(newDismissedIds);
+    const rawDismissed = getRawDismissedNotifications();
+    const updated = saveDismissedNotification(rawDismissed, notificationId);
+    setDismissedIds(updated.map(d => d.id));
   };
 
   // Dismiss all notifications
   const dismissAllNotifications = () => {
     const allIds = notifications.map(n => n.id);
-    const newDismissedIds = [...new Set([...dismissedIds, ...allIds])];
-    setDismissedIds(newDismissedIds);
-    saveDismissedNotifications(newDismissedIds);
+    const now = Date.now();
+    const rawDismissed = getRawDismissedNotifications();
+    const expirationMs = EXPIRATION_HOURS * 60 * 60 * 1000;
+    
+    // Filter expired and add all new
+    const validDismissed = rawDismissed.filter(d => (now - d.dismissedAt) < expirationMs);
+    allIds.forEach(id => {
+      if (!validDismissed.find(d => d.id === id)) {
+        validDismissed.push({ id, dismissedAt: now });
+      }
+    });
+    
+    localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(validDismissed));
+    setDismissedIds(validDismissed.map(d => d.id));
     toast.success('Todas as notificações foram marcadas como lidas');
   };
 
