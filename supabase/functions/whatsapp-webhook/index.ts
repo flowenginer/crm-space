@@ -497,7 +497,12 @@ serve(async (req) => {
     // MENSAGEM RECEBIDA (não fromMe) - Fluxo normal
     // =====================================================
     
-    // Find or create contact
+    // =====================================================
+    // FIND OR CREATE CONTACT (usando UPSERT para evitar race conditions)
+    // =====================================================
+    const contactName = normalizedMessage.fromName || `WhatsApp ${normalizedMessage.from}`;
+    
+    // Primeiro, tentar buscar o contato existente
     let { data: contact } = await supabase
       .from("contacts")
       .select("id, full_name, phone")
@@ -505,28 +510,43 @@ serve(async (req) => {
       .single();
 
     if (!contact) {
-      const { data: newContact, error: contactError } = await supabase
+      // Usar upsert para evitar duplicatas por race condition
+      const { data: upsertedContact, error: contactError } = await supabase
         .from("contacts")
-        .insert({
+        .upsert({
           phone: normalizedMessage.from,
-          full_name: normalizedMessage.fromName || `WhatsApp ${normalizedMessage.from}`,
+          full_name: contactName,
           origin: "whatsapp",
           first_contact_at: new Date().toISOString(),
+        }, {
+          onConflict: 'phone',
+          ignoreDuplicates: false
         })
         .select("id, full_name, phone")
         .single();
 
       if (contactError) {
-        console.error(`[Webhook] Error creating contact:`, contactError);
-        throw contactError;
+        // Se o erro for de duplicata, buscar o contato existente
+        if (contactError.code === '23505') {
+          console.log(`[Webhook] Contact already exists (race condition handled), fetching...`);
+          const { data: existingContact } = await supabase
+            .from("contacts")
+            .select("id, full_name, phone")
+            .eq("phone", normalizedMessage.from)
+            .single();
+          contact = existingContact;
+        } else {
+          console.error(`[Webhook] Error creating contact:`, contactError);
+          throw contactError;
+        }
+      } else {
+        contact = upsertedContact;
+        console.log(`[Webhook] Created/upserted contact: ${contact?.full_name} (${contact?.phone})`);
       }
-      contact = newContact;
-      console.log(`[Webhook] Created new contact: ${contact.full_name} (${contact.phone})`);
-    } else {
-      // =====================================================
-      // ATUALIZAR NOME DO CONTATO se tiver um pushName real
-      // e o nome atual for genérico (começa com "WhatsApp")
-      // =====================================================
+    }
+    
+    // Atualizar nome do contato se tiver um pushName real e nome atual for genérico
+    if (contact) {
       const currentName = contact.full_name || '';
       const hasGenericName = currentName.startsWith('WhatsApp ') || !currentName;
       const hasBetterName = normalizedMessage.fromName && normalizedMessage.fromName.trim().length > 0;
@@ -542,6 +562,15 @@ serve(async (req) => {
           .eq("id", contact.id);
         contact.full_name = normalizedMessage.fromName;
       }
+    }
+
+    // Garantir que temos um contato válido
+    if (!contact) {
+      console.error(`[Webhook] Failed to find or create contact for phone: ${normalizedMessage.from}`);
+      return new Response(JSON.stringify({ success: false, error: "Failed to create contact" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
     }
 
     // Find or create conversation
