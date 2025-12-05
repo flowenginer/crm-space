@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Send, Loader2, Phone, User } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { MessageSquare, Send, Loader2, Phone, User, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBrazilianPhone, cleanBrazilianPhone, isValidBrazilianPhone } from '@/utils/phone';
 
@@ -16,8 +17,24 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
   const [isLoading, setIsLoading] = useState(false);
   const [searchResult, setSearchResult] = useState<any>(null);
   const [showSearchResult, setShowSearchResult] = useState(false);
+  const [showChannelSelector, setShowChannelSelector] = useState(false);
+  const [pendingContact, setPendingContact] = useState<any>(null);
   
   const queryClient = useQueryClient();
+
+  // Fetch available WhatsApp channels
+  const { data: channels = [] } = useQuery({
+    queryKey: ['whatsapp-channels-active'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('whatsapp_channels')
+        .select('id, name, phone, status')
+        .eq('is_deleted', false)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatBrazilianPhone(e.target.value);
@@ -28,7 +45,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
   const isValidPhone = () => isValidBrazilianPhone(phoneNumber);
 
-  // Search for existing contact
+  // Search for existing contact and conversation
   const searchContact = async () => {
     if (!isValidPhone()) {
       toast.error('Digite um número válido');
@@ -39,7 +56,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
     try {
       const cleanPhone = cleanBrazilianPhone(phoneNumber);
       
-      // Search by phone (with and without country code)
+      // Search contact by phone
       const { data: contact, error } = await supabase
         .from('contacts')
         .select('*')
@@ -49,11 +66,31 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
       if (error) throw error;
 
       if (contact) {
+        // Check for existing conversation
+        const { data: existingConv } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_id', contact.id)
+          .in('status', ['open', 'pending'])
+          .maybeSingle();
+
+        if (existingConv) {
+          // Navigate to existing conversation
+          toast.info('Conversa existente encontrada');
+          if (onConversationCreated) {
+            onConversationCreated(existingConv.id);
+          }
+          setPhoneNumber('');
+          return;
+        }
+
+        // Contact exists but no conversation - show channel selector
         setSearchResult(contact);
         setShowSearchResult(true);
       } else {
-        // No contact found, proceed to create
-        await startConversation(null);
+        // No contact found - show channel selector to create both
+        setPendingContact({ phone: cleanPhone });
+        setShowChannelSelector(true);
       }
     } catch (error) {
       console.error(error);
@@ -63,9 +100,10 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
     }
   };
 
-  // Start conversation (create contact if needed)
-  const startConversation = async (existingContact: any) => {
+  // Start conversation with selected channel
+  const startConversationWithChannel = async (channelId: string, existingContact: any) => {
     setIsLoading(true);
+    setShowChannelSelector(false);
     
     try {
       const cleanPhone = cleanBrazilianPhone(phoneNumber);
@@ -73,8 +111,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
       
       let contactId: string;
 
-      // Step 1: Get or create contact
-      if (existingContact) {
+      if (existingContact?.id) {
         contactId = existingContact.id;
       } else {
         // Create new contact
@@ -96,56 +133,38 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
         toast.success('Novo contato criado!');
       }
 
-      // Step 2: Check for existing open conversation
-      const { data: existingConversation, error: convError } = await supabase
+      // Create new conversation with selected channel
+      const { data: newConversation, error: createError } = await supabase
         .from('conversations')
-        .select('id')
-        .eq('contact_id', contactId)
-        .in('status', ['open', 'pending'])
-        .maybeSingle();
+        .insert({
+          contact_id: contactId,
+          channel_id: channelId,
+          status: 'open',
+          assigned_to: user?.id,
+          is_unread: false,
+          unread_count: 0,
+          last_message_at: new Date().toISOString(),
+          last_message_preview: 'Nova conversa iniciada',
+        })
+        .select()
+        .single();
 
-      if (convError) throw convError;
+      if (createError) throw createError;
 
-      let conversationId: string;
-
-      if (existingConversation) {
-        conversationId = existingConversation.id;
-        toast.info('Conversa existente encontrada');
-      } else {
-        // Step 3: Create new conversation
-        const { data: newConversation, error: createError } = await supabase
-          .from('conversations')
-          .insert({
-            contact_id: contactId,
-            status: 'open',
-            assigned_to: user?.id,
-            is_unread: false,
-            unread_count: 0,
-            last_message_at: new Date().toISOString(),
-            last_message_preview: 'Nova conversa iniciada',
-          })
-          .select()
-          .single();
-
-        if (createError) throw createError;
-        
-        conversationId = newConversation.id;
-        toast.success('Conversa criada!');
-      }
-
-      // Step 4: Invalidate queries to refresh lists
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
 
-      // Step 5: Callback
+      toast.success('Conversa criada!');
+      
       if (onConversationCreated) {
-        onConversationCreated(conversationId);
+        onConversationCreated(newConversation.id);
       }
 
       // Reset form
       setPhoneNumber('');
       setSearchResult(null);
       setShowSearchResult(false);
+      setPendingContact(null);
 
     } catch (error: any) {
       console.error(error);
@@ -165,6 +184,13 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
     searchContact();
   };
+
+  const handleStartWithContact = (contact: any) => {
+    setPendingContact(contact);
+    setShowChannelSelector(true);
+  };
+
+  const connectedChannels = channels.filter(c => c.status === 'connected');
 
   return (
     <div className="flex flex-col items-center justify-center h-full p-8 bg-gradient-to-br from-primary/5 to-secondary/5">
@@ -226,7 +252,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           {/* Search Result */}
           {showSearchResult && searchResult && (
             <div className="mt-4 p-4 bg-muted rounded-xl">
-              <p className="text-xs text-muted-foreground mb-3">Contato encontrado:</p>
+              <p className="text-xs text-muted-foreground mb-3">Contato encontrado (sem conversa ativa):</p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-semibold">
@@ -238,7 +264,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
                   </div>
                 </div>
                 <Button
-                  onClick={() => startConversation(searchResult)}
+                  onClick={() => handleStartWithContact(searchResult)}
                   disabled={isLoading}
                   size="sm"
                   className="bg-green-600 hover:bg-green-700"
@@ -246,7 +272,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
                   {isLoading ? (
                     <Loader2 size={16} className="animate-spin" />
                   ) : (
-                    'Iniciar'
+                    'Escolher canal'
                   )}
                 </Button>
               </div>
@@ -275,6 +301,44 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           <p className="text-xs text-muted-foreground">Conversa aberta</p>
         </div>
       </div>
+
+      {/* Channel Selector Dialog */}
+      <Dialog open={showChannelSelector} onOpenChange={setShowChannelSelector}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Escolha o canal WhatsApp</DialogTitle>
+            <DialogDescription>
+              Selecione por qual conexão deseja iniciar a conversa
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-2 mt-4">
+            {connectedChannels.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Nenhum canal conectado disponível
+              </p>
+            ) : (
+              connectedChannels.map((channel) => (
+                <button
+                  key={channel.id}
+                  onClick={() => startConversationWithChannel(channel.id, pendingContact)}
+                  disabled={isLoading}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted transition-colors text-left"
+                >
+                  <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <Smartphone size={20} className="text-green-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground truncate">{channel.name}</p>
+                    <p className="text-xs text-muted-foreground">{channel.phone}</p>
+                  </div>
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                </button>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
