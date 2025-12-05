@@ -505,10 +505,28 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact }: MessageB
                   : 'bg-muted/50 border-primary text-muted-foreground'
               )}
             >
-              <CornerDownRight size={12} />
+              <CornerDownRight size={12} className="flex-shrink-0" />
+              {/* Image thumbnail for image replies */}
+              {replyTo.message_type === 'image' && replyTo.media_url && (
+                <img 
+                  src={replyTo.media_url} 
+                  alt="Imagem" 
+                  className="w-8 h-8 rounded object-cover flex-shrink-0"
+                />
+              )}
               <span className="truncate">
-                {replyTo.is_deleted ? 'Mensagem apagada' : replyTo.content?.substring(0, 50) || 'Mídia'}
-                {replyTo.content && replyTo.content.length > 50 ? '...' : ''}
+                {replyTo.is_deleted 
+                  ? 'Mensagem apagada' 
+                  : replyTo.message_type === 'image'
+                    ? (replyTo.content && replyTo.content !== '[Imagem]' ? replyTo.content.substring(0, 50) : 'Imagem')
+                    : replyTo.message_type === 'audio'
+                      ? '🎤 Áudio'
+                      : replyTo.message_type === 'video'
+                        ? '🎬 Vídeo'
+                        : replyTo.message_type === 'document'
+                          ? '📄 Documento'
+                          : (replyTo.content?.substring(0, 50) || 'Mídia')}
+                {replyTo.message_type === 'text' && replyTo.content && replyTo.content.length > 50 ? '...' : ''}
               </span>
             </div>
           )}
