@@ -377,7 +377,7 @@ function ConversationItem({ conversation, isSelected, onClick }: ConversationIte
 interface MessageBubbleProps {
   message: Message;
   onReply?: (message: Message) => void;
-  onDelete?: (messageId: string) => void;
+  onDelete?: (message: Message) => void;
   onReact?: (messageId: string, emoji: string) => void;
 }
 
@@ -408,7 +408,7 @@ function MessageBubble({ message, onReply, onDelete, onReact }: MessageBubblePro
   };
 
   const handleConfirmDelete = () => {
-    onDelete?.(message.id);
+    onDelete?.(message);
     setShowDeleteConfirm(false);
   };
 
@@ -1252,9 +1252,19 @@ export default function Conversations() {
     setReplyingTo(message);
   };
 
-  const handleDeleteMessage = async (messageId: string) => {
+  const handleDeleteMessage = async (message: Message) => {
     if (!selectedConversationId) return;
-    deleteMessage.mutate({ messageId, conversationId: selectedConversationId });
+    
+    // Get conversation to get channel and contact info
+    const selectedConv = conversations?.find(c => c.id === selectedConversationId);
+    
+    deleteMessage.mutate({ 
+      messageId: message.id, 
+      conversationId: selectedConversationId,
+      whatsappMessageId: message.whatsapp_message_id,
+      channelId: selectedConv?.channel_id,
+      contactPhone: selectedConv?.contact?.phone,
+    });
     toast.success('Mensagem apagada');
   };
 

@@ -217,7 +217,51 @@ export function useDeleteMessage() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ messageId, conversationId }: { messageId: string; conversationId: string }) => {
+    mutationFn: async ({ 
+      messageId, 
+      conversationId,
+      whatsappMessageId,
+      channelId,
+      contactPhone 
+    }: { 
+      messageId: string; 
+      conversationId: string;
+      whatsappMessageId?: string | null;
+      channelId?: string | null;
+      contactPhone?: string | null;
+    }) => {
+      // Try to delete on WhatsApp first if we have the necessary info
+      if (whatsappMessageId && channelId && contactPhone) {
+        try {
+          // Format remoteJid for Evolution/UAZAPI
+          const remoteJid = contactPhone.replace(/\D/g, '') + '@s.whatsapp.net';
+          
+          console.log('[DeleteMessage] Deleting on WhatsApp:', { whatsappMessageId, channelId, remoteJid });
+          
+          const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+            body: {
+              action: 'deleteMessage',
+              channelId,
+              whatsappMessageId,
+              remoteJid,
+              phone: contactPhone,
+            }
+          });
+          
+          if (error) {
+            console.error('[DeleteMessage] WhatsApp delete error:', error);
+          } else if (!data?.success) {
+            console.warn('[DeleteMessage] WhatsApp delete failed:', data?.error);
+          } else {
+            console.log('[DeleteMessage] WhatsApp delete success');
+          }
+        } catch (e) {
+          console.error('[DeleteMessage] Error calling WhatsApp delete:', e);
+          // Continue to delete locally even if WhatsApp delete fails
+        }
+      }
+
+      // Delete locally (soft delete)
       const { error } = await supabase
         .from('messages')
         .update({ 
