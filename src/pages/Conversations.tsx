@@ -39,6 +39,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AnimatedCounter } from '@/components/ui/animated-counter';
 import {
   Select,
   SelectContent,
@@ -2010,7 +2011,7 @@ export default function Conversations() {
                 )}
               >
                 <span>{filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : 'Não atribuídas'}</span>
-                <span className="text-[10px] opacity-70">{filterCounts[filter]}</span>
+                <AnimatedCounter value={filterCounts[filter]} className="text-[10px] opacity-70" />
                 {/* Red notification badge for pinned conversations with unread messages */}
                 {filter === 'pinned' && quickFilter !== 'pinned' && pinnedUnreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
