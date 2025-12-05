@@ -46,8 +46,8 @@ export function ScheduleMessageModal({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  // File attachment state
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  // File attachment state - multiple files
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Emoji picker state
@@ -66,7 +66,7 @@ export function ScheduleMessageModal({
       setScheduledTime('');
       setAudioBlob(null);
       setAudioUrl(null);
-      setAttachedFile(null);
+      setAttachedFiles([]);
       setActiveTab('new');
     }
   }, [open]);
@@ -155,24 +155,40 @@ export function ScheduleMessageModal({
   };
 
   // ============================================
-  // FILE ATTACHMENT
+  // FILE ATTACHMENT - Multiple files
   // ============================================
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error('Arquivo muito grande. Máximo 10MB.');
-        return;
-      }
-      setAttachedFile(file);
-    }
-  };
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-  const removeFile = () => {
-    setAttachedFile(null);
+    const validFiles: File[] = [];
+    let hasError = false;
+
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(`Arquivo "${file.name}" muito grande. Máximo 10MB.`);
+        hasError = true;
+        continue;
+      }
+      validFiles.push(file);
+    }
+
+    if (validFiles.length > 0) {
+      setAttachedFiles(prev => [...prev, ...validFiles]);
+    }
+    
+    // Reset input para permitir selecionar o mesmo arquivo novamente
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const removeFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const clearAllFiles = () => {
+    setAttachedFiles([]);
   };
 
   // ============================================
@@ -199,7 +215,7 @@ export function ScheduleMessageModal({
       return;
     }
 
-    if (!message && !audioBlob && !attachedFile) {
+    if (!message && !audioBlob && attachedFiles.length === 0) {
       toast.error('Adicione uma mensagem, áudio ou arquivo');
       return;
     }
@@ -250,9 +266,9 @@ export function ScheduleMessageModal({
         toast.info('Upload de áudio será implementado em breve');
       }
 
-      if (attachedFile) {
-        messageType = attachedFile.type.startsWith('image/') ? 'image' : 'document';
-        toast.info('Upload de arquivo será implementado em breve');
+      if (attachedFiles.length > 0) {
+        messageType = attachedFiles[0].type.startsWith('image/') ? 'image' : 'document';
+        toast.info(`Upload de ${attachedFiles.length} arquivo(s) será implementado em breve`);
       }
 
       // Add signature if enabled
@@ -291,7 +307,7 @@ export function ScheduleMessageModal({
       setScheduledDate('');
       setScheduledTime('');
       deleteRecording();
-      removeFile();
+      clearAllFiles();
       setActiveTab('scheduled');
       
     } catch (error) {
@@ -387,6 +403,7 @@ export function ScheduleMessageModal({
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   onChange={handleFileSelect}
                   className="hidden"
                   accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
@@ -402,13 +419,20 @@ export function ScheduleMessageModal({
                     <Smile size={18} className="text-muted-foreground" />
                   </button>
                   {showEmojiPicker && (
-                    <div className="absolute bottom-full left-0 mb-2 z-50">
-                      <EmojiPicker
-                        onEmojiClick={handleEmojiSelect}
-                        width={300}
-                        height={400}
+                    <>
+                      {/* Overlay to close emoji picker */}
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setShowEmojiPicker(false)}
                       />
-                    </div>
+                      <div className="absolute top-full left-0 mt-2 z-50">
+                        <EmojiPicker
+                          onEmojiClick={handleEmojiSelect}
+                          width={300}
+                          height={350}
+                        />
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -494,22 +518,34 @@ export function ScheduleMessageModal({
                 </div>
               )}
 
-              {/* File Preview */}
-              {attachedFile && (
-                <div className="flex items-center gap-3 p-3 bg-accent/50 border-b border-border">
-                  <Paperclip size={16} className="text-primary" />
-                  <span className="flex-1 text-sm text-foreground truncate">
-                    {attachedFile.name}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {(attachedFile.size / 1024 / 1024).toFixed(2)} MB
-                  </span>
-                  <button
-                    onClick={removeFile}
-                    className="p-1 hover:bg-destructive/20 rounded"
-                  >
-                    <X size={16} className="text-destructive" />
-                  </button>
+              {/* Files Preview */}
+              {attachedFiles.length > 0 && (
+                <div className="p-3 bg-accent/50 border-b border-border space-y-2">
+                  {attachedFiles.map((file, index) => (
+                    <div key={index} className="flex items-center gap-3">
+                      <Paperclip size={16} className="text-primary flex-shrink-0" />
+                      <span className="flex-1 text-sm text-foreground truncate">
+                        {file.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </span>
+                      <button
+                        onClick={() => removeFile(index)}
+                        className="p-1 hover:bg-destructive/20 rounded flex-shrink-0"
+                      >
+                        <X size={16} className="text-destructive" />
+                      </button>
+                    </div>
+                  ))}
+                  {attachedFiles.length > 1 && (
+                    <button
+                      onClick={clearAllFiles}
+                      className="text-xs text-destructive hover:underline"
+                    >
+                      Remover todos
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -525,7 +561,7 @@ export function ScheduleMessageModal({
             {/* Schedule Button */}
             <Button
               onClick={handleSchedule}
-              disabled={isLoading || (!message && !audioBlob && !attachedFile) || !scheduledDate || !scheduledTime}
+              disabled={isLoading || (!message && !audioBlob && attachedFiles.length === 0) || !scheduledDate || !scheduledTime}
               className="w-full gap-2"
             >
               {isLoading ? (
