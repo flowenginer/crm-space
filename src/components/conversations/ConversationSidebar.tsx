@@ -4,11 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { 
-  X, Phone, Loader2, CalendarClock, Plus, Save, Send
+  X, Phone, Loader2, CalendarClock, Plus, Save, Send, Smartphone
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -39,6 +39,8 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   const [isFetchingPhoto, setIsFetchingPhoto] = useState(false);
   const [newConversationPhone, setNewConversationPhone] = useState('');
   const [isStartingConversation, setIsStartingConversation] = useState(false);
+  const [showChannelSelector, setShowChannelSelector] = useState(false);
+  const [pendingContactForConversation, setPendingContactForConversation] = useState<{ id?: string; phone: string } | null>(null);
   
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -127,6 +129,20 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
         .from('departments')
         .select('*')
         .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch available WhatsApp channels
+  const { data: whatsappChannels = [] } = useQuery({
+    queryKey: ['whatsapp-channels-sidebar'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('whatsapp_channels')
+        .select('id, name, phone, status')
+        .eq('is_deleted', false)
         .order('name');
       if (error) throw error;
       return data;
@@ -325,21 +341,61 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     setIsStartingConversation(true);
     try {
       // Check if contact exists
-      let { data: existingContact } = await supabase
+      const { data: existingContact } = await supabase
         .from('contacts')
         .select('id')
-        .eq('phone', formattedPhone)
+        .or(`phone.eq.${formattedPhone},phone.eq.${cleanPhone}`)
         .maybeSingle();
 
-      let contactId = existingContact?.id;
+      if (existingContact) {
+        // Check if conversation exists
+        const { data: existingConv } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_id', existingContact.id)
+          .maybeSingle();
+
+        if (existingConv) {
+          // Navigate to existing conversation
+          navigate(`/conversations?id=${existingConv.id}`);
+          toast.info('Conversa existente encontrada');
+          setNewConversationPhone('');
+          return;
+        }
+
+        // Contact exists but no conversation - show channel selector
+        setPendingContactForConversation({ id: existingContact.id, phone: formattedPhone });
+      } else {
+        // No contact - show channel selector to create both
+        setPendingContactForConversation({ phone: formattedPhone });
+      }
+      
+      setShowChannelSelector(true);
+    } catch (error) {
+      console.error('Error searching contact:', error);
+      toast.error('Erro ao buscar contato');
+    } finally {
+      setIsStartingConversation(false);
+    }
+  };
+
+  // Create conversation with selected channel
+  const handleCreateConversationWithChannel = async (channelId: string) => {
+    if (!pendingContactForConversation) return;
+
+    setIsStartingConversation(true);
+    setShowChannelSelector(false);
+
+    try {
+      let contactId = pendingContactForConversation.id;
 
       // Create contact if doesn't exist
       if (!contactId) {
         const { data: newContact, error: contactError } = await supabase
           .from('contacts')
           .insert({
-            phone: formattedPhone,
-            full_name: `WhatsApp ${formattedPhone.slice(-4)}`,
+            phone: pendingContactForConversation.phone,
+            full_name: `WhatsApp ${pendingContactForConversation.phone.slice(-4)}`,
           })
           .select('id')
           .single();
@@ -348,39 +404,28 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
         contactId = newContact.id;
       }
 
-      // Check if conversation exists
-      let { data: existingConv } = await supabase
+      // Create new conversation with selected channel
+      const { data: newConv, error: convError } = await supabase
         .from('conversations')
+        .insert({
+          contact_id: contactId,
+          status: 'open',
+          channel_id: channelId,
+        })
         .select('id')
-        .eq('contact_id', contactId)
-        .maybeSingle();
+        .single();
 
-      if (existingConv) {
-        // Navigate to existing conversation
-        navigate(`/conversations?id=${existingConv.id}`);
-        toast.success('Conversa existente aberta');
-      } else {
-        // Create new conversation
-        const { data: newConv, error: convError } = await supabase
-          .from('conversations')
-          .insert({
-            contact_id: contactId,
-            status: 'open',
-            channel_id: conversation?.channel_id,
-          })
-          .select('id')
-          .single();
-
-        if (convError) throw convError;
-        navigate(`/conversations?id=${newConv.id}`);
-        toast.success('Nova conversa criada!');
-      }
+      if (convError) throw convError;
+      
+      navigate(`/conversations?id=${newConv.id}`);
+      toast.success('Nova conversa criada!');
 
       setNewConversationPhone('');
+      setPendingContactForConversation(null);
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     } catch (error) {
-      console.error('Error starting conversation:', error);
-      toast.error('Erro ao iniciar conversa');
+      console.error('Error creating conversation:', error);
+      toast.error('Erro ao criar conversa');
     } finally {
       setIsStartingConversation(false);
     }
@@ -770,6 +815,44 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
         onConfirm={(reason) => closeConversation.mutate(reason)}
         isLoading={closeConversation.isPending}
       />
+
+      {/* Channel Selector Modal */}
+      <Dialog open={showChannelSelector} onOpenChange={setShowChannelSelector}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Escolha o canal WhatsApp</DialogTitle>
+            <DialogDescription>
+              Selecione por qual conexão deseja iniciar a conversa
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-2 mt-4">
+            {whatsappChannels.filter(c => c.status === 'connected').length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Nenhum canal conectado disponível
+              </p>
+            ) : (
+              whatsappChannels.filter(c => c.status === 'connected').map((channel) => (
+                <button
+                  key={channel.id}
+                  onClick={() => handleCreateConversationWithChannel(channel.id)}
+                  disabled={isStartingConversation}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted transition-colors text-left"
+                >
+                  <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <Smartphone size={20} className="text-green-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground truncate">{channel.name}</p>
+                    <p className="text-xs text-muted-foreground">{channel.phone}</p>
+                  </div>
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                </button>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
