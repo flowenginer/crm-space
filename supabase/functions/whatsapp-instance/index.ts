@@ -497,7 +497,7 @@ async function editEvolutionMessage(
   console.log('[Evolution] Edit Request:', { endpoint, body });
   
   const response = await fetch(endpoint, {
-    method: 'PUT',
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'apikey': apiKey,
