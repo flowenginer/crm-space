@@ -32,6 +32,8 @@ import { RoleManagement } from '@/components/settings/RoleManagement';
 import { DepartmentManagement } from '@/components/settings/DepartmentManagement';
 import { TagManagement } from '@/components/settings/TagManagement';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
+import { MetaAdsSettings } from '@/components/settings/MetaAdsSettings';
+import { Facebook } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -479,6 +481,13 @@ export default function Settings() {
             Integrações
           </TabsTrigger>
           <TabsTrigger
+            value="meta-ads"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+          >
+            <Facebook size={18} />
+            Meta Ads
+          </TabsTrigger>
+          <TabsTrigger
             value="general"
             className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
@@ -849,6 +858,11 @@ export default function Settings() {
         {/* TAB: Integrações */}
         <TabsContent value="integrations" className="space-y-6">
           <IntegrationSettings />
+        </TabsContent>
+
+        {/* TAB: Meta Ads */}
+        <TabsContent value="meta-ads" className="space-y-6">
+          <MetaAdsSettings />
         </TabsContent>
 
         {/* TAB 7: General */}
