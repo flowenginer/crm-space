@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Bell, Calendar, Menu, X, MessageCircle, Clock, User } from 'lucide-react';
+import { Search, Bell, Calendar, Menu, MessageCircle, Clock, UserPlus, AlertTriangle, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -33,11 +33,11 @@ interface SearchResult {
 
 interface Notification {
   id: string;
+  type: 'assignment' | 'transfer' | 'sla';
   conversationId: string;
   contactName: string;
   message: string;
   timestamp: string;
-  isRead: boolean;
 }
 
 export function Header({ title, onMenuClick }: HeaderProps) {
@@ -51,40 +51,102 @@ export function Header({ title, onMenuClick }: HeaderProps) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
-  // Fetch unread conversations for notifications
-  const { data: notifications = [], refetch: refetchNotifications } = useQuery({
+  // Fetch useful notifications: assignments, transfers, SLA alerts
+  const { data: notifications = [] } = useQuery({
     queryKey: ['header-notifications'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      const allNotifications: Notification[] = [];
+
+      // 1. Conversations assigned to me recently (last 24h)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: assignedConvs } = await supabase
         .from('conversations')
         .select(`
           id,
-          last_message_preview,
-          last_message_at,
-          is_unread,
-          unread_count,
-          contact:contacts(full_name, phone)
+          updated_at,
+          contact:contacts(full_name)
         `)
-        .eq('is_unread', true)
-        .order('last_message_at', { ascending: false })
-        .limit(10);
-      
-      if (error) throw error;
-      
-      return (data || []).map(conv => ({
-        id: conv.id,
-        conversationId: conv.id,
-        contactName: conv.contact?.full_name || 'Contato',
-        message: conv.last_message_preview || 'Nova mensagem',
-        timestamp: conv.last_message_at,
-        isRead: !conv.is_unread,
-        unreadCount: conv.unread_count || 0,
-      }));
+        .eq('assigned_to', user.id)
+        .eq('status', 'open')
+        .gte('updated_at', oneDayAgo)
+        .order('updated_at', { ascending: false })
+        .limit(5);
+
+      assignedConvs?.forEach(conv => {
+        allNotifications.push({
+          id: `assign-${conv.id}`,
+          type: 'assignment',
+          conversationId: conv.id,
+          contactName: conv.contact?.full_name || 'Contato',
+          message: 'Conversa atribuída a você',
+          timestamp: conv.updated_at,
+        });
+      });
+
+      // 2. Transferred conversations (last 24h)
+      const { data: transferredConvs } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          transferred_at,
+          transfer_note,
+          contact:contacts(full_name)
+        `)
+        .eq('assigned_to', user.id)
+        .not('transferred_at', 'is', null)
+        .gte('transferred_at', oneDayAgo)
+        .order('transferred_at', { ascending: false })
+        .limit(5);
+
+      transferredConvs?.forEach(conv => {
+        allNotifications.push({
+          id: `transfer-${conv.id}`,
+          type: 'transfer',
+          conversationId: conv.id,
+          contactName: conv.contact?.full_name || 'Contato',
+          message: conv.transfer_note || 'Conversa transferida para você',
+          timestamp: conv.transferred_at!,
+        });
+      });
+
+      // 3. SLA critical conversations
+      const { data: slaConvs } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          updated_at,
+          sla_status,
+          contact:contacts(full_name)
+        `)
+        .eq('assigned_to', user.id)
+        .eq('status', 'open')
+        .in('sla_status', ['warning', 'critical'])
+        .order('updated_at', { ascending: false })
+        .limit(5);
+
+      slaConvs?.forEach(conv => {
+        allNotifications.push({
+          id: `sla-${conv.id}`,
+          type: 'sla',
+          conversationId: conv.id,
+          contactName: conv.contact?.full_name || 'Contato',
+          message: conv.sla_status === 'critical' ? 'SLA crítico!' : 'Atenção ao SLA',
+          timestamp: conv.updated_at,
+        });
+      });
+
+      // Sort all by timestamp and limit
+      return allNotifications
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 10);
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 60000, // Refresh every minute
   });
 
-  const unreadCount = notifications.length;
+  const notificationCount = notifications.length;
 
   // Search function
   useEffect(() => {
@@ -160,7 +222,6 @@ export function Header({ title, onMenuClick }: HeaderProps) {
     if (result.conversationId) {
       navigate(`/conversations?id=${result.conversationId}`);
     } else {
-      // If no conversation exists, go to contacts
       navigate(`/contacts`);
     }
   };
@@ -176,6 +237,32 @@ export function Header({ title, onMenuClick }: HeaderProps) {
       return formatDistanceToNow(new Date(date), { addSuffix: false, locale: ptBR });
     } catch {
       return '';
+    }
+  };
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'assignment':
+        return <UserPlus size={14} className="text-primary" />;
+      case 'transfer':
+        return <ArrowRightLeft size={14} className="text-blue-500" />;
+      case 'sla':
+        return <AlertTriangle size={14} className="text-amber-500" />;
+      default:
+        return <Bell size={14} className="text-muted-foreground" />;
+    }
+  };
+
+  const getNotificationColor = (type: string) => {
+    switch (type) {
+      case 'assignment':
+        return 'from-primary to-purple-600';
+      case 'transfer':
+        return 'from-blue-500 to-cyan-500';
+      case 'sla':
+        return 'from-amber-500 to-orange-500';
+      default:
+        return 'from-purple-500 to-pink-500';
     }
   };
 
@@ -289,9 +376,9 @@ export function Header({ title, onMenuClick }: HeaderProps) {
               className="relative h-11 w-11 rounded-xl border-border/50 hover:bg-muted hover:border-primary/50 transition-all"
             >
               <Bell className="h-5 w-5 text-muted-foreground" />
-              {unreadCount > 0 && (
+              {notificationCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground border-2 border-card shadow-sm">
-                  {unreadCount > 9 ? '9+' : unreadCount}
+                  {notificationCount > 9 ? '9+' : notificationCount}
                 </span>
               )}
             </Button>
@@ -300,7 +387,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
             <div className="p-3 border-b border-border">
               <h3 className="font-semibold text-foreground">Notificações</h3>
               <p className="text-xs text-muted-foreground">
-                {unreadCount > 0 ? `${unreadCount} mensagens não lidas` : 'Nenhuma notificação'}
+                Atribuições, transferências e alertas
               </p>
             </div>
             
@@ -308,25 +395,28 @@ export function Header({ title, onMenuClick }: HeaderProps) {
               {notifications.length === 0 ? (
                 <div className="p-6 text-center text-muted-foreground text-sm">
                   <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Tudo em dia!</p>
+                  <p>Nenhuma notificação</p>
                 </div>
               ) : (
                 notifications.map((notification) => (
                   <button
                     key={notification.id}
                     onClick={() => handleNotificationClick(notification)}
-                    className={cn(
-                      "w-full flex items-start gap-3 p-3 hover:bg-muted transition-colors text-left border-b border-border/50 last:border-0",
-                      !notification.isRead && "bg-primary/5"
-                    )}
+                    className="w-full flex items-start gap-3 p-3 hover:bg-muted transition-colors text-left border-b border-border/50 last:border-0"
                   >
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold flex-shrink-0">
+                    <div className={cn(
+                      "w-10 h-10 rounded-full bg-gradient-to-br flex items-center justify-center text-white font-semibold flex-shrink-0",
+                      getNotificationColor(notification.type)
+                    )}>
                       {notification.contactName.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {notification.contactName}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        {getNotificationIcon(notification.type)}
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {notification.contactName}
+                        </p>
+                      </div>
                       <p className="text-xs text-muted-foreground truncate">
                         {notification.message}
                       </p>
