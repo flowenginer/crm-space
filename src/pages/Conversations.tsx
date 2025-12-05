@@ -1182,16 +1182,20 @@ export default function Conversations() {
     return () => clearTimeout(timeout);
   }, [allChatItems.length, selectedConversationId, scrollToBottom]);
 
-  // Handle URL param for conversation selection
+  // Handle URL param for conversation selection - URL is the source of truth
   useEffect(() => {
     const idFromUrl = searchParams.get('id');
-    if (idFromUrl && idFromUrl !== selectedConversationId) {
-      setSelectedConversationId(idFromUrl);
-      if (isMobile) {
-        setShowMobileChat(true);
+    if (idFromUrl !== selectedConversationId) {
+      if (idFromUrl) {
+        setSelectedConversationId(idFromUrl);
+        if (isMobile) {
+          setShowMobileChat(true);
+        }
+      } else {
+        setSelectedConversationId(null);
       }
     }
-  }, [searchParams]);
+  }, [searchParams, selectedConversationId, isMobile]);
 
   // Reset selection mode when changing conversation
   useEffect(() => {
@@ -1484,14 +1488,17 @@ export default function Conversations() {
     toast.success('Filtros aplicados');
   };
 
-  const handleSelectConversation = (conv: Conversation) => {
-    setSelectedConversationId(conv.id);
-    setSearchParams({ id: conv.id });
+  const handleSelectConversation = useCallback((conv: Conversation) => {
+    // Only update URL - the useEffect will handle state update
+    const currentId = searchParams.get('id');
+    if (currentId !== conv.id) {
+      setSearchParams({ id: conv.id }, { replace: true });
+    }
     setIsInternalNoteMode(false);
     if (isMobile) {
       setShowMobileChat(true);
     }
-  };
+  }, [searchParams, setSearchParams, isMobile]);
 
   const handleBackToList = () => {
     setShowMobileChat(false);
@@ -2851,8 +2858,7 @@ export default function Conversations() {
           /* Empty State with Start Conversation */
           <StartConversation 
             onConversationCreated={(conversationId) => {
-              setSelectedConversationId(conversationId);
-              setSearchParams({ id: conversationId });
+              setSearchParams({ id: conversationId }, { replace: true });
             }}
           />
         )}
