@@ -5,6 +5,112 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+interface ScheduledMessage {
+  id: string
+  content: string
+  media_url: string | null
+  scheduled_for: string
+  channel_id: string
+  contact_id: string
+  conversation_id: string
+  attempts: number
+  contact: { id: string; full_name: string; phone: string } | null
+}
+
+interface WhatsAppProvider {
+  code: string
+  base_url: string
+  api_key: string | null
+}
+
+interface WhatsAppChannel {
+  id: string
+  instance_id: string
+  instance_token: string
+  provider: WhatsAppProvider | WhatsAppProvider[] | null
+}
+
+// Send message via Evolution API
+async function sendEvolutionMessage(
+  baseUrl: string,
+  instanceName: string,
+  apiKey: string,
+  phone: string,
+  content: string,
+  mediaUrl?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, '')
+    const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
+    
+    const url = `${baseUrl}/message/sendText/${instanceName}`
+    console.log(`[Scheduled] Sending via Evolution to ${formattedPhone}`)
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': apiKey,
+      },
+      body: JSON.stringify({
+        number: formattedPhone,
+        text: content,
+      }),
+    })
+
+    const data = await response.json()
+    console.log(`[Scheduled] Evolution response:`, JSON.stringify(data))
+
+    if (response.ok && data.key?.id) {
+      return { success: true, messageId: data.key.id }
+    } else {
+      return { success: false, error: data.message || 'Unknown error' }
+    }
+  } catch (error) {
+    console.error('[Scheduled] Evolution send error:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+  }
+}
+
+// Send message via Z-API
+async function sendZAPIMessage(
+  instanceId: string,
+  token: string,
+  phone: string,
+  content: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, '')
+    const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
+    
+    const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`
+    console.log(`[Scheduled] Sending via Z-API to ${formattedPhone}`)
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        phone: formattedPhone,
+        message: content,
+      }),
+    })
+
+    const data = await response.json()
+    console.log(`[Scheduled] Z-API response:`, JSON.stringify(data))
+
+    if (response.ok && data.zapiMessageId) {
+      return { success: true, messageId: data.zapiMessageId }
+    } else {
+      return { success: false, error: data.message || 'Unknown error' }
+    }
+  } catch (error) {
+    console.error('[Scheduled] Z-API send error:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -17,7 +123,7 @@ Deno.serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    console.log('Processing scheduled messages...')
+    console.log('[Scheduled] Processing scheduled messages...')
 
     // Find messages that should be sent (scheduled_for <= now and status = 'scheduled')
     const now = new Date().toISOString()
@@ -26,19 +132,18 @@ Deno.serve(async (req) => {
       .from('scheduled_messages')
       .select(`
         *,
-        contact:contacts(id, full_name, phone),
-        conversation:conversations(id, contact_id)
+        contact:contacts(id, full_name, phone)
       `)
       .eq('status', 'scheduled')
       .lte('scheduled_for', now)
       .limit(50) // Process in batches
 
     if (fetchError) {
-      console.error('Error fetching scheduled messages:', fetchError)
+      console.error('[Scheduled] Error fetching messages:', fetchError)
       throw fetchError
     }
 
-    console.log(`Found ${scheduledMessages?.length || 0} messages to process`)
+    console.log(`[Scheduled] Found ${scheduledMessages?.length || 0} messages to process`)
 
     if (!scheduledMessages || scheduledMessages.length === 0) {
       return new Response(
@@ -55,9 +160,123 @@ Deno.serve(async (req) => {
     let errorCount = 0
     const results: { id: string; status: string; error?: string }[] = []
 
-    for (const scheduled of scheduledMessages) {
+    for (const scheduled of scheduledMessages as ScheduledMessage[]) {
       try {
-        console.log(`Processing message ${scheduled.id} for contact ${scheduled.contact?.full_name}`)
+        console.log(`[Scheduled] Processing message ${scheduled.id} for contact ${scheduled.contact?.full_name}`)
+
+        // Get channel with provider info
+        const { data: channel, error: channelError } = await supabase
+          .from('whatsapp_channels')
+          .select(`
+            id,
+            instance_id,
+            instance_token,
+            provider:whatsapp_providers(code, base_url, api_key)
+          `)
+          .eq('id', scheduled.channel_id)
+          .single()
+
+        if (channelError || !channel) {
+          console.error(`[Scheduled] Channel not found for message ${scheduled.id}:`, channelError)
+          
+          await supabase
+            .from('scheduled_messages')
+            .update({ 
+              status: 'failed',
+              error_message: 'Canal WhatsApp não encontrado',
+              attempts: (scheduled.attempts || 0) + 1
+            })
+            .eq('id', scheduled.id)
+
+          errorCount++
+          results.push({ id: scheduled.id, status: 'failed', error: 'Channel not found' })
+          continue
+        }
+
+        const typedChannel = channel as WhatsAppChannel
+        // Provider pode vir como array ou objeto único
+        const providerRaw = typedChannel.provider
+        const provider: WhatsAppProvider | null = Array.isArray(providerRaw) ? providerRaw[0] : providerRaw
+
+        if (!provider) {
+          console.error(`[Scheduled] Provider not found for channel ${scheduled.channel_id}`)
+          
+          await supabase
+            .from('scheduled_messages')
+            .update({ 
+              status: 'failed',
+              error_message: 'Provedor WhatsApp não configurado',
+              attempts: (scheduled.attempts || 0) + 1
+            })
+            .eq('id', scheduled.id)
+
+          errorCount++
+          results.push({ id: scheduled.id, status: 'failed', error: 'Provider not found' })
+          continue
+        }
+
+        // Get contact phone
+        const contactPhone = scheduled.contact?.phone
+        if (!contactPhone) {
+          console.error(`[Scheduled] Contact phone not found for message ${scheduled.id}`)
+          
+          await supabase
+            .from('scheduled_messages')
+            .update({ 
+              status: 'failed',
+              error_message: 'Telefone do contato não encontrado',
+              attempts: (scheduled.attempts || 0) + 1
+            })
+            .eq('id', scheduled.id)
+
+          errorCount++
+          results.push({ id: scheduled.id, status: 'failed', error: 'Contact phone not found' })
+          continue
+        }
+
+        // Send message via WhatsApp API
+        let sendResult: { success: boolean; messageId?: string; error?: string }
+
+        console.log(`[Scheduled] Sending via provider: ${provider.code}`)
+
+        if (provider.code === 'evolution') {
+          sendResult = await sendEvolutionMessage(
+            provider.base_url,
+            typedChannel.instance_id,
+            provider.api_key || '',
+            contactPhone,
+            scheduled.content,
+            scheduled.media_url || undefined
+          )
+        } else if (provider.code === 'zapi') {
+          sendResult = await sendZAPIMessage(
+            typedChannel.instance_id,
+            typedChannel.instance_token,
+            contactPhone,
+            scheduled.content
+          )
+        } else {
+          sendResult = { success: false, error: `Provider ${provider.code} not supported` }
+        }
+
+        if (!sendResult.success) {
+          console.error(`[Scheduled] Failed to send message ${scheduled.id}:`, sendResult.error)
+          
+          await supabase
+            .from('scheduled_messages')
+            .update({ 
+              status: 'failed',
+              error_message: sendResult.error || 'Falha ao enviar mensagem',
+              attempts: (scheduled.attempts || 0) + 1
+            })
+            .eq('id', scheduled.id)
+
+          errorCount++
+          results.push({ id: scheduled.id, status: 'failed', error: sendResult.error })
+          continue
+        }
+
+        console.log(`[Scheduled] Message sent successfully! WhatsApp ID: ${sendResult.messageId}`)
 
         // Insert the message into the messages table
         const { error: insertError } = await supabase
@@ -70,25 +289,13 @@ Deno.serve(async (req) => {
             message_type: scheduled.content ? 'text' : 'media',
             is_from_me: true,
             status: 'sent',
+            whatsapp_message_id: sendResult.messageId,
             created_at: new Date().toISOString()
           })
 
         if (insertError) {
-          console.error(`Error inserting message ${scheduled.id}:`, insertError)
-          
-          // Update scheduled message with error
-          await supabase
-            .from('scheduled_messages')
-            .update({ 
-              status: 'failed',
-              error_message: insertError.message,
-              attempts: (scheduled.attempts || 0) + 1
-            })
-            .eq('id', scheduled.id)
-
-          errorCount++
-          results.push({ id: scheduled.id, status: 'failed', error: insertError.message })
-          continue
+          console.error(`[Scheduled] Error inserting message ${scheduled.id}:`, insertError)
+          // Message was sent but not saved - still mark as sent
         }
 
         // Update conversation with last message info
@@ -110,16 +317,26 @@ Deno.serve(async (req) => {
           .eq('id', scheduled.id)
 
         if (updateError) {
-          console.error(`Error updating scheduled message ${scheduled.id}:`, updateError)
+          console.error(`[Scheduled] Error updating scheduled message ${scheduled.id}:`, updateError)
         }
 
         processedCount++
         results.push({ id: scheduled.id, status: 'sent' })
 
-        console.log(`Successfully processed message ${scheduled.id}`)
+        console.log(`[Scheduled] Successfully processed message ${scheduled.id}`)
 
       } catch (msgError) {
-        console.error(`Error processing message ${scheduled.id}:`, msgError)
+        console.error(`[Scheduled] Error processing message ${scheduled.id}:`, msgError)
+        
+        await supabase
+          .from('scheduled_messages')
+          .update({ 
+            status: 'failed',
+            error_message: msgError instanceof Error ? msgError.message : 'Erro desconhecido',
+            attempts: (scheduled.attempts || 0) + 1
+          })
+          .eq('id', scheduled.id)
+
         errorCount++
         results.push({ 
           id: scheduled.id, 
@@ -129,7 +346,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`Processing complete. Sent: ${processedCount}, Errors: ${errorCount}`)
+    console.log(`[Scheduled] Processing complete. Sent: ${processedCount}, Errors: ${errorCount}`)
 
     return new Response(
       JSON.stringify({ 
@@ -143,7 +360,7 @@ Deno.serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Error in process-scheduled-messages:', error)
+    console.error('[Scheduled] Error in process-scheduled-messages:', error)
     
     return new Response(
       JSON.stringify({ 
