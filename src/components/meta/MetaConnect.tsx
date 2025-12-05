@@ -33,18 +33,14 @@ export function MetaConnect() {
   const handleConnect = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('meta-oauth', {
-        body: {},
-        headers: {},
-      }, );
-
       // Get login URL
+      const session = await supabase.auth.getSession();
       const response = await fetch(
         `https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/meta-oauth?action=get-login-url`,
         {
           method: 'GET',
           headers: {
-            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
             'Content-Type': 'application/json'
           }
         }
