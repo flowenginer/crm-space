@@ -3,8 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { MultiSelect } from '@/components/ui/multi-select';
 import {
   ClipboardList, Search, Calendar, Printer,
   FileSpreadsheet, Loader2, ChevronLeft, ChevronRight, Eye, RefreshCw
@@ -19,11 +19,11 @@ interface Filters {
   endDate: string;
   name: string;
   phone: string;
-  status: string;
-  channel: string;
-  agent: string;
-  department: string;
-  tag: string;
+  status: string[];
+  channel: string[];
+  agent: string[];
+  department: string[];
+  tag: string[];
 }
 
 const initialFilters: Filters = {
@@ -31,11 +31,11 @@ const initialFilters: Filters = {
   endDate: format(new Date(), 'yyyy-MM-dd'),
   name: '',
   phone: '',
-  status: '',
-  channel: '',
-  agent: '',
-  department: '',
-  tag: '',
+  status: [],
+  channel: [],
+  agent: [],
+  department: [],
+  tag: [],
 };
 
 const statusOptions = [
@@ -65,9 +65,7 @@ export default function ConversationReportPage() {
           schema: 'public',
           table: 'conversations'
         },
-        (payload) => {
-          console.log('Realtime update:', payload);
-          // Invalidate query to refresh data
+        () => {
           queryClient.invalidateQueries({ queryKey: ['conversation-report'] });
         }
       )
@@ -166,18 +164,18 @@ export default function ConversationReportPage() {
         query = query.lte('created_at', `${appliedFilters.endDate}T23:59:59`);
       }
       
-      // Apply other filters
-      if (appliedFilters.status) {
-        query = query.eq('status', appliedFilters.status);
+      // Apply multi-select filters
+      if (appliedFilters.status.length > 0) {
+        query = query.in('status', appliedFilters.status);
       }
-      if (appliedFilters.agent) {
-        query = query.eq('assigned_to', appliedFilters.agent);
+      if (appliedFilters.agent.length > 0) {
+        query = query.in('assigned_to', appliedFilters.agent);
       }
-      if (appliedFilters.department) {
-        query = query.eq('department_id', appliedFilters.department);
+      if (appliedFilters.department.length > 0) {
+        query = query.in('department_id', appliedFilters.department);
       }
-      if (appliedFilters.channel) {
-        query = query.eq('channel_id', appliedFilters.channel);
+      if (appliedFilters.channel.length > 0) {
+        query = query.in('channel_id', appliedFilters.channel);
       }
 
       const from = (page - 1) * pageSize;
@@ -204,10 +202,10 @@ export default function ConversationReportPage() {
         );
       }
 
-      // Filter by tag
-      if (appliedFilters.tag) {
+      // Filter by tags (multi-select)
+      if (appliedFilters.tag.length > 0) {
         filtered = filtered.filter(c => 
-          c.tags?.some((t: any) => t.tag?.id === appliedFilters.tag)
+          c.tags?.some((t: any) => appliedFilters.tag.includes(t.tag?.id))
         );
       }
 
@@ -253,10 +251,6 @@ export default function ConversationReportPage() {
     },
     refetchOnWindowFocus: false,
   });
-
-  const handleFilterChange = (key: keyof Filters, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-  };
 
   const handleSearch = () => {
     setAppliedFilters(filters);
@@ -360,6 +354,12 @@ export default function ConversationReportPage() {
     );
   };
 
+  // Convert options for MultiSelect
+  const channelOptions = channels.map(ch => ({ value: ch.id, label: ch.name }));
+  const agentOptions = agents.map(a => ({ value: a.id, label: a.full_name || '' }));
+  const departmentOptions = departments.map(d => ({ value: d.id, label: d.name }));
+  const tagOptions = tags.map(t => ({ value: t.id, label: t.name }));
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
@@ -403,7 +403,7 @@ export default function ConversationReportPage() {
                 <Input
                   type="date"
                   value={filters.startDate}
-                  onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                  onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
                   className="pl-10"
                 />
               </div>
@@ -416,7 +416,7 @@ export default function ConversationReportPage() {
                 <Input
                   type="date"
                   value={filters.endDate}
-                  onChange={(e) => handleFilterChange('endDate', e.target.value)}
+                  onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
                   className="pl-10"
                 />
               </div>
@@ -426,7 +426,7 @@ export default function ConversationReportPage() {
               <label className="block text-xs text-muted-foreground mb-1">Nome</label>
               <Input
                 value={filters.name}
-                onChange={(e) => handleFilterChange('name', e.target.value)}
+                onChange={(e) => setFilters(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="Nome do contato"
               />
             </div>
@@ -435,26 +435,19 @@ export default function ConversationReportPage() {
               <label className="block text-xs text-muted-foreground mb-1">Contato</label>
               <Input
                 value={filters.phone}
-                onChange={(e) => handleFilterChange('phone', e.target.value)}
+                onChange={(e) => setFilters(prev => ({ ...prev, phone: e.target.value }))}
                 placeholder="Telefone"
               />
             </div>
 
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Status</label>
-              <Select value={filters.status || 'all'} onValueChange={(v) => handleFilterChange('status', v === 'all' ? '' : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {statusOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelect
+                options={statusOptions}
+                value={filters.status}
+                onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
+                placeholder="Todos"
+              />
             </div>
           </div>
 
@@ -462,76 +455,42 @@ export default function ConversationReportPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Canal</label>
-              <Select value={filters.channel || 'all'} onValueChange={(v) => handleFilterChange('channel', v === 'all' ? '' : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {channels.map(ch => (
-                    <SelectItem key={ch.id} value={ch.id}>
-                      {ch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelect
+                options={channelOptions}
+                value={filters.channel}
+                onChange={(value) => setFilters(prev => ({ ...prev, channel: value }))}
+                placeholder="Todos"
+              />
             </div>
 
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Agente</label>
-              <Select value={filters.agent || 'all'} onValueChange={(v) => handleFilterChange('agent', v === 'all' ? '' : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {agents.map(agent => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelect
+                options={agentOptions}
+                value={filters.agent}
+                onChange={(value) => setFilters(prev => ({ ...prev, agent: value }))}
+                placeholder="Todos"
+              />
             </div>
 
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Departamento</label>
-              <Select value={filters.department || 'all'} onValueChange={(v) => handleFilterChange('department', v === 'all' ? '' : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {departments.map(dept => (
-                    <SelectItem key={dept.id} value={dept.id}>
-                      {dept.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelect
+                options={departmentOptions}
+                value={filters.department}
+                onChange={(value) => setFilters(prev => ({ ...prev, department: value }))}
+                placeholder="Todos"
+              />
             </div>
 
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Etiqueta</label>
-              <Select value={filters.tag || 'all'} onValueChange={(v) => handleFilterChange('tag', v === 'all' ? '' : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {tags.map(tag => (
-                    <SelectItem key={tag.id} value={tag.id}>
-                      <div className="flex items-center gap-2">
-                        <div 
-                          className="w-2 h-2 rounded-full" 
-                          style={{ backgroundColor: tag.color || '#8B5CF6' }}
-                        />
-                        {tag.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelect
+                options={tagOptions}
+                value={filters.tag}
+                onChange={(value) => setFilters(prev => ({ ...prev, tag: value }))}
+                placeholder="Todas"
+              />
             </div>
 
             <div className="flex items-end gap-2">
