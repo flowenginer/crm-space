@@ -932,9 +932,23 @@ function InternalNoteCard({ note, onUpdate }: InternalNoteCardProps) {
 }
 
 export default function Conversations() {
+  // DEBUG: Log every render with timestamp
+  console.log('[DEBUG] 🔄 Conversations RENDER', {
+    timestamp: new Date().toISOString(),
+    url: window.location.href,
+    pathname: window.location.pathname,
+    search: window.location.search
+  });
+
   const [searchParams, setSearchParams] = useSearchParams();
   // Derive selected conversation ID directly from URL - no state needed
   const selectedConversationId = searchParams.get('id');
+  
+  // DEBUG: Log searchParams changes
+  console.log('[DEBUG] 📍 searchParams:', {
+    id: selectedConversationId,
+    fullSearch: searchParams.toString()
+  });
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [channelFilter, setChannelFilter] = useState('all');
@@ -1473,9 +1487,17 @@ export default function Conversations() {
   };
 
   const handleSelectConversation = useCallback((conv: Conversation) => {
+    console.log('[DEBUG] 👆 handleSelectConversation CALLED', {
+      convId: conv.id,
+      currentId: searchParams.get('id'),
+      willUpdate: searchParams.get('id') !== conv.id
+    });
+    
     const currentId = searchParams.get('id');
     if (currentId !== conv.id) {
+      console.log('[DEBUG] 🚀 Calling setSearchParams with:', { id: conv.id });
       setSearchParams({ id: conv.id }, { replace: true });
+      console.log('[DEBUG] ✅ setSearchParams called');
     }
     setIsInternalNoteMode(false);
     if (isMobile) {
