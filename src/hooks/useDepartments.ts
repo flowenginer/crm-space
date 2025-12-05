@@ -15,6 +15,7 @@ export interface Department {
 export function useDepartments() {
   return useQuery({
     queryKey: ['departments'],
+    staleTime: 60000, // 1 minute cache - departments rarely change
     queryFn: async () => {
       const { data, error } = await supabase
         .from('departments')

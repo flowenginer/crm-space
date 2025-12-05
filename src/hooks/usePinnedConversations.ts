@@ -31,8 +31,10 @@ export function usePinnedConversations() {
     staleTime: 60000, // 1 minute cache
   });
 
-  // Realtime subscription
+  // Realtime subscription with debounce
   useEffect(() => {
+    let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+    
     const channel = supabase
       .channel('pinned-conversations-changes')
       .on(
@@ -43,12 +45,17 @@ export function usePinnedConversations() {
           table: 'pinned_conversations'
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['pinned-conversations'] });
+          // Debounce invalidation to prevent excessive re-renders
+          if (debounceTimeout) clearTimeout(debounceTimeout);
+          debounceTimeout = setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ['pinned-conversations'] });
+          }, 500);
         }
       )
       .subscribe();
 
     return () => {
+      if (debounceTimeout) clearTimeout(debounceTimeout);
       supabase.removeChannel(channel);
     };
   }, [queryClient]);

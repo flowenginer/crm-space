@@ -122,6 +122,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
   // Fetch useful notifications: assignments, transfers, SLA alerts
   const { data: notifications = [] } = useQuery({
     queryKey: ['header-notifications'],
+    staleTime: 30000, // 30 seconds cache
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
