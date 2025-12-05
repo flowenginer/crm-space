@@ -837,21 +837,22 @@ async function setEvolutionWebhook(config: ProviderConfig, instanceName: string,
   console.log('[Evolution] Setting webhook for:', instanceName, 'URL:', webhookUrl);
   
   try {
-    // FORMATO CORRETO conforme documentação oficial Evolution API
-    // NÃO usar wrapper "webhook:{}" - enviar propriedades diretamente
+    // FORMATO CORRETO Evolution API v2 - propriedades dentro de objeto "webhook"
     const webhookBody = {
-      enabled: true,
-      url: webhookUrl,
-      webhookByEvents: false,
-      webhookBase64: true,
-      events: [
-        'QRCODE_UPDATED',
-        'MESSAGES_UPSERT',
-        'MESSAGES_UPDATE', 
-        'CONNECTION_UPDATE',
-        'SEND_MESSAGE',
-        'PRESENCE_UPDATE'
-      ]
+      webhook: {
+        enabled: true,
+        url: webhookUrl,
+        webhookByEvents: false,
+        webhookBase64: true,
+        events: [
+          'QRCODE_UPDATED',
+          'MESSAGES_UPSERT',
+          'MESSAGES_UPDATE', 
+          'CONNECTION_UPDATE',
+          'SEND_MESSAGE',
+          'PRESENCE_UPDATE'
+        ]
+      }
     };
     
     console.log('[Evolution SetWebhook] Request body:', JSON.stringify(webhookBody));
