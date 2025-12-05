@@ -78,6 +78,17 @@ export interface Message {
 
 export type AssignmentFilter = 'all' | 'mine' | 'unassigned';
 
+// Campos específicos para otimização - evita SELECT *
+const CONVERSATION_FIELDS = `
+  id, contact_id, channel_id, assigned_to, department_id,
+  status, is_unread, unread_count, last_message_at, last_message_preview,
+  lead_status, created_at, updated_at, closed_at, closed_by,
+  referral_source, referral_data,
+  contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data),
+  assignee:profiles!conversations_assigned_to_fkey(id, full_name),
+  channel:whatsapp_channels(id, name)
+`;
+
 export function useConversations(filter?: AssignmentFilter) {
   return useQuery({
     queryKey: ['conversations', filter],
@@ -86,12 +97,7 @@ export function useConversations(filter?: AssignmentFilter) {
       
       let query = supabase
         .from('conversations')
-        .select(`
-          *,
-          contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data),
-          assignee:profiles!conversations_assigned_to_fkey(id, full_name),
-          channel:whatsapp_channels(id, name)
-        `)
+        .select(CONVERSATION_FIELDS)
         .eq('status', 'open')
         .order('last_message_at', { ascending: false });
 
@@ -107,8 +113,17 @@ export function useConversations(filter?: AssignmentFilter) {
       if (error) throw error;
       return data as Conversation[];
     },
+    staleTime: 30000, // 30 segundos de cache
   });
 }
+
+// Campos específicos para mensagens - evita SELECT *
+const MESSAGE_FIELDS = `
+  id, conversation_id, sender_id, contact_id, is_from_me,
+  content, message_type, media_url, media_mime_type, status,
+  whatsapp_message_id, created_at, reply_to_message_id,
+  reactions, is_deleted, deleted_at
+`;
 
 export function useMessages(conversationId: string | null) {
   return useQuery({
@@ -116,10 +131,10 @@ export function useMessages(conversationId: string | null) {
     queryFn: async () => {
       if (!conversationId) return [];
       
-      // Buscar mensagens sem self-join (a FK não existe)
+      // Buscar mensagens com campos específicos
       const { data, error } = await supabase
         .from('messages')
-        .select('*')
+        .select(MESSAGE_FIELDS)
         .eq('conversation_id', conversationId)
         .eq('is_deleted', false)
         .order('created_at', { ascending: true });
@@ -133,13 +148,13 @@ export function useMessages(conversationId: string | null) {
         reply_to: null,
       }));
       
-      // Se precisar de replies, buscar separadamente
+      // Se precisar de replies, buscar separadamente com campos específicos
       const replyIds = messages.filter(m => m.reply_to_message_id).map(m => m.reply_to_message_id!);
       
       if (replyIds.length > 0) {
         const { data: replyMessages } = await supabase
           .from('messages')
-          .select('*')
+          .select(MESSAGE_FIELDS)
           .in('id', replyIds);
         
         // Mapear replies às mensagens
@@ -159,6 +174,7 @@ export function useMessages(conversationId: string | null) {
       return messages;
     },
     enabled: !!conversationId,
+    staleTime: 10000, // 10 segundos de cache para mensagens
   });
 }
 
