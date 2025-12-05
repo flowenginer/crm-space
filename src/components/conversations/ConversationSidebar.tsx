@@ -45,18 +45,23 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  // Fetch conversation with contact data
+  // Fetch conversation with contact data - campos específicos para otimização
   const { data: conversation, isLoading: loadingConversation } = useQuery({
     queryKey: ['conversation-details', conversationId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('conversations')
         .select(`
-          *,
+          id, contact_id, channel_id, assigned_to, department_id,
+          status, is_unread, unread_count, last_message_at, last_message_preview,
+          lead_status, created_at, referral_source, referral_data,
           contact:contacts(
-            *,
+            id, full_name, phone, email, avatar_url, is_online, is_typing,
+            street, number, complement, neighborhood, city, state, zip_code,
+            cpf_cnpj, notes, birth_date, first_contact_at, last_interaction_at, created_at,
+            origin, origin_campaign, referral_data, lead_status,
             tags:contact_tags(
-              tag:tags(*)
+              tag:tags(id, name, color)
             )
           ),
           assigned_user:profiles!conversations_assigned_to_fkey(
@@ -73,9 +78,10 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
       return data;
     },
     enabled: !!conversationId,
+    staleTime: 30000, // 30 segundos de cache
   });
 
-  // Fetch all tags (with visibility filter)
+  // Fetch all tags (with visibility filter) - campos específicos
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
     queryFn: async () => {
@@ -98,16 +104,17 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
       const { data, error } = await supabase
         .from('tags')
-        .select('*')
+        .select('id, name, color, visibility, department_id, created_by')
         .or(conditions.join(','))
         .order('name');
       
       if (error) throw error;
       return data;
     },
+    staleTime: 60000, // 1 minuto de cache para tags
   });
 
-  // Fetch team members
+  // Fetch team members - campos específicos
   const { data: teamMembers = [] } = useQuery({
     queryKey: ['team-members'],
     queryFn: async () => {
@@ -119,23 +126,25 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
       if (error) throw error;
       return data;
     },
+    staleTime: 60000, // 1 minuto de cache
   });
 
-  // Fetch departments
+  // Fetch departments - campos específicos
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('departments')
-        .select('*')
+        .select('id, name, color, icon')
         .eq('is_active', true)
         .order('name');
       if (error) throw error;
       return data;
     },
+    staleTime: 60000, // 1 minuto de cache
   });
 
-  // Fetch available WhatsApp channels
+  // Fetch available WhatsApp channels - campos específicos
   const { data: whatsappChannels = [] } = useQuery({
     queryKey: ['whatsapp-channels-sidebar'],
     queryFn: async () => {
@@ -147,6 +156,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
       if (error) throw error;
       return data;
     },
+    staleTime: 60000, // 1 minuto de cache
   });
 
   // Mutation: Update lead status
