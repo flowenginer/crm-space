@@ -479,6 +479,5 @@ export default function MetaAdsManager() {
           </div>
         )}
       </div>
-    </div>
   );
 }
