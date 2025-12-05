@@ -138,34 +138,42 @@ export default function LiveMonitorPage() {
         unassignedCount: unassignedConvs.length
       };
     },
-    refetchInterval: 10000,
+    staleTime: 30000,
     enabled: hasAccess,
   });
 
-  // Real-time subscription
+  // Real-time subscription with debounce
   useEffect(() => {
     if (!hasAccess) return;
+
+    let debounceTimer: NodeJS.Timeout | null = null;
+    
+    const debouncedRefetch = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => refetch(), 500);
+    };
 
     const channel = supabase
       .channel('live-monitor')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'conversations' },
-        () => refetch()
+        debouncedRefetch
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'messages' },
-        () => refetch()
+        debouncedRefetch
       )
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'profiles' },
-        () => refetch()
+        debouncedRefetch
       )
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, [refetch, hasAccess]);

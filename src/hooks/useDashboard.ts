@@ -18,19 +18,19 @@ export function useDashboardMetrics() {
       // Get new contacts this month
       const { count: newContacts } = await supabase
         .from('contacts')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .gte('created_at', startOfMonth);
 
       // Get total conversations
       const { count: totalConversations } = await supabase
         .from('conversations')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .gte('created_at', startOfMonth);
 
       // Get responded conversations (has messages from us)
       const { count: respondedConversations } = await supabase
         .from('messages')
-        .select('conversation_id', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('is_from_me', true)
         .gte('created_at', startOfMonth);
 
@@ -41,28 +41,15 @@ export function useDashboardMetrics() {
         avgResponseTime: 0, // Would need more complex calculation
       };
     },
+    staleTime: 300000,
   });
 }
 
 export function useRecentActivity() {
   return useQuery({
     queryKey: ['recent_activity'],
+    staleTime: 60000,
     queryFn: async () => {
-      // Get recent messages
-      const { data: messages } = await supabase
-        .from('messages')
-        .select(`
-          id,
-          content,
-          created_at,
-          is_from_me,
-          conversation:conversations(
-            contact:contacts(full_name)
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
       // Get recent contacts
       const { data: contacts } = await supabase
         .from('contacts')
