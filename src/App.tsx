@@ -26,6 +26,7 @@ import ScheduledMessages from "@/pages/ScheduledMessages";
 import LiveMonitor from "@/pages/LiveMonitor";
 import ConversationReport from "@/pages/ConversationReport";
 import CampaignReport from "@/pages/CampaignReport";
+import MetaAdsManager from "@/pages/MetaAdsManager";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -98,6 +99,11 @@ const App = () => (
               <Route path="/relatorios/campanhas" element={
                 <ProtectedRoute permission="reports.view">
                   <CampaignReport />
+                </ProtectedRoute>
+              } />
+              <Route path="/meta-ads" element={
+                <ProtectedRoute permission="reports.view">
+                  <MetaAdsManager />
                 </ProtectedRoute>
               } />
             </Route>
