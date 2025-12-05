@@ -717,6 +717,20 @@ serve(async (req) => {
       }
     }
 
+    // Check if message already exists (deduplicate webhooks)
+    const { data: existingReceivedMsg } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("whatsapp_message_id", normalizedMessage.originalId)
+      .maybeSingle();
+
+    if (existingReceivedMsg) {
+      console.log(`[Webhook] Received message already exists (id: ${existingReceivedMsg.id}), skipping duplicate`);
+      return new Response(JSON.stringify({ success: true, message: "Message already exists" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Save message
     const { error: msgError } = await supabase.from("messages").insert({
       conversation_id: conversation.id,
