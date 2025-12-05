@@ -279,9 +279,9 @@ export default function CRM() {
           </div>
 
           <div className="flex items-center -space-x-2">
-            {/* Mostra apenas vendedores (role = vendedor) */}
+            {/* Mostra apenas vendedores (role = seller) */}
             {teamMembers
-              ?.filter((member) => member.role === 'vendedor')
+              ?.filter((member) => member.role === 'seller')
               .map((member) => (
               <div
                 key={member.id}
