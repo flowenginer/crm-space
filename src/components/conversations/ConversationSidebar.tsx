@@ -328,7 +328,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
       return;
     }
 
-    // Clean phone number
+    // Clean phone number - remove all non-digits
     const cleanPhone = newConversationPhone.replace(/\D/g, '');
     if (cleanPhone.length < 10) {
       toast.error('Número de telefone inválido');
@@ -337,39 +337,47 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
     // Format with country code
     const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+    // Also try without country code for matching
+    const phoneWithoutCountry = formattedPhone.startsWith('55') ? formattedPhone.slice(2) : formattedPhone;
 
     setIsStartingConversation(true);
     try {
-      // Check if contact exists
-      const { data: existingContact } = await supabase
+      // STEP 1: Search for contact with various phone formats
+      const { data: contacts } = await supabase
         .from('contacts')
-        .select('id')
-        .or(`phone.eq.${formattedPhone},phone.eq.${cleanPhone}`)
-        .maybeSingle();
+        .select('id, phone')
+        .or(`phone.eq.${formattedPhone},phone.eq.${phoneWithoutCountry},phone.ilike.%${phoneWithoutCountry}`);
+
+      const existingContact = contacts && contacts.length > 0 ? contacts[0] : null;
 
       if (existingContact) {
-        // Check if conversation exists
+        // STEP 2: Check if this contact has ANY conversation
         const { data: existingConv } = await supabase
           .from('conversations')
-          .select('id')
+          .select('id, status')
           .eq('contact_id', existingContact.id)
+          .order('last_message_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
 
         if (existingConv) {
-          // Navigate to existing conversation
+          // FOUND! Navigate directly to existing conversation
           navigate(`/conversations?id=${existingConv.id}`);
-          toast.info('Conversa existente encontrada');
+          toast.info('Conversa existente encontrada!');
           setNewConversationPhone('');
+          setIsStartingConversation(false);
           return;
         }
 
-        // Contact exists but no conversation - show channel selector
+        // Contact exists but NO conversation - show channel selector
         setPendingContactForConversation({ id: existingContact.id, phone: formattedPhone });
-      } else {
-        // No contact - show channel selector to create both
-        setPendingContactForConversation({ phone: formattedPhone });
+        setShowChannelSelector(true);
+        setIsStartingConversation(false);
+        return;
       }
-      
+
+      // STEP 3: No contact found - show channel selector to create both
+      setPendingContactForConversation({ phone: formattedPhone });
       setShowChannelSelector(true);
     } catch (error) {
       console.error('Error searching contact:', error);
