@@ -27,6 +27,7 @@ import LiveMonitor from "@/pages/LiveMonitor";
 import ConversationReport from "@/pages/ConversationReport";
 import CampaignReport from "@/pages/CampaignReport";
 import MetaAdsManager from "@/pages/MetaAdsManager";
+import Automations from "@/pages/Automations";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -109,6 +110,21 @@ const App = () => (
               <Route path="/meta-ads" element={
                 <ProtectedRoute permission="reports.view">
                   <MetaAdsManager />
+                </ProtectedRoute>
+              } />
+              <Route path="/automations" element={
+                <ProtectedRoute permission="settings.view">
+                  <Automations />
+                </ProtectedRoute>
+              } />
+              <Route path="/automations/:id/edit" element={
+                <ProtectedRoute permission="settings.view">
+                  <Automations />
+                </ProtectedRoute>
+              } />
+              <Route path="/automations/:id/stats" element={
+                <ProtectedRoute permission="settings.view">
+                  <Automations />
                 </ProtectedRoute>
               } />
             </Route>

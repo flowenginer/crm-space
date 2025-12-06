@@ -20,6 +20,7 @@ import {
   Moon,
   Megaphone,
   Target,
+  Workflow,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { title: 'Ao Vivo', href: '/ao-vivo', icon: Radio, roles: ['admin', 'supervisor'] },
   { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.read' },
   { title: 'Agendamentos', href: '/agendamentos', icon: CalendarClock, permission: 'templates.read' },
+  { title: 'Automações', href: '/automations', icon: Workflow, permission: 'settings.view' },
   { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.read' },
   { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.read' },
   { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.read' },
