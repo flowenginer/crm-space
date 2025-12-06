@@ -35,7 +35,8 @@ import { TagManagement } from '@/components/settings/TagManagement';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
 import { MetaAdsSettings } from '@/components/settings/MetaAdsSettings';
 import { ToolsSettings } from '@/components/settings/ToolsSettings';
-import { Facebook } from 'lucide-react';
+import { OwnerAgentSettings } from '@/components/settings/OwnerAgentSettings';
+import { Facebook, UserCheck } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -462,6 +463,13 @@ export default function Settings() {
             Etiquetas
           </TabsTrigger>
           <TabsTrigger
+            value="owner-agent"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+          >
+            <UserCheck size={18} />
+            Responsável
+          </TabsTrigger>
+          <TabsTrigger
             value="notifications"
             className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
@@ -523,6 +531,13 @@ export default function Settings() {
         {/* TAB: Tags */}
         <TabsContent value="tags" className="space-y-6">
           <TagManagement />
+        </TabsContent>
+
+        {/* TAB: Owner Agent Settings */}
+        <TabsContent value="owner-agent" className="space-y-6">
+          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+            <OwnerAgentSettings />
+          </div>
         </TabsContent>
 
         {/* TAB 4: Channels */}

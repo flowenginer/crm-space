@@ -1009,10 +1009,33 @@ serve(async (req) => {
       });
     }
 
+    // =====================================================
+    // OWNER AGENT SETTINGS - Fetch for reassignment rules
+    // =====================================================
+    const { data: companySettings } = await supabase
+      .from("company_settings")
+      .select("owner_agent_enabled, owner_agent_inactivity_days, owner_agent_on_reopen, owner_agent_reopen_reasons")
+      .limit(1)
+      .maybeSingle();
+
+    const ownerAgentEnabled = companySettings?.owner_agent_enabled ?? true;
+    const inactivityDays = companySettings?.owner_agent_inactivity_days ?? 7;
+    const reopenToOwner = companySettings?.owner_agent_on_reopen ?? true;
+    const reopenReasons = companySettings?.owner_agent_reopen_reasons ?? ['sold', 'no_interest', 'future_contact'];
+
+    // Get contact's owner agent (assigned_to on contacts table)
+    const { data: contactWithOwner } = await supabase
+      .from("contacts")
+      .select("assigned_to")
+      .eq("id", contact.id)
+      .single();
+    
+    const ownerAgentId = contactWithOwner?.assigned_to;
+
     // Find or create conversation
     let { data: conversation } = await supabase
       .from("conversations")
-      .select("id")
+      .select("id, status, assigned_to, close_reason, last_message_at")
       .eq("contact_id", contact.id)
       .eq("channel_id", channel.id)
       .in("status", ["open", "pending"])
@@ -1021,46 +1044,164 @@ serve(async (req) => {
       .single();
 
     if (!conversation) {
-      // Preparar dados de referral para a conversa
-      const conversationReferralSource = normalizedMessage.referralData ? "meta_ads" : null;
-      const conversationReferralData = normalizedMessage.referralData || null;
-      
-      const { data: newConversation, error: convError } = await supabase
+      // Check if there's a closed conversation to potentially reopen
+      const { data: closedConversation } = await supabase
         .from("conversations")
-        .insert({
-          contact_id: contact.id,
-          channel_id: channel.id,
-          status: "open",
-          is_unread: true,
-          unread_count: 1,
-          last_message_at: new Date().toISOString(),
-          last_message_preview: normalizedMessage.content.substring(0, 100),
-          referral_source: conversationReferralSource,
-          referral_data: conversationReferralData,
-        })
-        .select("id")
+        .select("id, status, assigned_to, close_reason, last_message_at")
+        .eq("contact_id", contact.id)
+        .eq("channel_id", channel.id)
+        .eq("status", "closed")
+        .order("closed_at", { ascending: false })
+        .limit(1)
         .single();
 
-      if (convError) {
-        console.error(`[Webhook] Error creating conversation:`, convError);
-        throw convError;
-      }
-      conversation = newConversation;
-      
-      if (conversationReferralSource) {
-        console.log(`[Webhook] 📣 New conversation from Meta Ads!`);
+      if (closedConversation) {
+        // Reopen the closed conversation
+        console.log(`[Webhook] Reopening closed conversation: ${closedConversation.id}`);
+        
+        // Determine who should be assigned based on owner agent rules
+        let newAssignedTo = closedConversation.assigned_to;
+        
+        if (ownerAgentEnabled && ownerAgentId && reopenToOwner) {
+          const closeReason = closedConversation.close_reason || '';
+          if (reopenReasons.includes(closeReason) || reopenReasons.length === 0) {
+            console.log(`[Webhook] 👤 Reassigning reopened conversation to owner agent: ${ownerAgentId}`);
+            newAssignedTo = ownerAgentId;
+          }
+        }
+
+        const { error: reopenError } = await supabase
+          .from("conversations")
+          .update({
+            status: "open",
+            is_unread: true,
+            unread_count: 1,
+            last_message_at: new Date().toISOString(),
+            last_message_preview: normalizedMessage.content.substring(0, 100),
+            assigned_to: newAssignedTo,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", closedConversation.id);
+
+        if (reopenError) {
+          console.error(`[Webhook] Error reopening conversation:`, reopenError);
+          throw reopenError;
+        }
+
+        // Log event if reassigned
+        if (newAssignedTo !== closedConversation.assigned_to) {
+          await supabase.from("conversation_events").insert({
+            conversation_id: closedConversation.id,
+            event_type: "auto_reassign",
+            data: {
+              reason: "reopen_to_owner",
+              from_user_id: closedConversation.assigned_to,
+              to_user_id: newAssignedTo,
+              note: "Reatribuição automática ao atendente responsável (reabertura)"
+            }
+          });
+        }
+
+        conversation = { 
+          id: closedConversation.id, 
+          status: "open", 
+          assigned_to: newAssignedTo,
+          close_reason: null,
+          last_message_at: new Date().toISOString()
+        };
+      } else {
+        // No existing conversation - create new one
+        const conversationReferralSource = normalizedMessage.referralData ? "meta_ads" : null;
+        const conversationReferralData = normalizedMessage.referralData || null;
+        
+        // For new conversations, assign to owner agent if available
+        const initialAssignedTo = ownerAgentEnabled && ownerAgentId ? ownerAgentId : null;
+        
+        const { data: newConversation, error: convError } = await supabase
+          .from("conversations")
+          .insert({
+            contact_id: contact.id,
+            channel_id: channel.id,
+            status: "open",
+            is_unread: true,
+            unread_count: 1,
+            last_message_at: new Date().toISOString(),
+            last_message_preview: normalizedMessage.content.substring(0, 100),
+            referral_source: conversationReferralSource,
+            referral_data: conversationReferralData,
+            assigned_to: initialAssignedTo,
+          })
+          .select("id, status, assigned_to, close_reason, last_message_at")
+          .single();
+
+        if (convError) {
+          console.error(`[Webhook] Error creating conversation:`, convError);
+          throw convError;
+        }
+        conversation = newConversation;
+        
+        if (conversationReferralSource) {
+          console.log(`[Webhook] 📣 New conversation from Meta Ads!`);
+        }
+        if (initialAssignedTo) {
+          console.log(`[Webhook] 👤 New conversation assigned to owner agent: ${initialAssignedTo}`);
+        }
       }
     } else {
+      // Conversation exists and is open - check inactivity rules
+      let shouldReassignToOwner = false;
+      
+      if (ownerAgentEnabled && ownerAgentId && conversation.assigned_to !== ownerAgentId) {
+        // Check if inactivity threshold is exceeded
+        if (conversation.last_message_at) {
+          const lastMessageDate = new Date(conversation.last_message_at);
+          const daysSinceLastMessage = Math.floor((Date.now() - lastMessageDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (daysSinceLastMessage >= inactivityDays) {
+            console.log(`[Webhook] 👤 Inactivity threshold exceeded (${daysSinceLastMessage} days >= ${inactivityDays}), reassigning to owner`);
+            shouldReassignToOwner = true;
+          }
+        }
+      }
+
       // Update existing conversation
+      const updateData: any = {
+        last_message_at: new Date().toISOString(),
+        last_message_preview: normalizedMessage.content.substring(0, 100),
+        updated_at: new Date().toISOString(),
+      };
+
+      if (shouldReassignToOwner) {
+        updateData.assigned_to = ownerAgentId;
+        
+        // Log reassignment event
+        await supabase.from("conversation_events").insert({
+          conversation_id: conversation.id,
+          event_type: "auto_reassign",
+          data: {
+            reason: "inactivity",
+            from_user_id: conversation.assigned_to,
+            to_user_id: ownerAgentId,
+            days_inactive: inactivityDays,
+            note: `Reatribuição automática ao atendente responsável (${inactivityDays} dias de inatividade)`
+          }
+        });
+      }
+
       await supabase.rpc("increment_unread", { conv_id: conversation.id });
       await supabase
         .from("conversations")
-        .update({
-          last_message_at: new Date().toISOString(),
-          last_message_preview: normalizedMessage.content.substring(0, 100),
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", conversation.id);
+    }
+
+    // Ensure conversation is not null before proceeding
+    if (!conversation) {
+      console.error(`[Webhook] Failed to find or create conversation`);
+      return new Response(JSON.stringify({ success: false, error: "Failed to create conversation" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
     }
 
     // =====================================================

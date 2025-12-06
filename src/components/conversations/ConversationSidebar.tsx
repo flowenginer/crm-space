@@ -61,7 +61,10 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
             id, full_name, phone, email, avatar_url, is_online, is_typing,
             street, number, complement, neighborhood, city, state, zip_code,
             cpf_cnpj, notes, birth_date, first_contact_at, last_interaction_at, created_at,
-            origin, origin_campaign, referral_data, lead_status,
+            origin, origin_campaign, referral_data, lead_status, assigned_to,
+            owner_agent:profiles!contacts_assigned_to_fkey(
+              id, full_name, avatar_url
+            ),
             tags:contact_tags(
               tag:tags(id, name, color)
             )
@@ -186,7 +189,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     }
   });
 
-  // Mutation: Update assigned user
+  // Mutation: Update assigned user (current agent)
   const updateAssignedUser = useMutation({
     mutationFn: async (userId: string | null) => {
       const { error } = await supabase
@@ -202,10 +205,35 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      toast.success('Atendente atualizado!');
+      toast.success('Atendente atual atualizado!');
     },
     onError: () => {
       toast.error('Erro ao atualizar atendente');
+    }
+  });
+
+  // Mutation: Update owner agent (responsible for contact)
+  const updateOwnerAgent = useMutation({
+    mutationFn: async (userId: string | null) => {
+      if (!conversation?.contact?.id) throw new Error('No contact');
+      
+      const { error } = await supabase
+        .from('contacts')
+        .update({ 
+          assigned_to: userId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', conversation.contact.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      toast.success('Atendente responsável atualizado!');
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar atendente responsável');
     }
   });
 
@@ -636,10 +664,10 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
         {/* Tags - REMOVED - Now in header */}
 
-        {/* Assigned User */}
+        {/* Current Agent (Atendente Atual) */}
         <div className="p-3 border-b border-border">
           <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-            Atendente Responsável
+            Atendente Atual
           </label>
           <Select 
             value={conversation.assigned_to || 'unassigned'}
@@ -655,6 +683,36 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
                 <SelectItem key={member.id} value={member.id}>
                   <div className="flex items-center gap-2">
                     <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-[10px]">
+                      {member.full_name?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                    <span className="truncate">{member.full_name}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Owner Agent (Atendente Responsável - do contato) */}
+        <div className="p-3 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+            Atendente Responsável
+            <span className="ml-1 text-[10px] font-normal text-muted-foreground/70">(dono do contato)</span>
+          </label>
+          <Select 
+            value={(contact as any)?.assigned_to || 'unassigned'}
+            onValueChange={(value) => updateOwnerAgent.mutate(value === 'unassigned' ? null : value)}
+            disabled={updateOwnerAgent.isPending}
+          >
+            <SelectTrigger className="w-full h-9 text-sm">
+              <SelectValue placeholder="Selecionar responsável" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unassigned">Não atribuído</SelectItem>
+              {teamMembers.map((member) => (
+                <SelectItem key={member.id} value={member.id}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-white text-[10px]">
                       {member.full_name?.charAt(0)?.toUpperCase() || '?'}
                     </div>
                     <span className="truncate">{member.full_name}</span>
