@@ -134,6 +134,9 @@ export function useImportContacts() {
     setIsImporting(true);
     setProgress(0);
     
+    console.log('[Import] Starting import with options:', options);
+    console.log(`[Import] Total rows to process: ${rows.length}`);
+    
     const importResult: ImportResult = {
       total: rows.length,
       processed: 0,
@@ -227,13 +230,23 @@ export function useImportContacts() {
 
         // Update lead status (both in contacts AND conversations)
         if (options.updateLeadStatus && row.statusLead && row.statusLead.trim()) {
+          console.log(`[Import] Row ${rowNum}: Looking for lead status "${row.statusLead}"`);
           const status = await findLeadStatusByName(row.statusLead);
+          
           if (status) {
+            console.log(`[Import] Row ${rowNum}: Found status "${status.name}" (id: ${status.id})`);
+            
             // Update contact lead_status
-            await supabase
+            const { error: updateError } = await supabase
               .from('contacts')
               .update({ lead_status: status.name })
               .eq('id', contact.id);
+            
+            if (updateError) {
+              console.error(`[Import] Row ${rowNum}: Error updating contact:`, updateError);
+            } else {
+              console.log(`[Import] Row ${rowNum}: Updated contact ${contact.id} to status "${status.name}"`);
+            }
             
             // Also update lead_status in all open conversations for this contact
             await supabase
@@ -244,12 +257,15 @@ export function useImportContacts() {
             
             wasUpdated = true;
           } else {
+            console.warn(`[Import] Row ${rowNum}: Status NOT FOUND for "${row.statusLead}"`);
             importResult.log.push({
               type: 'warning',
               message: `Status de lead não encontrado: "${row.statusLead}"`,
               row: rowNum,
             });
           }
+        } else if (row.statusLead && row.statusLead.trim() && !options.updateLeadStatus) {
+          console.log(`[Import] Row ${rowNum}: Status "${row.statusLead}" ignored (updateLeadStatus option is OFF)`);
         }
 
         // Update assignee
