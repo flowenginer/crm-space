@@ -73,6 +73,7 @@ import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
+import { QuickTemplatesPopover } from '@/components/conversations/QuickTemplatesPopover';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { usePaginatedConversations, type SortFilter, type ConversationFilters } from '@/hooks/usePaginatedConversations';
 import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, type CountFilters } from '@/hooks/useConversationCounts';
@@ -3307,6 +3308,31 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                   >
                     <StickyNote size={22} />
                   </button>
+
+                  {/* Quick Templates Popover */}
+                  <QuickTemplatesPopover
+                    contactName={selectedConversation?.contact?.full_name}
+                    contactPhone={selectedConversation?.contact?.phone}
+                    onSelectTemplate={(content, type) => {
+                      if (type === 'text') {
+                        setMessageInput(content);
+                        messageInputRef.current?.focus();
+                      } else {
+                        // For audio/image/document, send directly
+                        // This would need to handle media URLs
+                        setMessageInput(content);
+                        messageInputRef.current?.focus();
+                      }
+                    }}
+                    onStartFlow={(flowId) => {
+                      toast.info('Iniciando funil...', { description: `Flow ID: ${flowId}` });
+                      // TODO: Implement flow start logic
+                    }}
+                    onTriggerAutomation={(triggerId) => {
+                      toast.info('Executando gatilho...', { description: `Trigger ID: ${triggerId}` });
+                      // TODO: Implement trigger execution
+                    }}
+                  />
 
                   <div className="flex-1">
                     <Textarea
