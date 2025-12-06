@@ -8,6 +8,9 @@ const corsHeaders = {
 // Regex para extrair nome do usuário do padrão *Nome*: ou *NOME - SETOR*:
 const USER_PATTERN = /^\*([^*]+)\*:/;
 
+const BATCH_SIZE = 100; // Processar em batches de 100
+const MAX_EXECUTION_TIME_MS = 50000; // 50 segundos máximo (Edge functions têm limite de 60s)
+
 interface UserInfo {
   userId: string;
   departmentId: string | null;
@@ -45,6 +48,8 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const startTime = Date.now();
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -101,6 +106,7 @@ Deno.serve(async (req) => {
     // Criar mapeamento dinâmico de nomes para usuários
     const userMap: Record<string, UserInfo> = {};
     const userMapNormalized: Record<string, UserInfo> = {};
+    const allUserNames: Set<string> = new Set();
 
     for (const user of users || []) {
       if (!user.full_name) continue;
@@ -110,6 +116,8 @@ Deno.serve(async (req) => {
         departmentId: user.department_id,
         fullName: user.full_name
       };
+
+      allUserNames.add(user.full_name);
 
       // Mapear por nome completo exato
       userMap[user.full_name] = userInfo;
@@ -126,7 +134,7 @@ Deno.serve(async (req) => {
     console.log(`[AutoAssign] Mapa de usuários criado: ${Object.keys(userMap).length} entradas de ${users?.length || 0} usuários`);
     console.log(`[AutoAssign] Usuários disponíveis: ${users?.map(u => u.full_name).join(', ')}`);
 
-    // PRIMEIRO: Contar total de conversas não atribuídas no banco (sem limite)
+    // Contar total de conversas não atribuídas no banco
     const { count: totalUnassignedCount, error: countError } = await supabase
       .from('conversations')
       .select('*', { count: 'exact', head: true })
@@ -138,43 +146,6 @@ Deno.serve(async (req) => {
     } else {
       console.log(`[AutoAssign] *** TOTAL DE CONVERSAS NÃO ATRIBUÍDAS NO BANCO: ${totalUnassignedCount} ***`);
     }
-
-    // Buscar conversas sem atribuição
-    let query = supabase
-      .from('conversations')
-      .select('id, contact:contacts(id, full_name)')
-      .is('assigned_to', null)
-      .eq('status', 'open')
-      .order('last_message_at', { ascending: false });
-
-    // IMPORTANTE: Só aplicar limite se fornecido (modo test = limite implícito de 50)
-    // Modo full ou preview sem limite = processa TODAS
-    const effectiveLimit = mode === 'test' ? (limit || 50) : limit;
-    if (effectiveLimit) {
-      query = query.limit(effectiveLimit);
-      console.log(`[AutoAssign] Aplicando limite de ${effectiveLimit} conversas`);
-    } else {
-      console.log(`[AutoAssign] *** PROCESSANDO TODAS AS CONVERSAS SEM LIMITE ***`);
-    }
-
-    const { data: conversations, error: convError } = await query;
-
-    if (convError) {
-      console.error('[AutoAssign] Erro ao buscar conversas:', convError);
-      throw convError;
-    }
-
-    console.log(`[AutoAssign] Conversas carregadas para processar: ${conversations?.length || 0}`);
-
-    const results: AssignmentResult[] = [];
-    const userCounts: Record<string, number> = {};
-    
-    // Estatísticas detalhadas
-    let statsNoPattern = 0;
-    let statsUserNotFound = 0;
-    let statsAssigned = 0;
-    let statsSkippedTestMode = 0;
-    let statsErrors = 0;
 
     // Função para encontrar usuário pelo nome no padrão da mensagem
     const findUser = (patternName: string): UserInfo | null => {
@@ -210,137 +181,321 @@ Deno.serve(async (req) => {
       return null;
     };
 
-    // Para cada conversa, buscar a última mensagem com padrão de usuário
-    let processedIndex = 0;
-    for (const conv of conversations || []) {
-      processedIndex++;
+    const results: AssignmentResult[] = [];
+    const userCounts: Record<string, number> = {};
+    
+    // Estatísticas detalhadas
+    let statsNoPattern = 0;
+    let statsUserNotFound = 0;
+    let statsAssigned = 0;
+    let statsSkippedTestMode = 0;
+    let statsErrors = 0;
+    let totalProcessed = 0;
+    let stoppedByTimeout = false;
+    let stoppedByTestComplete = false;
+
+    // ========== MODO TESTE: Encontrar 1 para cada usuário ==========
+    if (mode === 'test') {
+      console.log(`[AutoAssign] MODO TESTE: Buscando 1 conversa para cada um dos ${allUserNames.size} usuários`);
       
-      const { data: messages, error: msgError } = await supabase
-        .from('messages')
-        .select('content')
-        .eq('conversation_id', conv.id)
-        .eq('is_from_me', true)
-        .not('content', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (msgError) {
-        console.error(`[AutoAssign] [${processedIndex}/${conversations?.length}] Erro ao buscar mensagens para ${conv.id}:`, msgError);
-        statsErrors++;
-        continue;
-      }
-
-      // Encontrar a última mensagem com o padrão de usuário
-      let foundPattern: string | null = null;
-      for (const msg of messages || []) {
-        const match = msg.content?.match(USER_PATTERN);
-        if (match) {
-          foundPattern = match[1];
+      const usersWithAssignment: Set<string> = new Set();
+      let offset = 0;
+      
+      // Continuar até encontrar 1 para cada usuário OU processar todas as conversas
+      while (usersWithAssignment.size < allUserNames.size) {
+        // Verificar timeout
+        if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
+          console.log(`[AutoAssign] Timeout atingido após ${totalProcessed} conversas processadas`);
+          stoppedByTimeout = true;
           break;
         }
-      }
 
-      const contactName = (conv.contact as any)?.full_name || 'Desconhecido';
+        // Buscar próximo batch
+        const { data: conversations, error: convError } = await supabase
+          .from('conversations')
+          .select('id, contact:contacts(id, full_name)')
+          .is('assigned_to', null)
+          .eq('status', 'open')
+          .order('last_message_at', { ascending: false })
+          .range(offset, offset + BATCH_SIZE - 1);
 
-      if (!foundPattern) {
-        // Log apenas a cada 100 para não poluir
-        if (processedIndex % 100 === 0 || processedIndex <= 10) {
-          console.log(`[AutoAssign] [${processedIndex}/${conversations?.length}] ${contactName}: Sem padrão *Nome*: nas mensagens`);
+        if (convError) {
+          console.error('[AutoAssign] Erro ao buscar conversas:', convError);
+          throw convError;
         }
-        statsNoPattern++;
-        continue;
-      }
 
-      // Encontrar o usuário correspondente
-      const userInfo = findUser(foundPattern);
-      
-      if (!userInfo) {
-        console.log(`[AutoAssign] [${processedIndex}/${conversations?.length}] ${contactName}: Padrão encontrado "*${foundPattern}*:" mas usuário não existe no sistema`);
-        statsUserNotFound++;
-        results.push({
-          conversationId: conv.id,
-          contactName,
-          userName: foundPattern,
-          userId: '',
-          success: false,
-          error: 'Usuário não encontrado no sistema',
-        });
-        continue;
-      }
-
-      // Contar atribuições por usuário (para modo teste: 1 por usuário)
-      if (mode === 'test') {
-        if (userCounts[userInfo.fullName] && userCounts[userInfo.fullName] >= 1) {
-          statsSkippedTestMode++;
-          continue;
+        if (!conversations || conversations.length === 0) {
+          console.log(`[AutoAssign] Fim das conversas após ${totalProcessed} processadas`);
+          break;
         }
+
+        console.log(`[AutoAssign] Batch ${offset / BATCH_SIZE + 1}: Processando ${conversations.length} conversas (offset ${offset})`);
+
+        for (const conv of conversations) {
+          totalProcessed++;
+
+          // Se todos os usuários já têm 1 conversa, parar
+          if (usersWithAssignment.size >= allUserNames.size) {
+            stoppedByTestComplete = true;
+            console.log(`[AutoAssign] ✓ Todos os ${allUserNames.size} usuários têm pelo menos 1 conversa atribuída!`);
+            break;
+          }
+
+          const { data: messages, error: msgError } = await supabase
+            .from('messages')
+            .select('content')
+            .eq('conversation_id', conv.id)
+            .eq('is_from_me', true)
+            .not('content', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+          if (msgError) {
+            statsErrors++;
+            continue;
+          }
+
+          // Encontrar padrão *Nome*: nas mensagens
+          let foundPattern: string | null = null;
+          for (const msg of messages || []) {
+            const match = msg.content?.match(USER_PATTERN);
+            if (match) {
+              foundPattern = match[1];
+              break;
+            }
+          }
+
+          const contactName = (conv.contact as any)?.full_name || 'Desconhecido';
+
+          if (!foundPattern) {
+            statsNoPattern++;
+            continue;
+          }
+
+          const userInfo = findUser(foundPattern);
+          
+          if (!userInfo) {
+            statsUserNotFound++;
+            continue;
+          }
+
+          // Se este usuário JÁ tem uma conversa atribuída neste teste, pular
+          if (usersWithAssignment.has(userInfo.fullName)) {
+            statsSkippedTestMode++;
+            continue;
+          }
+
+          // Atribuir a conversa
+          const { error: updateError } = await supabase
+            .from('conversations')
+            .update({
+              assigned_to: userInfo.userId,
+              department_id: userInfo.departmentId,
+            })
+            .eq('id', conv.id);
+
+          if (updateError) {
+            statsErrors++;
+            results.push({
+              conversationId: conv.id,
+              contactName,
+              userName: userInfo.fullName,
+              userId: userInfo.userId,
+              success: false,
+              error: updateError.message,
+            });
+            continue;
+          }
+
+          console.log(`[AutoAssign] ✓ ${contactName} -> ${userInfo.fullName} (${usersWithAssignment.size + 1}/${allUserNames.size} usuários)`);
+          statsAssigned++;
+          usersWithAssignment.add(userInfo.fullName);
+          userCounts[userInfo.fullName] = 1;
+          results.push({
+            conversationId: conv.id,
+            contactName,
+            userName: userInfo.fullName,
+            userId: userInfo.userId,
+            success: true,
+          });
+        }
+
+        if (stoppedByTestComplete) break;
+        offset += BATCH_SIZE;
       }
 
-      // Se for modo preview, não atualizar
-      if (mode === 'preview') {
-        console.log(`[AutoAssign] [${processedIndex}/${conversations?.length}] ${contactName} -> ${userInfo.fullName} (preview)`);
-        results.push({
-          conversationId: conv.id,
-          contactName,
-          userName: userInfo.fullName,
-          userId: userInfo.userId,
-          success: true,
-        });
-        userCounts[userInfo.fullName] = (userCounts[userInfo.fullName] || 0) + 1;
-        statsAssigned++;
-        continue;
+      // Log usuários que não tiveram conversas encontradas
+      const usersWithoutAssignment = [...allUserNames].filter(name => !usersWithAssignment.has(name));
+      if (usersWithoutAssignment.length > 0) {
+        console.log(`[AutoAssign] Usuários SEM conversas encontradas: ${usersWithoutAssignment.join(', ')}`);
       }
-
-      // Atualizar conversa
-      const { error: updateError } = await supabase
-        .from('conversations')
-        .update({
-          assigned_to: userInfo.userId,
-          department_id: userInfo.departmentId,
-        })
-        .eq('id', conv.id);
-
-      if (updateError) {
-        console.error(`[AutoAssign] [${processedIndex}/${conversations?.length}] Erro ao atribuir ${conv.id}:`, updateError);
-        statsErrors++;
-        results.push({
-          conversationId: conv.id,
-          contactName,
-          userName: userInfo.fullName,
-          userId: userInfo.userId,
-          success: false,
-          error: updateError.message,
-        });
-        continue;
-      }
-
-      console.log(`[AutoAssign] [${processedIndex}/${conversations?.length}] ✓ ${contactName} -> ${userInfo.fullName}`);
-      statsAssigned++;
-      results.push({
-        conversationId: conv.id,
-        contactName,
-        userName: userInfo.fullName,
-        userId: userInfo.userId,
-        success: true,
-      });
-      userCounts[userInfo.fullName] = (userCounts[userInfo.fullName] || 0) + 1;
     }
+    // ========== MODO COMPLETO (full) ou PREVIEW: Processar em batches ==========
+    else {
+      console.log(`[AutoAssign] MODO ${mode.toUpperCase()}: Processando em batches de ${BATCH_SIZE}`);
+      
+      let offset = 0;
+      let hasMore = true;
+      
+      while (hasMore) {
+        // Verificar timeout
+        if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
+          console.log(`[AutoAssign] Timeout atingido após ${totalProcessed} conversas processadas`);
+          stoppedByTimeout = true;
+          break;
+        }
+
+        // Buscar próximo batch
+        const { data: conversations, error: convError } = await supabase
+          .from('conversations')
+          .select('id, contact:contacts(id, full_name)')
+          .is('assigned_to', null)
+          .eq('status', 'open')
+          .order('last_message_at', { ascending: false })
+          .range(offset, offset + BATCH_SIZE - 1);
+
+        if (convError) {
+          console.error('[AutoAssign] Erro ao buscar conversas:', convError);
+          throw convError;
+        }
+
+        if (!conversations || conversations.length === 0) {
+          hasMore = false;
+          console.log(`[AutoAssign] Fim das conversas após ${totalProcessed} processadas`);
+          break;
+        }
+
+        console.log(`[AutoAssign] Batch ${offset / BATCH_SIZE + 1}: Processando ${conversations.length} conversas (offset ${offset})`);
+
+        for (const conv of conversations) {
+          totalProcessed++;
+
+          const { data: messages, error: msgError } = await supabase
+            .from('messages')
+            .select('content')
+            .eq('conversation_id', conv.id)
+            .eq('is_from_me', true)
+            .not('content', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+          if (msgError) {
+            statsErrors++;
+            continue;
+          }
+
+          // Encontrar padrão *Nome*: nas mensagens
+          let foundPattern: string | null = null;
+          for (const msg of messages || []) {
+            const match = msg.content?.match(USER_PATTERN);
+            if (match) {
+              foundPattern = match[1];
+              break;
+            }
+          }
+
+          const contactName = (conv.contact as any)?.full_name || 'Desconhecido';
+
+          if (!foundPattern) {
+            statsNoPattern++;
+            continue;
+          }
+
+          const userInfo = findUser(foundPattern);
+          
+          if (!userInfo) {
+            statsUserNotFound++;
+            results.push({
+              conversationId: conv.id,
+              contactName,
+              userName: foundPattern,
+              userId: '',
+              success: false,
+              error: 'Usuário não encontrado no sistema',
+            });
+            continue;
+          }
+
+          // Se for modo preview, não atualizar
+          if (mode === 'preview') {
+            statsAssigned++;
+            userCounts[userInfo.fullName] = (userCounts[userInfo.fullName] || 0) + 1;
+            results.push({
+              conversationId: conv.id,
+              contactName,
+              userName: userInfo.fullName,
+              userId: userInfo.userId,
+              success: true,
+            });
+            continue;
+          }
+
+          // Modo full: Atualizar conversa
+          const { error: updateError } = await supabase
+            .from('conversations')
+            .update({
+              assigned_to: userInfo.userId,
+              department_id: userInfo.departmentId,
+            })
+            .eq('id', conv.id);
+
+          if (updateError) {
+            statsErrors++;
+            results.push({
+              conversationId: conv.id,
+              contactName,
+              userName: userInfo.fullName,
+              userId: userInfo.userId,
+              success: false,
+              error: updateError.message,
+            });
+            continue;
+          }
+
+          if (totalProcessed % 50 === 0 || totalProcessed <= 10) {
+            console.log(`[AutoAssign] [${totalProcessed}/${totalUnassignedCount}] ✓ ${contactName} -> ${userInfo.fullName}`);
+          }
+          
+          statsAssigned++;
+          userCounts[userInfo.fullName] = (userCounts[userInfo.fullName] || 0) + 1;
+          results.push({
+            conversationId: conv.id,
+            contactName,
+            userName: userInfo.fullName,
+            userId: userInfo.userId,
+            success: true,
+          });
+        }
+
+        offset += BATCH_SIZE;
+        
+        // Se pegou menos que o batch size, acabou
+        if (conversations.length < BATCH_SIZE) {
+          hasMore = false;
+        }
+      }
+    }
+
+    const elapsedTime = Date.now() - startTime;
 
     // Resumo detalhado
     console.log(`[AutoAssign] ========== ESTATÍSTICAS ==========`);
+    console.log(`[AutoAssign] Tempo de execução: ${(elapsedTime / 1000).toFixed(1)}s`);
     console.log(`[AutoAssign] Total no banco (não atribuídas): ${totalUnassignedCount}`);
-    console.log(`[AutoAssign] Conversas processadas: ${conversations?.length || 0}`);
+    console.log(`[AutoAssign] Conversas processadas: ${totalProcessed}`);
     console.log(`[AutoAssign] - Sem padrão *Nome*: ${statsNoPattern}`);
     console.log(`[AutoAssign] - Padrão encontrado mas usuário não existe: ${statsUserNotFound}`);
     console.log(`[AutoAssign] - Atribuídas com sucesso: ${statsAssigned}`);
-    console.log(`[AutoAssign] - Puladas (modo teste): ${statsSkippedTestMode}`);
+    console.log(`[AutoAssign] - Puladas (já atribuído no teste): ${statsSkippedTestMode}`);
     console.log(`[AutoAssign] - Erros: ${statsErrors}`);
     console.log(`[AutoAssign] Por usuário: ${JSON.stringify(userCounts)}`);
+    if (stoppedByTimeout) console.log(`[AutoAssign] ⚠️ PARADO POR TIMEOUT`);
+    if (stoppedByTestComplete) console.log(`[AutoAssign] ✓ TESTE COMPLETO - todos os usuários atendidos`);
     console.log(`[AutoAssign] ========== FIM ==========`);
 
     const summary = {
       totalInDatabase: totalUnassignedCount || 0,
-      totalProcessed: conversations?.length || 0,
+      totalProcessed,
       noPatternFound: statsNoPattern,
       userNotFound: statsUserNotFound,
       successful: statsAssigned,
@@ -348,6 +503,9 @@ Deno.serve(async (req) => {
       errors: statsErrors,
       byUser: userCounts,
       mode,
+      executionTimeMs: elapsedTime,
+      stoppedByTimeout,
+      stoppedByTestComplete,
       availableUsers: users?.map(u => u.full_name).filter(Boolean) || [],
     };
 
