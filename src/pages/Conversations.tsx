@@ -84,8 +84,9 @@ import { TransferEventCard } from '@/components/conversations/TransferEventCard'
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
-import { formatDistanceToNow, format, isToday } from 'date-fns';
+import { formatDistanceToNow, format, isToday, isYesterday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toZonedTime } from 'date-fns-tz';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { toast } from 'sonner';
 import { useTeam } from '@/hooks/useTeam';
@@ -1141,6 +1142,61 @@ export default function Conversations() {
       return user;
     },
   });
+
+  // Get company timezone
+  const { data: companyTimezone = 'America/Sao_Paulo' } = useQuery({
+    queryKey: ['company-timezone'],
+    staleTime: 1000 * 60 * 60, // 1 hour cache
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('company_settings')
+        .select('timezone')
+        .limit(1)
+        .single();
+      return data?.timezone || 'America/Sao_Paulo';
+    },
+  });
+
+  // Helper function to format date separator considering timezone
+  const formatDateSeparator = useCallback((utcDateStr: string): string => {
+    const utcDate = parseISO(utcDateStr);
+    const localDate = toZonedTime(utcDate, companyTimezone);
+    const now = toZonedTime(new Date(), companyTimezone);
+    
+    // Check if same day
+    if (
+      localDate.getFullYear() === now.getFullYear() &&
+      localDate.getMonth() === now.getMonth() &&
+      localDate.getDate() === now.getDate()
+    ) {
+      return 'Hoje';
+    }
+    
+    // Check if yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (
+      localDate.getFullYear() === yesterday.getFullYear() &&
+      localDate.getMonth() === yesterday.getMonth() &&
+      localDate.getDate() === yesterday.getDate()
+    ) {
+      return 'Ontem';
+    }
+    
+    // Return full date
+    return format(localDate, "EEEE, dd 'de' MMMM", { locale: ptBR });
+  }, [companyTimezone]);
+
+  // Helper to check if two dates are the same local day
+  const isSameLocalDay = useCallback((date1: string, date2: string): boolean => {
+    const d1 = toZonedTime(parseISO(date1), companyTimezone);
+    const d2 = toZonedTime(parseISO(date2), companyTimezone);
+    return (
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+    );
+  }, [companyTimezone]);
 
   // Create a map of tag counts from DATABASE (real counts via hook)
   const tagCountMap = useMemo(() => {
@@ -2956,67 +3012,78 @@ export default function Conversations() {
                     </div>
                   )}
                   
-                  {/* Date Separator */}
-                  {!messageSearchQuery && (
-                    <div className="flex items-center gap-3 my-4">
-                      <div className="flex-1 h-px bg-border"></div>
-                      <span className="text-xs text-muted-foreground font-medium px-2">Hoje</span>
-                      <div className="flex-1 h-px bg-border"></div>
-                    </div>
-                  )}
+                  {/* Dynamic Date Separators - render inline with messages */}
+                  {(messageSearchQuery ? filteredChatItems : allChatItems).map((item, index, items) => {
+                    const prevItem = index > 0 ? items[index - 1] : null;
+                    const showDateSeparator = !messageSearchQuery && (
+                      !prevItem || !isSameLocalDay(prevItem.created_at, item.created_at)
+                    );
 
-                  {(messageSearchQuery ? filteredChatItems : allChatItems).map((item) => (
-                    item.itemType === 'note' ? (
-                      <InternalNoteCard 
-                        key={`note-${item.id}`} 
-                        note={item as InternalNote} 
-                        onUpdate={(noteId, content) => updateInternalNote.mutate({ 
-                          noteId, 
-                          content, 
-                          conversationId: selectedConversationId! 
-                        })}
-                      />
-                    ) : item.itemType === 'event' ? (
-                      <TransferEventCard 
-                        key={`event-${item.id}`} 
-                        event={item as ConversationEvent}
-                        currentUserId={currentUser?.id}
-                        isLatestTransfer={latestTransferEvent?.id === item.id}
-                        isReturning={returnConversation.isPending}
-                        onReturn={() => {
-                          const eventData = (item as ConversationEvent).data;
-                          if (eventData.from_user_id && eventData.from_user_name && selectedConversationId) {
-                            returnConversation.mutate({
-                              conversationId: selectedConversationId,
-                              toUserId: eventData.from_user_id,
-                              toUserName: eventData.from_user_name,
-                            }, {
-                              onSuccess: () => {
-                                toast.success('Conversa devolvida com sucesso');
-                              },
-                              onError: () => {
-                                toast.error('Erro ao devolver conversa');
+                    return (
+                      <div key={item.id}>
+                        {showDateSeparator && (
+                          <div className="flex items-center gap-3 my-4">
+                            <div className="flex-1 h-px bg-border"></div>
+                            <span className="text-xs text-muted-foreground font-medium px-2 capitalize">
+                              {formatDateSeparator(item.created_at)}
+                            </span>
+                            <div className="flex-1 h-px bg-border"></div>
+                          </div>
+                        )}
+                        
+                        {item.itemType === 'note' ? (
+                          <InternalNoteCard 
+                            key={`note-${item.id}`} 
+                            note={item as InternalNote} 
+                            onUpdate={(noteId, content) => updateInternalNote.mutate({ 
+                              noteId, 
+                              content, 
+                              conversationId: selectedConversationId! 
+                            })}
+                          />
+                        ) : item.itemType === 'event' ? (
+                          <TransferEventCard 
+                            key={`event-${item.id}`} 
+                            event={item as ConversationEvent}
+                            currentUserId={currentUser?.id}
+                            isLatestTransfer={latestTransferEvent?.id === item.id}
+                            isReturning={returnConversation.isPending}
+                            onReturn={() => {
+                              const eventData = (item as ConversationEvent).data;
+                              if (eventData.from_user_id && eventData.from_user_name && selectedConversationId) {
+                                returnConversation.mutate({
+                                  conversationId: selectedConversationId,
+                                  toUserId: eventData.from_user_id,
+                                  toUserName: eventData.from_user_name,
+                                }, {
+                                  onSuccess: () => {
+                                    toast.success('Conversa devolvida com sucesso');
+                                  },
+                                  onError: () => {
+                                    toast.error('Erro ao devolver conversa');
+                                  }
+                                });
                               }
-                            });
-                          }
-                        }}
-                      />
-                    ) : (
-                      <MessageBubble 
-                        key={`msg-${item.id}`} 
-                        message={item as Message}
-                        onReply={handleReplyMessage}
-                        onDelete={handleDeleteMessage}
-                        onEdit={handleEditMessage}
-                        onReact={handleReactToMessage}
-                        onScrollToMessage={handleScrollToMessage}
-                        isSelectionMode={isSelectionMode}
-                        isSelected={selectedMessageIds.has(item.id)}
-                        onToggleSelect={handleToggleMessageSelect}
-                        onEnterSelectionMode={handleEnterSelectionMode}
-                      />
-                    )
-                  ))}
+                            }}
+                          />
+                        ) : (
+                          <MessageBubble 
+                            key={`msg-${item.id}`} 
+                            message={item as Message}
+                            onReply={handleReplyMessage}
+                            onDelete={handleDeleteMessage}
+                            onEdit={handleEditMessage}
+                            onReact={handleReactToMessage}
+                            onScrollToMessage={handleScrollToMessage}
+                            isSelectionMode={isSelectionMode}
+                            isSelected={selectedMessageIds.has(item.id)}
+                            onToggleSelect={handleToggleMessageSelect}
+                            onEnterSelectionMode={handleEnterSelectionMode}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
                   <div ref={messagesEndRef} />
                 </>
               )}
