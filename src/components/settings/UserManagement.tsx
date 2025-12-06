@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useRoles, type RoleDefinition } from '@/hooks/useRoles';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,101 +35,72 @@ import {
   AlertCircle,
   CheckCircle,
   Building2,
+  User,
+  Headphones,
+  Settings,
+  Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-// Role configuration
-const roleConfig: Record<string, {
-  label: string;
-  shortLabel: string;
-  icon: LucideIcon;
-  bgLight: string;
-  text: string;
-  border: string;
-  description: string;
-  permissions: { label: string; allowed: boolean }[];
-}> = {
-  admin: {
-    label: 'Administrador',
-    shortLabel: 'Admin',
-    icon: Shield,
-    bgLight: 'bg-destructive/10',
-    text: 'text-destructive',
-    border: 'border-destructive/30',
-    description: 'Acesso total ao sistema. Pode gerenciar usuários, configurações e todos os módulos.',
-    permissions: [
-      { label: 'Criar e gerenciar usuários', allowed: true },
-      { label: 'Ver toda a equipe', allowed: true },
-      { label: 'Configurações do sistema', allowed: true },
-      { label: 'Conectar canais WhatsApp', allowed: true },
-      { label: 'Ver todos os relatórios', allowed: true },
-      { label: 'Importar/Exportar dados', allowed: true },
-    ]
-  },
-  supervisor: {
-    label: 'Supervisor',
-    shortLabel: 'Supervisor',
-    icon: UserCog,
-    bgLight: 'bg-warning/10',
-    text: 'text-warning',
-    border: 'border-warning/30',
-    description: 'Gerencia equipe do departamento. Vê relatórios e pode transferir atendimentos.',
-    permissions: [
-      { label: 'Criar e gerenciar usuários', allowed: false },
-      { label: 'Ver toda a equipe', allowed: true },
-      { label: 'Configurações do sistema', allowed: false },
-      { label: 'Conectar canais WhatsApp', allowed: false },
-      { label: 'Ver todos os relatórios', allowed: true },
-      { label: 'Importar/Exportar dados', allowed: true },
-    ]
-  },
-  vendedor: {
-    label: 'Vendedor',
-    shortLabel: 'Vendedor',
-    icon: ShoppingCart,
-    bgLight: 'bg-success/10',
-    text: 'text-success',
-    border: 'border-success/30',
-    description: 'Atende clientes, cria orçamentos e acompanha negociações.',
-    permissions: [
-      { label: 'Criar e gerenciar usuários', allowed: false },
-      { label: 'Ver toda a equipe', allowed: false },
-      { label: 'Configurações do sistema', allowed: false },
-      { label: 'Conectar canais WhatsApp', allowed: false },
-      { label: 'Ver todos os relatórios', allowed: false },
-      { label: 'Importar/Exportar dados', allowed: false },
-    ]
-  },
-  designer: {
-    label: 'Designer',
-    shortLabel: 'Designer',
-    icon: Palette,
-    bgLight: 'bg-primary/10',
-    text: 'text-primary',
-    border: 'border-primary/30',
-    description: 'Acessa área de produção, layouts e artes. Não atende clientes diretamente.',
-    permissions: [
-      { label: 'Criar e gerenciar usuários', allowed: false },
-      { label: 'Ver toda a equipe', allowed: false },
-      { label: 'Configurações do sistema', allowed: false },
-      { label: 'Conectar canais WhatsApp', allowed: false },
-      { label: 'Ver todos os relatórios', allowed: false },
-      { label: 'Criar templates e artes', allowed: true },
-    ]
-  }
+// Icon mapping for dynamic roles
+const iconMap: Record<string, LucideIcon> = {
+  Shield,
+  UserCog,
+  ShoppingCart,
+  Palette,
+  User,
+  Headphones,
+  Settings,
+  Users,
 };
 
-type RoleKey = keyof typeof roleConfig;
+// Color presets for roles
+const colorPresets: Record<string, { bgLight: string; text: string; border: string }> = {
+  '#EF4444': { bgLight: 'bg-destructive/10', text: 'text-destructive', border: 'border-destructive/30' },
+  '#F59E0B': { bgLight: 'bg-warning/10', text: 'text-warning', border: 'border-warning/30' },
+  '#22C55E': { bgLight: 'bg-success/10', text: 'text-success', border: 'border-success/30' },
+  '#8B5CF6': { bgLight: 'bg-primary/10', text: 'text-primary', border: 'border-primary/30' },
+  '#3B82F6': { bgLight: 'bg-blue-500/10', text: 'text-blue-500', border: 'border-blue-500/30' },
+  '#EC4899': { bgLight: 'bg-pink-500/10', text: 'text-pink-500', border: 'border-pink-500/30' },
+  '#06B6D4': { bgLight: 'bg-cyan-500/10', text: 'text-cyan-500', border: 'border-cyan-500/30' },
+};
+
+// Helper function to get role styling
+function getRoleStyle(role: RoleDefinition | undefined) {
+  if (!role) {
+    return { 
+      bgLight: 'bg-muted', 
+      text: 'text-muted-foreground', 
+      border: 'border-border',
+      Icon: User
+    };
+  }
+  
+  const colorStyle = colorPresets[role.color || '#8B5CF6'] || colorPresets['#8B5CF6'];
+  const Icon = iconMap[role.icon || 'User'] || User;
+  
+  return { ...colorStyle, Icon };
+}
 
 export function UserManagement() {
   const [search, setSearch] = useState('');
-  const [filterRole, setFilterRole] = useState<RoleKey | ''>('');
+  const [filterRole, setFilterRole] = useState<string>('');
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   
   const queryClient = useQueryClient();
   const { data: departments = [] } = useDepartments();
+  const { data: roles = [], isLoading: rolesLoading } = useRoles();
+
+  // Create a map for quick role lookup
+  const rolesMap = useMemo(() => {
+    const map: Record<string, RoleDefinition> = {};
+    roles.forEach(role => {
+      map[role.role_key] = role;
+    });
+    return map;
+  }, [roles]);
 
   // Fetch users
   const { data: users = [], isLoading } = useQuery({
@@ -170,13 +142,14 @@ export function UserManagement() {
     },
   });
 
-  // Count users by role
-  const userCounts = {
-    admin: users.filter(u => u.role === 'admin').length,
-    supervisor: users.filter(u => u.role === 'supervisor').length,
-    vendedor: users.filter(u => u.role === 'vendedor').length,
-    designer: users.filter(u => u.role === 'designer').length,
-  };
+  // Count users by role dynamically
+  const userCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    roles.forEach(role => {
+      counts[role.role_key] = users.filter(u => u.role === role.role_key).length;
+    });
+    return counts;
+  }, [users, roles]);
 
   // Cancel invite mutation
   const cancelInvite = useMutation({
@@ -224,31 +197,31 @@ export function UserManagement() {
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {(Object.keys(roleConfig) as RoleKey[]).map((roleKey) => {
-          const config = roleConfig[roleKey];
-          const Icon = config.icon;
-          const count = userCounts[roleKey as keyof typeof userCounts] || 0;
-          const isActive = filterRole === roleKey;
+        {roles.map((role) => {
+          const style = getRoleStyle(role);
+          const Icon = style.Icon;
+          const count = userCounts[role.role_key] || 0;
+          const isActive = filterRole === role.role_key;
           
           return (
             <button
-              key={roleKey}
-              onClick={() => setFilterRole(isActive ? '' : roleKey)}
+              key={role.id}
+              onClick={() => setFilterRole(isActive ? '' : role.role_key)}
               className={`
                 p-4 rounded-xl border-2 transition-all text-left
                 ${isActive 
-                  ? `${config.border} ${config.bgLight}` 
+                  ? `${style.border} ${style.bgLight}` 
                   : 'border-border bg-card hover:border-muted-foreground/30'
                 }
               `}
             >
               <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 rounded-xl ${config.bgLight} flex items-center justify-center`}>
-                  <Icon size={24} className={config.text} />
+                <div className={`w-12 h-12 rounded-xl ${style.bgLight} flex items-center justify-center`}>
+                  <Icon size={24} className={style.text} />
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-foreground">{count}</div>
-                  <div className="text-sm text-muted-foreground">{config.shortLabel}</div>
+                  <div className="text-sm text-muted-foreground">{role.role_name}</div>
                 </div>
               </div>
             </button>
@@ -299,8 +272,9 @@ export function UserManagement() {
           </h3>
           <div className="space-y-2">
             {pendingInvites.map((invite) => {
-              const config = roleConfig[invite.role as RoleKey] || roleConfig.vendedor;
-              const Icon = config.icon;
+              const role = rolesMap[invite.role];
+              const style = getRoleStyle(role);
+              const Icon = style.Icon;
               
               return (
                 <div 
@@ -312,9 +286,9 @@ export function UserManagement() {
                     <span className="text-sm font-medium text-foreground">
                       {invite.email}
                     </span>
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${config.bgLight} ${config.text}`}>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${style.bgLight} ${style.text}`}>
                       <Icon size={12} />
-                      {config.shortLabel}
+                      {role?.role_name || invite.role}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -397,8 +371,9 @@ export function UserManagement() {
                 </tr>
               ) : (
                 users.map((user) => {
-                  const config = roleConfig[user.role as RoleKey] || roleConfig.vendedor;
-                  const Icon = config.icon;
+                  const role = rolesMap[user.role];
+                  const style = getRoleStyle(role);
+                  const Icon = style.Icon;
                   
                   return (
                     <tr key={user.id} className="hover:bg-muted/30 transition-colors">
@@ -426,9 +401,9 @@ export function UserManagement() {
                         <div className="text-sm text-muted-foreground">{user.phone || '-'}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${config.bgLight} ${config.text}`}>
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${style.bgLight} ${style.text}`}>
                           <Icon size={14} />
-                          {config.label}
+                          {role?.role_name || user.role}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-foreground hidden lg:table-cell">
@@ -494,6 +469,7 @@ export function UserManagement() {
         open={showInviteModal} 
         onClose={() => setShowInviteModal(false)}
         departments={departments}
+        roles={roles}
       />
 
       {/* Edit Modal */}
@@ -505,6 +481,7 @@ export function UserManagement() {
         }}
         user={selectedUser}
         departments={departments}
+        roles={roles}
       />
     </div>
   );
@@ -513,10 +490,11 @@ export function UserManagement() {
 // ==========================================
 // CREATE USER MODAL (Direct user creation)
 // ==========================================
-function CreateUserModal({ open, onClose, departments }: { 
+function CreateUserModal({ open, onClose, departments, roles }: { 
   open: boolean; 
   onClose: () => void;
   departments: any[];
+  roles: RoleDefinition[];
 }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -525,7 +503,7 @@ function CreateUserModal({ open, onClose, departments }: {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [role, setRole] = useState<RoleKey>('vendedor');
+  const [role, setRole] = useState<string>('vendedor');
   const [departmentId, setDepartmentId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const queryClient = useQueryClient();
@@ -660,7 +638,8 @@ function CreateUserModal({ open, onClose, departments }: {
     onClose();
   };
 
-  const selectedConfig = roleConfig[role];
+  const selectedRole = roles.find(r => r.role_key === role);
+  const selectedStyle = getRoleStyle(selectedRole);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -815,30 +794,30 @@ function CreateUserModal({ open, onClose, departments }: {
               Perfil de Acesso *
             </Label>
             <div className="grid grid-cols-2 gap-3">
-              {(Object.keys(roleConfig) as RoleKey[]).map((roleKey) => {
-                const config = roleConfig[roleKey];
-                const Icon = config.icon;
-                const isSelected = role === roleKey;
+              {roles.map((r) => {
+                const style = getRoleStyle(r);
+                const Icon = style.Icon;
+                const isSelected = role === r.role_key;
                 
                 return (
                   <button
-                    key={roleKey}
+                    key={r.id}
                     type="button"
-                    onClick={() => setRole(roleKey)}
+                    onClick={() => setRole(r.role_key)}
                     className={`
                       flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left
                       ${isSelected 
-                        ? `${config.border} ${config.bgLight}` 
+                        ? `${style.border} ${style.bgLight}` 
                         : 'border-border hover:border-muted-foreground/30'
                       }
                     `}
                   >
-                    <div className={`w-9 h-9 rounded-lg ${config.bgLight} flex items-center justify-center`}>
-                      <Icon size={18} className={config.text} />
+                    <div className={`w-9 h-9 rounded-lg ${style.bgLight} flex items-center justify-center`}>
+                      <Icon size={18} className={style.text} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-foreground text-sm">
-                        {config.shortLabel}
+                        {r.role_name}
                       </div>
                     </div>
                     {isSelected && (
@@ -851,11 +830,13 @@ function CreateUserModal({ open, onClose, departments }: {
           </div>
 
           {/* Role Description */}
-          <div className={`p-4 rounded-xl ${selectedConfig.bgLight} border ${selectedConfig.border}`}>
-            <p className={`text-sm ${selectedConfig.text}`}>
-              {selectedConfig.description}
-            </p>
-          </div>
+          {selectedRole && (
+            <div className={`p-4 rounded-xl ${selectedStyle.bgLight} border ${selectedStyle.border}`}>
+              <p className={`text-sm ${selectedStyle.text}`}>
+                {selectedRole.description || `Perfil de acesso: ${selectedRole.role_name}`}
+              </p>
+            </div>
+          )}
 
           {/* Department */}
           <div>
@@ -908,13 +889,14 @@ function CreateUserModal({ open, onClose, departments }: {
 // ==========================================
 // EDIT USER MODAL
 // ==========================================
-function EditUserModal({ open, onClose, user, departments }: { 
+function EditUserModal({ open, onClose, user, departments, roles }: { 
   open: boolean; 
   onClose: () => void;
   user: any;
   departments: any[];
+  roles: RoleDefinition[];
 }) {
-  const [role, setRole] = useState<RoleKey>('vendedor');
+  const [role, setRole] = useState<string>('vendedor');
   const [departmentId, setDepartmentId] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [showPermissions, setShowPermissions] = useState(false);
@@ -1032,7 +1014,8 @@ function EditUserModal({ open, onClose, user, departments }: {
 
   if (!user) return null;
 
-  const selectedConfig = roleConfig[role] || roleConfig.vendedor;
+  const selectedRole = roles.find(r => r.role_key === role);
+  const selectedStyle = getRoleStyle(selectedRole);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -1159,19 +1142,19 @@ function EditUserModal({ open, onClose, user, departments }: {
             <label className="block text-sm font-medium text-foreground mb-2">
               Perfil de Acesso
             </label>
-            <Select value={role} onValueChange={(value) => setRole(value as RoleKey)}>
+            <Select value={role} onValueChange={setRole}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(Object.keys(roleConfig) as RoleKey[]).map((roleKey) => {
-                  const config = roleConfig[roleKey];
-                  const Icon = config.icon;
+                {roles.map((r) => {
+                  const style = getRoleStyle(r);
+                  const Icon = style.Icon;
                   return (
-                    <SelectItem key={roleKey} value={roleKey}>
+                    <SelectItem key={r.id} value={r.role_key}>
                       <div className="flex items-center gap-2">
-                        <Icon size={16} className={config.text} />
-                        {config.label}
+                        <Icon size={16} className={style.text} />
+                        {r.role_name}
                       </div>
                     </SelectItem>
                   );
@@ -1233,22 +1216,27 @@ function EditUserModal({ open, onClose, user, departments }: {
               )}
             </button>
             
-            {showPermissions && (
+            {showPermissions && selectedRole?.permissions && (
               <div className="p-4 space-y-2 bg-card">
-                {selectedConfig.permissions.map((perm, idx) => (
-                  <div key={idx} className="flex items-center gap-3 py-2">
-                    {perm.allowed ? (
-                      <div className="w-5 h-5 rounded-full bg-success/10 flex items-center justify-center">
-                        <Check size={12} className="text-success" />
+                {Object.entries(selectedRole.permissions as Record<string, Record<string, boolean>>).map(([category, actions]) => (
+                  <div key={category} className="space-y-1">
+                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{category}</div>
+                    {Object.entries(actions).map(([action, allowed]) => (
+                      <div key={`${category}-${action}`} className="flex items-center gap-3 py-1 pl-2">
+                        {allowed ? (
+                          <div className="w-5 h-5 rounded-full bg-success/10 flex items-center justify-center">
+                            <Check size={12} className="text-success" />
+                          </div>
+                        ) : (
+                          <div className="w-5 h-5 rounded-full bg-destructive/10 flex items-center justify-center">
+                            <X size={12} className="text-destructive" />
+                          </div>
+                        )}
+                        <span className={`text-sm ${allowed ? 'text-foreground' : 'text-muted-foreground'}`}>
+                          {action}
+                        </span>
                       </div>
-                    ) : (
-                      <div className="w-5 h-5 rounded-full bg-destructive/10 flex items-center justify-center">
-                        <X size={12} className="text-destructive" />
-                      </div>
-                    )}
-                    <span className={`text-sm ${perm.allowed ? 'text-foreground' : 'text-muted-foreground'}`}>
-                      {perm.label}
-                    </span>
+                    ))}
                   </div>
                 ))}
               </div>
