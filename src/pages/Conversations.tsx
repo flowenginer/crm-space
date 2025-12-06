@@ -1014,8 +1014,9 @@ export default function Conversations() {
     departmentId: 'all',
     origin: 'all' as 'all' | 'meta_ads' | 'whatsapp',
   });
-  const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
+const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
+  const [filterTagSearchQuery, setFilterTagSearchQuery] = useState('');
   const [showCreateTagModal, setShowCreateTagModal] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#8B5CF6');
@@ -3435,39 +3436,72 @@ export default function Conversations() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Filtrar por etiqueta
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {tags.length > 0 ? tags.map((tag) => {
-                  const count = tagCountMap.get(tag.id) || 0;
-                  const isSelected = advancedFilters.tagIds.includes(tag.id);
-                  return (
-                    <button
-                      key={tag.id}
-                      onClick={() => {
-                        setAdvancedFilters(prev => ({
-                          ...prev,
-                          tagIds: prev.tagIds.includes(tag.id)
-                            ? prev.tagIds.filter(id => id !== tag.id)
-                            : [...prev.tagIds, tag.id]
-                        }));
-                      }}
-                      className={cn(
-                        'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                        isSelected ? 'text-white' : 'text-white/90 hover:opacity-80'
-                      )}
-                      style={{ 
-                        backgroundColor: tag.color || '#8B5CF6',
-                        opacity: isSelected ? 1 : 0.7
-                      }}
-                    >
-                      {tag.name} ({count})
-                    </button>
-                  );
-                }) : (
-                  <p className="text-sm text-muted-foreground">Nenhuma etiqueta cadastrada</p>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-foreground">
+                  Filtrar por etiqueta
+                </label>
+                {advancedFilters.tagIds.length > 0 && (
+                  <button
+                    onClick={() => setAdvancedFilters(prev => ({ ...prev, tagIds: [] }))}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Limpar ({advancedFilters.tagIds.length})
+                  </button>
                 )}
+              </div>
+              
+              {/* Campo de busca */}
+              <div className="relative mb-2">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar etiqueta..."
+                  value={filterTagSearchQuery}
+                  onChange={(e) => setFilterTagSearchQuery(e.target.value)}
+                  className="pl-8 h-8 text-sm"
+                />
+              </div>
+              
+              {/* Container com scroll */}
+              <div className="h-[200px] overflow-y-auto rounded-lg border border-border p-2">
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    const filteredTags = filterTagSearchQuery.trim()
+                      ? tags.filter(tag => tag.name.toLowerCase().includes(filterTagSearchQuery.toLowerCase()))
+                      : tags;
+                    
+                    return filteredTags.length > 0 ? filteredTags.map((tag) => {
+                      const count = tagCountMap.get(tag.id) || 0;
+                      const isSelected = advancedFilters.tagIds.includes(tag.id);
+                      return (
+                        <button
+                          key={tag.id}
+                          onClick={() => {
+                            setAdvancedFilters(prev => ({
+                              ...prev,
+                              tagIds: prev.tagIds.includes(tag.id)
+                                ? prev.tagIds.filter(id => id !== tag.id)
+                                : [...prev.tagIds, tag.id]
+                            }));
+                          }}
+                          className={cn(
+                            'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                            isSelected ? 'text-white ring-2 ring-white/50' : 'text-white/90 hover:opacity-80'
+                          )}
+                          style={{ 
+                            backgroundColor: tag.color || '#8B5CF6',
+                            opacity: isSelected ? 1 : 0.7
+                          }}
+                        >
+                          {tag.name} ({count})
+                        </button>
+                      );
+                    }) : (
+                      <p className="text-sm text-muted-foreground py-4 text-center w-full">
+                        {filterTagSearchQuery ? 'Nenhuma etiqueta encontrada' : 'Nenhuma etiqueta cadastrada'}
+                      </p>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
 
