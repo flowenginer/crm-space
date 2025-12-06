@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { 
   X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft
 } from 'lucide-react';
@@ -1498,28 +1498,81 @@ function CloseConversationModal({
   onConfirm: (reason?: string) => void;
   isLoading: boolean;
 }) {
-  const [reason, setReason] = useState('');
+  const [selectedReason, setSelectedReason] = useState<string>('');
+  const [note, setNote] = useState('');
+
+  // Fetch close reasons from database
+  const { data: closeReasons = [] } = useQuery({
+    queryKey: ['close-reasons-active'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('close_reasons')
+        .select('id, name, value, color')
+        .eq('is_active', true)
+        .order('order_position', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 60000,
+  });
+
+  // Reset state when modal opens
+  useEffect(() => {
+    if (open) {
+      setSelectedReason('');
+      setNote('');
+    }
+  }, [open]);
+
+  const handleConfirm = () => {
+    // If a reason is selected, use it. Otherwise use note if provided
+    const finalReason = selectedReason || (note ? note : undefined);
+    onConfirm(finalReason);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Fechar Conversa</DialogTitle>
         </DialogHeader>
         
-        <div className="py-4">
-          <p className="text-muted-foreground text-sm mb-4">
-            Tem certeza que deseja fechar esta conversa?
+        <div className="py-4 space-y-4">
+          <p className="text-muted-foreground text-sm">
+            Selecione o motivo de fechamento:
           </p>
           
+          {/* Reason Selection */}
+          <div className="grid grid-cols-2 gap-2">
+            {closeReasons.map((reason) => (
+              <button
+                key={reason.id}
+                onClick={() => setSelectedReason(reason.value)}
+                className={`flex items-center gap-2 p-3 rounded-lg border-2 transition-all text-left ${
+                  selectedReason === reason.value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border hover:border-muted-foreground'
+                }`}
+              >
+                <div
+                  className="w-3 h-3 rounded-full shrink-0"
+                  style={{ backgroundColor: reason.color }}
+                />
+                <span className="text-sm font-medium truncate">{reason.name}</span>
+              </button>
+            ))}
+          </div>
+          
+          {/* Optional Note */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
-              Motivo (opcional)
+              Observação (opcional)
             </label>
-            <Input
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Ex: Venda concluída, Não respondeu..."
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Adicione uma observação..."
+              rows={2}
             />
           </div>
         </div>
@@ -1529,7 +1582,7 @@ function CloseConversationModal({
             Cancelar
           </Button>
           <Button 
-            onClick={() => onConfirm(reason || undefined)}
+            onClick={handleConfirm}
             disabled={isLoading}
             variant="destructive"
           >

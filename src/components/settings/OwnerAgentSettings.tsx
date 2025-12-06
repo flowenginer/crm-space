@@ -9,16 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Save, UserCheck, Clock, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-
-const CLOSE_REASONS = [
-  { value: 'sold', label: 'Venda realizada' },
-  { value: 'no_interest', label: 'Sem interesse' },
-  { value: 'future_contact', label: 'Contato futuro' },
-  { value: 'duplicate', label: 'Duplicado' },
-  { value: 'spam', label: 'Spam' },
-  { value: 'wrong_number', label: 'Número errado' },
-  { value: 'other', label: 'Outro motivo' },
-];
+import { useCloseReasons } from '@/hooks/useCloseReasons';
 
 interface OwnerAgentSettingsData {
   owner_agent_enabled: boolean;
@@ -29,6 +20,7 @@ interface OwnerAgentSettingsData {
 
 export function OwnerAgentSettings() {
   const queryClient = useQueryClient();
+  const { data: closeReasons = [], isLoading: loadingReasons } = useCloseReasons();
   const [settings, setSettings] = useState<OwnerAgentSettingsData>({
     owner_agent_enabled: true,
     owner_agent_inactivity_days: 7,
@@ -117,7 +109,7 @@ export function OwnerAgentSettings() {
     }));
   };
 
-  if (isLoading) {
+  if (isLoading || loadingReasons) {
     return (
       <div className="flex items-center justify-center p-8">
         <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -239,19 +231,25 @@ export function OwnerAgentSettings() {
                     Motivos de fechamento que ativam a reatribuição:
                   </Label>
                   <div className="grid grid-cols-2 gap-3">
-                    {CLOSE_REASONS.map((reason) => (
+                    {closeReasons.map((reason) => (
                       <div key={reason.value} className="flex items-center space-x-2">
                         <Checkbox
                           id={`reason-${reason.value}`}
                           checked={settings.owner_agent_reopen_reasons.includes(reason.value)}
                           onCheckedChange={(checked) => handleReasonToggle(reason.value, checked === true)}
                         />
-                        <Label 
-                          htmlFor={`reason-${reason.value}`}
-                          className="text-sm font-normal cursor-pointer"
-                        >
-                          {reason.label}
-                        </Label>
+                        <div className="flex items-center gap-2">
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: reason.color }}
+                          />
+                          <Label 
+                            htmlFor={`reason-${reason.value}`}
+                            className="text-sm font-normal cursor-pointer"
+                          >
+                            {reason.name}
+                          </Label>
+                        </div>
                       </div>
                     ))}
                   </div>
