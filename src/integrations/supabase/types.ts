@@ -76,6 +76,10 @@ export type Database = {
           id: string
           logo_url: string | null
           max_conversations_per_agent: number | null
+          owner_agent_enabled: boolean | null
+          owner_agent_inactivity_days: number | null
+          owner_agent_on_reopen: boolean | null
+          owner_agent_reopen_reasons: string[] | null
           phone: string | null
           sla_first_response_minutes: number | null
           sla_resolution_minutes: number | null
@@ -96,6 +100,10 @@ export type Database = {
           id?: string
           logo_url?: string | null
           max_conversations_per_agent?: number | null
+          owner_agent_enabled?: boolean | null
+          owner_agent_inactivity_days?: number | null
+          owner_agent_on_reopen?: boolean | null
+          owner_agent_reopen_reasons?: string[] | null
           phone?: string | null
           sla_first_response_minutes?: number | null
           sla_resolution_minutes?: number | null
@@ -116,6 +124,10 @@ export type Database = {
           id?: string
           logo_url?: string | null
           max_conversations_per_agent?: number | null
+          owner_agent_enabled?: boolean | null
+          owner_agent_inactivity_days?: number | null
+          owner_agent_on_reopen?: boolean | null
+          owner_agent_reopen_reasons?: string[] | null
           phone?: string | null
           sla_first_response_minutes?: number | null
           sla_resolution_minutes?: number | null
