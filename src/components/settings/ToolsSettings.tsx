@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Wand2, Loader2, AlertTriangle, CheckCircle, Users, RefreshCw, Clock, SkipForward, Play } from 'lucide-react';
+import { Wand2, Loader2, AlertTriangle, CheckCircle, Users, RefreshCw, Clock, SkipForward, Play, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -44,10 +46,12 @@ interface AssignmentSummary {
   noPatternFound: number;
   userNotFound: number;
   successful: number;
+  contactsUpdated: number;
   skippedTestMode: number;
   errors: number;
   byUser: Record<string, number>;
   mode: string;
+  processAll: boolean;
   executionTimeMs: number;
   stoppedByTimeout: boolean;
   stoppedByTestComplete: boolean;
@@ -68,6 +72,7 @@ interface RecognizedUser {
 export function ToolsSettings() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [mode, setMode] = useState<'preview' | 'test' | 'full'>('preview');
+  const [processAll, setProcessAll] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [results, setResults] = useState<AssignmentResult[] | null>(null);
@@ -133,6 +138,7 @@ export function ToolsSettings() {
           body: JSON.stringify({ 
             mode,
             startOffset: continueFromOffset,
+            processAll,
           }),
         }
       );
@@ -172,6 +178,7 @@ export function ToolsSettings() {
     setResults(null);
     setSummary(null);
     setMode('preview');
+    setProcessAll(false);
     setNextOffset(0);
   };
 
@@ -270,33 +277,57 @@ export function ToolsSettings() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Modo de Execução</label>
-              <Select value={mode} onValueChange={(v) => setMode(v as any)} disabled={isLoading}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="preview">
-                    <div className="flex items-center gap-2">
-                      <span>🔍 Preview</span>
-                      <span className="text-muted-foreground text-xs">- Apenas visualizar (não altera nada)</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="test">
-                    <div className="flex items-center gap-2">
-                      <span>🧪 Teste</span>
-                      <span className="text-muted-foreground text-xs">- Atribui 1 conversa por usuário</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="full">
-                    <div className="flex items-center gap-2">
-                      <span>🚀 Completo</span>
-                      <span className="text-muted-foreground text-xs">- Atribui todas as conversas</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Modo de Execução</label>
+                <Select value={mode} onValueChange={(v) => setMode(v as any)} disabled={isLoading}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="preview">
+                      <div className="flex items-center gap-2">
+                        <span>🔍 Preview</span>
+                        <span className="text-muted-foreground text-xs">- Apenas visualizar (não altera nada)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="test">
+                      <div className="flex items-center gap-2">
+                        <span>🧪 Teste</span>
+                        <span className="text-muted-foreground text-xs">- Atribui 1 conversa por usuário</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="full">
+                      <div className="flex items-center gap-2">
+                        <span>🚀 Completo</span>
+                        <span className="text-muted-foreground text-xs">- Atribui todas as conversas</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Checkbox para processar todas as conversas */}
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                <Checkbox 
+                  id="processAll" 
+                  checked={processAll} 
+                  onCheckedChange={(checked) => setProcessAll(checked === true)}
+                  disabled={isLoading}
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <Label 
+                    htmlFor="processAll" 
+                    className="text-sm font-medium cursor-pointer flex items-center gap-2"
+                  >
+                    <UserCheck className="h-4 w-4 text-yellow-500" />
+                    Processar TODAS as conversas
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Inclui conversas já atribuídas. Use apenas para corrigir atribuições existentes ou definir o "Atendente Responsável" em todos os contatos.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {summary && (
@@ -327,7 +358,7 @@ export function ToolsSettings() {
                   </div>
 
                   {/* Grid de estatísticas principais */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     <div className="p-3 rounded-lg bg-background text-center">
                       <div className="text-xl font-bold text-muted-foreground">{summary.totalInDatabase}</div>
                       <div className="text-xs text-muted-foreground">No Banco</div>
@@ -339,6 +370,10 @@ export function ToolsSettings() {
                     <div className="p-3 rounded-lg bg-background text-center">
                       <div className="text-xl font-bold text-green-500">{summary.successful}</div>
                       <div className="text-xs text-muted-foreground">Atribuídas</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-background text-center">
+                      <div className="text-xl font-bold text-emerald-500">{summary.contactsUpdated || 0}</div>
+                      <div className="text-xs text-muted-foreground">Donos Definidos</div>
                     </div>
                     <div className="p-3 rounded-lg bg-background text-center">
                       <div className="text-xl font-bold text-red-500">{summary.errors}</div>
