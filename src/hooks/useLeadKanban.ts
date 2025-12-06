@@ -125,9 +125,11 @@ export function useContactsByLeadStatus() {
             avatar_url
           )
         `)
-        .order('updated_at', { ascending: false });
+        .order('updated_at', { ascending: false })
+        .range(0, 9999);
 
       if (error) throw error;
+      console.log(`[Kanban] Loaded ${data?.length || 0} contacts`);
       return data as ContactForKanban[];
     },
     staleTime: 30000,
