@@ -99,9 +99,38 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
     queryFn: async ({ pageParam = 0 }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Se há filtro de data, precisamos usar INNER JOIN para filtrar no servidor
+      const hasDateFilter = dateFilter && dateFilter !== 'all';
+      const dateRange = hasDateFilter ? getDateRange(dateFilter, customDateFrom, customDateTo) : null;
+      
+      // Use !inner para forçar INNER JOIN quando filtrando por data
+      const contactJoin = hasDateFilter && dateRange 
+        ? 'contact:contacts!inner(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data)'
+        : 'contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data)';
+      
+      const CONVERSATION_FIELDS_DYNAMIC = `
+        id,
+        contact_id,
+        channel_id,
+        assigned_to,
+        department_id,
+        status,
+        is_unread,
+        unread_count,
+        last_message_at,
+        last_message_preview,
+        lead_status,
+        created_at,
+        referral_source,
+        referral_data,
+        ${contactJoin},
+        assignee:profiles!conversations_assigned_to_fkey(id, full_name),
+        channel:whatsapp_channels(id, name)
+      `;
+      
       let query = supabase
         .from('conversations')
-        .select(CONVERSATION_FIELDS)
+        .select(CONVERSATION_FIELDS_DYNAMIC)
         .eq('status', 'open');
 
       // Apply assignment filter
@@ -147,6 +176,15 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         }
       }
 
+      // *** FILTRO DE DATA - SERVIDOR (usando INNER JOIN) ***
+      if (hasDateFilter && dateRange) {
+        const startISO = dateRange.start.toISOString();
+        const endISO = dateRange.end.toISOString();
+        query = query
+          .gte('contact.first_contact_at', startISO)
+          .lte('contact.first_contact_at', endISO);
+      }
+
       // Apply sorting - THIS IS THE KEY: sorting happens on the SERVER
       switch (sortBy) {
         case 'oldest':
@@ -171,23 +209,8 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
 
       if (error) throw error;
       
-      // Filtro de data precisa ser aplicado após o fetch porque usa campo de relação
-      let filteredData = data as Conversation[];
-      
-      if (dateFilter && dateFilter !== 'all') {
-        const dateRange = getDateRange(dateFilter, customDateFrom, customDateTo);
-        if (dateRange) {
-          filteredData = filteredData.filter(conv => {
-            const contactDate = conv.contact?.first_contact_at || conv.contact?.created_at;
-            if (!contactDate) return false;
-            const date = new Date(contactDate);
-            return date >= dateRange.start && date <= dateRange.end;
-          });
-        }
-      }
-      
       return {
-        conversations: filteredData,
+        conversations: (data || []) as unknown as Conversation[],
         nextPage: data?.length === PAGE_SIZE ? pageParam + 1 : undefined,
         pageParam,
       };
