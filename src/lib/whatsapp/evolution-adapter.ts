@@ -357,7 +357,8 @@ export class EvolutionAdapter implements WhatsAppAdapter {
     return (message.imageMessage as Record<string, unknown>)?.url as string || 
            (message.audioMessage as Record<string, unknown>)?.url as string || 
            (message.videoMessage as Record<string, unknown>)?.url as string || 
-           (message.documentMessage as Record<string, unknown>)?.url as string;
+           (message.documentMessage as Record<string, unknown>)?.url as string ||
+           (message.stickerMessage as Record<string, unknown>)?.url as string;
   }
 
   private extractMimetype(msg: Record<string, unknown>): string | undefined {
@@ -367,7 +368,8 @@ export class EvolutionAdapter implements WhatsAppAdapter {
     return (message.imageMessage as Record<string, unknown>)?.mimetype as string || 
            (message.audioMessage as Record<string, unknown>)?.mimetype as string || 
            (message.videoMessage as Record<string, unknown>)?.mimetype as string || 
-           (message.documentMessage as Record<string, unknown>)?.mimetype as string;
+           (message.documentMessage as Record<string, unknown>)?.mimetype as string ||
+           (message.stickerMessage as Record<string, unknown>)?.mimetype as string;
   }
 
   private extractCaption(msg: Record<string, unknown>): string | undefined {

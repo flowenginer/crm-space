@@ -310,7 +310,7 @@ export class UAZAPIAdapter implements WhatsAppAdapter {
         isFromMe: Boolean(msg.fromMe || key?.fromMe),
         type: messageType,
         content: this.extractContent(msg, messageType),
-        mediaUrl: (msg.mediaUrl || (msg.media as Record<string, unknown>)?.url) as string | undefined,
+        mediaUrl: (msg.mediaUrl || (msg.media as Record<string, unknown>)?.url || (msg.sticker as Record<string, unknown>)?.url || msg.stickerUrl) as string | undefined,
         mediaMimeType: (msg.mimetype || (msg.media as Record<string, unknown>)?.mimetype) as string | undefined,
         caption: msg.caption as string | undefined,
         timestamp: new Date(msg.timestamp ? (msg.timestamp as number) * 1000 : Date.now()),
