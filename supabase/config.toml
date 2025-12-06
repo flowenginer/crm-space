@@ -26,3 +26,6 @@ verify_jwt = true
 
 [functions.cleanup-webhook-logs]
 verify_jwt = false
+
+[functions.auto-assign-conversations]
+verify_jwt = true
