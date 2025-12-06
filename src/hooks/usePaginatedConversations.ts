@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Conversation, AssignmentFilter } from './useConversations';
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths } from 'date-fns';
 
 const PAGE_SIZE = 50;
 
@@ -33,16 +34,68 @@ export type SortFilter = ServerSortFilter | 'not_replied' | 'client_not_replied'
 
 export interface ConversationFilters {
   assignment?: AssignmentFilter;
-  sortBy?: ServerSortFilter; // Only server-sortable options
+  sortBy?: ServerSortFilter;
   channelId?: string;
   isUnread?: boolean;
+  // Filtros avançados - aplicados no servidor
+  departmentId?: string;
+  agentId?: string;
+  origin?: 'meta_ads' | 'whatsapp' | 'all';
+  dateFilter?: string;
+  customDateFrom?: Date;
+  customDateTo?: Date;
+  tagIds?: string[];
+}
+
+// Helper para calcular datas do filtro
+function getDateRange(dateFilter: string, customFrom?: Date, customTo?: Date): { start: Date; end: Date } | null {
+  const now = new Date();
+  
+  switch (dateFilter) {
+    case 'today':
+      return { start: startOfDay(now), end: endOfDay(now) };
+    case 'yesterday':
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return { start: startOfDay(yesterday), end: endOfDay(yesterday) };
+    case 'this_week':
+      return { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfDay(now) };
+    case 'last_week':
+      return { start: startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 }), end: endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 }) };
+    case 'this_month':
+      return { start: startOfMonth(now), end: endOfDay(now) };
+    case 'last_month':
+      return { start: startOfMonth(subMonths(now, 1)), end: endOfMonth(subMonths(now, 1)) };
+    case 'custom':
+      if (customFrom) {
+        return { 
+          start: startOfDay(customFrom), 
+          end: customTo ? endOfDay(customTo) : endOfDay(customFrom) 
+        };
+      }
+      return null;
+    default:
+      return null;
+  }
 }
 
 export function usePaginatedConversations(filters?: ConversationFilters) {
-  const { assignment, sortBy = 'newest', channelId, isUnread } = filters || {};
+  const { 
+    assignment, 
+    sortBy = 'newest', 
+    channelId, 
+    isUnread,
+    departmentId,
+    agentId,
+    origin,
+    dateFilter,
+    customDateFrom,
+    customDateTo,
+    tagIds,
+  } = filters || {};
   
   return useInfiniteQuery({
-    queryKey: ['conversations-paginated', assignment, sortBy, channelId, isUnread],
+    queryKey: ['conversations-paginated', assignment, sortBy, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(',')],
     queryFn: async ({ pageParam = 0 }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -72,6 +125,28 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         query = query.eq('is_unread', true);
       }
 
+      // *** FILTROS AVANÇADOS - SERVIDOR ***
+      
+      // Filtro por departamento
+      if (departmentId && departmentId !== 'all') {
+        query = query.eq('department_id', departmentId);
+      }
+
+      // Filtro por agente/atendente
+      if (agentId && agentId !== 'all') {
+        query = query.eq('assigned_to', agentId);
+      }
+
+      // Filtro por origem (Meta Ads / Orgânico)
+      if (origin && origin !== 'all') {
+        if (origin === 'meta_ads') {
+          query = query.eq('referral_source', 'meta_ads');
+        } else if (origin === 'whatsapp') {
+          // Orgânico = não é meta_ads (pode ser null ou qualquer outro valor)
+          query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
+        }
+      }
+
       // Apply sorting - THIS IS THE KEY: sorting happens on the SERVER
       switch (sortBy) {
         case 'oldest':
@@ -96,8 +171,23 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
 
       if (error) throw error;
       
+      // Filtro de data precisa ser aplicado após o fetch porque usa campo de relação
+      let filteredData = data as Conversation[];
+      
+      if (dateFilter && dateFilter !== 'all') {
+        const dateRange = getDateRange(dateFilter, customDateFrom, customDateTo);
+        if (dateRange) {
+          filteredData = filteredData.filter(conv => {
+            const contactDate = conv.contact?.first_contact_at || conv.contact?.created_at;
+            if (!contactDate) return false;
+            const date = new Date(contactDate);
+            return date >= dateRange.start && date <= dateRange.end;
+          });
+        }
+      }
+      
       return {
-        conversations: data as Conversation[],
+        conversations: filteredData,
         nextPage: data?.length === PAGE_SIZE ? pageParam + 1 : undefined,
         pageParam,
       };

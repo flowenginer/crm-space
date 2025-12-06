@@ -82,7 +82,7 @@ import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type In
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
-import { formatDistanceToNow, format, isToday, isYesterday, startOfDay, startOfWeek, startOfMonth, subDays, subWeeks, subMonths, endOfDay, endOfWeek, endOfMonth, isWithinInterval } from 'date-fns';
+import { formatDistanceToNow, format, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { toast } from 'sonner';
@@ -1009,7 +1009,14 @@ export default function Conversations() {
     sortBy: (sortFilter === 'newest' || sortFilter === 'oldest' || sortFilter === 'unread') ? sortFilter : 'newest',
     channelId: channelFilter !== 'all' ? channelFilter : undefined,
     isUnread: sortFilter === 'unread' ? true : undefined,
-  }), [quickFilter, sortFilter, channelFilter]);
+    // Filtros avançados - aplicados no servidor
+    departmentId: advancedFilters.departmentId !== 'all' ? advancedFilters.departmentId : undefined,
+    agentId: advancedFilters.agentId !== 'all' ? advancedFilters.agentId : undefined,
+    origin: advancedFilters.origin !== 'all' ? advancedFilters.origin : undefined,
+    dateFilter: dateFilter !== 'all' ? dateFilter : undefined,
+    customDateFrom: customDateRange.from,
+    customDateTo: customDateRange.to,
+  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, dateFilter, customDateRange.from, customDateRange.to]);
 
   // Fetch real conversations from database with filter (PAGINATED + SERVER SORTED)
   const { 
@@ -1290,47 +1297,10 @@ export default function Conversations() {
     setSelectedMessageIds(new Set());
   }, [selectedConversationId]);
 
-  // Helper function to check date filter
-  const isWithinDateFilter = (contactDate: string | null | undefined): boolean => {
-    if (dateFilter === 'all' || !contactDate) return true;
-    
-    const date = new Date(contactDate);
-    const now = new Date();
-    
-    switch (dateFilter) {
-      case 'today':
-        return isToday(date);
-      case 'yesterday':
-        return isYesterday(date);
-      case 'this_week':
-        return isWithinInterval(date, {
-          start: startOfWeek(now, { weekStartsOn: 0 }),
-          end: endOfDay(now),
-        });
-      case 'last_week':
-        const lastWeekStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
-        const lastWeekEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
-        return isWithinInterval(date, { start: lastWeekStart, end: lastWeekEnd });
-      case 'this_month':
-        return isWithinInterval(date, {
-          start: startOfMonth(now),
-          end: endOfDay(now),
-        });
-      case 'last_month':
-        const lastMonthStart = startOfMonth(subMonths(now, 1));
-        const lastMonthEnd = endOfMonth(subMonths(now, 1));
-        return isWithinInterval(date, { start: lastMonthStart, end: lastMonthEnd });
-      case 'custom':
-        if (!customDateRange.from) return true;
-        const rangeStart = startOfDay(customDateRange.from);
-        const rangeEnd = customDateRange.to ? endOfDay(customDateRange.to) : endOfDay(customDateRange.from);
-        return isWithinInterval(date, { start: rangeStart, end: rangeEnd });
-      default:
-        return true;
-    }
-  };
+  // Filtro de data agora é aplicado no servidor via usePaginatedConversations
 
   // Filter conversations based on all filters (search, channel, sort, advanced, date)
+  // Nota: filtros avançados (departamento, agente, origem, data) agora são aplicados no servidor
   const filteredConversations = useMemo(() => {
     const pinnedIds = new Set(pinnedConversations.map(p => p.conversation_id));
     
@@ -1338,7 +1308,6 @@ export default function Conversations() {
       .filter((conv) => {
         const contactName = conv.contact?.full_name || '';
         const contactPhone = conv.contact?.phone || '';
-        const firstContactDate = conv.contact?.first_contact_at || conv.contact?.created_at;
         const isPinnedConv = pinnedIds.has(conv.id);
         
         // Pinned filter logic:
@@ -1348,11 +1317,6 @@ export default function Conversations() {
           if (!isPinnedConv) return false;
         } else {
           if (isPinnedConv) return false;
-        }
-        
-        // Date filter (MASTER filter - applied first)
-        if (!isWithinDateFilter(firstContactDate)) {
-          return false;
         }
         
         // Search filter (name or phone)
@@ -1376,27 +1340,10 @@ export default function Conversations() {
           }
         }
         
-        // Advanced filters
-        if (advancedFilters.agentId !== 'all' && conv.assigned_to !== advancedFilters.agentId) {
-          return false;
-        }
-        
-        if (advancedFilters.departmentId !== 'all' && conv.department_id !== advancedFilters.departmentId) {
-          return false;
-        }
-        
+        // Filtros avançados agora são aplicados no servidor via usePaginatedConversations
+        // Apenas o filtro de protocolo continua local (busca em texto)
         if (advancedFilters.protocolNumber && !conv.id.includes(advancedFilters.protocolNumber)) {
           return false;
-        }
-        
-        // Origin filter (Meta Ads, WhatsApp)
-        if (advancedFilters.origin !== 'all') {
-          const convOrigin = conv.referral_source || conv.contact?.origin;
-          if (advancedFilters.origin === 'meta_ads') {
-            if (convOrigin !== 'meta_ads') return false;
-          } else if (advancedFilters.origin === 'whatsapp') {
-            if (convOrigin === 'meta_ads') return false;
-          }
         }
         
         return true;
@@ -1432,7 +1379,7 @@ export default function Conversations() {
             return 0;
         }
       });
-  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter, customDateRange, pinnedConversations, quickFilter, lastMessageMap]);
+  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, lastMessageMap]);
 
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
