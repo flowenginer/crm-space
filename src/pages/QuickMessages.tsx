@@ -8,21 +8,16 @@ import {
   Zap,
   Settings,
   Search,
-  FolderPlus,
   Plus,
-  FolderOpen,
-  Folder,
   Star,
-  MoreVertical,
-  Send,
   Edit3,
-  Copy,
   Trash2,
-  BarChart3,
+  Send,
+  Copy,
+  Paperclip,
   HelpCircle,
   CheckCheck,
 } from 'lucide-react';
-import Masonry from 'react-masonry-css';
 import {
   Dialog,
   DialogContent,
@@ -32,13 +27,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 
 interface Template {
@@ -50,6 +48,7 @@ interface Template {
   variables: string[];
   folder: string;
   isFavorite: boolean;
+  hasAttachment: boolean;
   createdAt: string;
 }
 
@@ -61,8 +60,6 @@ const categories = [
   { id: 'funnels', icon: GitBranch, label: 'Funis', count: 2 },
   { id: 'triggers', icon: Zap, label: 'Gatilhos', count: 4 },
 ];
-
-const folders = ['Todos', 'Orçamentos', 'Vendas', 'Resgates', 'Apresentação'];
 
 const mockTemplates: Template[] = [
   {
@@ -85,6 +82,7 @@ TELEFONE:`,
     variables: [],
     folder: 'Vendas',
     isFavorite: true,
+    hasAttachment: false,
     createdAt: '2025-11-01T10:00:00',
   },
   {
@@ -100,6 +98,7 @@ Podemos dar continuidade ao seu atendimento agora?`,
     variables: [],
     folder: 'Resgates',
     isFavorite: false,
+    hasAttachment: false,
     createdAt: '2025-11-05T14:00:00',
   },
   {
@@ -115,6 +114,7 @@ O verão está chegando com tudo e esse é o momento ideal para deixar sua equip
     variables: ['nome'],
     folder: 'Resgates',
     isFavorite: true,
+    hasAttachment: false,
     createdAt: '2025-11-10T09:00:00',
   },
   {
@@ -136,6 +136,7 @@ O verão está chegando com tudo e esse é o momento ideal para deixar sua equip
     variables: ['quantidade', 'valor_unitario', 'valor_total'],
     folder: 'Orçamentos',
     isFavorite: true,
+    hasAttachment: false,
     createdAt: '2025-11-15T11:00:00',
   },
   {
@@ -157,6 +158,7 @@ O verão está chegando com tudo e esse é o momento ideal para deixar sua equip
     variables: ['quantidade', 'valor_unitario', 'valor_total'],
     folder: 'Orçamentos',
     isFavorite: false,
+    hasAttachment: false,
     createdAt: '2025-11-20T16:00:00',
   },
   {
@@ -174,6 +176,7 @@ O verão está chegando com tudo e esse é o momento ideal para deixar sua equip
     variables: ['quantidade', 'valor_unitario', 'valor_total'],
     folder: 'Orçamentos',
     isFavorite: false,
+    hasAttachment: false,
     createdAt: '2025-11-22T08:00:00',
   },
   {
@@ -189,6 +192,7 @@ Foi um prazer atendê-lo. Desejo a você e à sua família um excelente final de
     variables: [],
     folder: 'Vendas',
     isFavorite: true,
+    hasAttachment: false,
     createdAt: '2025-11-25T13:00:00',
   },
   {
@@ -204,6 +208,7 @@ Caso tenha ficado algum tipo de dúvida pode me perguntar, ok? 😊`,
     variables: ['nome'],
     folder: 'Orçamentos',
     isFavorite: false,
+    hasAttachment: false,
     createdAt: '2025-11-28T15:00:00',
   },
   {
@@ -221,6 +226,7 @@ Deseja renovar o estoque ou fazer um novo pedido?`,
     variables: ['nome'],
     folder: 'Resgates',
     isFavorite: false,
+    hasAttachment: false,
     createdAt: '2025-12-01T10:00:00',
   },
   {
@@ -234,6 +240,7 @@ Qualquer dúvida, estou à disposição. 😊`,
     variables: [],
     folder: 'Vendas',
     isFavorite: false,
+    hasAttachment: false,
     createdAt: '2025-12-02T12:00:00',
   },
   {
@@ -249,6 +256,7 @@ Meu nome é *Scarlet*, sou especialista comercial da *Space Sports*, a marca lí
     variables: [],
     folder: 'Apresentação',
     isFavorite: true,
+    hasAttachment: false,
     createdAt: '2025-12-03T09:00:00',
   },
   {
@@ -264,6 +272,7 @@ Dá uma olhada nos nossos trabalhos! 🔥`,
     variables: [],
     folder: 'Apresentação',
     isFavorite: false,
+    hasAttachment: false,
     createdAt: '2025-12-03T11:00:00',
   },
 ];
@@ -281,143 +290,8 @@ const variableOptions = [
 
 const quickEmojis = ['👋', '😊', '🎉', '✅', '📦', '💬', '☀️', '🔥', '👕', '📸'];
 
-// Template Card Component
-const TemplateCard = ({
-  template,
-  onEdit,
-  onUse,
-  onToggleFavorite,
-  onDuplicate,
-  onDelete,
-}: {
-  template: Template;
-  onEdit: () => void;
-  onUse: () => void;
-  onToggleFavorite: () => void;
-  onDuplicate: () => void;
-  onDelete: () => void;
-}) => {
-  const [isHovered, setIsHovered] = useState(false);
-
-  return (
-    <div
-      className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm hover:shadow-elevated transition-all duration-300 mb-4 group"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Card Header */}
-      <div className="p-4 border-b border-border/50 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h3 className="font-bold text-foreground text-sm">{template.title}</h3>
-          {template.isFavorite && (
-            <Star size={14} className="text-yellow-500 fill-yellow-500" />
-          )}
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="p-1.5 hover:bg-muted rounded-lg transition-colors opacity-0 group-hover:opacity-100">
-              <MoreVertical size={16} className="text-muted-foreground" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={onEdit} className="flex items-center gap-2">
-              <Edit3 size={16} />
-              Editar
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onDuplicate} className="flex items-center gap-2">
-              <Copy size={16} />
-              Duplicar
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onToggleFavorite} className="flex items-center gap-2">
-              <Star size={16} />
-              {template.isFavorite ? 'Remover dos favoritos' : 'Favoritar'}
-            </DropdownMenuItem>
-            <DropdownMenuItem className="flex items-center gap-2">
-              <Folder size={16} />
-              Mover para pasta
-            </DropdownMenuItem>
-            <DropdownMenuItem className="flex items-center gap-2">
-              <BarChart3 size={16} />
-              Ver estatísticas
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onDelete} className="flex items-center gap-2 text-destructive">
-              <Trash2 size={16} />
-              Excluir
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* Card Content */}
-      <div className="p-4">
-        {/* Message Preview */}
-        <div className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed mb-4 max-h-48 overflow-hidden relative">
-          {template.content}
-          {template.content.length > 200 && (
-            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-card to-transparent"></div>
-          )}
-        </div>
-
-        {/* Variables Tags */}
-        {template.variables.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-4">
-            {template.variables.map((variable) => (
-              <span
-                key={variable}
-                className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs font-medium"
-              >
-                {`{{${variable}}}`}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Folder Tag */}
-        <div className="flex items-center justify-between mb-4">
-          <span className="px-2 py-1 bg-muted text-muted-foreground rounded-lg text-xs font-medium flex items-center gap-1">
-            <Folder size={12} />
-            {template.folder}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            Usada {template.usageCount}x
-          </span>
-        </div>
-      </div>
-
-      {/* Card Footer - Actions */}
-      <div
-        className={`border-t border-border/50 p-3 flex gap-2 transition-all duration-300 ${
-          isHovered ? 'opacity-100' : 'opacity-0'
-        }`}
-      >
-        <button
-          onClick={onUse}
-          className="flex-1 py-2 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-lg text-sm font-medium hover:shadow-lg transition-all flex items-center justify-center gap-1"
-        >
-          <Send size={14} />
-          Usar no chat
-        </button>
-        <button
-          onClick={onEdit}
-          className="px-3 py-2 border border-border rounded-lg text-muted-foreground hover:bg-muted transition-all"
-        >
-          <Edit3 size={16} />
-        </button>
-        <button
-          onClick={onDuplicate}
-          className="px-3 py-2 border border-border rounded-lg text-muted-foreground hover:bg-muted transition-all"
-        >
-          <Copy size={16} />
-        </button>
-      </div>
-    </div>
-  );
-};
-
 export default function QuickMessages() {
   const [activeCategory, setActiveCategory] = useState('messages');
-  const [activeFolder, setActiveFolder] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [templates, setTemplates] = useState<Template[]>(mockTemplates);
 
@@ -434,23 +308,13 @@ export default function QuickMessages() {
   const [templateFolder, setTemplateFolder] = useState('');
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
-  const breakpointColumnsObj = {
-    default: 4,
-    1536: 4,
-    1280: 3,
-    1024: 2,
-    768: 2,
-    640: 1,
-  };
-
   const filteredTemplates = templates.filter((template) => {
     const matchesCategory = template.category === activeCategory;
-    const matchesFolder = activeFolder === 'Todos' || template.folder === activeFolder;
     const matchesSearch =
       searchQuery === '' ||
       template.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       template.content.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesFolder && matchesSearch;
+    return matchesCategory && matchesSearch;
   });
 
   const handleNewTemplate = () => {
@@ -482,23 +346,6 @@ export default function QuickMessages() {
       navigator.clipboard.writeText(template.content);
       toast({ title: 'Template copiado!', description: 'Cole no chat para enviar.' });
     }
-  };
-
-  const handleToggleFavorite = (templateId: string) => {
-    setTemplates((prev) =>
-      prev.map((t) => (t.id === templateId ? { ...t, isFavorite: !t.isFavorite } : t))
-    );
-  };
-
-  const handleDuplicateTemplate = (template: Template) => {
-    const newTemplate: Template = {
-      ...template,
-      id: Date.now().toString(),
-      title: `${template.title} (cópia)`,
-      createdAt: new Date().toISOString(),
-    };
-    setTemplates((prev) => [...prev, newTemplate]);
-    toast({ title: 'Template duplicado!' });
   };
 
   const handleDeleteTemplate = (templateId: string) => {
@@ -534,6 +381,7 @@ export default function QuickMessages() {
         variables,
         usageCount: 0,
         isFavorite: false,
+        hasAttachment: false,
         createdAt: new Date().toISOString(),
       };
       setTemplates((prev) => [...prev, newTemplate]);
@@ -566,38 +414,42 @@ export default function QuickMessages() {
     setShowUseTemplateModal(false);
   };
 
+  const truncateMessage = (text: string, maxLength: number = 80) => {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+  };
+
   return (
     <div className="flex h-[calc(100vh-72px)]">
       {/* Left Sidebar - Categories */}
-      <div className="w-64 bg-card border-r border-border flex flex-col">
-        <div className="p-6 border-b border-border">
-          <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <Mic size={24} className="text-primary" />
+      <div className="w-56 bg-card border-r border-border flex flex-col">
+        <div className="p-4 border-b border-border">
+          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <Mic size={20} className="text-primary" />
             DS Voice
           </h2>
-          <p className="text-sm text-muted-foreground mt-1">Biblioteca de mensagens</p>
         </div>
 
         <ScrollArea className="flex-1">
-          <nav className="p-4 space-y-1">
+          <nav className="p-2 space-y-1">
             {categories.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setActiveCategory(item.id)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all text-sm ${
                   activeCategory === item.id
-                    ? 'bg-gradient-to-r from-primary to-pink-500 text-primary-foreground shadow-lg'
+                    ? 'bg-primary text-primary-foreground'
                     : 'text-foreground hover:bg-muted'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <item.icon size={20} />
+                <div className="flex items-center gap-2">
+                  <item.icon size={16} />
                   <span className="font-medium">{item.label}</span>
                 </div>
                 <span
-                  className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                  className={`text-xs font-medium px-1.5 py-0.5 rounded ${
                     activeCategory === item.id
-                      ? 'bg-white/20 text-primary-foreground'
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
                       : 'bg-muted text-muted-foreground'
                   }`}
                 >
@@ -608,110 +460,138 @@ export default function QuickMessages() {
           </nav>
         </ScrollArea>
 
-        {/* Settings Link */}
-        <div className="p-4 border-t border-border">
-          <button className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted rounded-xl transition-all">
-            <Settings size={20} />
+        <div className="p-2 border-t border-border">
+          <button className="w-full flex items-center gap-2 px-3 py-2.5 text-foreground hover:bg-muted rounded-lg transition-all text-sm">
+            <Settings size={16} />
             <span className="font-medium">Configurações</span>
           </button>
         </div>
       </div>
 
-      {/* Main Content - Template Grid */}
-      <div className="flex-1 bg-muted/30 overflow-y-auto">
+      {/* Main Content - Table Layout */}
+      <div className="flex-1 bg-background flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-muted/30 backdrop-blur-sm z-10 p-6 pb-4">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">
-                {categories.find((c) => c.id === activeCategory)?.label}
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                {filteredTemplates.length} templates disponíveis
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {/* Search */}
-              <div className="relative">
-                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Buscar template..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2.5 w-72 bg-card border border-border rounded-xl text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-sm"
-                />
-              </div>
-
-              {/* New Folder Button */}
-              <button className="flex items-center gap-2 px-4 py-2.5 border border-border bg-card rounded-xl text-sm font-medium text-foreground hover:bg-muted transition-all shadow-sm">
-                <FolderPlus size={18} />
-                Nova Pasta
-              </button>
-
-              {/* New Template Button */}
-              <button
-                onClick={handleNewTemplate}
-                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-xl text-sm font-medium hover:shadow-lg transition-all"
-              >
-                <Plus size={18} />
-                Novo Template
-              </button>
-            </div>
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-foreground">
+              Mensagens rápidas
+            </h1>
+            <Badge variant="secondary" className="font-medium">
+              {filteredTemplates.length}
+            </Badge>
           </div>
 
-          {/* Folders Row */}
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {folders.map((folder) => (
-              <button
-                key={folder}
-                onClick={() => setActiveFolder(folder)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-                  activeFolder === folder
-                    ? 'bg-primary/10 text-primary'
-                    : 'bg-card border border-border text-foreground hover:bg-muted'
-                }`}
-              >
-                {activeFolder === folder ? <FolderOpen size={16} /> : <Folder size={16} />}
-                {folder}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Masonry Grid */}
-        <div className="p-6 pt-0">
-          <Masonry
-            breakpointCols={breakpointColumnsObj}
-            className="flex gap-4 -ml-4"
-            columnClassName="pl-4 bg-clip-padding"
-          >
-            {filteredTemplates.map((template) => (
-              <TemplateCard
-                key={template.id}
-                template={template}
-                onEdit={() => handleEditTemplate(template)}
-                onUse={() => handleUseTemplate(template)}
-                onToggleFavorite={() => handleToggleFavorite(template.id)}
-                onDuplicate={() => handleDuplicateTemplate(template)}
-                onDelete={() => handleDeleteTemplate(template.id)}
+          <div className="flex items-center gap-3">
+            {/* Search */}
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Buscar..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-4 py-2 w-64 bg-muted border-0 rounded-lg text-sm focus:ring-2 focus:ring-primary/20"
               />
-            ))}
-          </Masonry>
-
-          {filteredTemplates.length === 0 && (
-            <div className="text-center py-16">
-              <div className="mx-auto h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-                <MessageSquare className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground">Nenhum template encontrado</h3>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Crie um novo template ou ajuste os filtros
-              </p>
             </div>
-          )}
+
+            {/* New Template Button */}
+            <Button onClick={handleNewTemplate} size="sm">
+              <Plus size={16} className="mr-1" />
+              ADICIONAR
+            </Button>
+          </div>
         </div>
+
+        {/* Table */}
+        <ScrollArea className="flex-1">
+          <div className="p-4">
+            <div className="bg-card rounded-lg border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="w-12 text-center">#</TableHead>
+                    <TableHead className="w-48">Chave</TableHead>
+                    <TableHead>Mensagem</TableHead>
+                    <TableHead className="w-20 text-center">Anexo</TableHead>
+                    <TableHead className="w-32 text-center">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTemplates.map((template, index) => (
+                    <TableRow key={template.id} className="group">
+                      <TableCell className="text-center text-muted-foreground font-mono text-sm">
+                        {index + 1}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground">
+                            {template.title}
+                          </span>
+                          {template.isFavorite && (
+                            <Star size={12} className="text-yellow-500 fill-yellow-500" />
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-muted-foreground text-sm">
+                          {truncateMessage(template.content)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {template.hasAttachment ? (
+                          <Paperclip size={14} className="mx-auto text-primary" />
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Não</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleUseTemplate(template)}
+                            title="Usar"
+                          >
+                            <Send size={14} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleEditTemplate(template)}
+                            title="Editar"
+                          >
+                            <Edit3 size={14} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteTemplate(template.id)}
+                            title="Excluir"
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {filteredTemplates.length === 0 && (
+                <div className="text-center py-12">
+                  <MessageSquare className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                  <h3 className="text-sm font-semibold text-foreground">Nenhum template encontrado</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Crie um novo template ou ajuste os filtros
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </ScrollArea>
       </div>
 
       {/* New/Edit Template Modal */}
@@ -908,18 +788,12 @@ Use {{variavel}} para campos dinâmicos`}
           </div>
 
           <DialogFooter className="border-t border-border pt-4">
-            <button
-              onClick={() => setShowTemplateModal(false)}
-              className="px-4 py-2 text-muted-foreground hover:bg-muted rounded-lg transition-colors"
-            >
+            <Button variant="ghost" onClick={() => setShowTemplateModal(false)}>
               Cancelar
-            </button>
-            <button
-              onClick={handleSaveTemplate}
-              className="px-6 py-2 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-lg font-medium hover:shadow-lg transition-all"
-            >
+            </Button>
+            <Button onClick={handleSaveTemplate}>
               {isEditing ? 'Salvar alterações' : 'Criar template'}
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -963,19 +837,13 @@ Use {{variavel}} para campos dinâmicos`}
           </div>
 
           <DialogFooter>
-            <button
-              onClick={() => setShowUseTemplateModal(false)}
-              className="px-4 py-2 text-muted-foreground hover:bg-muted rounded-lg transition-colors"
-            >
+            <Button variant="ghost" onClick={() => setShowUseTemplateModal(false)}>
               Cancelar
-            </button>
-            <button
-              onClick={handleSendFilledTemplate}
-              className="px-6 py-2 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-lg font-medium hover:shadow-lg transition-all flex items-center gap-2"
-            >
-              <Send size={16} />
+            </Button>
+            <Button onClick={handleSendFilledTemplate}>
+              <Send size={16} className="mr-2" />
               Usar no chat
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
