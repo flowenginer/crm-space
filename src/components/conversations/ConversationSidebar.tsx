@@ -165,7 +165,17 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   // Mutation: Update lead status
   const updateLeadStatus = useMutation({
     mutationFn: async (newStatus: string) => {
-      if (!conversation?.contact?.id) throw new Error('No contact');
+      // Handle contact being array or object
+      const contact = Array.isArray(conversation?.contact) 
+        ? conversation?.contact[0] 
+        : conversation?.contact;
+      
+      if (!contact?.id) {
+        console.error('[updateLeadStatus] No contact found:', conversation);
+        throw new Error('No contact');
+      }
+      
+      console.log('[updateLeadStatus] Updating contact', contact.id, 'to status:', newStatus);
       
       const { error } = await supabase
         .from('contacts')
@@ -173,16 +183,21 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
           lead_status: newStatus,
           updated_at: new Date().toISOString()
         })
-        .eq('id', conversation.contact.id);
+        .eq('id', contact.id);
       
-      if (error) throw error;
+      if (error) {
+        console.error('[updateLeadStatus] Error:', error);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       toast.success('Status atualizado!');
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('[updateLeadStatus] Mutation error:', error);
       toast.error('Erro ao atualizar status');
     }
   });
