@@ -1,6 +1,48 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { startOfDay, startOfWeek, startOfMonth, subDays, subWeeks, subMonths, endOfDay, endOfWeek, endOfMonth, format } from 'date-fns';
+import { startOfDay, startOfWeek, startOfMonth, subDays, subWeeks, subMonths, endOfDay, endOfWeek, endOfMonth } from 'date-fns';
+
+// Helper para obter início/fim do dia no timezone local convertido para UTC
+function getTimezoneAdjustedDate(date: Date, timezone: string, isEnd: boolean = false): Date {
+  // Formatar a data no timezone especificado
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  
+  // Obter a data local no timezone
+  const parts = formatter.formatToParts(date);
+  const year = parseInt(parts.find(p => p.type === 'year')?.value || '2024');
+  const month = parseInt(parts.find(p => p.type === 'month')?.value || '1') - 1;
+  const day = parseInt(parts.find(p => p.type === 'day')?.value || '1');
+  
+  // Criar data com hora 00:00 ou 23:59:59 no timezone local
+  const timeStr = isEnd ? '23:59:59' : '00:00:00';
+  const localDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${timeStr}`;
+  
+  // Usar Intl para converter para UTC
+  const localDate = new Date(localDateStr);
+  const utcFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  
+  // Calcular offset do timezone
+  const nowInTz = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+  const offsetMs = date.getTime() - nowInTz.getTime();
+  
+  // Criar a data correta: queremos o início/fim do dia no timezone, convertido para UTC
+  const targetDate = new Date(year, month, day, isEnd ? 23 : 0, isEnd ? 59 : 0, isEnd ? 59 : 0);
+  return new Date(targetDate.getTime() + offsetMs);
+}
 
 // Filters interface for contextual counts
 export interface CountFilters {
@@ -154,27 +196,45 @@ export function useChannelCounts(filters?: CountFilters) {
 
 /**
  * Hook para buscar contagens por data do primeiro contato - contextual
+ * USA TIMEZONE DA EMPRESA para calcular corretamente "Hoje", "Ontem", etc.
  */
 export function useDateFilterCounts(filters?: CountFilters) {
   return useQuery({
     queryKey: ['date-filter-counts', filters],
     queryFn: async (): Promise<DateFilterCounts> => {
+      // Buscar timezone da empresa
+      const { data: settings } = await supabase
+        .from('company_settings')
+        .select('timezone')
+        .limit(1)
+        .single();
+      
+      const timezone = settings?.timezone || 'America/Sao_Paulo';
       const now = new Date();
       
-      // Format dates for PostgreSQL
-      const todayStart = format(startOfDay(now), 'yyyy-MM-dd');
-      const todayEnd = format(endOfDay(now), "yyyy-MM-dd'T'23:59:59");
+      // Calcular datas usando o timezone da empresa
+      const todayStart = getTimezoneAdjustedDate(now, timezone, false);
+      const todayEnd = getTimezoneAdjustedDate(now, timezone, true);
       
-      const yesterdayStart = format(startOfDay(subDays(now, 1)), 'yyyy-MM-dd');
-      const yesterdayEnd = format(endOfDay(subDays(now, 1)), "yyyy-MM-dd'T'23:59:59");
+      const yesterday = subDays(now, 1);
+      const yesterdayStart = getTimezoneAdjustedDate(yesterday, timezone, false);
+      const yesterdayEnd = getTimezoneAdjustedDate(yesterday, timezone, true);
       
-      const thisWeekStart = format(startOfWeek(now, { weekStartsOn: 0 }), 'yyyy-MM-dd');
-      const lastWeekStart = format(startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 }), 'yyyy-MM-dd');
-      const lastWeekEnd = format(endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 }), "yyyy-MM-dd'T'23:59:59");
+      const weekStart = startOfWeek(now, { weekStartsOn: 0 });
+      const thisWeekStart = getTimezoneAdjustedDate(weekStart, timezone, false);
       
-      const thisMonthStart = format(startOfMonth(now), 'yyyy-MM-dd');
-      const lastMonthStart = format(startOfMonth(subMonths(now, 1)), 'yyyy-MM-dd');
-      const lastMonthEnd = format(endOfMonth(subMonths(now, 1)), "yyyy-MM-dd'T'23:59:59");
+      const lastWeekStartDate = startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
+      const lastWeekEndDate = endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
+      const lastWeekStart = getTimezoneAdjustedDate(lastWeekStartDate, timezone, false);
+      const lastWeekEnd = getTimezoneAdjustedDate(lastWeekEndDate, timezone, true);
+      
+      const monthStart = startOfMonth(now);
+      const thisMonthStart = getTimezoneAdjustedDate(monthStart, timezone, false);
+      
+      const lastMonthStartDate = startOfMonth(subMonths(now, 1));
+      const lastMonthEndDate = endOfMonth(subMonths(now, 1));
+      const lastMonthStart = getTimezoneAdjustedDate(lastMonthStartDate, timezone, false);
+      const lastMonthEnd = getTimezoneAdjustedDate(lastMonthEndDate, timezone, true);
       
       // Build base query with filters (excluding date filters)
       const buildQuery = () => {
@@ -190,14 +250,14 @@ export function useDateFilterCounts(filters?: CountFilters) {
         return query;
       };
       
-      // Execute all count queries in parallel
+      // Execute all count queries in parallel usando ISO strings
       const [todayResult, yesterdayResult, thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult] = await Promise.all([
-        buildQuery().gte('contact.first_contact_at', todayStart).lte('contact.first_contact_at', todayEnd),
-        buildQuery().gte('contact.first_contact_at', yesterdayStart).lte('contact.first_contact_at', yesterdayEnd),
-        buildQuery().gte('contact.first_contact_at', thisWeekStart).lte('contact.first_contact_at', todayEnd),
-        buildQuery().gte('contact.first_contact_at', lastWeekStart).lte('contact.first_contact_at', lastWeekEnd),
-        buildQuery().gte('contact.first_contact_at', thisMonthStart).lte('contact.first_contact_at', todayEnd),
-        buildQuery().gte('contact.first_contact_at', lastMonthStart).lte('contact.first_contact_at', lastMonthEnd),
+        buildQuery().gte('contact.first_contact_at', todayStart.toISOString()).lte('contact.first_contact_at', todayEnd.toISOString()),
+        buildQuery().gte('contact.first_contact_at', yesterdayStart.toISOString()).lte('contact.first_contact_at', yesterdayEnd.toISOString()),
+        buildQuery().gte('contact.first_contact_at', thisWeekStart.toISOString()).lte('contact.first_contact_at', todayEnd.toISOString()),
+        buildQuery().gte('contact.first_contact_at', lastWeekStart.toISOString()).lte('contact.first_contact_at', lastWeekEnd.toISOString()),
+        buildQuery().gte('contact.first_contact_at', thisMonthStart.toISOString()).lte('contact.first_contact_at', todayEnd.toISOString()),
+        buildQuery().gte('contact.first_contact_at', lastMonthStart.toISOString()).lte('contact.first_contact_at', lastMonthEnd.toISOString()),
       ]);
       
       return {
