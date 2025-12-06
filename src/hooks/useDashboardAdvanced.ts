@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, endOfDay, subDays, format } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
+
+const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
+const STALE_TIME = 10000; // 10 seconds
+const REFETCH_INTERVAL = 30000; // 30 seconds
 
 export interface DashboardFilters {
   dateFrom: Date;
@@ -175,7 +180,8 @@ export function useDashboardKPIs(filters: DashboardFilters) {
         totalConversations: conversations?.length || 0
       };
     },
-    staleTime: 60000,
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -248,7 +254,8 @@ export function useLeadsByStatus(filters: DashboardFilters) {
         .filter(r => r.count > 0)
         .sort((a, b) => b.count - a.count);
     },
-    staleTime: 60000,
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -290,6 +297,27 @@ export function useAgentPerformance(filters: DashboardFilters) {
         .lte('created_at', dateTo)
         .in('assigned_to', agents.map(a => a.id));
 
+      // Get messages for response time calculation
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('conversation_id, is_from_me, created_at')
+        .gte('created_at', dateFrom)
+        .lte('created_at', dateTo)
+        .in('conversation_id', conversations?.map(c => c.id) || [])
+        .order('created_at', { ascending: true });
+
+      // Group messages by conversation
+      const messagesByConv = new Map<string, Array<{ is_from_me: boolean; created_at: string }>>();
+      messages?.forEach(msg => {
+        if (!messagesByConv.has(msg.conversation_id)) {
+          messagesByConv.set(msg.conversation_id, []);
+        }
+        messagesByConv.get(msg.conversation_id)!.push({
+          is_from_me: msg.is_from_me || false,
+          created_at: msg.created_at
+        });
+      });
+
       // Calculate metrics per agent
       return agents.map(agent => {
         const agentContacts = contacts?.filter(c => c.assigned_to === agent.id) || [];
@@ -303,14 +331,22 @@ export function useAgentPerformance(filters: DashboardFilters) {
           ? (conversions / agentContacts.length) * 100 
           : 0;
 
-        // Calculate avg response time
-        const responseTimes = agentConversations
-          .filter(c => c.first_response_at)
-          .map(c => {
-            const created = new Date(c.created_at).getTime();
-            const firstResponse = new Date(c.first_response_at!).getTime();
-            return (firstResponse - created) / 1000;
-          });
+        // Calculate avg response time from real messages
+        const responseTimes: number[] = [];
+        agentConversations.forEach(conv => {
+          const convMsgs = messagesByConv.get(conv.id) || [];
+          // Find first client message and first agent response after it
+          let firstClientMsgTime: number | null = null;
+          for (const msg of convMsgs) {
+            if (!msg.is_from_me && firstClientMsgTime === null) {
+              firstClientMsgTime = new Date(msg.created_at).getTime();
+            } else if (msg.is_from_me && firstClientMsgTime !== null) {
+              const responseTime = (new Date(msg.created_at).getTime() - firstClientMsgTime) / 1000;
+              responseTimes.push(responseTime);
+              break;
+            }
+          }
+        });
 
         const avgResponseTime = responseTimes.length > 0
           ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
@@ -325,9 +361,16 @@ export function useAgentPerformance(filters: DashboardFilters) {
           conversionRate,
           avgResponseTime
         };
-      }).sort((a, b) => b.conversions - a.conversions);
+      }).sort((a, b) => {
+        // Sort by conversions first, then by leads if conversions are equal
+        if (b.conversions !== a.conversions) {
+          return b.conversions - a.conversions;
+        }
+        return b.leadsAssigned - a.leadsAssigned;
+      });
     },
-    staleTime: 60000,
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -407,7 +450,8 @@ export function useCriticalConversations(filters: DashboardFilters) {
         .sort((a, b) => b.waitingTime - a.waitingTime)
         .slice(0, 5);
     },
-    staleTime: 30000,
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -475,7 +519,8 @@ export function useTimelineData(filters: DashboardFilters) {
 
       return timelineData;
     },
-    staleTime: 60000,
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -525,7 +570,8 @@ export function useConversionFunnel(filters: DashboardFilters) {
 
       return funnelData;
     },
-    staleTime: 60000,
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -650,20 +696,22 @@ export function useHourlyTimeline(filters: DashboardFilters) {
       const validConvIds = new Set(conversations?.map(c => c.id) || []);
       const messages = allMessages?.filter(m => validConvIds.has(m.conversation_id)) || [];
 
-      // Count new leads by hour
+      // Count new leads by hour (with timezone correction)
       contacts?.forEach(contact => {
-        const hour = new Date(contact.created_at).getHours();
+        const zonedDate = toZonedTime(new Date(contact.created_at), BRAZIL_TIMEZONE);
+        const hour = zonedDate.getHours();
         const hourData = hours.find(h => h.hourNum === hour);
         if (hourData) {
           hourData.newLeads++;
         }
       });
 
-      // Count messages by hour and type
+      // Count messages by hour and type (with timezone correction)
       const messagesByConv = new Map<string, Array<{ is_from_me: boolean; created_at: string; hour: number }>>();
       
       messages?.forEach(msg => {
-        const hour = new Date(msg.created_at).getHours();
+        const zonedDate = toZonedTime(new Date(msg.created_at), BRAZIL_TIMEZONE);
+        const hour = zonedDate.getHours();
         const hourData = hours.find(h => h.hourNum === hour);
         
         if (hourData) {
@@ -728,6 +776,7 @@ export function useHourlyTimeline(filters: DashboardFilters) {
 
       return hours;
     },
-    staleTime: 60000,
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
   });
 }
