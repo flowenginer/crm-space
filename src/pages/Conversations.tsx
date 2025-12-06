@@ -304,7 +304,11 @@ function ConversationItem({ conversation, isSelected, isPinned, onClick, onToggl
       onClick={onClick}
       className={cn(
         'p-4 border-b border-border/50 cursor-pointer transition-all duration-200 group',
-        isSelected ? 'bg-accent' : isUnread ? 'bg-purple-500/10' : 'hover:bg-muted/50'
+        isSelected 
+          ? 'bg-accent border-l-4 border-l-primary' 
+          : isUnread 
+            ? 'bg-[hsl(var(--unread-bg))] border-l-3 border-l-purple-400/60' 
+            : 'hover:bg-muted/50'
       )}
     >
       <div className="flex items-start gap-3">
