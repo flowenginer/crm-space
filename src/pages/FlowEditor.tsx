@@ -175,17 +175,18 @@ function FlowEditorInner() {
       // Inserir nós
       for (const node of nodes) {
         const nodeData = node.data as FlowNodeData;
+        const insertData: Record<string, unknown> = {
+          flow_id: flowId,
+          name: nodeData.name,
+          node_type: nodeData.nodeType,
+          node_subtype: nodeData.nodeSubtype,
+          position_x: node.position.x,
+          position_y: node.position.y,
+          config: nodeData.config,
+        };
         const { data: newNode, error } = await supabase
           .from('flow_nodes')
-          .insert({
-            flow_id: flowId,
-            name: nodeData.name,
-            node_type: nodeData.nodeType,
-            node_subtype: nodeData.nodeSubtype,
-            position_x: node.position.x,
-            position_y: node.position.y,
-            config: nodeData.config,
-          })
+          .insert(insertData as any)
           .select()
           .single();
         
