@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { 
   MessageSquare, 
   Mic, 
@@ -9,7 +9,8 @@ import {
   Search, 
   Star,
   Clock,
-  Sparkles
+  Sparkles,
+  ExternalLink
 } from 'lucide-react';
 import {
   Popover,
@@ -29,6 +30,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Link } from 'react-router-dom';
 
 type TemplateCategory = 'messages' | 'audios' | 'media' | 'documents' | 'flows' | 'triggers';
 
@@ -122,16 +124,16 @@ export function QuickTemplatesPopover({
   }, [flows, activeCategory, searchQuery]);
 
   // Replace variables in content
-  const replaceVariables = (content: string) => {
+  const replaceVariables = useCallback((content: string) => {
     return content
       .replace(/\{\{nome\}\}/gi, contactName || '')
       .replace(/\{\{primeiro_nome\}\}/gi, contactName?.split(' ')[0] || '')
       .replace(/\{\{telefone\}\}/gi, contactPhone || '')
       .replace(/\{\{data\}\}/gi, new Date().toLocaleDateString('pt-BR'))
       .replace(/\{\{hora\}\}/gi, new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
-  };
+  }, [contactName, contactPhone]);
 
-  const handleSelectTemplate = (template: MessageTemplate) => {
+  const handleSelectTemplate = useCallback((template: MessageTemplate) => {
     const processedContent = replaceVariables(template.content);
     
     // Determine type based on category
@@ -144,43 +146,51 @@ export function QuickTemplatesPopover({
     incrementUsage.mutate(template.id);
     setOpen(false);
     setSearchQuery('');
-  };
+  }, [replaceVariables, onSelectTemplate, incrementUsage]);
 
-  const handleSelectFlow = (flowId: string) => {
+  const handleSelectFlow = useCallback((flowId: string) => {
     onStartFlow?.(flowId);
     setOpen(false);
     setSearchQuery('');
-  };
+  }, [onStartFlow]);
 
-  const handleTrigger = (triggerId: string) => {
+  const handleTrigger = useCallback((triggerId: string) => {
     onTriggerAutomation?.(triggerId);
     setOpen(false);
     setSearchQuery('');
-  };
+  }, [onTriggerAutomation]);
 
-  const PopoverContentInner = () => (
+  const handleCategoryChange = useCallback((categoryId: TemplateCategory) => {
+    setActiveCategory(categoryId);
+    setSearchQuery('');
+  }, []);
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
+  const currentCategory = CATEGORIES.find(c => c.id === activeCategory);
+
+  const renderContent = () => (
     <div className="flex flex-col h-full">
-      {/* Category Tabs */}
-      <div className="flex gap-1 p-2 border-b border-border overflow-x-auto scrollbar-none">
+      {/* Category Tabs - All visible, no overflow */}
+      <div className="flex gap-1 p-2 border-b border-border">
         {CATEGORIES.map((cat) => {
           const Icon = cat.icon;
           const isActive = activeCategory === cat.id;
           return (
             <button
               key={cat.id}
-              onClick={() => {
-                setActiveCategory(cat.id);
-                setSearchQuery('');
-              }}
+              onClick={() => handleCategoryChange(cat.id)}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all',
+                'flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all flex-1 justify-center',
                 isActive
                   ? `${cat.bgColor} ${cat.color}`
                   : 'text-muted-foreground hover:bg-muted'
               )}
             >
               <Icon size={14} />
-              <span className="hidden sm:inline">{cat.label}</span>
+              <span>{cat.label}</span>
             </button>
           );
         })}
@@ -189,13 +199,14 @@ export function QuickTemplatesPopover({
       {/* Search */}
       <div className="p-2 border-b border-border">
         <div className="relative">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <Input
             type="text"
             placeholder="Buscar atalho..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={handleSearchChange}
             className="h-8 pl-8 text-sm bg-muted/50"
+            autoComplete="off"
           />
         </div>
       </div>
@@ -211,7 +222,17 @@ export function QuickTemplatesPopover({
               </div>
             ) : filteredFlows.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                {searchQuery ? 'Nenhum funil encontrado' : 'Nenhum funil cadastrado'}
+                <GitBranch className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>{searchQuery ? 'Nenhum funil encontrado' : 'Nenhum funil cadastrado'}</p>
+                {!searchQuery && (
+                  <Link 
+                    to="/automations" 
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
+                    onClick={() => setOpen(false)}
+                  >
+                    Criar funil <ExternalLink size={10} />
+                  </Link>
+                )}
               </div>
             ) : (
               filteredFlows.map((flow) => (
@@ -237,7 +258,7 @@ export function QuickTemplatesPopover({
               ))
             )
           ) : activeCategory === 'triggers' ? (
-            // Triggers (placeholder - can be expanded)
+            // Triggers (placeholder)
             <div className="text-center py-8 text-muted-foreground text-sm">
               <Zap className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p>Gatilhos manuais</p>
@@ -251,10 +272,26 @@ export function QuickTemplatesPopover({
               </div>
             ) : filteredTemplates.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                {searchQuery 
-                  ? 'Nenhum template encontrado' 
-                  : `Nenhum template de ${CATEGORIES.find(c => c.id === activeCategory)?.label.toLowerCase() || ''}`
-                }
+                {currentCategory && (
+                  <>
+                    <currentCategory.icon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  </>
+                )}
+                <p>
+                  {searchQuery 
+                    ? 'Nenhum atalho encontrado' 
+                    : `Nenhum atalho de ${currentCategory?.label.toLowerCase() || ''} cadastrado`
+                  }
+                </p>
+                {!searchQuery && (
+                  <Link 
+                    to="/quick-messages" 
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
+                    onClick={() => setOpen(false)}
+                  >
+                    Criar atalho <ExternalLink size={10} />
+                  </Link>
+                )}
               </div>
             ) : (
               filteredTemplates.map((template) => (
@@ -265,12 +302,12 @@ export function QuickTemplatesPopover({
                 >
                   <div className={cn(
                     'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
-                    CATEGORIES.find(c => c.id === activeCategory)?.bgColor || 'bg-muted'
+                    currentCategory?.bgColor || 'bg-muted'
                   )}>
                     {template.is_favorite ? (
                       <Star size={16} className="text-amber-500 fill-amber-500" />
                     ) : (
-                      <MessageSquare size={16} className={CATEGORIES.find(c => c.id === activeCategory)?.color || 'text-muted-foreground'} />
+                      currentCategory && <currentCategory.icon size={16} className={currentCategory.color} />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -317,7 +354,7 @@ export function QuickTemplatesPopover({
               Atalhos Rápidos
             </SheetTitle>
           </SheetHeader>
-          <PopoverContentInner />
+          {renderContent()}
         </SheetContent>
       </Sheet>
     );
@@ -337,13 +374,14 @@ export function QuickTemplatesPopover({
       <PopoverContent 
         side="top" 
         align="start" 
-        className="w-[380px] p-0 max-h-[450px] overflow-hidden"
+        className="w-[580px] p-0 max-h-[450px] overflow-hidden"
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
           <Sparkles size={16} className="text-primary" />
           <span className="font-medium text-sm">Atalhos Rápidos</span>
         </div>
-        <PopoverContentInner />
+        {renderContent()}
       </PopoverContent>
     </Popover>
   );
