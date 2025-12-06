@@ -1411,20 +1411,21 @@ export default function Conversations() {
     
     const filtered = conversations
       .filter((conv) => {
-        // ALWAYS show the selected conversation, regardless of filters
-        if (selectedConversationId && conv.id === selectedConversationId) {
-          return true;
-        }
-        
         const isPinnedConv = pinnedIds.has(conv.id);
         
         // Pinned filter logic:
-        // - If quickFilter is 'pinned', only show pinned conversations
+        // - If quickFilter is 'pinned', only show pinned conversations (including selected if it's pinned)
         // - If quickFilter is NOT 'pinned', hide pinned conversations (they only appear in 'Fixadas')
         // - EXCEPTION: If there's an active search, show pinned conversations in results
         if (quickFilter === 'pinned') {
+          // On "Fixadas" tab: only show pinned conversations
+          // Even selected conversation must be pinned to appear here
           if (!isPinnedConv) return false;
         } else {
+          // On other tabs: show selected conversation regardless of pinned status
+          if (selectedConversationId && conv.id === selectedConversationId) {
+            return true;
+          }
           // Don't hide pinned conversations when there's an active search
           if (isPinnedConv && !debouncedSearchQuery) return false;
         }
