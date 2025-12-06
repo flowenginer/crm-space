@@ -45,6 +45,8 @@ export interface ConversationFilters {
   customDateFrom?: Date;
   customDateTo?: Date;
   tagIds?: string[];
+  // Busca por telefone ou nome - direto no banco
+  searchQuery?: string;
 }
 
 // Helper para obter início/fim do dia no timezone local convertido para UTC
@@ -148,10 +150,11 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
     customDateFrom,
     customDateTo,
     tagIds,
+    searchQuery,
   } = filters || {};
   
   return useInfiniteQuery({
-    queryKey: ['conversations-paginated', assignment, sortBy, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(',')],
+    queryKey: ['conversations-paginated', assignment, sortBy, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery],
     queryFn: async ({ pageParam = 0 }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -239,6 +242,29 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         query = query
           .gte('contact.first_contact_at', startISO)
           .lte('contact.first_contact_at', endISO);
+      }
+
+      // *** BUSCA POR TELEFONE OU NOME - SERVIDOR ***
+      if (searchQuery && searchQuery.length >= 3) {
+        // Busca direta no banco por telefone ou nome do contato
+        // Primeiro buscamos os contact_ids que correspondem
+        const { data: matchingContacts } = await supabase
+          .from('contacts')
+          .select('id')
+          .or(`phone.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`)
+          .limit(100);
+        
+        if (matchingContacts && matchingContacts.length > 0) {
+          const contactIds = matchingContacts.map(c => c.id);
+          query = query.in('contact_id', contactIds);
+        } else {
+          // Nenhum contato encontrado, retornar vazio
+          return {
+            conversations: [] as Conversation[],
+            nextPage: undefined,
+            pageParam: 0,
+          };
+        }
       }
 
       // Apply sorting - THIS IS THE KEY: sorting happens on the SERVER

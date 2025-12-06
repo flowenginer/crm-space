@@ -957,6 +957,7 @@ export default function Conversations() {
   });
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [channelFilter, setChannelFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('all');
   const [customDateRange, setCustomDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
@@ -1005,6 +1006,14 @@ export default function Conversations() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
+  // Debounce search query for server-side search (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   // Build filters for server-side filtering and sorting
   const conversationFilters: ConversationFilters = useMemo(() => ({
     assignment: quickFilter === 'pinned' ? 'all' : quickFilter,
@@ -1018,7 +1027,9 @@ export default function Conversations() {
     dateFilter: dateFilter !== 'all' ? dateFilter : undefined,
     customDateFrom: customDateRange.from,
     customDateTo: customDateRange.to,
-  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, dateFilter, customDateRange.from, customDateRange.to]);
+    // Busca por telefone ou nome - direto no banco
+    searchQuery: debouncedSearchQuery || undefined,
+  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery]);
 
   // Fetch real conversations from database with filter (PAGINATED + SERVER SORTED)
   const { 
@@ -1334,14 +1345,12 @@ export default function Conversations() {
   // Filtro de data agora é aplicado no servidor via usePaginatedConversations
 
   // Filter conversations based on all filters (search, channel, sort, advanced, date)
-  // Nota: filtros avançados (departamento, agente, origem, data) agora são aplicados no servidor
+  // Nota: filtros avançados (departamento, agente, origem, data, busca) agora são aplicados no servidor
   const filteredConversations = useMemo(() => {
     const pinnedIds = new Set(pinnedConversations.map(p => p.conversation_id));
     
     return conversations
       .filter((conv) => {
-        const contactName = conv.contact?.full_name || '';
-        const contactPhone = conv.contact?.phone || '';
         const isPinnedConv = pinnedIds.has(conv.id);
         
         // Pinned filter logic:
@@ -1353,29 +1362,18 @@ export default function Conversations() {
           if (isPinnedConv) return false;
         }
         
-        // Search filter (name or phone)
-        if (searchQuery) {
-          const searchLower = searchQuery.toLowerCase();
-          if (!contactName.toLowerCase().includes(searchLower) && 
-              !contactPhone.includes(searchLower)) {
-            return false;
-          }
-        }
-        
-        // Channel filter - can be 'all', specific channel_id, or 'no_channel'
+        // Channel filter - aplicado no servidor, mas mantemos para consistência visual imediata
         if (channelFilter !== 'all') {
           if (channelFilter === 'no_channel') {
             if (conv.channel_id) return false;
           } else {
-            // Specific channel ID filter
             if (conv.channel_id !== channelFilter) {
               return false;
             }
           }
         }
         
-        // Filtros avançados agora são aplicados no servidor via usePaginatedConversations
-        // Apenas o filtro de protocolo continua local (busca em texto)
+        // Filtro de protocolo (busca em ID) - continua local
         if (advancedFilters.protocolNumber && !conv.id.includes(advancedFilters.protocolNumber)) {
           return false;
         }
@@ -1413,7 +1411,7 @@ export default function Conversations() {
             return 0;
         }
       });
-  }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, lastMessageMap]);
+  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, lastMessageMap]);
 
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
