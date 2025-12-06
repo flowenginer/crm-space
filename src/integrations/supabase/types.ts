@@ -64,6 +64,36 @@ export type Database = {
           },
         ]
       }
+      close_reasons: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          order_position: number | null
+          value: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          order_position?: number | null
+          value: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          order_position?: number | null
+          value?: string
+        }
+        Relationships: []
+      }
       company_settings: {
         Row: {
           address: string | null

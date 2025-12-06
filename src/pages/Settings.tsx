@@ -36,6 +36,7 @@ import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
 import { MetaAdsSettings } from '@/components/settings/MetaAdsSettings';
 import { ToolsSettings } from '@/components/settings/ToolsSettings';
 import { OwnerAgentSettings } from '@/components/settings/OwnerAgentSettings';
+import { CloseReasonManagement } from '@/components/settings/CloseReasonManagement';
 import { Facebook, UserCheck } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -470,6 +471,13 @@ export default function Settings() {
             Responsável
           </TabsTrigger>
           <TabsTrigger
+            value="close-reasons"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+          >
+            <X size={18} />
+            Fechamento
+          </TabsTrigger>
+          <TabsTrigger
             value="notifications"
             className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
           >
@@ -537,6 +545,13 @@ export default function Settings() {
         <TabsContent value="owner-agent" className="space-y-6">
           <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
             <OwnerAgentSettings />
+          </div>
+        </TabsContent>
+
+        {/* TAB: Close Reasons Management */}
+        <TabsContent value="close-reasons" className="space-y-6">
+          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+            <CloseReasonManagement />
           </div>
         </TabsContent>
 
