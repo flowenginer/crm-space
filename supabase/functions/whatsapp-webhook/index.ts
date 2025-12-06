@@ -585,15 +585,96 @@ serve(async (req) => {
         }
       }
 
+      // =====================================================
+      // CRIAR CONTATO E CONVERSA SE NÃO EXISTIREM
+      // Resolve race condition com sistemas externos como Jet Sales
+      // =====================================================
       if (!contact) {
-        console.log(`[Webhook] Contact not found for fromMe message: ${recipientPhone}`);
+        console.log(`[Webhook] 🆕 Creating contact for fromMe message (external system): ${recipientPhone}`);
+        
+        const contactName = normalizedMessage.fromName || `WhatsApp ${recipientPhone}`;
+        
+        const { data: newContact, error: contactError } = await supabase
+          .from("contacts")
+          .insert({
+            phone: recipientPhone,
+            full_name: contactName,
+            first_contact_at: new Date().toISOString(),
+            origin: "whatsapp",
+          })
+          .select("id")
+          .single();
+        
+        if (contactError) {
+          // Se erro de duplicata (race condition), buscar o existente
+          if (contactError.code === '23505') {
+            console.log(`[Webhook] Contact already exists (race condition), fetching...`);
+            const { data: existingContact } = await supabase
+              .from("contacts")
+              .select("id")
+              .eq("phone", recipientPhone)
+              .single();
+            contact = existingContact;
+          } else {
+            console.error(`[Webhook] Error creating contact:`, contactError);
+            throw contactError;
+          }
+        } else {
+          contact = newContact;
+          console.log(`[Webhook] ✅ Contact created: ${contact.id}`);
+        }
+      }
+
+      if (!contact) {
+        console.log(`[Webhook] Still no contact after creation attempt, skipping`);
         return new Response(JSON.stringify({ success: true, message: "Contact not found for fromMe" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (!conversation) {
-        console.log(`[Webhook] No open conversation found for fromMe message`);
+        console.log(`[Webhook] 🆕 Creating conversation for fromMe message (external system)`);
+        
+        const { data: newConv, error: convError } = await supabase
+          .from("conversations")
+          .insert({
+            contact_id: contact.id,
+            channel_id: channel.id,
+            status: "open",
+            is_unread: false, // Mensagem enviada por nós, não é unread
+            unread_count: 0,
+            last_message_at: new Date().toISOString(),
+            last_message_preview: normalizedMessage.content?.substring(0, 100) || "[Mídia]",
+          })
+          .select("id")
+          .single();
+        
+        if (convError) {
+          // Se erro de duplicata (race condition), buscar existente
+          if (convError.code === '23505') {
+            console.log(`[Webhook] Conversation already exists (race condition), fetching...`);
+            const { data: existingConv } = await supabase
+              .from("conversations")
+              .select("id")
+              .eq("contact_id", contact.id)
+              .eq("channel_id", channel.id)
+              .in("status", ["open", "pending"])
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .single();
+            conversation = existingConv;
+          } else {
+            console.error(`[Webhook] Error creating conversation:`, convError);
+            throw convError;
+          }
+        } else {
+          conversation = newConv;
+          console.log(`[Webhook] ✅ Conversation created: ${conversation.id}`);
+        }
+      }
+
+      if (!conversation) {
+        console.log(`[Webhook] Still no conversation after creation attempt, skipping`);
         return new Response(JSON.stringify({ success: true, message: "No conversation for fromMe" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
