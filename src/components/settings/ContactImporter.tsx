@@ -137,36 +137,61 @@ export function ContactImporter() {
     }
 
     // Extract spreadsheet ID from URL
-    const match = sheetsUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-    if (!match) {
+    const spreadsheetMatch = sheetsUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (!spreadsheetMatch) {
       toast.error('Link inválido. Cole o link completo da planilha do Google Sheets.');
       return;
     }
 
-    const spreadsheetId = match[1];
-    const tabName = sheetName.trim() || 'Sheet1';
+    const spreadsheetId = spreadsheetMatch[1];
+    
+    // Extract gid from URL if present (e.g., ?gid=123456 or #gid=123456)
+    const gidMatch = sheetsUrl.match(/[?#&]gid=(\d+)/);
+    const gid = gidMatch ? gidMatch[1] : '0';
+    
+    // Use custom sheet name if provided, otherwise we'll use the gid
+    const customTabName = sheetName.trim();
 
     setIsLoadingSheets(true);
 
     try {
-      // Use opensheet.elk.sh API to fetch public Google Sheets data
-      const apiUrl = `https://opensheet.elk.sh/${spreadsheetId}/${encodeURIComponent(tabName)}`;
-      const response = await fetch(apiUrl);
+      let data: Record<string, string>[] = [];
+      
+      // Method 1: Try CSV export directly from Google (most reliable)
+      try {
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+        const csvResponse = await fetch(csvUrl);
+        
+        if (csvResponse.ok) {
+          const csvText = await csvResponse.text();
+          data = parseCSV(csvText);
+        }
+      } catch (csvError) {
+        console.log('CSV export failed, trying opensheet API...', csvError);
+      }
+      
+      // Method 2: Fallback to opensheet.elk.sh API
+      if (data.length === 0) {
+        const tabName = customTabName || 'Sheet1';
+        const apiUrl = `https://opensheet.elk.sh/${spreadsheetId}/${encodeURIComponent(tabName)}`;
+        const response = await fetch(apiUrl);
 
-      if (!response.ok) {
-        throw new Error('Erro ao acessar a planilha');
+        if (response.ok) {
+          const jsonData = await response.json();
+          if (Array.isArray(jsonData) && jsonData.length > 0) {
+            data = jsonData as Record<string, string>[];
+          }
+        }
       }
 
-      const data = await response.json();
-
-      if (!Array.isArray(data) || data.length === 0) {
-        toast.error('Planilha vazia ou aba não encontrada. Verifique o nome da aba.');
+      if (data.length === 0) {
+        toast.error('Não foi possível carregar os dados. Verifique se a planilha está pública e o nome da aba está correto.');
         return;
       }
 
       // Convert to our ParsedData format
       const headers = Object.keys(data[0]);
-      const rows = data as Record<string, string>[];
+      const rows = data;
 
       setParsedData({ headers, rows });
       setColumnMapping(autoMapColumns(headers));
@@ -177,6 +202,50 @@ export function ContactImporter() {
     } finally {
       setIsLoadingSheets(false);
     }
+  };
+
+  // Helper function to parse CSV text into array of objects
+  const parseCSV = (csvText: string): Record<string, string>[] => {
+    const lines = csvText.split('\n').filter(line => line.trim());
+    if (lines.length < 2) return [];
+    
+    // Parse headers (handle quoted values)
+    const parseRow = (row: string): string[] => {
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      
+      for (let i = 0; i < row.length; i++) {
+        const char = row[i];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+    
+    const headers = parseRow(lines[0]);
+    const rows: Record<string, string>[] = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseRow(lines[i]);
+      const row: Record<string, string> = {};
+      headers.forEach((header, index) => {
+        row[header] = values[index] || '';
+      });
+      // Only add rows with at least one non-empty value
+      if (Object.values(row).some(v => v)) {
+        rows.push(row);
+      }
+    }
+    
+    return rows;
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
