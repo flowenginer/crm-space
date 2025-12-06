@@ -191,14 +191,23 @@ export function useImportContacts() {
           }
         }
 
-        // Update lead status
+        // Update lead status (both in contacts AND conversations)
         if (options.updateLeadStatus && row.statusLead && row.statusLead.trim()) {
           const status = await findLeadStatusByName(row.statusLead);
           if (status) {
+            // Update contact lead_status
             await supabase
               .from('contacts')
               .update({ lead_status: status.name })
               .eq('id', contact.id);
+            
+            // Also update lead_status in all open conversations for this contact
+            await supabase
+              .from('conversations')
+              .update({ lead_status: status.name })
+              .eq('contact_id', contact.id)
+              .eq('status', 'open');
+            
             wasUpdated = true;
           } else {
             importResult.log.push({
