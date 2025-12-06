@@ -1144,7 +1144,8 @@ export default function Conversations() {
   useRealtimeConversations();
   const { typingUsers, startTyping, stopTyping } = useTypingIndicator(selectedConversationId);
 
-  // Direct fetch for selected conversation when not in paginated list (fallback)
+  // Direct fetch for selected conversation - ALWAYS fetch when we have a selectedConversationId
+  // This ensures we can display the conversation even if server-side filters exclude it
   const { data: directSelectedConversation } = useQuery({
     queryKey: ['conversation-direct', selectedConversationId],
     queryFn: async () => {
@@ -1181,22 +1182,26 @@ export default function Conversations() {
       
       return data as unknown as Conversation;
     },
-    enabled: !!selectedConversationId && !paginatedConversations.find(c => c.id === selectedConversationId),
-    staleTime: 10000, // 10 seconds
+    // ALWAYS enabled when we have a selectedConversationId - don't depend on paginated results
+    enabled: !!selectedConversationId,
+    staleTime: 30000, // 30 seconds cache
   });
 
   // Merge paginated conversations with directly fetched selected conversation
-  // This ensures the selected conversation ALWAYS appears in the list, even if filters would hide it
+  // This ensures the selected conversation ALWAYS appears in the list, even if server-side search/filters exclude it
   const conversations = useMemo(() => {
-    // If the selected conversation is already in paginated list, just return that
-    if (!directSelectedConversation) return paginatedConversations;
+    // Start with paginated conversations
+    let result = [...paginatedConversations];
     
-    // If selected conversation is not in paginated list, prepend it
-    const existsInList = paginatedConversations.some(c => c.id === directSelectedConversation.id);
-    if (existsInList) return paginatedConversations;
+    // If we have a directly fetched conversation and it's not already in the list, prepend it
+    if (directSelectedConversation) {
+      const existsInList = result.some(c => c.id === directSelectedConversation.id);
+      if (!existsInList) {
+        result = [directSelectedConversation, ...result];
+      }
+    }
     
-    // Prepend the selected conversation so it appears at the top
-    return [directSelectedConversation, ...paginatedConversations];
+    return result;
   }, [paginatedConversations, directSelectedConversation]);
 
   // Find selected conversation from the merged list
