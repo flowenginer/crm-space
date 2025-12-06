@@ -79,6 +79,8 @@ import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useD
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
+import { useConversationEvents, type ConversationEvent } from '@/hooks/useConversationEvents';
+import { TransferEventCard } from '@/components/conversations/TransferEventCard';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
@@ -1076,6 +1078,7 @@ export default function Conversations() {
     return getAllPaginatedMessages(messagesData?.pages);
   }, [messagesData]);
   const { data: internalNotes = [], isLoading: notesLoading } = useInternalNotes(selectedConversationId);
+  const { data: conversationEvents = [], isLoading: eventsLoading } = useConversationEvents(selectedConversationId);
   const { data: teamMembers = [] } = useTeam();
   const { data: tags = [] } = useTags();
   const addTagToContact = useAddTagToContact();
@@ -1234,14 +1237,15 @@ export default function Conversations() {
     }
   }, [selectedConversationId, selectedConversation?.is_unread]);
 
-  // Combine messages and internal notes, sorted by created_at
+  // Combine messages, internal notes, and conversation events, sorted by created_at
   const allChatItems = useMemo(() => {
     const msgItems = messages.map(m => ({ ...m, itemType: 'message' as const }));
     const noteItems = internalNotes.map(n => ({ ...n, itemType: 'note' as const }));
-    return [...msgItems, ...noteItems].sort(
+    const eventItems = conversationEvents.map(e => ({ ...e, itemType: 'event' as const }));
+    return [...msgItems, ...noteItems, ...eventItems].sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
-  }, [messages, internalNotes]);
+  }, [messages, internalNotes, conversationEvents]);
 
   // Filter messages for in-conversation search
   const filteredChatItems = useMemo(() => {
@@ -2810,6 +2814,11 @@ export default function Conversations() {
                           content, 
                           conversationId: selectedConversationId! 
                         })}
+                      />
+                    ) : item.itemType === 'event' ? (
+                      <TransferEventCard 
+                        key={`event-${item.id}`} 
+                        event={item as ConversationEvent} 
                       />
                     ) : (
                       <MessageBubble 

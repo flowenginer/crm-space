@@ -286,6 +286,48 @@ export type Database = {
           },
         ]
       }
+      conversation_events: {
+        Row: {
+          actor_id: string | null
+          conversation_id: string
+          created_at: string | null
+          data: Json | null
+          event_type: string
+          id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          conversation_id: string
+          created_at?: string | null
+          data?: Json | null
+          event_type: string
+          id?: string
+        }
+        Update: {
+          actor_id?: string | null
+          conversation_id?: string
+          created_at?: string | null
+          data?: Json | null
+          event_type?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_events_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_tags: {
         Row: {
           conversation_id: string
