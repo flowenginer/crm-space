@@ -1421,10 +1421,12 @@ export default function Conversations() {
         // Pinned filter logic:
         // - If quickFilter is 'pinned', only show pinned conversations
         // - If quickFilter is NOT 'pinned', hide pinned conversations (they only appear in 'Fixadas')
+        // - EXCEPTION: If there's an active search, show pinned conversations in results
         if (quickFilter === 'pinned') {
           if (!isPinnedConv) return false;
         } else {
-          if (isPinnedConv) return false;
+          // Don't hide pinned conversations when there's an active search
+          if (isPinnedConv && !debouncedSearchQuery) return false;
         }
         
         // Channel filter - aplicado no servidor, mas mantemos para consistência visual imediata
