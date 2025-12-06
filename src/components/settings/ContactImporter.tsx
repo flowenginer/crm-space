@@ -42,11 +42,11 @@ interface ColumnMapping {
 }
 
 const defaultMapping: ColumnMapping = {
-  nome: '',
-  telefone: '',
-  vendedor: '',
-  etiquetas: '',
-  statusLead: '',
+  nome: '__none__',
+  telefone: '__none__',
+  vendedor: '__none__',
+  etiquetas: '__none__',
+  statusLead: '__none__',
 };
 
 const fieldLabels: Record<keyof ColumnMapping, string> = {
@@ -201,17 +201,17 @@ export function ContactImporter() {
   };
 
   const handleStartImport = async () => {
-    if (!parsedData || !columnMapping.telefone) {
+    if (!parsedData || !columnMapping.telefone || columnMapping.telefone === '__none__') {
       toast.error('Selecione pelo menos a coluna de telefone');
       return;
     }
 
     const importRows: ImportRow[] = parsedData.rows.map(row => ({
-      nome: columnMapping.nome ? row[columnMapping.nome] : '',
+      nome: columnMapping.nome && columnMapping.nome !== '__none__' ? row[columnMapping.nome] : '',
       telefone: row[columnMapping.telefone],
-      vendedor: columnMapping.vendedor ? row[columnMapping.vendedor] : undefined,
-      etiquetas: columnMapping.etiquetas ? row[columnMapping.etiquetas] : undefined,
-      statusLead: columnMapping.statusLead ? row[columnMapping.statusLead] : undefined,
+      vendedor: columnMapping.vendedor && columnMapping.vendedor !== '__none__' ? row[columnMapping.vendedor] : undefined,
+      etiquetas: columnMapping.etiquetas && columnMapping.etiquetas !== '__none__' ? row[columnMapping.etiquetas] : undefined,
+      statusLead: columnMapping.statusLead && columnMapping.statusLead !== '__none__' ? row[columnMapping.statusLead] : undefined,
     }));
 
     const importResult = await processImport(importRows, options);
@@ -455,7 +455,7 @@ export function ContactImporter() {
                             <SelectValue placeholder="Selecionar coluna..." />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">Não mapear</SelectItem>
+                            <SelectItem value="__none__">Não mapear</SelectItem>
                             {parsedData.headers.map((h) => (
                               <SelectItem key={h} value={h}>{h}</SelectItem>
                             ))}
@@ -580,7 +580,7 @@ export function ContactImporter() {
             {parsedData && !result && (
               <Button 
                 onClick={handleStartImport} 
-                disabled={isImporting || !columnMapping.telefone}
+                disabled={isImporting || !columnMapping.telefone || columnMapping.telefone === '__none__'}
               >
                 {isImporting ? (
                   <>
