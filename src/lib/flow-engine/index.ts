@@ -1,4 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface FlowNode {
   id: string;
@@ -247,6 +249,25 @@ export class FlowEngine {
     }
   }
   
+  // Substituir variáveis em uma string
+  replaceVariables(text: string, execution: FlowExecution): string {
+    const now = new Date();
+    const contact = execution.contact;
+    const fullName = contact?.full_name || '';
+    const firstName = fullName.split(' ')[0] || '';
+    
+    return text
+      .replace(/\{\{nome\}\}/g, fullName)
+      .replace(/\{\{primeiro_nome\}\}/g, firstName)
+      .replace(/\{\{telefone\}\}/g, contact?.phone || '')
+      .replace(/\{\{email\}\}/g, contact?.email || '')
+      .replace(/\{\{data\}\}/g, format(now, 'dd/MM/yyyy', { locale: ptBR }))
+      .replace(/\{\{hora\}\}/g, format(now, 'HH:mm', { locale: ptBR }))
+      .replace(/\{\{dia_semana\}\}/g, format(now, 'EEEE', { locale: ptBR }))
+      .replace(/\{\{ultima_resposta\}\}/g, (execution.variables?.ultima_resposta as string) || '')
+      .replace(/\{\{mensagem_original\}\}/g, (execution.variables?.mensagem_original as string) || '');
+  }
+  
   async executeAction(execution: FlowExecution, node: FlowNode) {
     const config = node.config;
     
@@ -254,9 +275,7 @@ export class FlowEngine {
       case 'send_text':
         // Substituir variáveis
         let message = (config.message as string) || '';
-        message = message.replace(/\{\{nome\}\}/g, execution.contact?.full_name || '');
-        message = message.replace(/\{\{telefone\}\}/g, execution.contact?.phone || '');
-        message = message.replace(/\{\{email\}\}/g, execution.contact?.email || '');
+        message = this.replaceVariables(message, execution);
         
         // TODO: Integrar com WhatsApp service
         console.log('Sending message:', message);
@@ -332,10 +351,13 @@ export class FlowEngine {
         
       case 'add_note':
         if (config.note) {
+          let noteContent = config.note as string;
+          noteContent = this.replaceVariables(noteContent, execution);
+          
           const { data: { user } } = await supabase.auth.getUser();
           await supabase.from('internal_notes').insert({
             conversation_id: execution.conversation_id,
-            content: config.note as string,
+            content: noteContent,
             author_id: user?.id || execution.contact_id,
           });
           await this.logExecution(execution.id, node.id, 'info', 'Nota adicionada');
@@ -372,11 +394,17 @@ export class FlowEngine {
       case '{{nome}}':
         actualValue = execution.contact?.full_name || '';
         break;
+      case '{{primeiro_nome}}':
+        actualValue = (execution.contact?.full_name || '').split(' ')[0] || '';
+        break;
       case '{{telefone}}':
         actualValue = execution.contact?.phone || '';
         break;
       case '{{mensagem}}':
         actualValue = (execution.variables?.mensagem_original as string) || '';
+        break;
+      case '{{ultima_resposta}}':
+        actualValue = (execution.variables?.ultima_resposta as string) || '';
         break;
       case '{{lead_status}}':
         const { data: contact } = await supabase
@@ -421,25 +449,36 @@ export class FlowEngine {
         if (unit === 'minutes') milliseconds *= 60;
         if (unit === 'hours') milliseconds *= 3600;
         
-        const waitingUntil = new Date(Date.now() + milliseconds);
+        const waitingUntilTime = new Date(Date.now() + milliseconds);
         
         await supabase
           .from('flow_executions')
           .update({ 
             status: 'waiting_delay',
-            waiting_until: waitingUntil.toISOString(),
+            waiting_until: waitingUntilTime.toISOString(),
           })
           .eq('id', executionId);
+        
+        await this.logExecution(executionId, node.id, 'info', 
+          `Aguardando ${amount} ${unit}`);
         break;
         
       case 'wait_reply':
+        // Calcular timeout baseado nos minutos configurados
+        const timeoutMinutes = (config.timeout_minutes as number) || 60;
+        const waitingUntilReply = new Date(Date.now() + timeoutMinutes * 60 * 1000);
+        
         await supabase
           .from('flow_executions')
           .update({ 
             status: 'waiting_reply',
             waiting_for: 'reply',
+            waiting_until: waitingUntilReply.toISOString(),
           })
           .eq('id', executionId);
+        
+        await this.logExecution(executionId, node.id, 'info', 
+          `Aguardando resposta (timeout: ${timeoutMinutes} min)`);
         break;
     }
   }
@@ -453,17 +492,20 @@ export class FlowEngine {
     });
   }
   
-  // Continuar execuções após delay
+  // Continuar execuções após delay de tempo
   async processDelayedExecutions() {
-    const { data: executions } = await supabase
+    const now = new Date().toISOString();
+    
+    // Processar delays de tempo (wait_time)
+    const { data: timeDelayExecutions } = await supabase
       .from('flow_executions')
       .select('*')
       .eq('status', 'waiting_delay')
-      .lt('waiting_until', new Date().toISOString());
+      .lt('waiting_until', now);
     
-    for (const execution of executions || []) {
+    for (const execution of timeDelayExecutions || []) {
       if (execution.current_node_id) {
-        // Buscar próximo nó
+        // Buscar próximo nó (delay simples tem apenas uma saída)
         const { data: connection } = await supabase
           .from('flow_connections')
           .select('target_node_id')
@@ -473,10 +515,60 @@ export class FlowEngine {
         if (connection) {
           await supabase
             .from('flow_executions')
-            .update({ status: 'running' })
+            .update({ status: 'running', waiting_until: null })
             .eq('id', execution.id);
           
+          await this.logExecution(execution.id, execution.current_node_id, 'info', 
+            'Delay concluído, continuando fluxo');
           await this.executeNode(execution.id, connection.target_node_id);
+        }
+      }
+    }
+    
+    // Processar timeouts de wait_reply
+    const { data: replyTimeoutExecutions } = await supabase
+      .from('flow_executions')
+      .select('*')
+      .eq('status', 'waiting_reply')
+      .lt('waiting_until', now);
+    
+    for (const execution of replyTimeoutExecutions || []) {
+      if (execution.current_node_id) {
+        // Buscar conexão de timeout (source_handle = 'timeout')
+        const { data: timeoutConnection } = await supabase
+          .from('flow_connections')
+          .select('target_node_id')
+          .eq('source_node_id', execution.current_node_id)
+          .eq('source_handle', 'timeout')
+          .single();
+        
+        if (timeoutConnection) {
+          await supabase
+            .from('flow_executions')
+            .update({ 
+              status: 'running', 
+              waiting_until: null,
+              waiting_for: null 
+            })
+            .eq('id', execution.id);
+          
+          await this.logExecution(execution.id, execution.current_node_id, 'info', 
+            'Timeout atingido, seguindo caminho de timeout');
+          await this.executeNode(execution.id, timeoutConnection.target_node_id);
+        } else {
+          // Se não tem conexão de timeout, finaliza
+          await supabase
+            .from('flow_executions')
+            .update({ 
+              status: 'completed', 
+              completed_at: new Date().toISOString(),
+              waiting_until: null,
+              waiting_for: null 
+            })
+            .eq('id', execution.id);
+          
+          await this.logExecution(execution.id, execution.current_node_id, 'info', 
+            'Timeout sem caminho definido, fluxo finalizado');
         }
       }
     }
@@ -493,27 +585,69 @@ export class FlowEngine {
     
     if (!execution || !execution.current_node_id) return;
     
-    // Atualizar variáveis
-    await supabase
-      .from('flow_executions')
-      .update({ 
-        status: 'running',
-        variables: { 
-          ...execution.variables as Record<string, unknown>,
-          ultima_resposta: messageContent 
-        },
-      })
-      .eq('id', execution.id);
+    // Atualizar variáveis com a última resposta
+    const updatedVariables = {
+      ...execution.variables as Record<string, unknown>,
+      ultima_resposta: messageContent
+    };
     
-    // Buscar próximo nó
-    const { data: connection } = await supabase
+    // Buscar conexão de "respondeu" (source_handle = 'replied')
+    const { data: repliedConnection } = await supabase
       .from('flow_connections')
       .select('target_node_id')
       .eq('source_node_id', execution.current_node_id)
+      .eq('source_handle', 'replied')
       .single();
     
-    if (connection) {
-      await this.executeNode(execution.id, connection.target_node_id);
+    if (repliedConnection) {
+      await supabase
+        .from('flow_executions')
+        .update({ 
+          status: 'running',
+          waiting_until: null,
+          waiting_for: null,
+          variables: updatedVariables,
+        })
+        .eq('id', execution.id);
+      
+      await this.logExecution(execution.id, execution.current_node_id, 'info', 
+        `Cliente respondeu: "${messageContent.substring(0, 50)}..."`);
+      await this.executeNode(execution.id, repliedConnection.target_node_id);
+    } else {
+      // Se não tem conexão de replied, tenta conexão default
+      const { data: defaultConnection } = await supabase
+        .from('flow_connections')
+        .select('target_node_id')
+        .eq('source_node_id', execution.current_node_id)
+        .single();
+      
+      if (defaultConnection) {
+        await supabase
+          .from('flow_executions')
+          .update({ 
+            status: 'running',
+            waiting_until: null,
+            waiting_for: null,
+            variables: updatedVariables,
+          })
+          .eq('id', execution.id);
+        
+        await this.logExecution(execution.id, execution.current_node_id, 'info', 
+          `Cliente respondeu: "${messageContent.substring(0, 50)}..."`);
+        await this.executeNode(execution.id, defaultConnection.target_node_id);
+      } else {
+        // Finaliza se não tem próximo nó
+        await supabase
+          .from('flow_executions')
+          .update({ 
+            status: 'completed', 
+            completed_at: new Date().toISOString(),
+            waiting_until: null,
+            waiting_for: null,
+            variables: updatedVariables,
+          })
+          .eq('id', execution.id);
+      }
     }
   }
 }

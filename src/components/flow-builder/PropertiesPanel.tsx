@@ -136,9 +136,17 @@ function renderNodeConfig(
               placeholder="Digite a mensagem..."
               rows={5}
             />
-            <p className="text-xs text-muted-foreground">
-              Variáveis: {'{{nome}}'}, {'{{telefone}}'}, {'{{email}}'}
-            </p>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p className="font-medium">Variáveis disponíveis:</p>
+              <p>{'{{nome}}'} - Nome completo</p>
+              <p>{'{{primeiro_nome}}'} - Primeiro nome</p>
+              <p>{'{{telefone}}'} - Telefone</p>
+              <p>{'{{email}}'} - Email</p>
+              <p>{'{{data}}'} - Data atual (DD/MM/YYYY)</p>
+              <p>{'{{hora}}'} - Hora atual (HH:MM)</p>
+              <p>{'{{dia_semana}}'} - Dia da semana</p>
+              <p>{'{{ultima_resposta}}'} - Última resposta do cliente</p>
+            </div>
           </div>
           <div className="space-y-2">
             <Label>Delay de digitação (ms)</Label>
@@ -427,16 +435,29 @@ function renderNodeConfig(
       
     case 'wait_reply':
       return (
-        <div className="space-y-2">
-          <Label>Timeout (minutos)</Label>
-          <Input
-            type="number"
-            value={(config?.timeout_minutes as number) || 60}
-            onChange={(e) => updateConfig('timeout_minutes', parseInt(e.target.value))}
-          />
-          <p className="text-xs text-muted-foreground">
-            Tempo máximo para aguardar resposta do cliente
-          </p>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Timeout (minutos)</Label>
+            <Input
+              type="number"
+              value={(config?.timeout_minutes as number) || 60}
+              onChange={(e) => updateConfig('timeout_minutes', parseInt(e.target.value))}
+            />
+            <p className="text-xs text-muted-foreground">
+              Tempo máximo para aguardar resposta do cliente
+            </p>
+          </div>
+          <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+            <p className="text-xs font-medium text-foreground">Este bloco tem 2 saídas:</p>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-full bg-green-500" />
+              <span className="text-muted-foreground">Respondeu - Cliente respondeu antes do timeout</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-full bg-orange-500" />
+              <span className="text-muted-foreground">Timeout - Cliente não respondeu a tempo</span>
+            </div>
+          </div>
         </div>
       );
       
@@ -462,6 +483,10 @@ function renderNodeConfig(
             placeholder="Digite a nota..."
             rows={4}
           />
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p className="font-medium">Variáveis disponíveis:</p>
+            <p>{'{{nome}}'}, {'{{primeiro_nome}}'}, {'{{data}}'}, {'{{hora}}'}</p>
+          </div>
         </div>
       );
       
