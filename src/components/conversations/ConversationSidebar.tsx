@@ -865,17 +865,26 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
                   </a>
                 )}
                 
-                {/* Thumbnail (if valid URL) */}
-                {rd.thumbnailUrl && typeof rd.thumbnailUrl === 'string' && rd.thumbnailUrl.startsWith('http') && (
-                  <div className="mt-2">
-                    <img 
-                      src={rd.thumbnailUrl} 
-                      alt="Ad thumbnail" 
-                      className="w-full h-auto rounded-lg border border-border max-h-32 object-cover"
-                      onError={(e) => (e.currentTarget.style.display = 'none')}
-                    />
-                  </div>
-                )}
+                {/* Thumbnail (if valid URL) - with fallback to imageUrl */}
+                {(() => {
+                  const validThumbnail = 
+                    (typeof rd.thumbnailUrl === 'string' && rd.thumbnailUrl.startsWith('http')) 
+                      ? rd.thumbnailUrl 
+                      : (typeof rd.imageUrl === 'string' && rd.imageUrl.startsWith('http'))
+                        ? rd.imageUrl 
+                        : null;
+                  
+                  return validThumbnail ? (
+                    <div className="mt-2">
+                      <img 
+                        src={validThumbnail} 
+                        alt="Ad thumbnail" 
+                        className="w-full h-auto rounded-lg border border-border max-h-32 object-cover"
+                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                      />
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </div>
           );

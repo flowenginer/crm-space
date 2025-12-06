@@ -331,11 +331,27 @@ function extractReferralData(msg: any): ReferralData | null {
   console.log(`[Webhook] entryPoint:`, JSON.stringify(entryPoint).substring(0, 500));
   console.log(`[Webhook] adReply:`, JSON.stringify(adReply).substring(0, 500));
   
-  // Função auxiliar para validar e extrair URLs
+  // Função auxiliar para validar e extrair URLs (detecta e ignora bytes/objetos binários)
   const extractValidUrl = (...sources: any[]): string | undefined => {
     for (const source of sources) {
+      // Verificar se é string válida iniciando com http
       if (typeof source === 'string' && source.startsWith('http')) {
         return source;
+      }
+      
+      // Se for objeto, verificar se é dados binários (bytes) e ignorar
+      if (source && typeof source === 'object' && !Array.isArray(source)) {
+        const keys = Object.keys(source);
+        // Detectar padrão de bytes: objeto com chaves numéricas (0, 1, 2, 3...)
+        if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+          console.log(`[Webhook] ⚠️ Ignorando dados binários (bytes) como URL - ${keys.length} bytes detectados`);
+          continue;
+        }
+        
+        // Tentar extrair URL de propriedades conhecidas do objeto
+        if (typeof source.url === 'string' && source.url.startsWith('http')) {
+          return source.url;
+        }
       }
     }
     return undefined;
