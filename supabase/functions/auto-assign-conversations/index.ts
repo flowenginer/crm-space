@@ -53,7 +53,8 @@ Deno.serve(async (req) => {
 
     const { mode = 'preview', limit, action } = await req.json().catch(() => ({}));
     
-    console.log(`[AutoAssign] Starting with mode: ${mode}, limit: ${limit || 'none'}, action: ${action || 'assign'}`);
+    console.log(`[AutoAssign] ========== INÍCIO ==========`);
+    console.log(`[AutoAssign] Modo: ${mode}, Limite: ${limit || 'SEM LIMITE'}, Ação: ${action || 'assign'}`);
 
     // Se a ação for apenas listar usuários
     if (action === 'list-users') {
@@ -64,13 +65,13 @@ Deno.serve(async (req) => {
         .not('full_name', 'is', null);
 
       if (usersError) {
-        console.error('[AutoAssign] Error fetching users:', usersError);
+        console.error('[AutoAssign] Erro ao buscar usuários:', usersError);
         throw usersError;
       }
 
       const validUsers = users?.filter(u => u.full_name && u.full_name.trim() !== '') || [];
       
-      console.log(`[AutoAssign] Found ${validUsers.length} active users`);
+      console.log(`[AutoAssign] Encontrados ${validUsers.length} usuários ativos`);
 
       return new Response(
         JSON.stringify({ 
@@ -93,7 +94,7 @@ Deno.serve(async (req) => {
       .not('full_name', 'is', null);
 
     if (usersError) {
-      console.error('[AutoAssign] Error fetching users:', usersError);
+      console.error('[AutoAssign] Erro ao buscar usuários:', usersError);
       throw usersError;
     }
 
@@ -122,7 +123,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[AutoAssign] Built user map with ${Object.keys(userMap).length} entries from ${users?.length || 0} users`);
+    console.log(`[AutoAssign] Mapa de usuários criado: ${Object.keys(userMap).length} entradas de ${users?.length || 0} usuários`);
+    console.log(`[AutoAssign] Usuários disponíveis: ${users?.map(u => u.full_name).join(', ')}`);
+
+    // PRIMEIRO: Contar total de conversas não atribuídas no banco (sem limite)
+    const { count: totalUnassignedCount, error: countError } = await supabase
+      .from('conversations')
+      .select('*', { count: 'exact', head: true })
+      .is('assigned_to', null)
+      .eq('status', 'open');
+
+    if (countError) {
+      console.error('[AutoAssign] Erro ao contar conversas:', countError);
+    } else {
+      console.log(`[AutoAssign] *** TOTAL DE CONVERSAS NÃO ATRIBUÍDAS NO BANCO: ${totalUnassignedCount} ***`);
+    }
 
     // Buscar conversas sem atribuição
     let query = supabase
@@ -132,21 +147,34 @@ Deno.serve(async (req) => {
       .eq('status', 'open')
       .order('last_message_at', { ascending: false });
 
-    if (limit) {
-      query = query.limit(limit);
+    // IMPORTANTE: Só aplicar limite se fornecido (modo test = limite implícito de 50)
+    // Modo full ou preview sem limite = processa TODAS
+    const effectiveLimit = mode === 'test' ? (limit || 50) : limit;
+    if (effectiveLimit) {
+      query = query.limit(effectiveLimit);
+      console.log(`[AutoAssign] Aplicando limite de ${effectiveLimit} conversas`);
+    } else {
+      console.log(`[AutoAssign] *** PROCESSANDO TODAS AS CONVERSAS SEM LIMITE ***`);
     }
 
     const { data: conversations, error: convError } = await query;
 
     if (convError) {
-      console.error('[AutoAssign] Error fetching conversations:', convError);
+      console.error('[AutoAssign] Erro ao buscar conversas:', convError);
       throw convError;
     }
 
-    console.log(`[AutoAssign] Found ${conversations?.length || 0} unassigned conversations`);
+    console.log(`[AutoAssign] Conversas carregadas para processar: ${conversations?.length || 0}`);
 
     const results: AssignmentResult[] = [];
     const userCounts: Record<string, number> = {};
+    
+    // Estatísticas detalhadas
+    let statsNoPattern = 0;
+    let statsUserNotFound = 0;
+    let statsAssigned = 0;
+    let statsSkippedTestMode = 0;
+    let statsErrors = 0;
 
     // Função para encontrar usuário pelo nome no padrão da mensagem
     const findUser = (patternName: string): UserInfo | null => {
@@ -183,7 +211,10 @@ Deno.serve(async (req) => {
     };
 
     // Para cada conversa, buscar a última mensagem com padrão de usuário
+    let processedIndex = 0;
     for (const conv of conversations || []) {
+      processedIndex++;
+      
       const { data: messages, error: msgError } = await supabase
         .from('messages')
         .select('content')
@@ -194,7 +225,8 @@ Deno.serve(async (req) => {
         .limit(50);
 
       if (msgError) {
-        console.error(`[AutoAssign] Error fetching messages for ${conv.id}:`, msgError);
+        console.error(`[AutoAssign] [${processedIndex}/${conversations?.length}] Erro ao buscar mensagens para ${conv.id}:`, msgError);
+        statsErrors++;
         continue;
       }
 
@@ -208,7 +240,14 @@ Deno.serve(async (req) => {
         }
       }
 
+      const contactName = (conv.contact as any)?.full_name || 'Desconhecido';
+
       if (!foundPattern) {
+        // Log apenas a cada 100 para não poluir
+        if (processedIndex % 100 === 0 || processedIndex <= 10) {
+          console.log(`[AutoAssign] [${processedIndex}/${conversations?.length}] ${contactName}: Sem padrão *Nome*: nas mensagens`);
+        }
+        statsNoPattern++;
         continue;
       }
 
@@ -216,10 +255,11 @@ Deno.serve(async (req) => {
       const userInfo = findUser(foundPattern);
       
       if (!userInfo) {
-        console.log(`[AutoAssign] Usuário não encontrado para padrão: ${foundPattern}`);
+        console.log(`[AutoAssign] [${processedIndex}/${conversations?.length}] ${contactName}: Padrão encontrado "*${foundPattern}*:" mas usuário não existe no sistema`);
+        statsUserNotFound++;
         results.push({
           conversationId: conv.id,
-          contactName: (conv.contact as any)?.full_name || 'Desconhecido',
+          contactName,
           userName: foundPattern,
           userId: '',
           success: false,
@@ -231,20 +271,23 @@ Deno.serve(async (req) => {
       // Contar atribuições por usuário (para modo teste: 1 por usuário)
       if (mode === 'test') {
         if (userCounts[userInfo.fullName] && userCounts[userInfo.fullName] >= 1) {
+          statsSkippedTestMode++;
           continue;
         }
       }
 
       // Se for modo preview, não atualizar
       if (mode === 'preview') {
+        console.log(`[AutoAssign] [${processedIndex}/${conversations?.length}] ${contactName} -> ${userInfo.fullName} (preview)`);
         results.push({
           conversationId: conv.id,
-          contactName: (conv.contact as any)?.full_name || 'Desconhecido',
+          contactName,
           userName: userInfo.fullName,
           userId: userInfo.userId,
           success: true,
         });
         userCounts[userInfo.fullName] = (userCounts[userInfo.fullName] || 0) + 1;
+        statsAssigned++;
         continue;
       }
 
@@ -258,10 +301,11 @@ Deno.serve(async (req) => {
         .eq('id', conv.id);
 
       if (updateError) {
-        console.error(`[AutoAssign] Error updating conversation ${conv.id}:`, updateError);
+        console.error(`[AutoAssign] [${processedIndex}/${conversations?.length}] Erro ao atribuir ${conv.id}:`, updateError);
+        statsErrors++;
         results.push({
           conversationId: conv.id,
-          contactName: (conv.contact as any)?.full_name || 'Desconhecido',
+          contactName,
           userName: userInfo.fullName,
           userId: userInfo.userId,
           success: false,
@@ -270,10 +314,11 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      console.log(`[AutoAssign] Assigned ${conv.id} to ${userInfo.fullName}`);
+      console.log(`[AutoAssign] [${processedIndex}/${conversations?.length}] ✓ ${contactName} -> ${userInfo.fullName}`);
+      statsAssigned++;
       results.push({
         conversationId: conv.id,
-        contactName: (conv.contact as any)?.full_name || 'Desconhecido',
+        contactName,
         userName: userInfo.fullName,
         userId: userInfo.userId,
         success: true,
@@ -281,17 +326,30 @@ Deno.serve(async (req) => {
       userCounts[userInfo.fullName] = (userCounts[userInfo.fullName] || 0) + 1;
     }
 
-    // Resumo
+    // Resumo detalhado
+    console.log(`[AutoAssign] ========== ESTATÍSTICAS ==========`);
+    console.log(`[AutoAssign] Total no banco (não atribuídas): ${totalUnassignedCount}`);
+    console.log(`[AutoAssign] Conversas processadas: ${conversations?.length || 0}`);
+    console.log(`[AutoAssign] - Sem padrão *Nome*: ${statsNoPattern}`);
+    console.log(`[AutoAssign] - Padrão encontrado mas usuário não existe: ${statsUserNotFound}`);
+    console.log(`[AutoAssign] - Atribuídas com sucesso: ${statsAssigned}`);
+    console.log(`[AutoAssign] - Puladas (modo teste): ${statsSkippedTestMode}`);
+    console.log(`[AutoAssign] - Erros: ${statsErrors}`);
+    console.log(`[AutoAssign] Por usuário: ${JSON.stringify(userCounts)}`);
+    console.log(`[AutoAssign] ========== FIM ==========`);
+
     const summary = {
-      totalProcessed: results.length,
-      successful: results.filter(r => r.success).length,
-      failed: results.filter(r => !r.success).length,
+      totalInDatabase: totalUnassignedCount || 0,
+      totalProcessed: conversations?.length || 0,
+      noPatternFound: statsNoPattern,
+      userNotFound: statsUserNotFound,
+      successful: statsAssigned,
+      skippedTestMode: statsSkippedTestMode,
+      errors: statsErrors,
       byUser: userCounts,
       mode,
       availableUsers: users?.map(u => u.full_name).filter(Boolean) || [],
     };
-
-    console.log('[AutoAssign] Summary:', summary);
 
     return new Response(
       JSON.stringify({ success: true, summary, results }),
@@ -299,7 +357,7 @@ Deno.serve(async (req) => {
     );
 
   } catch (error: unknown) {
-    console.error('[AutoAssign] Error:', error);
+    console.error('[AutoAssign] Erro fatal:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
