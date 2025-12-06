@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle, XCircle, Info, Loader2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle, XCircle, Info, Loader2, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -21,6 +21,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { useImportContacts, ImportRow, ImportOptions, ImportLogEntry } from '@/hooks/useImportContacts';
@@ -64,9 +66,32 @@ export function ContactImporter() {
     updateLeadStatus: true,
     updateAssignee: true,
   });
+  const [activeTab, setActiveTab] = useState<'file' | 'sheets'>('file');
+  const [sheetsUrl, setSheetsUrl] = useState('');
+  const [sheetName, setSheetName] = useState('');
+  const [isLoadingSheets, setIsLoadingSheets] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isImporting, progress, result, processImport, reset } = useImportContacts();
+
+  const autoMapColumns = useCallback((headers: string[]) => {
+    const autoMapping: ColumnMapping = { ...defaultMapping };
+    headers.forEach(header => {
+      const lowerHeader = header.toLowerCase();
+      if (lowerHeader.includes('nome') || lowerHeader.includes('cliente')) {
+        autoMapping.nome = header;
+      } else if (lowerHeader.includes('telefone') || lowerHeader.includes('numero') || lowerHeader.includes('contato')) {
+        autoMapping.telefone = header;
+      } else if (lowerHeader.includes('agente') || lowerHeader.includes('vendedor') || lowerHeader.includes('atendente')) {
+        autoMapping.vendedor = header;
+      } else if (lowerHeader.includes('etiqueta') || lowerHeader.includes('tag')) {
+        autoMapping.etiquetas = header;
+      } else if (lowerHeader.includes('status') || lowerHeader.includes('lead')) {
+        autoMapping.statusLead = header;
+      }
+    });
+    return autoMapping;
+  }, []);
 
   const parseFile = useCallback((file: File) => {
     const reader = new FileReader();
@@ -75,8 +100,8 @@ export function ContactImporter() {
       try {
         const data = e.target?.result;
         const workbook = XLSX.read(data, { type: 'binary' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
+        const sheetNameLocal = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetNameLocal];
         const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as (string | number | undefined)[][];
         
         if (jsonData.length < 2) {
@@ -91,28 +116,10 @@ export function ContactImporter() {
             obj[header] = String(row[index] || '').trim();
           });
           return obj;
-        }).filter(row => Object.values(row).some(v => v)); // Remove empty rows
+        }).filter(row => Object.values(row).some(v => v));
 
         setParsedData({ headers, rows });
-        
-        // Auto-map columns based on common patterns
-        const autoMapping: ColumnMapping = { ...defaultMapping };
-        headers.forEach(header => {
-          const lowerHeader = header.toLowerCase();
-          if (lowerHeader.includes('nome') || lowerHeader.includes('cliente')) {
-            autoMapping.nome = header;
-          } else if (lowerHeader.includes('telefone') || lowerHeader.includes('numero') || lowerHeader.includes('contato')) {
-            autoMapping.telefone = header;
-          } else if (lowerHeader.includes('agente') || lowerHeader.includes('vendedor') || lowerHeader.includes('atendente')) {
-            autoMapping.vendedor = header;
-          } else if (lowerHeader.includes('etiqueta') || lowerHeader.includes('tag')) {
-            autoMapping.etiquetas = header;
-          } else if (lowerHeader.includes('status') || lowerHeader.includes('lead')) {
-            autoMapping.statusLead = header;
-          }
-        });
-        
-        setColumnMapping(autoMapping);
+        setColumnMapping(autoMapColumns(headers));
         toast.success(`${rows.length} linhas carregadas`);
       } catch (error) {
         console.error('Error parsing file:', error);
@@ -121,7 +128,56 @@ export function ContactImporter() {
     };
 
     reader.readAsBinaryString(file);
-  }, []);
+  }, [autoMapColumns]);
+
+  const fetchFromGoogleSheets = async () => {
+    if (!sheetsUrl) {
+      toast.error('Cole o link da planilha do Google Sheets');
+      return;
+    }
+
+    // Extract spreadsheet ID from URL
+    const match = sheetsUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (!match) {
+      toast.error('Link inválido. Cole o link completo da planilha do Google Sheets.');
+      return;
+    }
+
+    const spreadsheetId = match[1];
+    const tabName = sheetName.trim() || 'Sheet1';
+
+    setIsLoadingSheets(true);
+
+    try {
+      // Use opensheet.elk.sh API to fetch public Google Sheets data
+      const apiUrl = `https://opensheet.elk.sh/${spreadsheetId}/${encodeURIComponent(tabName)}`;
+      const response = await fetch(apiUrl);
+
+      if (!response.ok) {
+        throw new Error('Erro ao acessar a planilha');
+      }
+
+      const data = await response.json();
+
+      if (!Array.isArray(data) || data.length === 0) {
+        toast.error('Planilha vazia ou aba não encontrada. Verifique o nome da aba.');
+        return;
+      }
+
+      // Convert to our ParsedData format
+      const headers = Object.keys(data[0]);
+      const rows = data as Record<string, string>[];
+
+      setParsedData({ headers, rows });
+      setColumnMapping(autoMapColumns(headers));
+      toast.success(`${rows.length} linhas carregadas do Google Sheets`);
+    } catch (error) {
+      console.error('Error fetching Google Sheets:', error);
+      toast.error('Erro ao acessar a planilha. Verifique se ela está pública (Qualquer pessoa com o link pode ver).');
+    } finally {
+      setIsLoadingSheets(false);
+    }
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -165,10 +221,20 @@ export function ContactImporter() {
     setIsDialogOpen(false);
     setParsedData(null);
     setColumnMapping(defaultMapping);
+    setSheetsUrl('');
+    setSheetName('');
     reset();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const handleClearData = () => {
+    setParsedData(null);
+    setColumnMapping(defaultMapping);
+    setSheetsUrl('');
+    setSheetName('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const getLogIcon = (type: ImportLogEntry['type']) => {
@@ -189,7 +255,7 @@ export function ContactImporter() {
             Importador de Contatos
           </CardTitle>
           <CardDescription>
-            Atualize contatos em massa a partir de uma planilha CSV ou Excel
+            Atualize contatos em massa a partir de uma planilha CSV, Excel ou Google Sheets
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -202,7 +268,7 @@ export function ContactImporter() {
                   <li>Busca contatos pelo número de telefone</li>
                   <li>Cria etiquetas automaticamente se não existirem</li>
                   <li>Atualiza status de lead e vendedor atribuído</li>
-                  <li>Suporta arquivos CSV e Excel (.xlsx, .xls)</li>
+                  <li>Suporta CSV, Excel (.xlsx, .xls) e Google Sheets</li>
                 </ul>
               </div>
             </div>
@@ -223,34 +289,101 @@ export function ContactImporter() {
               Importar Contatos
             </DialogTitle>
             <DialogDescription>
-              Faça upload de uma planilha para atualizar contatos em massa
+              Faça upload de uma planilha ou importe do Google Sheets
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
-            {/* File Upload Zone */}
+            {/* Source Selection Tabs */}
             {!parsedData && (
-              <div
-                className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
-                onClick={() => fileInputRef.current?.click()}
-                onDrop={handleDrop}
-                onDragOver={(e) => e.preventDefault()}
-              >
-                <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
-                <p className="text-sm text-muted-foreground mb-2">
-                  Arraste um arquivo ou clique para selecionar
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Formatos suportados: CSV, XLS, XLSX
-                </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-              </div>
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'file' | 'sheets')}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="file" className="flex items-center gap-2">
+                    <Upload className="h-4 w-4" />
+                    Upload de Arquivo
+                  </TabsTrigger>
+                  <TabsTrigger value="sheets" className="flex items-center gap-2">
+                    <Link2 className="h-4 w-4" />
+                    Google Sheets
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="file" className="mt-4">
+                  <div
+                    className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                    onDrop={handleDrop}
+                    onDragOver={(e) => e.preventDefault()}
+                  >
+                    <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Arraste um arquivo ou clique para selecionar
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Formatos suportados: CSV, XLS, XLSX
+                    </p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="sheets" className="mt-4">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="sheetsUrl">Link da Planilha do Google Sheets</Label>
+                      <Input
+                        id="sheetsUrl"
+                        placeholder="https://docs.google.com/spreadsheets/d/..."
+                        value={sheetsUrl}
+                        onChange={(e) => setSheetsUrl(e.target.value)}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="sheetName">Nome da Aba (opcional)</Label>
+                      <Input
+                        id="sheetName"
+                        placeholder="Sheet1"
+                        value={sheetName}
+                        onChange={(e) => setSheetName(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Se não informado, será usada a primeira aba (Sheet1)
+                      </p>
+                    </div>
+
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                      <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 shrink-0" />
+                      <p className="text-xs text-muted-foreground">
+                        A planilha deve estar configurada como <strong>"Qualquer pessoa com o link pode ver"</strong> nas configurações de compartilhamento do Google Sheets.
+                      </p>
+                    </div>
+
+                    <Button 
+                      onClick={fetchFromGoogleSheets} 
+                      disabled={isLoadingSheets || !sheetsUrl}
+                      className="w-full"
+                    >
+                      {isLoadingSheets ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Carregando...
+                        </>
+                      ) : (
+                        <>
+                          <Link2 className="h-4 w-4 mr-2" />
+                          Carregar Planilha
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </TabsContent>
+              </Tabs>
             )}
 
             {/* Preview */}
@@ -264,13 +397,9 @@ export function ContactImporter() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setParsedData(null);
-                        setColumnMapping(defaultMapping);
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                      }}
+                      onClick={handleClearData}
                     >
-                      Trocar arquivo
+                      Trocar fonte
                     </Button>
                   </div>
                   
