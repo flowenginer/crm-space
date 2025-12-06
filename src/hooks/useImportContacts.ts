@@ -68,13 +68,27 @@ export function useImportContacts() {
   };
 
   const findLeadStatusByName = async (statusName: string) => {
-    const { data } = await supabase
+    const searchTerm = statusName.trim();
+    
+    // Tentar match exato primeiro (case insensitive)
+    const { data: exactMatch } = await supabase
       .from('lead_statuses')
       .select('id, name')
-      .ilike('name', `%${statusName.trim()}%`)
+      .ilike('name', searchTerm)
+      .eq('is_active', true)
       .maybeSingle();
     
-    return data;
+    if (exactMatch) return exactMatch;
+    
+    // Tentar match parcial (contém o texto)
+    const { data: partialMatch } = await supabase
+      .from('lead_statuses')
+      .select('id, name')
+      .ilike('name', `%${searchTerm}%`)
+      .eq('is_active', true)
+      .maybeSingle();
+    
+    return partialMatch;
   };
 
   const getContactTags = async (contactId: string): Promise<string[]> => {
