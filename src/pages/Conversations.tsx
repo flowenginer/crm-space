@@ -1187,22 +1187,75 @@ export default function Conversations() {
     staleTime: 30000, // 30 seconds cache
   });
 
-  // Merge paginated conversations with directly fetched selected conversation
-  // This ensures the selected conversation ALWAYS appears in the list, even if server-side search/filters exclude it
+  // Fetch pinned conversations directly from database (with full data)
+  // This ensures pinned conversations appear in "Fixadas" tab even if not in current paginated results
+  const pinnedConversationIds = useMemo(() => 
+    pinnedConversations.map(p => p.conversation_id), 
+    [pinnedConversations]
+  );
+
+  const { data: pinnedConversationsData = [] } = useQuery({
+    queryKey: ['pinned-conversations-full', pinnedConversationIds],
+    queryFn: async () => {
+      if (pinnedConversationIds.length === 0) return [];
+      
+      const { data, error } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          contact_id,
+          channel_id,
+          assigned_to,
+          department_id,
+          status,
+          is_unread,
+          unread_count,
+          last_message_at,
+          last_message_preview,
+          lead_status,
+          created_at,
+          referral_source,
+          referral_data,
+          contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data),
+          assignee:profiles!conversations_assigned_to_fkey(id, full_name),
+          channel:whatsapp_channels(id, name)
+        `)
+        .in('id', pinnedConversationIds)
+        .order('last_message_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching pinned conversations:', error);
+        return [];
+      }
+      
+      return data as unknown as Conversation[];
+    },
+    enabled: pinnedConversationIds.length > 0,
+    staleTime: 30000, // 30 seconds cache
+  });
+
+  // Merge paginated conversations with directly fetched selected conversation AND pinned conversations
+  // This ensures both selected and pinned conversations ALWAYS appear in the list
   const conversations = useMemo(() => {
     // Start with paginated conversations
     let result = [...paginatedConversations];
+    const existingIds = new Set(result.map(c => c.id));
     
-    // If we have a directly fetched conversation and it's not already in the list, prepend it
-    if (directSelectedConversation) {
-      const existsInList = result.some(c => c.id === directSelectedConversation.id);
-      if (!existsInList) {
-        result = [directSelectedConversation, ...result];
+    // Add pinned conversations that are not already in the list
+    for (const pinnedConv of pinnedConversationsData) {
+      if (!existingIds.has(pinnedConv.id)) {
+        result.push(pinnedConv);
+        existingIds.add(pinnedConv.id);
       }
     }
     
+    // If we have a directly fetched conversation and it's not already in the list, prepend it
+    if (directSelectedConversation && !existingIds.has(directSelectedConversation.id)) {
+      result = [directSelectedConversation, ...result];
+    }
+    
     return result;
-  }, [paginatedConversations, directSelectedConversation]);
+  }, [paginatedConversations, directSelectedConversation, pinnedConversationsData]);
 
   // Find selected conversation from the merged list
   const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
