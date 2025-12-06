@@ -75,7 +75,7 @@ import { ConversationSidebar } from '@/components/conversations/ConversationSide
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { usePaginatedConversations, type SortFilter, type ConversationFilters } from '@/hooks/usePaginatedConversations';
-import { useConversationTotalCounts, useChannelCounts } from '@/hooks/useConversationCounts';
+import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts } from '@/hooks/useConversationCounts';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
@@ -1023,6 +1023,10 @@ export default function Conversations() {
   // Fetch REAL counts from database (not from loaded conversations)
   const { data: totalCounts } = useConversationTotalCounts();
   const { data: channelCountsData } = useChannelCounts();
+  const { data: dateFilterCountsData } = useDateFilterCounts();
+  const { data: departmentCountsData } = useDepartmentCounts();
+  const { data: originCountsData } = useOriginCounts();
+  const { data: tagCountsData } = useTagCounts();
   
   // Flatten paginated conversations
   const conversations = useMemo(() => {
@@ -1071,38 +1075,27 @@ export default function Conversations() {
     },
   });
 
-  // Fetch conversation tags for counting
-  const { data: conversationTagsCount = [] } = useQuery({
-    queryKey: ['conversation-tags-count'],
-    staleTime: 30000, // 30 seconds cache
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('conversation_tags')
-        .select('tag_id, conversation_id');
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Create a map of tag counts
+  // Create a map of tag counts from DATABASE (real counts via hook)
   const tagCountMap = useMemo(() => {
     const map = new Map<string, number>();
-    conversationTagsCount.forEach(ct => {
-      map.set(ct.tag_id, (map.get(ct.tag_id) || 0) + 1);
-    });
+    if (tagCountsData) {
+      Object.entries(tagCountsData).forEach(([tagId, count]) => {
+        map.set(tagId, count);
+      });
+    }
     return map;
-  }, [conversationTagsCount]);
+  }, [tagCountsData]);
 
-  // Create a map of department counts from conversations
+  // Create a map of department counts from DATABASE (real counts)
   const departmentCountMap = useMemo(() => {
     const map = new Map<string, number>();
-    conversations.forEach(conv => {
-      if (conv.department_id) {
-        map.set(conv.department_id, (map.get(conv.department_id) || 0) + 1);
-      }
-    });
+    if (departmentCountsData) {
+      Object.entries(departmentCountsData).forEach(([deptId, count]) => {
+        map.set(deptId, count);
+      });
+    }
     return map;
-  }, [conversations]);
+  }, [departmentCountsData]);
 
   // Fetch last message for each conversation (OPTIMIZED - limited scope)
   // Only fetch for first 50 visible conversations to reduce query size
@@ -1465,10 +1458,14 @@ export default function Conversations() {
     };
   }, [totalCounts, conversations.length, pinnedConversations]);
 
-  // Calculate date filter counts
+  // Calculate date filter counts - USE REAL COUNTS FROM DATABASE
   const dateFilterCounts = useMemo(() => {
-    const now = new Date();
-    const counts = {
+    // Use real database counts when available
+    if (dateFilterCountsData) {
+      return dateFilterCountsData;
+    }
+    // Fallback to empty counts (database query still loading)
+    return {
       today: 0,
       yesterday: 0,
       this_week: 0,
@@ -1476,30 +1473,7 @@ export default function Conversations() {
       this_month: 0,
       last_month: 0,
     };
-    
-    conversations.forEach(conv => {
-      const contactDate = conv.contact?.first_contact_at || conv.contact?.created_at;
-      if (!contactDate) return;
-      
-      const date = new Date(contactDate);
-      
-      if (isToday(date)) counts.today++;
-      if (isYesterday(date)) counts.yesterday++;
-      if (isWithinInterval(date, { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfDay(now) })) counts.this_week++;
-      
-      const lastWeekStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
-      const lastWeekEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
-      if (isWithinInterval(date, { start: lastWeekStart, end: lastWeekEnd })) counts.last_week++;
-      
-      if (isWithinInterval(date, { start: startOfMonth(now), end: endOfDay(now) })) counts.this_month++;
-      
-      const lastMonthStart = startOfMonth(subMonths(now, 1));
-      const lastMonthEnd = endOfMonth(subMonths(now, 1));
-      if (isWithinInterval(date, { start: lastMonthStart, end: lastMonthEnd })) counts.last_month++;
-    });
-    
-    return counts;
-  }, [conversations]);
+  }, [dateFilterCountsData]);
 
   // Calculate channel filter counts - USE REAL COUNTS FROM DATABASE
   const channelFilterCounts = useMemo(() => {
@@ -3164,7 +3138,7 @@ export default function Conversations() {
                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
                   </svg>
-                  Meta Ads ({conversations.filter(c => c.referral_source === 'meta_ads' || c.contact?.origin === 'meta_ads').length})
+                  Meta Ads ({originCountsData?.meta_ads ?? 0})
                 </button>
                 <button
                   onClick={() => setAdvancedFilters(prev => ({ ...prev, origin: 'whatsapp' }))}
@@ -3176,7 +3150,7 @@ export default function Conversations() {
                   )}
                 >
                   <MessageCircle size={14} />
-                  Orgânico
+                  Orgânico ({originCountsData?.organic ?? 0})
                 </button>
               </div>
             </div>

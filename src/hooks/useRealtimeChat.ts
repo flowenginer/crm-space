@@ -28,6 +28,10 @@ export function useRealtimeMessages(conversationId: string | null) {
       // Invalidate both old and new query keys for compatibility
       queryClient.invalidateQueries({ queryKey: ['messages-paginated', conversationId] });
       queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
+      
+      // Also invalidate conversation counts (new messages may change unread status)
+      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
     }, 300);
 
     // Subscribe to new messages in the current conversation
@@ -79,6 +83,15 @@ export function useRealtimeConversations() {
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       // Invalidate last-messages for filter updates
       queryClient.invalidateQueries({ queryKey: ['last-messages'] });
+      
+      // REALTIME: Invalidate ALL count hooks for real-time updates
+      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['channel-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['date-filter-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['department-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['origin-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['tag-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
     }, 500);
 
     // Subscribe to conversation updates
