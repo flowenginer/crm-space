@@ -1027,13 +1027,19 @@ export default function Conversations() {
     isFetchingNextPage: isFetchingMoreConversations,
   } = usePaginatedConversations(conversationFilters);
 
-  // Build filters for contextual counts (excluding the filter we're counting)
+  // Build filters for contextual counts - TODOS os filtros ativos
   const countFilters: CountFilters = useMemo(() => ({
     departmentId: advancedFilters.departmentId !== 'all' ? advancedFilters.departmentId : undefined,
     agentId: advancedFilters.agentId !== 'all' ? advancedFilters.agentId : undefined,
     origin: advancedFilters.origin !== 'all' ? advancedFilters.origin as 'meta_ads' | 'organic' : undefined,
     channelId: channelFilter !== 'all' ? channelFilter : undefined,
-  }), [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, channelFilter]);
+    // Filtros adicionais que agora são aplicados:
+    dateFilter: dateFilter !== 'all' ? dateFilter : undefined,
+    customDateFrom: customDateRange.from,
+    customDateTo: customDateRange.to,
+    sortFilter: (sortFilter !== 'newest' && sortFilter !== 'oldest') ? sortFilter : undefined,
+    tagId: advancedFilters.tagIds.length === 1 ? advancedFilters.tagIds[0] : undefined, // Single tag filter
+  }), [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, channelFilter, dateFilter, customDateRange.from, customDateRange.to, sortFilter]);
 
   // Filters for each count type (excluding self to avoid circular filtering)
   const deptCountFilters: CountFilters = useMemo(() => ({ ...countFilters, departmentId: undefined }), [countFilters]);
