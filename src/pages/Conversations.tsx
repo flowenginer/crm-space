@@ -75,7 +75,7 @@ import { ConversationSidebar } from '@/components/conversations/ConversationSide
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { usePaginatedConversations, type SortFilter, type ConversationFilters } from '@/hooks/usePaginatedConversations';
-import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts } from '@/hooks/useConversationCounts';
+import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, type CountFilters } from '@/hooks/useConversationCounts';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
@@ -1027,13 +1027,28 @@ export default function Conversations() {
     isFetchingNextPage: isFetchingMoreConversations,
   } = usePaginatedConversations(conversationFilters);
 
-  // Fetch REAL counts from database (not from loaded conversations)
-  const { data: totalCounts } = useConversationTotalCounts();
-  const { data: channelCountsData } = useChannelCounts();
-  const { data: dateFilterCountsData } = useDateFilterCounts();
-  const { data: departmentCountsData } = useDepartmentCounts();
-  const { data: originCountsData } = useOriginCounts();
-  const { data: tagCountsData } = useTagCounts();
+  // Build filters for contextual counts (excluding the filter we're counting)
+  const countFilters: CountFilters = useMemo(() => ({
+    departmentId: advancedFilters.departmentId !== 'all' ? advancedFilters.departmentId : undefined,
+    agentId: advancedFilters.agentId !== 'all' ? advancedFilters.agentId : undefined,
+    origin: advancedFilters.origin !== 'all' ? advancedFilters.origin as 'meta_ads' | 'organic' : undefined,
+    channelId: channelFilter !== 'all' ? channelFilter : undefined,
+  }), [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, channelFilter]);
+
+  // Filters for each count type (excluding self to avoid circular filtering)
+  const deptCountFilters: CountFilters = useMemo(() => ({ ...countFilters, departmentId: undefined }), [countFilters]);
+  const agentCountFilters: CountFilters = useMemo(() => ({ ...countFilters, agentId: undefined }), [countFilters]);
+  const originCountFilters: CountFilters = useMemo(() => ({ ...countFilters, origin: undefined }), [countFilters]);
+  const channelCountFilters: CountFilters = useMemo(() => ({ ...countFilters, channelId: undefined }), [countFilters]);
+
+  // Fetch REAL counts from database with contextual filters
+  const { data: totalCounts } = useConversationTotalCounts(countFilters);
+  const { data: channelCountsData } = useChannelCounts(channelCountFilters);
+  const { data: dateFilterCountsData } = useDateFilterCounts(countFilters);
+  const { data: departmentCountsData } = useDepartmentCounts(deptCountFilters);
+  const { data: originCountsData } = useOriginCounts(originCountFilters);
+  const { data: tagCountsData } = useTagCounts(countFilters);
+  const { data: agentCountsData } = useAgentCounts(agentCountFilters);
   
   // Flatten paginated conversations
   const conversations = useMemo(() => {
@@ -2164,8 +2179,76 @@ export default function Conversations() {
           </div>
 
           {/* Active Filters Indicator */}
-          {(dateFilter !== 'all' || channelFilter !== 'all' || advancedFilters.agentId !== 'all' || advancedFilters.departmentId !== 'all') && (
+          {(dateFilter !== 'all' || channelFilter !== 'all' || advancedFilters.agentId !== 'all' || advancedFilters.departmentId !== 'all' || advancedFilters.origin !== 'all') && (
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Department Filter Badge */}
+              {advancedFilters.departmentId !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-violet-500/10 text-violet-600 dark:text-violet-400 text-xs rounded-full">
+                  <Building2 size={12} />
+                  {departments.find(d => d.id === advancedFilters.departmentId)?.name || 'Departamento'}
+                  <button 
+                    onClick={() => setAdvancedFilters(prev => ({ ...prev, departmentId: 'all' }))} 
+                    className="ml-1 hover:opacity-70"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              
+              {/* Agent Filter Badge */}
+              {advancedFilters.agentId !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs rounded-full">
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                  {teamMembers.find(t => t.id === advancedFilters.agentId)?.full_name?.split(' ')[0] || 'Agente'}
+                  <button 
+                    onClick={() => setAdvancedFilters(prev => ({ ...prev, agentId: 'all' }))} 
+                    className="ml-1 hover:opacity-70"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              
+              {/* Origin Filter Badge */}
+              {advancedFilters.origin !== 'all' && (
+                <span className={cn(
+                  "inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full",
+                  advancedFilters.origin === 'meta_ads' 
+                    ? "bg-blue-600/10 text-blue-600 dark:text-blue-400" 
+                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                )}>
+                  {advancedFilters.origin === 'meta_ads' ? (
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                    </svg>
+                  ) : (
+                    <Globe size={12} />
+                  )}
+                  {advancedFilters.origin === 'meta_ads' ? 'Meta Ads' : 'Orgânico'}
+                  <button 
+                    onClick={() => setAdvancedFilters(prev => ({ ...prev, origin: 'all' }))} 
+                    className="ml-1 hover:opacity-70"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              
+              {/* Channel Filter Badge */}
+              {channelFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 text-green-600 dark:text-green-400 text-xs rounded-full">
+                  <MessageCircle size={12} />
+                  {channels.find(c => c.id === channelFilter)?.name || 'Sem canal'}
+                  <button onClick={() => setChannelFilter('all')} className="ml-1 hover:opacity-70">
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              
+              {/* Date Filter Badge */}
               {dateFilter !== 'all' && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
                   <Calendar size={12} />
@@ -2178,20 +2261,13 @@ export default function Conversations() {
                    dateFilter === 'custom' && customDateRange.from ? 
                      `${format(customDateRange.from, 'dd/MM')}${customDateRange.to ? ` - ${format(customDateRange.to, 'dd/MM')}` : ''}` : 
                    'Personalizado'}
-                  <button onClick={() => { setDateFilter('all'); setCustomDateRange({ from: undefined, to: undefined }); setShowCustomDatePicker(false); }} className="ml-1 hover:text-primary-foreground">
+                  <button onClick={() => { setDateFilter('all'); setCustomDateRange({ from: undefined, to: undefined }); setShowCustomDatePicker(false); }} className="ml-1 hover:opacity-70">
                     <X size={12} />
                   </button>
                 </span>
               )}
-              {channelFilter !== 'all' && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 text-green-600 dark:text-green-400 text-xs rounded-full">
-                  <MessageCircle size={12} />
-                  {channels.find(c => c.id === channelFilter)?.name || 'Sem canal'}
-                  <button onClick={() => setChannelFilter('all')} className="ml-1 hover:text-green-700">
-                    <X size={12} />
-                  </button>
-                </span>
-              )}
+              
+              {/* Clear All Filters Button */}
               <button
                 onClick={() => {
                   setDateFilter('all');
