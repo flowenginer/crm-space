@@ -92,8 +92,11 @@ const DEFAULT_STAGE_COLORS = [
   '#FECACA', '#E0E7FF', '#CCFBF1', '#FEE2E2'
 ];
 
+import LeadKanban from '@/components/crm/LeadKanban';
+
 export default function CRM() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'deals' | 'leads'>('deals');
   const [activeDeal, setActiveDeal] = useState<DealType | null>(null);
   const [showAddDealModal, setShowAddDealModal] = useState(false);
   const [showDealDetailsModal, setShowDealDetailsModal] = useState(false);
@@ -236,165 +239,185 @@ export default function CRM() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold text-foreground">CRM - Negócios</h1>
-
-          <div className="flex items-center gap-2">
-            <Label className="text-sm text-muted-foreground font-medium">Pipeline:</Label>
-            <Select value={selectedPipelineId || ''} onValueChange={setSelectedPipelineId}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Selecione..." />
-              </SelectTrigger>
-              <SelectContent>
-                {pipelines?.map((pipeline) => (
-                  <SelectItem key={pipeline.id} value={pipeline.id}>
-                    {pipeline.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="ghost" size="icon" onClick={() => setShowPipelineModal(true)}>
-              <Plus size={18} />
-            </Button>
-          </div>
+      {/* Page Header with Tabs */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-foreground">CRM</h1>
+          
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'deals' | 'leads')} className="w-auto">
+            <TabsList>
+              <TabsTrigger value="deals">Negócios</TabsTrigger>
+              <TabsTrigger value="leads">Gestão de Leads</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button variant="outline" onClick={() => setShowFiltersModal(true)}>
-            <SlidersHorizontal size={18} />
-            Filtrar
-          </Button>
+        {/* Deals Tab Header */}
+        {activeTab === 'deals' && (
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground font-medium">Pipeline:</Label>
+              <Select value={selectedPipelineId || ''} onValueChange={setSelectedPipelineId}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {pipelines?.map((pipeline) => (
+                    <SelectItem key={pipeline.id} value={pipeline.id}>
+                      {pipeline.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button variant="ghost" size="icon" onClick={() => setShowPipelineModal(true)}>
+                <Plus size={18} />
+              </Button>
+            </div>
 
-          <div className="relative">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Buscar negócios..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-64"
-            />
-          </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button variant="outline" onClick={() => setShowFiltersModal(true)}>
+                <SlidersHorizontal size={18} />
+                Filtrar
+              </Button>
 
-          <div className="flex items-center -space-x-2">
-            {/* Mostra apenas vendedores (role = seller) com badge de contagem */}
-            {teamMembers
-              ?.filter((member) => member.role === 'seller')
-              .map((member) => {
-                const dealCount = deals?.filter(d => d.assigned_to === member.id && d.status === 'open').length || 0;
-                return (
-                  <div
-                    key={member.id}
-                    onClick={() => {
-                      if (filterAssignedTo === member.id) {
-                        setFilterAssignedTo(null);
-                      } else {
-                        setFilterAssignedTo(member.id);
-                      }
-                    }}
-                    className="relative"
+              <div className="relative">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Buscar negócios..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 w-64"
+                />
+              </div>
+
+              <div className="flex items-center -space-x-2">
+                {teamMembers
+                  ?.filter((member) => member.role === 'seller')
+                  .map((member) => {
+                    const dealCount = deals?.filter(d => d.assigned_to === member.id && d.status === 'open').length || 0;
+                    return (
+                      <div
+                        key={member.id}
+                        onClick={() => {
+                          if (filterAssignedTo === member.id) {
+                            setFilterAssignedTo(null);
+                          } else {
+                            setFilterAssignedTo(member.id);
+                          }
+                        }}
+                        className="relative"
+                      >
+                        <div
+                          className={cn(
+                            "w-9 h-9 rounded-full bg-gradient-to-br from-primary to-pink-500 border-2 flex items-center justify-center text-white text-xs font-bold shadow-lg hover:z-10 transition-all cursor-pointer hover:scale-110",
+                            filterAssignedTo === member.id 
+                              ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background scale-110 z-10" 
+                              : "border-background"
+                          )}
+                          title={`${member.full_name || 'Usuário'} - ${dealCount} negócios`}
+                        >
+                          {member.full_name?.charAt(0).toUpperCase() || 'U'}
+                        </div>
+                        {dealCount > 0 && (
+                          <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-background">
+                            {dealCount > 99 ? '99+' : dealCount}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                {filterAssignedTo && (
+                  <button
+                    onClick={() => setFilterAssignedTo(null)}
+                    className="ml-2 px-2 py-1 text-xs bg-muted hover:bg-muted/80 rounded-full text-muted-foreground flex items-center gap-1"
+                    title="Limpar filtro"
                   >
-                    <div
-                      className={cn(
-                        "w-9 h-9 rounded-full bg-gradient-to-br from-primary to-pink-500 border-2 flex items-center justify-center text-white text-xs font-bold shadow-lg hover:z-10 transition-all cursor-pointer hover:scale-110",
-                        filterAssignedTo === member.id 
-                          ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background scale-110 z-10" 
-                          : "border-background"
-                      )}
-                      title={`${member.full_name || 'Usuário'} - ${dealCount} negócios`}
-                    >
-                      {member.full_name?.charAt(0).toUpperCase() || 'U'}
-                    </div>
-                    {dealCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-background">
-                        {dealCount > 99 ? '99+' : dealCount}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            {filterAssignedTo && (
-              <button
-                onClick={() => setFilterAssignedTo(null)}
-                className="ml-2 px-2 py-1 text-xs bg-muted hover:bg-muted/80 rounded-full text-muted-foreground flex items-center gap-1"
-                title="Limpar filtro"
-              >
-                <X size={12} />
-                Limpar
-              </button>
-            )}
-          </div>
+                    <X size={12} />
+                    Limpar
+                  </button>
+                )}
+              </div>
 
-          <Button onClick={() => { setInitialStageId(null); setShowAddDealModal(true); }} className="btn-gradient">
-            <Plus size={18} />
-            Novo Negócio
-          </Button>
-        </div>
+              <Button onClick={() => { setInitialStageId(null); setShowAddDealModal(true); }} className="btn-gradient">
+                <Plus size={18} />
+                Novo Negócio
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <StatCard icon={TrendingUp} label="Total de Negócios" value={totalDeals.toString()} iconColor="text-primary" />
-        <StatCard
-          icon={DollarSign}
-          label="Valor Total"
-          value={`R$ ${totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          iconColor="text-green-600"
-        />
-        <StatCard icon={Target} label="Taxa de Conversão" value={`${conversionRate}%`} iconColor="text-blue-600" />
-        <StatCard
-          icon={BarChart3}
-          label="Ticket Médio"
-          value={`R$ ${avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          iconColor="text-orange-600"
-        />
-        <StatCard icon={Clock} label="Negócios Ganhos" value={wonDeals.toString()} iconColor="text-emerald-600" />
-      </div>
+      {/* Lead Kanban Tab Content */}
+      {activeTab === 'leads' && (
+        <LeadKanban />
+      )}
 
-      {/* Kanban Board */}
-      {selectedPipelineId && stages && stages.length > 0 ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {stages.map((stage) => (
-              <KanbanColumn
-                key={stage.id}
-                stage={stage}
-                deals={getDealsForStage(stage.id)}
-                onOpenDealDetails={handleOpenDealDetails}
-                onAddDeal={() => handleAddDealToStage(stage.id)}
-                pipelineId={selectedPipelineId}
-              />
-            ))}
-            <AddStageButton onClick={() => setShowStageModal(true)} />
+      {/* Deals Tab Content */}
+      {activeTab === 'deals' && (
+        <>
+          {/* Statistics */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <StatCard icon={TrendingUp} label="Total de Negócios" value={totalDeals.toString()} iconColor="text-primary" />
+            <StatCard
+              icon={DollarSign}
+              label="Valor Total"
+              value={`R$ ${totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+              iconColor="text-green-600"
+            />
+            <StatCard icon={Target} label="Taxa de Conversão" value={`${conversionRate}%`} iconColor="text-blue-600" />
+            <StatCard
+              icon={BarChart3}
+              label="Ticket Médio"
+              value={`R$ ${avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+              iconColor="text-orange-600"
+            />
+            <StatCard icon={Clock} label="Negócios Ganhos" value={wonDeals.toString()} iconColor="text-emerald-600" />
           </div>
 
-          <DragOverlay>
-            {activeDeal && <DealCard deal={activeDeal} isOverlay />}
-          </DragOverlay>
-        </DndContext>
-      ) : selectedPipelineId && stages?.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground mb-4">Este pipeline não tem etapas ainda.</p>
-          <Button onClick={() => setShowStageModal(true)} className="btn-gradient">
-            <Plus size={18} />
-            Criar primeira etapa
-          </Button>
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground mb-4">Crie um pipeline para começar.</p>
-          <Button onClick={() => setShowPipelineModal(true)} className="btn-gradient">
-            <Plus size={18} />
-            Criar Pipeline
-          </Button>
-        </div>
+          {selectedPipelineId && stages && stages.length > 0 ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="flex gap-4 overflow-x-auto pb-4">
+                {stages.map((stage) => (
+                  <KanbanColumn
+                    key={stage.id}
+                    stage={stage}
+                    deals={getDealsForStage(stage.id)}
+                    onOpenDealDetails={handleOpenDealDetails}
+                    onAddDeal={() => handleAddDealToStage(stage.id)}
+                    pipelineId={selectedPipelineId}
+                  />
+                ))}
+                <AddStageButton onClick={() => setShowStageModal(true)} />
+              </div>
+
+              <DragOverlay>
+                {activeDeal && <DealCard deal={activeDeal} isOverlay />}
+              </DragOverlay>
+            </DndContext>
+          ) : selectedPipelineId && stages?.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-4">Este pipeline não tem etapas ainda.</p>
+              <Button onClick={() => setShowStageModal(true)} className="btn-gradient">
+                <Plus size={18} />
+                Criar primeira etapa
+              </Button>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-4">Crie um pipeline para começar.</p>
+              <Button onClick={() => setShowPipelineModal(true)} className="btn-gradient">
+                <Plus size={18} />
+                Criar Pipeline
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Modals */}

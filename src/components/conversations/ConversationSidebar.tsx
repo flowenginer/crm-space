@@ -18,20 +18,12 @@ import { ptBR } from 'date-fns/locale';
 import { ScheduleMessageModal } from './ScheduleMessageModal';
 import { TransferModal } from './TransferModal';
 import { fetchContactProfile } from '@/lib/whatsapp/instance-creator';
+import { useLeadStatuses } from '@/hooks/useLeadKanban';
 
 interface ConversationSidebarProps {
   conversationId: string;
   onClose?: () => void;
 }
-
-const leadStatusOptions = [
-  { value: 'new', label: 'Novo Lead', color: 'bg-blue-500' },
-  { value: 'contacted', label: 'Contatado', color: 'bg-yellow-500' },
-  { value: 'qualified', label: 'Qualificado', color: 'bg-purple-500' },
-  { value: 'negotiation', label: 'Negociação', color: 'bg-orange-500' },
-  { value: 'client', label: 'Cliente', color: 'bg-green-500' },
-  { value: 'lost', label: 'Perdido', color: 'bg-red-500' },
-];
 
 export function ConversationSidebar({ conversationId, onClose }: ConversationSidebarProps) {
   const [showEditModal, setShowEditModal] = useState(false);
@@ -49,6 +41,9 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = usePermissions();
+
+  // Fetch dynamic lead statuses
+  const { data: leadStatuses = [] } = useLeadStatuses();
 
   // Fetch conversation with contact data - campos específicos para otimização
   const { data: conversation, isLoading: loadingConversation } = useQuery({
@@ -664,19 +659,22 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
             Status Lead
           </label>
           <Select 
-            value={contact.lead_status || 'new'}
+            value={contact.lead_status || ''}
             onValueChange={(value) => updateLeadStatus.mutate(value)}
             disabled={updateLeadStatus.isPending}
           >
             <SelectTrigger className="w-full h-9 text-sm">
-              <SelectValue />
+              <SelectValue placeholder="Selecione um status..." />
             </SelectTrigger>
             <SelectContent>
-              {leadStatusOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
+              {leadStatuses.map((status) => (
+                <SelectItem key={status.id} value={status.name}>
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${option.color}`} />
-                    {option.label}
+                    <div 
+                      className="w-2 h-2 rounded-full" 
+                      style={{ backgroundColor: status.color || '#8B5CF6' }}
+                    />
+                    {status.name}
                   </div>
                 </SelectItem>
               ))}

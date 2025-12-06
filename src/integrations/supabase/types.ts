@@ -863,6 +863,33 @@ export type Database = {
           },
         ]
       }
+      lead_statuses: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          order_position: number
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          order_position: number
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          order_position?: number
+        }
+        Relationships: []
+      }
       message_templates: {
         Row: {
           category: string | null
