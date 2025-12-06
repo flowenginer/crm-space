@@ -14,6 +14,7 @@ import type { TimelineData } from '@/hooks/useDashboardAdvanced';
 interface TimelineChartProps {
   data: TimelineData[];
   isLoading?: boolean;
+  showCard?: boolean;
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -37,7 +38,103 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export function TimelineChart({ data, isLoading }: TimelineChartProps) {
+function ChartContent({ data }: { data: TimelineData[] }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+        <defs>
+          <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3}/>
+            <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0}/>
+          </linearGradient>
+          <linearGradient id="colorConversions" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
+            <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+          </linearGradient>
+        </defs>
+        
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+        
+        <XAxis 
+          dataKey="date" 
+          stroke="hsl(var(--muted-foreground))"
+          fontSize={12}
+          tickLine={false}
+          axisLine={false}
+        />
+        
+        <YAxis 
+          stroke="hsl(var(--muted-foreground))"
+          fontSize={12}
+          tickLine={false}
+          axisLine={false}
+        />
+        
+        <Tooltip content={<CustomTooltip />} />
+        
+        <Legend 
+          wrapperStyle={{ fontSize: '14px', paddingTop: '20px' }}
+          iconType="circle"
+        />
+        
+        <Area
+          type="monotone"
+          dataKey="newLeads"
+          stroke="#8B5CF6"
+          strokeWidth={2}
+          fill="url(#colorLeads)"
+          name="Novos Leads"
+          dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 3 }}
+          activeDot={{ r: 5, strokeWidth: 0 }}
+        />
+        
+        <Area
+          type="monotone"
+          dataKey="conversions"
+          stroke="#10B981"
+          strokeWidth={2}
+          fill="url(#colorConversions)"
+          name="Conversões"
+          dot={{ fill: '#10B981', strokeWidth: 2, r: 3 }}
+          activeDot={{ r: 5, strokeWidth: 0 }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function TimelineChart({ data, isLoading, showCard = true }: TimelineChartProps) {
+  const hasData = data.some(d => d.newLeads > 0 || d.conversions > 0);
+
+  // When used inside TimelineTabs, don't show the card wrapper
+  if (!showCard) {
+    if (isLoading) {
+      return (
+        <div className="h-[300px] flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      );
+    }
+
+    if (!hasData) {
+      return (
+        <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+          <div className="text-center">
+            <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>Nenhum dado disponível para o período</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="h-[300px]">
+        <ChartContent data={data} />
+      </div>
+    );
+  }
+
+  // Original behavior with card wrapper
   if (isLoading) {
     return (
       <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
@@ -48,8 +145,6 @@ export function TimelineChart({ data, isLoading }: TimelineChartProps) {
       </div>
     );
   }
-
-  const hasData = data.some(d => d.newLeads > 0 || d.conversions > 0);
 
   return (
     <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
@@ -64,66 +159,7 @@ export function TimelineChart({ data, isLoading }: TimelineChartProps) {
         </div>
       ) : (
         <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorConversions" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              
-              <XAxis 
-                dataKey="date" 
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-              />
-              
-              <YAxis 
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-              />
-              
-              <Tooltip content={<CustomTooltip />} />
-              
-              <Legend 
-                wrapperStyle={{ fontSize: '14px', paddingTop: '20px' }}
-                iconType="circle"
-              />
-              
-              <Area
-                type="monotone"
-                dataKey="newLeads"
-                stroke="#8B5CF6"
-                strokeWidth={2}
-                fill="url(#colorLeads)"
-                name="Novos Leads"
-                dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 3 }}
-                activeDot={{ r: 5, strokeWidth: 0 }}
-              />
-              
-              <Area
-                type="monotone"
-                dataKey="conversions"
-                stroke="#10B981"
-                strokeWidth={2}
-                fill="url(#colorConversions)"
-                name="Conversões"
-                dot={{ fill: '#10B981', strokeWidth: 2, r: 3 }}
-                activeDot={{ r: 5, strokeWidth: 0 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <ChartContent data={data} />
         </div>
       )}
     </div>
