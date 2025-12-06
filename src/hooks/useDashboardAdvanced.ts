@@ -88,20 +88,30 @@ export function useDashboardKPIs(filters: DashboardFilters) {
       }
 
       // Execute queries in parallel
+      // Build converted contacts query with count
+      let convertedQuery = supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', dateFrom)
+        .lte('created_at', dateTo)
+        .in('lead_status', ['07 - Pedido Fechado', '08 - Em andamento', '09 - Entregue', '10 - Finalizado']);
+
+      if (filters.agentId) {
+        convertedQuery = convertedQuery.eq('assigned_to', filters.agentId);
+      }
+      if (filters.departmentId) {
+        convertedQuery = convertedQuery.eq('department_id', filters.departmentId);
+      }
+
       const [
         { count: newLeads },
         { data: conversations },
-        { data: convertedContacts },
+        { count: convertedCount },
         { data: deals }
       ] = await Promise.all([
         contactsQuery,
         conversationsQuery,
-        supabase
-          .from('contacts')
-          .select('id')
-          .gte('created_at', dateFrom)
-          .lte('created_at', dateTo)
-          .in('lead_status', ['07 - Pedido Fechado', '08 - Em andamento', '09 - Entregue', '10 - Finalizado']),
+        convertedQuery,
         supabase
           .from('deals')
           .select('value')
@@ -147,10 +157,10 @@ export function useDashboardKPIs(filters: DashboardFilters) {
         avgResponseTime = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
       }
 
-      // Calculate conversion rate
+      // Calculate conversion rate using aggregated count
       const totalContacts = newLeads || 0;
-      const convertedCount = convertedContacts?.length || 0;
-      const conversionRate = totalContacts > 0 ? (convertedCount / totalContacts) * 100 : 0;
+      const convertedTotal = convertedCount || 0;
+      const conversionRate = totalContacts > 0 ? (convertedTotal / totalContacts) * 100 : 0;
 
       // Calculate converted value
       const convertedValue = deals?.reduce((sum, deal) => sum + (deal.value || 0), 0) || 0;
@@ -169,7 +179,7 @@ export function useDashboardKPIs(filters: DashboardFilters) {
   });
 }
 
-// Leads by Status Hook
+// Leads by Status Hook - Using aggregated counts to avoid 1000 record limit
 export function useLeadsByStatus(filters: DashboardFilters) {
   return useQuery({
     queryKey: ['leads_by_status', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId],
@@ -184,38 +194,58 @@ export function useLeadsByStatus(filters: DashboardFilters) {
         .eq('is_active', true)
         .order('order_position');
 
-      // Get contacts with their lead status
-      let query = supabase
+      if (!statuses || statuses.length === 0) return [];
+
+      // Count contacts for each status using aggregated queries
+      const statusCounts = await Promise.all(
+        statuses.map(async (status) => {
+          let query = supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .eq('lead_status', status.name)
+            .gte('created_at', dateFrom)
+            .lte('created_at', dateTo);
+
+          if (filters.agentId) {
+            query = query.eq('assigned_to', filters.agentId);
+          }
+          if (filters.departmentId) {
+            query = query.eq('department_id', filters.departmentId);
+          }
+
+          const { count } = await query;
+          return {
+            status: status.name,
+            count: count || 0,
+            color: status.color || '#8B5CF6'
+          };
+        })
+      );
+
+      // Also count contacts without status (new leads)
+      let noStatusQuery = supabase
         .from('contacts')
-        .select('lead_status')
+        .select('*', { count: 'exact', head: true })
+        .or('lead_status.is.null,lead_status.eq.new')
         .gte('created_at', dateFrom)
         .lte('created_at', dateTo);
 
       if (filters.agentId) {
-        query = query.eq('assigned_to', filters.agentId);
+        noStatusQuery = noStatusQuery.eq('assigned_to', filters.agentId);
       }
       if (filters.departmentId) {
-        query = query.eq('department_id', filters.departmentId);
+        noStatusQuery = noStatusQuery.eq('department_id', filters.departmentId);
       }
 
-      const { data: contacts } = await query;
-
-      // Count by status
-      const statusCounts = new Map<string, number>();
-      contacts?.forEach(contact => {
-        const status = contact.lead_status || 'Sem Status';
-        statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
-      });
-
-      // Build result with colors
-      const statusColorMap = new Map(statuses?.map(s => [s.name, s.color]) || []);
+      const { count: noStatusCount } = await noStatusQuery;
       
-      return Array.from(statusCounts.entries())
-        .map(([status, count]) => ({
-          status,
-          count,
-          color: statusColorMap.get(status) || '#8B5CF6'
-        }))
+      const results = [
+        ...statusCounts,
+        { status: 'Sem Status', count: noStatusCount || 0, color: '#6B7280' }
+      ];
+
+      return results
+        .filter(r => r.count > 0)
         .sort((a, b) => b.count - a.count);
     },
     staleTime: 60000,
@@ -381,7 +411,7 @@ export function useCriticalConversations(filters: DashboardFilters) {
   });
 }
 
-// Timeline Data Hook
+// Timeline Data Hook - Using aggregated counts per day to avoid 1000 record limit
 export function useTimelineData(filters: DashboardFilters) {
   return useQuery({
     queryKey: ['timeline_data', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId],
@@ -397,67 +427,65 @@ export function useTimelineData(filters: DashboardFilters) {
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      // Get contacts grouped by date
-      let contactsQuery = supabase
-        .from('contacts')
-        .select('created_at, lead_status')
-        .gte('created_at', dateFrom.toISOString())
-        .lte('created_at', dateTo.toISOString());
+      // Define conversion statuses
+      const conversionStatuses = ['07 - Pedido Fechado', '08 - Em andamento', '09 - Entregue', '10 - Finalizado'];
 
-      if (filters.agentId) {
-        contactsQuery = contactsQuery.eq('assigned_to', filters.agentId);
-      }
-      if (filters.departmentId) {
-        contactsQuery = contactsQuery.eq('department_id', filters.departmentId);
-      }
+      // Get counts for each day using aggregated queries
+      const timelineData = await Promise.all(
+        dates.map(async (date) => {
+          const dayStart = startOfDay(date).toISOString();
+          const dayEnd = endOfDay(date).toISOString();
 
-      const { data: contacts } = await contactsQuery;
+          // Count new leads for this day
+          let newLeadsQuery = supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', dayStart)
+            .lte('created_at', dayEnd);
 
-      // Build timeline data
-      return dates.map(date => {
-        const dateStr = format(date, 'yyyy-MM-dd');
-        const dayContacts = contacts?.filter(c => 
-          c.created_at.startsWith(dateStr)
-        ) || [];
+          // Count conversions for this day
+          let conversionsQuery = supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', dayStart)
+            .lte('created_at', dayEnd)
+            .in('lead_status', conversionStatuses);
 
-        const conversions = dayContacts.filter(c =>
-          ['07 - Pedido Fechado', '08 - Em andamento', '09 - Entregue', '10 - Finalizado'].includes(c.lead_status || '')
-        ).length;
+          if (filters.agentId) {
+            newLeadsQuery = newLeadsQuery.eq('assigned_to', filters.agentId);
+            conversionsQuery = conversionsQuery.eq('assigned_to', filters.agentId);
+          }
+          if (filters.departmentId) {
+            newLeadsQuery = newLeadsQuery.eq('department_id', filters.departmentId);
+            conversionsQuery = conversionsQuery.eq('department_id', filters.departmentId);
+          }
 
-        return {
-          date: format(date, 'dd/MM'),
-          newLeads: dayContacts.length,
-          conversions
-        };
-      });
+          const [{ count: newLeads }, { count: conversions }] = await Promise.all([
+            newLeadsQuery,
+            conversionsQuery
+          ]);
+
+          return {
+            date: format(date, 'dd/MM'),
+            newLeads: newLeads || 0,
+            conversions: conversions || 0
+          };
+        })
+      );
+
+      return timelineData;
     },
     staleTime: 60000,
   });
 }
 
-// Conversion Funnel Hook
+// Conversion Funnel Hook - Using aggregated counts to avoid 1000 record limit
 export function useConversionFunnel(filters: DashboardFilters) {
   return useQuery({
     queryKey: ['conversion_funnel', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId],
     queryFn: async (): Promise<FunnelData[]> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
-
-      let query = supabase
-        .from('contacts')
-        .select('id, lead_status')
-        .gte('created_at', dateFrom)
-        .lte('created_at', dateTo);
-
-      if (filters.agentId) {
-        query = query.eq('assigned_to', filters.agentId);
-      }
-      if (filters.departmentId) {
-        query = query.eq('department_id', filters.departmentId);
-      }
-
-      const { data: contacts } = await query;
-      const total = contacts?.length || 0;
 
       // Define funnel stages
       const funnelStages = [
@@ -467,11 +495,35 @@ export function useConversionFunnel(filters: DashboardFilters) {
         { stage: 'Fechamento', statuses: ['07 - Pedido Fechado'], color: '#10B981' },
       ];
 
-      return funnelStages.map(({ stage, statuses, color }) => ({
-        stage,
-        value: contacts?.filter(c => statuses.includes(c.lead_status || 'new')).length || 0,
-        color
-      }));
+      // Count contacts for each funnel stage using aggregated queries
+      const funnelData = await Promise.all(
+        funnelStages.map(async ({ stage, statuses, color }) => {
+          let query = supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', dateFrom)
+            .lte('created_at', dateTo);
+
+          // Handle null/new status for first stage
+          if (statuses.includes('new')) {
+            query = query.or(`lead_status.is.null,lead_status.in.(${statuses.join(',')})`);
+          } else {
+            query = query.in('lead_status', statuses);
+          }
+
+          if (filters.agentId) {
+            query = query.eq('assigned_to', filters.agentId);
+          }
+          if (filters.departmentId) {
+            query = query.eq('department_id', filters.departmentId);
+          }
+
+          const { count } = await query;
+          return { stage, value: count || 0, color };
+        })
+      );
+
+      return funnelData;
     },
     staleTime: 60000,
   });
