@@ -427,18 +427,37 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
           return;
         }
 
-        // No open/pending - check for any conversation
+        // No open/pending - check for any conversation (including closed)
         const { data: anyConv } = await supabase
           .from('conversations')
-          .select('id')
+          .select('id, status')
           .eq('contact_id', existingContact.id)
           .order('last_message_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (anyConv) {
+          // Reopen if closed
+          if (anyConv.status === 'closed') {
+            const { data: { user } } = await supabase.auth.getUser();
+            await supabase
+              .from('conversations')
+              .update({ 
+                status: 'open', 
+                closed_at: null, 
+                closed_by: null,
+                close_reason: null,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', anyConv.id);
+            
+            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+            toast.success('Conversa reaberta!');
+          } else {
+            toast.info('Conversa encontrada!');
+          }
+          
           navigate(`/conversations?id=${anyConv.id}`);
-          toast.info('Conversa encontrada!');
           setNewConversationPhone('');
           setIsStartingConversation(false);
           return;

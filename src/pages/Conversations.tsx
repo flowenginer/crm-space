@@ -3149,6 +3149,9 @@ export default function Conversations() {
           /* Empty State with Start Conversation */
           <StartConversation 
             onConversationCreated={(conversationId) => {
+              // Clear search to ensure conversation appears in list
+              setSearchQuery('');
+              setDebouncedSearchQuery('');
               navigate(
                 { pathname: '/conversations', search: `?id=${conversationId}` },
                 { replace: true }

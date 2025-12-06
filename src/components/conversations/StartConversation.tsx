@@ -68,19 +68,59 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
       if (error) throw error;
 
       if (contact) {
-        // Check for existing conversation
-        const { data: existingConv } = await supabase
+        // Check for existing conversation (open or pending first)
+        const { data: openConv } = await supabase
           .from('conversations')
           .select('id')
           .eq('contact_id', contact.id)
           .in('status', ['open', 'pending'])
+          .order('last_message_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
 
-        if (existingConv) {
-          // Navigate to existing conversation
+        if (openConv) {
+          // Navigate to existing open conversation
           toast.info('Conversa existente encontrada');
           if (onConversationCreated) {
-            onConversationCreated(existingConv.id);
+            onConversationCreated(openConv.id);
+          }
+          setPhoneNumber('');
+          return;
+        }
+
+        // Check for any conversation (including closed) and reopen it
+        const { data: closedConv } = await supabase
+          .from('conversations')
+          .select('id, status')
+          .eq('contact_id', contact.id)
+          .order('last_message_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (closedConv) {
+          // Reopen the conversation if it was closed
+          if (closedConv.status === 'closed') {
+            const { data: { user } } = await supabase.auth.getUser();
+            await supabase
+              .from('conversations')
+              .update({ 
+                status: 'open', 
+                closed_at: null, 
+                closed_by: null,
+                close_reason: null,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', closedConv.id);
+            
+            toast.success('Conversa reaberta');
+          } else {
+            toast.info('Conversa existente encontrada');
+          }
+          
+          queryClient.invalidateQueries({ queryKey: ['conversations'] });
+          
+          if (onConversationCreated) {
+            onConversationCreated(closedConv.id);
           }
           setPhoneNumber('');
           return;
