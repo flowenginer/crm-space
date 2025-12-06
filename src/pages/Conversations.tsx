@@ -1058,9 +1058,11 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     dateFilter: dateFilter !== 'all' ? dateFilter : undefined,
     customDateFrom: customDateRange.from,
     customDateTo: customDateRange.to,
+    // Filtro por tags - aplicado no servidor via contact_tags
+    tagIds: advancedFilters.tagIds.length > 0 ? advancedFilters.tagIds : undefined,
     // Busca por telefone ou nome - direto no banco
     searchQuery: debouncedSearchQuery || undefined,
-  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery]);
+  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery]);
 
   // Fetch real conversations from database with filter (PAGINATED + SERVER SORTED)
   const { 

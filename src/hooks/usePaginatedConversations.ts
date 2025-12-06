@@ -267,6 +267,28 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         }
       }
 
+      // *** FILTRO POR TAGS - SERVIDOR ***
+      if (tagIds && tagIds.length > 0) {
+        // Buscar contact_ids que têm essas tags
+        const { data: taggedContacts } = await supabase
+          .from('contact_tags')
+          .select('contact_id')
+          .in('tag_id', tagIds);
+        
+        if (taggedContacts && taggedContacts.length > 0) {
+          // Pegar contact_ids únicos
+          const contactIds = [...new Set(taggedContacts.map(tc => tc.contact_id))];
+          query = query.in('contact_id', contactIds);
+        } else {
+          // Nenhum contato com essas tags = retornar vazio
+          return {
+            conversations: [] as Conversation[],
+            nextPage: undefined,
+            pageParam: 0,
+          };
+        }
+      }
+
       // Apply sorting - THIS IS THE KEY: sorting happens on the SERVER
       switch (sortBy) {
         case 'oldest':
