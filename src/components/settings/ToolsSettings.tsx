@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Wand2, Loader2, AlertTriangle, CheckCircle, Users } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Wand2, Loader2, AlertTriangle, CheckCircle, Users, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -25,8 +25,8 @@ import { supabase } from '@/integrations/supabase/client';
 interface AssignmentResult {
   conversationId: string;
   contactName: string;
-  vendedorName: string;
-  vendedorId: string;
+  userName: string;
+  userId: string;
   success: boolean;
   error?: string;
 }
@@ -35,16 +35,62 @@ interface AssignmentSummary {
   totalProcessed: number;
   successful: number;
   failed: number;
-  byVendedor: Record<string, number>;
+  byUser: Record<string, number>;
   mode: string;
+  availableUsers?: string[];
+}
+
+interface RecognizedUser {
+  id: string;
+  name: string;
+  departmentId: string | null;
 }
 
 export function ToolsSettings() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [mode, setMode] = useState<'preview' | 'test' | 'full'>('preview');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [results, setResults] = useState<AssignmentResult[] | null>(null);
   const [summary, setSummary] = useState<AssignmentSummary | null>(null);
+  const [recognizedUsers, setRecognizedUsers] = useState<RecognizedUser[]>([]);
+
+  const fetchRecognizedUsers = async () => {
+    setIsLoadingUsers(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(
+        `https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/auto-assign-conversations`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ action: 'list-users' }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Erro ao buscar usuários');
+      }
+
+      setRecognizedUsers(data.users);
+      toast.success(`${data.users.length} usuários disponíveis para atribuição`);
+    } catch (error: any) {
+      console.error('Error fetching users:', error);
+      toast.error(error.message || 'Erro ao buscar usuários');
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRecognizedUsers();
+  }, []);
 
   const handleAutoAssign = async () => {
     setIsLoading(true);
@@ -106,7 +152,7 @@ export function ToolsSettings() {
             Atribuição Automática de Conversas
           </CardTitle>
           <CardDescription>
-            Atribui conversas automaticamente aos vendedores baseado no padrão de nome nas mensagens (*Nome*:)
+            Atribui conversas automaticamente aos usuários baseado no padrão de nome nas mensagens (*Nome*:)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -117,9 +163,46 @@ export function ToolsSettings() {
                 <p className="font-medium text-foreground mb-1">Como funciona:</p>
                 <ul className="list-disc list-inside space-y-1">
                   <li>Busca a última mensagem enviada com o padrão <code className="bg-muted px-1 rounded">*Nome*:</code></li>
-                  <li>Identifica o vendedor pelo nome e atribui a conversa a ele</li>
-                  <li>Vendedores reconhecidos: Diego, Raul, Scarlet Costa, Waleska Brum, Yasmin Sant'Anna</li>
+                  <li>Identifica o usuário pelo nome e atribui a conversa a ele</li>
+                  <li>Qualquer usuário cadastrado no sistema pode receber atribuições</li>
                 </ul>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-lg bg-muted/30 border border-border">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">
+                    Usuários disponíveis ({recognizedUsers.length})
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchRecognizedUsers}
+                  disabled={isLoadingUsers}
+                >
+                  {isLoadingUsers ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  <span className="ml-2">Atualizar</span>
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {recognizedUsers.length > 0 ? (
+                  recognizedUsers.map((user) => (
+                    <Badge key={user.id} variant="secondary" className="text-xs">
+                      {user.name}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    {isLoadingUsers ? 'Carregando...' : 'Nenhum usuário encontrado'}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -166,7 +249,7 @@ export function ToolsSettings() {
                   <SelectItem value="test">
                     <div className="flex items-center gap-2">
                       <span>🧪 Teste</span>
-                      <span className="text-muted-foreground text-xs">- Atribui 1 conversa por vendedor</span>
+                      <span className="text-muted-foreground text-xs">- Atribui 1 conversa por usuário</span>
                     </div>
                   </SelectItem>
                   <SelectItem value="full">
@@ -210,10 +293,10 @@ export function ToolsSettings() {
                 <div className="space-y-2">
                   <span className="text-sm font-medium flex items-center gap-2">
                     <Users className="h-4 w-4" />
-                    Por Vendedor:
+                    Por Usuário:
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    {Object.entries(summary.byVendedor).map(([name, count]) => (
+                    {Object.entries(summary.byUser).map(([name, count]) => (
                       <Badge key={name} variant="secondary">
                         {name}: {count}
                       </Badge>
@@ -244,7 +327,7 @@ export function ToolsSettings() {
                           <span className="truncate">{result.contactName}</span>
                         </div>
                         <Badge variant={result.success ? 'default' : 'destructive'} className="shrink-0">
-                          {result.vendedorName}
+                          {result.userName}
                         </Badge>
                       </div>
                     ))}
