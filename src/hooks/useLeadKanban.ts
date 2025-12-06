@@ -103,34 +103,53 @@ export function useDeleteLeadStatus() {
   });
 }
 
-// Fetch contacts grouped by lead status for Kanban
+// Fetch contacts grouped by lead status for Kanban (with pagination to bypass 1000 limit)
 export function useContactsByLeadStatus() {
   return useQuery({
     queryKey: ['contacts-for-kanban'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('contacts')
-        .select(`
-          id,
-          full_name,
-          phone,
-          email,
-          avatar_url,
-          lead_status,
-          assigned_to,
-          updated_at,
-          assignee:profiles!contacts_assigned_to_fkey(
+      const allContacts: ContactForKanban[] = [];
+      const pageSize = 1000;
+      let page = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+
+        const { data, error } = await supabase
+          .from('contacts')
+          .select(`
             id,
             full_name,
-            avatar_url
-          )
-        `)
-        .order('updated_at', { ascending: false })
-        .range(0, 9999);
+            phone,
+            email,
+            avatar_url,
+            lead_status,
+            assigned_to,
+            updated_at,
+            assignee:profiles!contacts_assigned_to_fkey(
+              id,
+              full_name,
+              avatar_url
+            )
+          `)
+          .order('updated_at', { ascending: false })
+          .range(from, to);
 
-      if (error) throw error;
-      console.log(`[Kanban] Loaded ${data?.length || 0} contacts`);
-      return data as ContactForKanban[];
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allContacts.push(...(data as ContactForKanban[]));
+          page++;
+          hasMore = data.length === pageSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      console.log(`[Kanban] Loaded ${allContacts.length} contacts (${page} pages)`);
+      return allContacts;
     },
     staleTime: 30000,
   });
