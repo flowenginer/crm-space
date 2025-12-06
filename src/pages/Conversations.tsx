@@ -1404,8 +1404,13 @@ export default function Conversations() {
   const filteredConversations = useMemo(() => {
     const pinnedIds = new Set(pinnedConversations.map(p => p.conversation_id));
     
-    return conversations
+    const filtered = conversations
       .filter((conv) => {
+        // ALWAYS show the selected conversation, regardless of filters
+        if (selectedConversationId && conv.id === selectedConversationId) {
+          return true;
+        }
+        
         const isPinnedConv = pinnedIds.has(conv.id);
         
         // Pinned filter logic:
@@ -1436,6 +1441,12 @@ export default function Conversations() {
         return true;
       })
       .sort((a, b) => {
+        // Keep selected conversation at top if it wouldn't normally appear
+        if (selectedConversationId) {
+          if (a.id === selectedConversationId) return -1;
+          if (b.id === selectedConversationId) return 1;
+        }
+        
         // For server-sorted filters (newest, oldest, unread), preserve server order
         // Only apply local sorting for filters that require message data (not_replied, client_not_replied)
         if (sortFilter === 'newest' || sortFilter === 'oldest' || sortFilter === 'unread') {
@@ -1466,7 +1477,9 @@ export default function Conversations() {
             return 0;
         }
       });
-  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, lastMessageMap]);
+    
+    return filtered;
+  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, lastMessageMap, selectedConversationId]);
 
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
