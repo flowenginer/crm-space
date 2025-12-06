@@ -26,6 +26,7 @@ import {
   Eye,
   EyeOff,
   Plug,
+  Wrench,
 } from 'lucide-react';
 import { UserManagement } from '@/components/settings/UserManagement';
 import { RoleManagement } from '@/components/settings/RoleManagement';
@@ -33,6 +34,7 @@ import { DepartmentManagement } from '@/components/settings/DepartmentManagement
 import { TagManagement } from '@/components/settings/TagManagement';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
 import { MetaAdsSettings } from '@/components/settings/MetaAdsSettings';
+import { ToolsSettings } from '@/components/settings/ToolsSettings';
 import { Facebook } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -494,6 +496,13 @@ export default function Settings() {
             <Palette size={18} />
             Geral
           </TabsTrigger>
+          <TabsTrigger
+            value="tools"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+          >
+            <Wrench size={18} />
+            Ferramentas
+          </TabsTrigger>
         </TabsList>
 
         {/* TAB 1: Team Management */}
@@ -863,6 +872,11 @@ export default function Settings() {
         {/* TAB: Meta Ads */}
         <TabsContent value="meta-ads" className="space-y-6">
           <MetaAdsSettings />
+        </TabsContent>
+
+        {/* TAB: Ferramentas */}
+        <TabsContent value="tools" className="space-y-6">
+          <ToolsSettings />
         </TabsContent>
 
         {/* TAB 7: General */}
