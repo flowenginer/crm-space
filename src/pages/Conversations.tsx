@@ -1070,7 +1070,7 @@ export default function Conversations() {
   const { data: agentCountsData } = useAgentCounts(agentCountFilters);
   
   // Flatten paginated conversations
-  const conversations = useMemo(() => {
+  const paginatedConversations = useMemo(() => {
     if (!conversationsData?.pages) return [];
     return conversationsData.pages.flatMap(page => page.conversations);
   }, [conversationsData]);
@@ -1139,45 +1139,6 @@ export default function Conversations() {
     return map;
   }, [departmentCountsData]);
 
-  // Fetch last message for each conversation (OPTIMIZED - limited scope)
-  // Only fetch for first 50 visible conversations to reduce query size
-  const visibleConversationIds = useMemo(() => conversations.slice(0, 50).map(c => c.id), [conversations]);
-  const { data: lastMessages = [] } = useQuery({
-    queryKey: ['last-messages', visibleConversationIds.length > 0 ? visibleConversationIds.slice(0, 5).join(',') : 'empty'],
-    queryFn: async (): Promise<{ conversation_id: string; is_from_me: boolean }[]> => {
-      if (visibleConversationIds.length === 0) return [];
-      
-      // Optimized query - only fetch for visible conversations, limit results
-      const { data } = await supabase
-        .from('messages')
-        .select('conversation_id, is_from_me')
-        .in('conversation_id', visibleConversationIds)
-        .order('created_at', { ascending: false })
-        .limit(100); // Fixed limit to prevent massive queries
-      
-      // Group by conversation_id and get first (most recent) for each
-      const grouped = new Map<string, { conversation_id: string; is_from_me: boolean }>();
-      data?.forEach(msg => {
-        if (!grouped.has(msg.conversation_id)) {
-          grouped.set(msg.conversation_id, {
-            conversation_id: msg.conversation_id,
-            is_from_me: msg.is_from_me ?? false
-          });
-        }
-      });
-      return Array.from(grouped.values());
-    },
-    enabled: visibleConversationIds.length > 0,
-    staleTime: 60000, // 1 minute cache - this data changes less frequently
-  });
-
-  // Create a map for quick lookup of last message info
-  const lastMessageMap = useMemo(() => {
-    const map = new Map<string, boolean>();
-    lastMessages.forEach(m => map.set(m.conversation_id, m.is_from_me));
-    return map;
-  }, [lastMessages]);
-
   // Realtime subscriptions
   useRealtimeMessages(selectedConversationId);
   useRealtimeConversations();
@@ -1220,12 +1181,65 @@ export default function Conversations() {
       
       return data as unknown as Conversation;
     },
-    enabled: !!selectedConversationId && !conversations.find(c => c.id === selectedConversationId),
+    enabled: !!selectedConversationId && !paginatedConversations.find(c => c.id === selectedConversationId),
     staleTime: 10000, // 10 seconds
   });
 
-  // Find selected conversation from paginated list OR use direct fetch as fallback
-  const selectedConversation = conversations.find(c => c.id === selectedConversationId) || directSelectedConversation || null;
+  // Merge paginated conversations with directly fetched selected conversation
+  // This ensures the selected conversation ALWAYS appears in the list, even if filters would hide it
+  const conversations = useMemo(() => {
+    // If the selected conversation is already in paginated list, just return that
+    if (!directSelectedConversation) return paginatedConversations;
+    
+    // If selected conversation is not in paginated list, prepend it
+    const existsInList = paginatedConversations.some(c => c.id === directSelectedConversation.id);
+    if (existsInList) return paginatedConversations;
+    
+    // Prepend the selected conversation so it appears at the top
+    return [directSelectedConversation, ...paginatedConversations];
+  }, [paginatedConversations, directSelectedConversation]);
+
+  // Find selected conversation from the merged list
+  const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
+
+  // Fetch last message for each conversation (OPTIMIZED - limited scope)
+  // Only fetch for first 50 visible conversations to reduce query size
+  const visibleConversationIds = useMemo(() => conversations.slice(0, 50).map(c => c.id), [conversations]);
+  const { data: lastMessages = [] } = useQuery({
+    queryKey: ['last-messages', visibleConversationIds.length > 0 ? visibleConversationIds.slice(0, 5).join(',') : 'empty'],
+    queryFn: async (): Promise<{ conversation_id: string; is_from_me: boolean }[]> => {
+      if (visibleConversationIds.length === 0) return [];
+      
+      // Optimized query - only fetch for visible conversations, limit results
+      const { data } = await supabase
+        .from('messages')
+        .select('conversation_id, is_from_me')
+        .in('conversation_id', visibleConversationIds)
+        .order('created_at', { ascending: false })
+        .limit(100); // Fixed limit to prevent massive queries
+      
+      // Group by conversation_id and get first (most recent) for each
+      const grouped = new Map<string, { conversation_id: string; is_from_me: boolean }>();
+      data?.forEach(msg => {
+        if (!grouped.has(msg.conversation_id)) {
+          grouped.set(msg.conversation_id, {
+            conversation_id: msg.conversation_id,
+            is_from_me: msg.is_from_me ?? false
+          });
+        }
+      });
+      return Array.from(grouped.values());
+    },
+    enabled: visibleConversationIds.length > 0,
+    staleTime: 60000, // 1 minute cache - this data changes less frequently
+  });
+
+  // Create a map for quick lookup of last message info
+  const lastMessageMap = useMemo(() => {
+    const map = new Map<string, boolean>();
+    lastMessages.forEach(m => map.set(m.conversation_id, m.is_from_me));
+    return map;
+  }, [lastMessages]);
   
   // Fetch contact tags for the selected conversation
   const { data: contactTags = [], refetch: refetchContactTags } = useQuery({
