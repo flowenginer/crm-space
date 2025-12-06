@@ -28,6 +28,7 @@ import ConversationReport from "@/pages/ConversationReport";
 import CampaignReport from "@/pages/CampaignReport";
 import MetaAdsManager from "@/pages/MetaAdsManager";
 import Automations from "@/pages/Automations";
+import FlowEditor from "@/pages/FlowEditor";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -119,7 +120,7 @@ const App = () => (
               } />
               <Route path="/automations/:id/edit" element={
                 <ProtectedRoute permission="settings.view">
-                  <Automations />
+                  <FlowEditor />
                 </ProtectedRoute>
               } />
               <Route path="/automations/:id/stats" element={
