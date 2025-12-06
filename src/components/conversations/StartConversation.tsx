@@ -117,7 +117,9 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
             toast.info('Conversa existente encontrada');
           }
           
-          queryClient.invalidateQueries({ queryKey: ['conversations'] });
+          // Invalidate correct query keys used by usePaginatedConversations
+          queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+          queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
           
           if (onConversationCreated) {
             onConversationCreated(closedConv.id);
@@ -225,7 +227,8 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
       if (createError) throw createError;
 
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
 
       toast.success('Conversa criada!');
