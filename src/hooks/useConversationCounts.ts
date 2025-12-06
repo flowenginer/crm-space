@@ -458,15 +458,13 @@ export function useTagCounts(filters?: CountFilters) {
       // Buscar contact_id diretamente das conversas abertas
       let query = supabase.from('conversations').select('contact_id').eq('status', 'open');
       
-      // Apply filters
-      if (filters) {
-        if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
-        if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
-        if (filters.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
-        else if (filters.channelId === 'no_channel') query = query.is('channel_id', null);
-        if (filters.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
-        else if (filters.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
-      }
+      // Apply filters APENAS se existirem valores reais
+      if (filters?.departmentId) query = query.eq('department_id', filters.departmentId);
+      if (filters?.agentId) query = query.eq('assigned_to', filters.agentId);
+      if (filters?.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
+      else if (filters?.channelId === 'no_channel') query = query.is('channel_id', null);
+      if (filters?.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
+      else if (filters?.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
       
       const { data, error } = await query;
       if (error) throw error;

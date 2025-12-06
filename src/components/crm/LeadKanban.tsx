@@ -72,6 +72,7 @@ export default function LeadKanban() {
   const [activeContact, setActiveContact] = useState<ContactForKanban | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddStatusModal, setShowAddStatusModal] = useState(false);
+  const [expandedColumns, setExpandedColumns] = useState<Set<string>>(new Set());
 
   const { data: leadStatuses, isLoading: statusesLoading } = useLeadStatuses();
   const { data: contacts, isLoading: contactsLoading } = useContactsByLeadStatus();
@@ -83,6 +84,18 @@ export default function LeadKanban() {
     }),
     useSensor(KeyboardSensor)
   );
+
+  const toggleColumnExpansion = (statusId: string) => {
+    setExpandedColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(statusId)) {
+        next.delete(statusId);
+      } else {
+        next.add(statusId);
+      }
+      return next;
+    });
+  };
 
   // Filter contacts
   const filteredContacts = useMemo(() => {
@@ -210,7 +223,7 @@ export default function LeadKanban() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-4 overflow-x-auto pb-4">
+          <div className="flex flex-wrap gap-4">
             {/* Sem Status column (optional) */}
             {getContactsWithoutStatus().length > 0 && (
               <LeadKanbanColumn
@@ -218,6 +231,8 @@ export default function LeadKanban() {
                 contacts={getContactsWithoutStatus()}
                 onOpenConversation={handleOpenConversation}
                 canDelete={false}
+                isExpanded={expandedColumns.has('no-status')}
+                onToggleExpand={() => toggleColumnExpansion('no-status')}
               />
             )}
 
@@ -228,6 +243,8 @@ export default function LeadKanban() {
                 contacts={getContactsForStatus(status.name)}
                 onOpenConversation={handleOpenConversation}
                 canDelete={true}
+                isExpanded={expandedColumns.has(status.id)}
+                onToggleExpand={() => toggleColumnExpansion(status.id)}
               />
             ))}
             
@@ -259,16 +276,22 @@ export default function LeadKanban() {
 }
 
 // Kanban Column Component
+const CONTACTS_LIMIT = 5;
+
 function LeadKanbanColumn({
   status,
   contacts,
   onOpenConversation,
   canDelete,
+  isExpanded,
+  onToggleExpand,
 }: {
   status: LeadStatus;
   contacts: ContactForKanban[];
   onOpenConversation: (contact: ContactForKanban) => void;
   canDelete: boolean;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }) {
   const { setNodeRef } = useSortable({ id: status.id });
   const deleteStatus = useDeleteLeadStatus();
@@ -290,6 +313,9 @@ function LeadKanbanColumn({
       toast({ title: 'Erro ao excluir', variant: 'destructive' });
     }
   };
+
+  const visibleContacts = isExpanded ? contacts : contacts.slice(0, CONTACTS_LIMIT);
+  const hiddenCount = contacts.length - CONTACTS_LIMIT;
 
   return (
     <div ref={setNodeRef} className="flex-shrink-0 w-72">
@@ -326,16 +352,38 @@ function LeadKanbanColumn({
         </div>
       </div>
 
-      <div className="bg-muted/30 rounded-b-2xl p-3 min-h-[400px] space-y-2 border border-t-0 border-border">
-        <SortableContext items={contacts.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-          {contacts.map((contact) => (
-            <ContactCard
-              key={contact.id}
-              contact={contact}
-              onClick={() => onOpenConversation(contact)}
-            />
-          ))}
-        </SortableContext>
+      <div className="bg-muted/30 rounded-b-2xl border border-t-0 border-border max-h-[calc(100vh-280px)] overflow-y-auto">
+        <div className="p-3 space-y-2">
+          <SortableContext items={visibleContacts.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+            {visibleContacts.map((contact) => (
+              <ContactCard
+                key={contact.id}
+                contact={contact}
+                onClick={() => onOpenConversation(contact)}
+              />
+            ))}
+          </SortableContext>
+          
+          {/* Ver mais / Ver menos button */}
+          {hiddenCount > 0 && (
+            <button
+              onClick={onToggleExpand}
+              className="w-full py-2 text-xs text-primary hover:text-primary/80 font-medium transition-colors flex items-center justify-center gap-1"
+            >
+              {isExpanded ? (
+                <>
+                  <X size={12} />
+                  Ver menos
+                </>
+              ) : (
+                <>
+                  <Plus size={12} />
+                  Ver mais {hiddenCount} contatos
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
