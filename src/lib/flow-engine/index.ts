@@ -127,10 +127,16 @@ export class FlowEngine {
     
     if (!execution) return;
     
-    // Atualizar estatísticas
+    // Buscar flow atual e atualizar estatísticas
+    const { data: currentFlow } = await supabase
+      .from('chatbot_flows')
+      .select('total_executions')
+      .eq('id', flowId)
+      .single();
+    
     await supabase
       .from('chatbot_flows')
-      .update({ total_executions: (flow?.total_executions || 0) + 1 })
+      .update({ total_executions: (currentFlow?.total_executions || 0) + 1 })
       .eq('id', flowId);
     
     // Buscar primeiro nó após trigger
