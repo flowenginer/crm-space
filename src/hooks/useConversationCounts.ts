@@ -53,6 +53,8 @@ export interface CountFilters {
   customDateFrom?: Date;
   customDateTo?: Date;
   channelId?: string;
+  sortFilter?: string; // 'unread', 'not_replied', 'client_not_replied'
+  tagId?: string; // Filter by specific tag
 }
 
 interface ConversationCounts {
@@ -104,6 +106,7 @@ const applyFilters = (query: any, filters: CountFilters) => {
  * Hook para buscar contagens REAIS de conversas do banco de dados
  * Usa queries COUNT(*) otimizadas - não carrega todas as conversas
  * Aceita filtros para contagens contextuais
+ * INCLUI TODOS OS FILTROS: data, sortFilter (unread), tagId, etc.
  */
 export function useConversationTotalCounts(filters?: CountFilters) {
   return useQuery({
@@ -111,13 +114,90 @@ export function useConversationTotalCounts(filters?: CountFilters) {
     queryFn: async (): Promise<ConversationCounts> => {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Build base queries with filters
-      let allQuery = supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open');
-      let mineQuery = user ? supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open').eq('assigned_to', user.id) : null;
-      let unassignedQuery = supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open').is('assigned_to', null);
-      let unreadQuery = supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open').eq('is_unread', true);
+      // Se tiver filtro de data, precisamos fazer join com contacts
+      const needsContactJoin = filters?.dateFilter && filters.dateFilter !== 'all';
+      // Se tiver filtro de tag, precisamos buscar contact_ids primeiro
+      const needsTagFilter = filters?.tagId;
       
-      // Apply filters
+      // Preparar filtro de data se necessário
+      let dateStartISO: string | undefined;
+      let dateEndISO: string | undefined;
+      
+      if (needsContactJoin) {
+        // Buscar timezone da empresa
+        const { data: settings } = await supabase
+          .from('company_settings')
+          .select('timezone')
+          .limit(1)
+          .maybeSingle();
+        
+        const timezone = settings?.timezone || 'America/Sao_Paulo';
+        const now = new Date();
+        
+        // Calcular datas com base no filtro
+        if (filters?.dateFilter === 'today') {
+          dateStartISO = getTimezoneAdjustedDate(now, timezone, false).toISOString();
+          dateEndISO = getTimezoneAdjustedDate(now, timezone, true).toISOString();
+        } else if (filters?.dateFilter === 'yesterday') {
+          const yesterday = subDays(now, 1);
+          dateStartISO = getTimezoneAdjustedDate(yesterday, timezone, false).toISOString();
+          dateEndISO = getTimezoneAdjustedDate(yesterday, timezone, true).toISOString();
+        } else if (filters?.dateFilter === 'this_week') {
+          const weekStart = startOfWeek(now, { weekStartsOn: 0 });
+          dateStartISO = getTimezoneAdjustedDate(weekStart, timezone, false).toISOString();
+          dateEndISO = getTimezoneAdjustedDate(now, timezone, true).toISOString();
+        } else if (filters?.dateFilter === 'last_week') {
+          const lastWeekStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
+          const lastWeekEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
+          dateStartISO = getTimezoneAdjustedDate(lastWeekStart, timezone, false).toISOString();
+          dateEndISO = getTimezoneAdjustedDate(lastWeekEnd, timezone, true).toISOString();
+        } else if (filters?.dateFilter === 'this_month') {
+          const monthStart = startOfMonth(now);
+          dateStartISO = getTimezoneAdjustedDate(monthStart, timezone, false).toISOString();
+          dateEndISO = getTimezoneAdjustedDate(now, timezone, true).toISOString();
+        } else if (filters?.dateFilter === 'last_month') {
+          const lastMonthStart = startOfMonth(subMonths(now, 1));
+          const lastMonthEnd = endOfMonth(subMonths(now, 1));
+          dateStartISO = getTimezoneAdjustedDate(lastMonthStart, timezone, false).toISOString();
+          dateEndISO = getTimezoneAdjustedDate(lastMonthEnd, timezone, true).toISOString();
+        } else if (filters?.dateFilter === 'custom' && filters.customDateFrom && filters.customDateTo) {
+          dateStartISO = getTimezoneAdjustedDate(filters.customDateFrom, timezone, false).toISOString();
+          dateEndISO = getTimezoneAdjustedDate(filters.customDateTo, timezone, true).toISOString();
+        }
+      }
+      
+      // Se tiver filtro de tag, buscar contact_ids primeiro
+      let tagContactIds: string[] | undefined;
+      if (needsTagFilter) {
+        const { data: tagData } = await supabase
+          .from('contact_tags')
+          .select('contact_id')
+          .eq('tag_id', filters!.tagId!);
+        tagContactIds = tagData?.map(t => t.contact_id) || [];
+        if (tagContactIds.length === 0) {
+          // Sem contatos com essa tag = 0 conversas
+          return { all: 0, mine: 0, unassigned: 0, unread: 0 };
+        }
+      }
+      
+      // Build base queries - usar join com contacts se filtro de data ativo
+      const buildBaseQuery = () => {
+        if (needsContactJoin) {
+          return supabase.from('conversations')
+            .select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true })
+            .eq('status', 'open')
+            .gte('contact.first_contact_at', dateStartISO!)
+            .lte('contact.first_contact_at', dateEndISO!);
+        }
+        return supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open');
+      };
+      
+      let allQuery = buildBaseQuery();
+      let mineQuery = user ? buildBaseQuery().eq('assigned_to', user.id) : null;
+      let unassignedQuery = buildBaseQuery().is('assigned_to', null);
+      let unreadQuery = buildBaseQuery().eq('is_unread', true);
+      
+      // Apply basic filters (department, agent, channel)
       if (filters) {
         allQuery = applyFilters(allQuery, filters);
         if (mineQuery) mineQuery = applyFilters(mineQuery, filters);
@@ -135,6 +215,22 @@ export function useConversationTotalCounts(filters?: CountFilters) {
           if (mineQuery) mineQuery = mineQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
           unassignedQuery = unassignedQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
           unreadQuery = unreadQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
+        }
+        
+        // SortFilter 'unread' - aplicar is_unread = true em todas as queries
+        if (filters.sortFilter === 'unread') {
+          allQuery = allQuery.eq('is_unread', true);
+          if (mineQuery) mineQuery = mineQuery.eq('is_unread', true);
+          unassignedQuery = unassignedQuery.eq('is_unread', true);
+          // unreadQuery já tem is_unread = true
+        }
+        
+        // Tag filter - filtrar por contact_id
+        if (tagContactIds && tagContactIds.length > 0) {
+          allQuery = allQuery.in('contact_id', tagContactIds);
+          if (mineQuery) mineQuery = mineQuery.in('contact_id', tagContactIds);
+          unassignedQuery = unassignedQuery.in('contact_id', tagContactIds);
+          unreadQuery = unreadQuery.in('contact_id', tagContactIds);
         }
       }
       
