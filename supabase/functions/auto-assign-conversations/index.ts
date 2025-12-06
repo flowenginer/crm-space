@@ -5,25 +5,39 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Mapeamento de nomes de vendedores para IDs
-const VENDEDOR_MAP: Record<string, { userId: string; departmentId: string | null }> = {
-  'Diego': { userId: '290087bf-fb0c-49d4-aa19-6c36a6bc4fef', departmentId: 'a8c7e9e4-3b1d-4f5a-9c2e-8d7f6b5a4c3d' },
-  'Raul': { userId: '8e01fe21-aa6f-4a93-8db4-53a7d87370bb', departmentId: 'a8c7e9e4-3b1d-4f5a-9c2e-8d7f6b5a4c3d' },
-  'Scarlet Costa': { userId: '97ad6ef8-24fd-458e-a193-5dac1f5a42c1', departmentId: 'a8c7e9e4-3b1d-4f5a-9c2e-8d7f6b5a4c3d' },
-  'Waleska Brum': { userId: '367c7f21-b67f-4df5-b410-a5a1e2d08a3c', departmentId: 'a8c7e9e4-3b1d-4f5a-9c2e-8d7f6b5a4c3d' },
-  "Yasmin Sant'Anna": { userId: '62cf8e40-d3d3-49c6-a0e9-e27c7a1faae1', departmentId: 'a8c7e9e4-3b1d-4f5a-9c2e-8d7f6b5a4c3d' },
-};
+// Regex para extrair nome do usuário do padrão *Nome*: ou *NOME - SETOR*:
+const USER_PATTERN = /^\*([^*]+)\*:/;
 
-// Regex para extrair nome do vendedor do padrão *Nome*:
-const VENDEDOR_PATTERN = /^\*([^*]+)\*:/;
+interface UserInfo {
+  userId: string;
+  departmentId: string | null;
+  fullName: string;
+}
 
 interface AssignmentResult {
   conversationId: string;
   contactName: string;
-  vendedorName: string;
-  vendedorId: string;
+  userName: string;
+  userId: string;
   success: boolean;
   error?: string;
+}
+
+// Função para normalizar nome (remover acentos, lowercase)
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+// Função para extrair o primeiro nome de um padrão como "RAFIK - SAC" ou "Diego"
+function extractFirstName(pattern: string): string {
+  // Remove sufixos como " - SAC", " - EXPEDIÇÃO", etc.
+  const cleanName = pattern.split('-')[0].trim();
+  // Pega o primeiro nome
+  return cleanName.split(' ')[0];
 }
 
 Deno.serve(async (req) => {
@@ -37,9 +51,78 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { mode = 'preview', limit } = await req.json().catch(() => ({}));
+    const { mode = 'preview', limit, action } = await req.json().catch(() => ({}));
     
-    console.log(`[AutoAssign] Starting with mode: ${mode}, limit: ${limit || 'none'}`);
+    console.log(`[AutoAssign] Starting with mode: ${mode}, limit: ${limit || 'none'}, action: ${action || 'assign'}`);
+
+    // Se a ação for apenas listar usuários
+    if (action === 'list-users') {
+      const { data: users, error: usersError } = await supabase
+        .from('profiles')
+        .select('id, full_name, department_id')
+        .eq('is_active', true)
+        .not('full_name', 'is', null);
+
+      if (usersError) {
+        console.error('[AutoAssign] Error fetching users:', usersError);
+        throw usersError;
+      }
+
+      const validUsers = users?.filter(u => u.full_name && u.full_name.trim() !== '') || [];
+      
+      console.log(`[AutoAssign] Found ${validUsers.length} active users`);
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          users: validUsers.map(u => ({
+            id: u.id,
+            name: u.full_name,
+            departmentId: u.department_id
+          }))
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Buscar todos os usuários ativos para criar o mapeamento dinâmico
+    const { data: users, error: usersError } = await supabase
+      .from('profiles')
+      .select('id, full_name, department_id')
+      .eq('is_active', true)
+      .not('full_name', 'is', null);
+
+    if (usersError) {
+      console.error('[AutoAssign] Error fetching users:', usersError);
+      throw usersError;
+    }
+
+    // Criar mapeamento dinâmico de nomes para usuários
+    const userMap: Record<string, UserInfo> = {};
+    const userMapNormalized: Record<string, UserInfo> = {};
+
+    for (const user of users || []) {
+      if (!user.full_name) continue;
+      
+      const userInfo: UserInfo = {
+        userId: user.id,
+        departmentId: user.department_id,
+        fullName: user.full_name
+      };
+
+      // Mapear por nome completo exato
+      userMap[user.full_name] = userInfo;
+      userMapNormalized[normalizeName(user.full_name)] = userInfo;
+
+      // Mapear também por primeiro nome (para casos como "Diego" em vez de "Diego Silva")
+      const firstName = user.full_name.split(' ')[0];
+      if (firstName && !userMap[firstName]) {
+        userMap[firstName] = userInfo;
+        userMapNormalized[normalizeName(firstName)] = userInfo;
+      }
+    }
+
+    console.log(`[AutoAssign] Built user map with ${Object.keys(userMap).length} entries from ${users?.length || 0} users`);
 
     // Buscar conversas sem atribuição
     let query = supabase
@@ -63,11 +146,44 @@ Deno.serve(async (req) => {
     console.log(`[AutoAssign] Found ${conversations?.length || 0} unassigned conversations`);
 
     const results: AssignmentResult[] = [];
-    const vendedorCounts: Record<string, number> = {};
+    const userCounts: Record<string, number> = {};
 
-    // Para cada conversa, buscar a última mensagem com padrão de vendedor
+    // Função para encontrar usuário pelo nome no padrão da mensagem
+    const findUser = (patternName: string): UserInfo | null => {
+      // 1. Tentar match exato
+      if (userMap[patternName]) {
+        return userMap[patternName];
+      }
+
+      // 2. Tentar match normalizado
+      const normalizedPattern = normalizeName(patternName);
+      if (userMapNormalized[normalizedPattern]) {
+        return userMapNormalized[normalizedPattern];
+      }
+
+      // 3. Extrair primeiro nome (ex: "RAFIK - SAC" -> "RAFIK")
+      const firstName = extractFirstName(patternName);
+      if (userMap[firstName]) {
+        return userMap[firstName];
+      }
+      
+      const normalizedFirstName = normalizeName(firstName);
+      if (userMapNormalized[normalizedFirstName]) {
+        return userMapNormalized[normalizedFirstName];
+      }
+
+      // 4. Busca parcial - verificar se algum usuário cadastrado corresponde
+      for (const [key, info] of Object.entries(userMapNormalized)) {
+        if (normalizedPattern.includes(key) || key.includes(normalizedPattern)) {
+          return info;
+        }
+      }
+
+      return null;
+    };
+
+    // Para cada conversa, buscar a última mensagem com padrão de usuário
     for (const conv of conversations || []) {
-      // Buscar última mensagem enviada (is_from_me = true) que contém o padrão *Nome*:
       const { data: messages, error: msgError } = await supabase
         .from('messages')
         .select('content')
@@ -82,38 +198,39 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Encontrar a última mensagem com o padrão de vendedor
-      let foundVendedor: string | null = null;
+      // Encontrar a última mensagem com o padrão de usuário
+      let foundPattern: string | null = null;
       for (const msg of messages || []) {
-        const match = msg.content?.match(VENDEDOR_PATTERN);
+        const match = msg.content?.match(USER_PATTERN);
         if (match) {
-          foundVendedor = match[1];
+          foundPattern = match[1];
           break;
         }
       }
 
-      if (!foundVendedor) {
+      if (!foundPattern) {
         continue;
       }
 
-      // Verificar se o vendedor está no mapeamento
-      const vendedorInfo = VENDEDOR_MAP[foundVendedor];
-      if (!vendedorInfo) {
-        console.log(`[AutoAssign] Vendedor não mapeado: ${foundVendedor}`);
+      // Encontrar o usuário correspondente
+      const userInfo = findUser(foundPattern);
+      
+      if (!userInfo) {
+        console.log(`[AutoAssign] Usuário não encontrado para padrão: ${foundPattern}`);
         results.push({
           conversationId: conv.id,
           contactName: (conv.contact as any)?.full_name || 'Desconhecido',
-          vendedorName: foundVendedor,
-          vendedorId: '',
+          userName: foundPattern,
+          userId: '',
           success: false,
-          error: 'Vendedor não encontrado no mapeamento',
+          error: 'Usuário não encontrado no sistema',
         });
         continue;
       }
 
-      // Contar atribuições por vendedor (para modo teste: 1 por vendedor)
+      // Contar atribuições por usuário (para modo teste: 1 por usuário)
       if (mode === 'test') {
-        if (vendedorCounts[foundVendedor] && vendedorCounts[foundVendedor] >= 1) {
+        if (userCounts[userInfo.fullName] && userCounts[userInfo.fullName] >= 1) {
           continue;
         }
       }
@@ -123,11 +240,11 @@ Deno.serve(async (req) => {
         results.push({
           conversationId: conv.id,
           contactName: (conv.contact as any)?.full_name || 'Desconhecido',
-          vendedorName: foundVendedor,
-          vendedorId: vendedorInfo.userId,
+          userName: userInfo.fullName,
+          userId: userInfo.userId,
           success: true,
         });
-        vendedorCounts[foundVendedor] = (vendedorCounts[foundVendedor] || 0) + 1;
+        userCounts[userInfo.fullName] = (userCounts[userInfo.fullName] || 0) + 1;
         continue;
       }
 
@@ -135,8 +252,8 @@ Deno.serve(async (req) => {
       const { error: updateError } = await supabase
         .from('conversations')
         .update({
-          assigned_to: vendedorInfo.userId,
-          department_id: vendedorInfo.departmentId,
+          assigned_to: userInfo.userId,
+          department_id: userInfo.departmentId,
         })
         .eq('id', conv.id);
 
@@ -145,23 +262,23 @@ Deno.serve(async (req) => {
         results.push({
           conversationId: conv.id,
           contactName: (conv.contact as any)?.full_name || 'Desconhecido',
-          vendedorName: foundVendedor,
-          vendedorId: vendedorInfo.userId,
+          userName: userInfo.fullName,
+          userId: userInfo.userId,
           success: false,
           error: updateError.message,
         });
         continue;
       }
 
-      console.log(`[AutoAssign] Assigned ${conv.id} to ${foundVendedor}`);
+      console.log(`[AutoAssign] Assigned ${conv.id} to ${userInfo.fullName}`);
       results.push({
         conversationId: conv.id,
         contactName: (conv.contact as any)?.full_name || 'Desconhecido',
-        vendedorName: foundVendedor,
-        vendedorId: vendedorInfo.userId,
+        userName: userInfo.fullName,
+        userId: userInfo.userId,
         success: true,
       });
-      vendedorCounts[foundVendedor] = (vendedorCounts[foundVendedor] || 0) + 1;
+      userCounts[userInfo.fullName] = (userCounts[userInfo.fullName] || 0) + 1;
     }
 
     // Resumo
@@ -169,8 +286,9 @@ Deno.serve(async (req) => {
       totalProcessed: results.length,
       successful: results.filter(r => r.success).length,
       failed: results.filter(r => !r.success).length,
-      byVendedor: vendedorCounts,
+      byUser: userCounts,
       mode,
+      availableUsers: users?.map(u => u.full_name).filter(Boolean) || [],
     };
 
     console.log('[AutoAssign] Summary:', summary);
