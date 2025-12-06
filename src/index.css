@@ -44,7 +44,10 @@
     --muted: 210 20% 96%;
     --muted-foreground: 215 13% 34%;
 
-    --accent: 262 50% 96%;
+    --accent: 262 50% 91%;
+    
+    /* Conversation States */
+    --unread-bg: 262 55% 95%;
     --accent-foreground: 262 83% 48%;
 
     /* Borders & Inputs */
@@ -103,7 +106,10 @@
     --muted: 220 13% 18%;
     --muted-foreground: 215 13% 65%;
 
-    --accent: 262 50% 25%;
+    --accent: 262 45% 20%;
+    
+    /* Conversation States */
+    --unread-bg: 262 40% 16%;
     --accent-foreground: 262 83% 80%;
 
     /* Borders & Inputs */
