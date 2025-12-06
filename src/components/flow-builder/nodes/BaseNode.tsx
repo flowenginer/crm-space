@@ -20,9 +20,15 @@ const nodeColors: Record<NodeType, string> = {
 
 const iconMap: Record<string, LucideIcon> = LucideIcons as unknown as Record<string, LucideIcon>;
 
+// Verifica se o nó de delay tem duas saídas (wait_reply)
+const isDelayWithTwoOutputs = (data: FlowNodeData) => {
+  return data.nodeType === 'delay' && data.nodeSubtype === 'wait_reply';
+};
+
 export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
   const IconComponent = iconMap[data.icon || 'Circle'] || LucideIcons.Circle;
   const color = data.color || nodeColors[data.nodeType];
+  const hasTwoOutputs = data.nodeType === 'condition' || isDelayWithTwoOutputs(data);
   
   return (
     <div
@@ -64,6 +70,7 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
         />
       )}
       
+      {/* Saídas para condições e wait_reply */}
       {data.nodeType === 'condition' ? (
         <>
           <Handle
@@ -82,6 +89,27 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
           />
           <div className="absolute -bottom-5 left-[25%] text-[10px] text-green-500">Sim</div>
           <div className="absolute -bottom-5 left-[65%] text-[10px] text-red-500">Não</div>
+        </>
+      ) : isDelayWithTwoOutputs(data) ? (
+        <>
+          {/* Saída quando cliente responde */}
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="replied"
+            className="!w-3 !h-3 !bg-green-500 !border-2 !border-green-300"
+            style={{ left: '30%' }}
+          />
+          {/* Saída quando dá timeout */}
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="timeout"
+            className="!w-3 !h-3 !bg-orange-500 !border-2 !border-orange-300"
+            style={{ left: '70%' }}
+          />
+          <div className="absolute -bottom-5 left-[20%] text-[10px] text-green-500">Respondeu</div>
+          <div className="absolute -bottom-5 left-[60%] text-[10px] text-orange-500">Timeout</div>
         </>
       ) : data.nodeType !== 'end' && (
         <Handle
@@ -110,6 +138,8 @@ function getNodeDescription(data: FlowNodeData): string {
       return `Timeout: ${config?.timeout_minutes || 60} min`;
     case 'add_tag':
       return 'Adicionar tag';
+    case 'remove_tag':
+      return 'Remover tag';
     case 'assign_agent':
       return 'Atribuir atendente';
     case 'if_else':
@@ -124,6 +154,12 @@ function getNodeDescription(data: FlowNodeData): string {
       return 'Finaliza o fluxo';
     case 'go_to_flow':
       return 'Redireciona para outro fluxo';
+    case 'set_lead_status':
+      return `Status: ${config?.status || '...'}`;
+    case 'add_note':
+      return 'Adiciona nota interna';
+    case 'close_conversation':
+      return 'Fecha a conversa';
     default:
       return data.nodeSubtype;
   }
