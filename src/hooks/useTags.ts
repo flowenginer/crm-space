@@ -1,6 +1,45 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+// ============ Standalone Functions ============
+
+// Random colors for auto-created tags
+const TAG_COLORS = ['#8B5CF6', '#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#EC4899', '#06B6D4', '#84CC16'];
+
+export async function findTagByName(name: string) {
+  const { data } = await supabase
+    .from('tags')
+    .select('*')
+    .ilike('name', name.trim())
+    .maybeSingle();
+  
+  return data;
+}
+
+export async function findOrCreateTag(name: string) {
+  const existing = await findTagByName(name);
+  if (existing) return existing;
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
+  
+  const { data, error } = await supabase
+    .from('tags')
+    .insert({ 
+      name: name.trim(), 
+      color, 
+      visibility: 'public',
+      created_by: user?.id,
+    })
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+// ============ Types ============
+
 export type TagVisibility = 'public' | 'private' | 'department';
 
 export interface Tag {

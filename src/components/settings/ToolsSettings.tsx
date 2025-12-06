@@ -29,6 +29,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import { ContactImporter } from './ContactImporter';
 
 interface AssignmentResult {
   conversationId: string;
@@ -556,6 +557,9 @@ export function ToolsSettings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Contact Importer */}
+      <ContactImporter />
     </div>
   );
 }
