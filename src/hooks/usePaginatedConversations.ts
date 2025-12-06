@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Conversation, AssignmentFilter } from './useConversations';
-import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths } from 'date-fns';
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths, subDays } from 'date-fns';
 
 const PAGE_SIZE = 50;
 
@@ -47,30 +47,86 @@ export interface ConversationFilters {
   tagIds?: string[];
 }
 
-// Helper para calcular datas do filtro
-function getDateRange(dateFilter: string, customFrom?: Date, customTo?: Date): { start: Date; end: Date } | null {
+// Helper para obter início/fim do dia no timezone local convertido para UTC
+function getTimezoneAdjustedDate(date: Date, timezone: string, isEnd: boolean = false): Date {
+  // Formatar a data no timezone especificado
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  
+  // Obter a data local no timezone
+  const parts = formatter.formatToParts(date);
+  const year = parseInt(parts.find(p => p.type === 'year')?.value || '2024');
+  const month = parseInt(parts.find(p => p.type === 'month')?.value || '1') - 1;
+  const day = parseInt(parts.find(p => p.type === 'day')?.value || '1');
+  
+  // Calcular offset do timezone
+  const nowInTz = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+  const offsetMs = date.getTime() - nowInTz.getTime();
+  
+  // Criar a data correta: queremos o início/fim do dia no timezone, convertido para UTC
+  const targetDate = new Date(year, month, day, isEnd ? 23 : 0, isEnd ? 59 : 0, isEnd ? 59 : 0);
+  return new Date(targetDate.getTime() + offsetMs);
+}
+
+// Helper para calcular datas do filtro COM TIMEZONE
+async function getDateRangeWithTimezone(dateFilter: string, customFrom?: Date, customTo?: Date): Promise<{ start: Date; end: Date } | null> {
+  // Buscar timezone da empresa
+  const { data: settings } = await supabase
+    .from('company_settings')
+    .select('timezone')
+    .limit(1)
+    .single();
+  
+  const timezone = settings?.timezone || 'America/Sao_Paulo';
   const now = new Date();
   
   switch (dateFilter) {
     case 'today':
-      return { start: startOfDay(now), end: endOfDay(now) };
+      return { 
+        start: getTimezoneAdjustedDate(now, timezone, false), 
+        end: getTimezoneAdjustedDate(now, timezone, true) 
+      };
     case 'yesterday':
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      return { start: startOfDay(yesterday), end: endOfDay(yesterday) };
+      const yesterday = subDays(now, 1);
+      return { 
+        start: getTimezoneAdjustedDate(yesterday, timezone, false), 
+        end: getTimezoneAdjustedDate(yesterday, timezone, true) 
+      };
     case 'this_week':
-      return { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfDay(now) };
+      const weekStart = startOfWeek(now, { weekStartsOn: 0 });
+      return { 
+        start: getTimezoneAdjustedDate(weekStart, timezone, false), 
+        end: getTimezoneAdjustedDate(now, timezone, true) 
+      };
     case 'last_week':
-      return { start: startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 }), end: endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 }) };
+      const lastWeekStartDate = startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
+      const lastWeekEndDate = endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
+      return { 
+        start: getTimezoneAdjustedDate(lastWeekStartDate, timezone, false), 
+        end: getTimezoneAdjustedDate(lastWeekEndDate, timezone, true) 
+      };
     case 'this_month':
-      return { start: startOfMonth(now), end: endOfDay(now) };
+      const monthStart = startOfMonth(now);
+      return { 
+        start: getTimezoneAdjustedDate(monthStart, timezone, false), 
+        end: getTimezoneAdjustedDate(now, timezone, true) 
+      };
     case 'last_month':
-      return { start: startOfMonth(subMonths(now, 1)), end: endOfMonth(subMonths(now, 1)) };
+      const lastMonthStartDate = startOfMonth(subMonths(now, 1));
+      const lastMonthEndDate = endOfMonth(subMonths(now, 1));
+      return { 
+        start: getTimezoneAdjustedDate(lastMonthStartDate, timezone, false), 
+        end: getTimezoneAdjustedDate(lastMonthEndDate, timezone, true) 
+      };
     case 'custom':
       if (customFrom) {
         return { 
-          start: startOfDay(customFrom), 
-          end: customTo ? endOfDay(customTo) : endOfDay(customFrom) 
+          start: getTimezoneAdjustedDate(customFrom, timezone, false), 
+          end: customTo ? getTimezoneAdjustedDate(customTo, timezone, true) : getTimezoneAdjustedDate(customFrom, timezone, true) 
         };
       }
       return null;
@@ -101,7 +157,7 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
       
       // Se há filtro de data, precisamos usar INNER JOIN para filtrar no servidor
       const hasDateFilter = dateFilter && dateFilter !== 'all';
-      const dateRange = hasDateFilter ? getDateRange(dateFilter, customDateFrom, customDateTo) : null;
+      const dateRange = hasDateFilter ? await getDateRangeWithTimezone(dateFilter, customDateFrom, customDateTo) : null;
       
       // Use !inner para forçar INNER JOIN quando filtrando por data
       const contactJoin = hasDateFilter && dateRange 
