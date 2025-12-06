@@ -8,12 +8,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { 
-  X, Phone, Loader2, CalendarClock, Plus, Save, Send, Smartphone
+  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ScheduleMessageModal } from './ScheduleMessageModal';
+import { TransferModal } from './TransferModal';
 import { fetchContactProfile } from '@/lib/whatsapp/instance-creator';
 
 interface ConversationSidebarProps {
@@ -35,6 +36,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   const [showTagModal, setShowTagModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [isFetchingPhoto, setIsFetchingPhoto] = useState(false);
   const [newConversationPhone, setNewConversationPhone] = useState('');
@@ -741,9 +743,32 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
       </div>
 
       {/* Footer: Action Buttons */}
-      <div className="p-3 border-t border-border space-y-2">
+      <div className="p-3 border-t border-border space-y-3">
+        {/* Transfer & Close Buttons */}
+        <div className="flex gap-2 pb-3 border-b border-border">
+          <Button
+            onClick={() => setShowTransferModal(true)}
+            variant="outline"
+            size="sm"
+            className="flex-1 gap-2 h-9 text-xs"
+          >
+            <ArrowRightLeft size={14} />
+            Transferir
+          </Button>
+          
+          <Button
+            onClick={() => setShowCloseModal(true)}
+            variant="ghost"
+            size="sm"
+            className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10 gap-2 h-9 text-xs"
+          >
+            <X size={14} />
+            Fechar
+          </Button>
+        </div>
+
         {/* Start New Conversation */}
-        <div className="pb-2 border-b border-border">
+        <div>
           <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             Iniciar nova conversa
           </label>
@@ -777,26 +802,6 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
             Digite o número com DDD para iniciar uma conversa
           </p>
         </div>
-
-        <Button
-          onClick={() => setShowScheduleModal(true)}
-          variant="outline"
-          size="sm"
-          className="w-full gap-2 h-9 text-xs"
-        >
-          <CalendarClock size={14} />
-          Agendar mensagem
-        </Button>
-        
-        <Button
-          onClick={() => setShowCloseModal(true)}
-          variant="ghost"
-          size="sm"
-          className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 gap-2 h-9 text-xs"
-        >
-          <X size={14} />
-          Fechar conversa
-        </Button>
       </div>
 
       {/* Modals */}
@@ -829,6 +834,14 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
         onClose={() => setShowCloseModal(false)}
         onConfirm={(reason) => closeConversation.mutate(reason)}
         isLoading={closeConversation.isPending}
+      />
+
+      <TransferModal
+        open={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+        conversationId={conversationId}
+        currentAssignedTo={conversation?.assigned_to}
+        currentDepartmentId={conversation?.department_id}
       />
 
       {/* Channel Selector Modal */}
