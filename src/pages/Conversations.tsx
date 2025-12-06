@@ -1092,6 +1092,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const agentCountFilters: CountFilters = useMemo(() => ({ ...countFilters, agentId: undefined }), [countFilters]);
   const originCountFilters: CountFilters = useMemo(() => ({ ...countFilters, origin: undefined }), [countFilters]);
   const channelCountFilters: CountFilters = useMemo(() => ({ ...countFilters, channelId: undefined }), [countFilters]);
+  // Tags mantém todos os filtros (agentId, departmentId, etc.) mas exclui tagId
+  const tagCountFilters: CountFilters = useMemo(() => ({ ...countFilters, tagId: undefined }), [countFilters]);
 
   // Fetch REAL counts from database with contextual filters
   const { data: totalCounts } = useConversationTotalCounts(countFilters);
@@ -1099,7 +1101,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const { data: dateFilterCountsData } = useDateFilterCounts(countFilters);
   const { data: departmentCountsData } = useDepartmentCounts(deptCountFilters);
   const { data: originCountsData } = useOriginCounts(originCountFilters);
-  const { data: tagCountsData } = useTagCounts(countFilters);
+  const { data: tagCountsData } = useTagCounts(tagCountFilters);
   const { data: agentCountsData } = useAgentCounts(agentCountFilters);
   
   // Flatten paginated conversations

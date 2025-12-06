@@ -455,7 +455,8 @@ export function useTagCounts(filters?: CountFilters) {
   return useQuery({
     queryKey: ['tag-counts', filters],
     queryFn: async (): Promise<Record<string, number>> => {
-      let query = supabase.from('conversations').select('contact:contacts(id)').eq('status', 'open');
+      // Buscar contact_id diretamente das conversas abertas
+      let query = supabase.from('conversations').select('contact_id').eq('status', 'open');
       
       // Apply filters
       if (filters) {
@@ -470,7 +471,8 @@ export function useTagCounts(filters?: CountFilters) {
       const { data, error } = await query;
       if (error) throw error;
       
-      const contactIds = data?.map(c => (c.contact as any)?.id).filter(Boolean) || [];
+      // Pegar contact_ids únicos diretamente
+      const contactIds = [...new Set(data?.map(c => c.contact_id).filter(Boolean) || [])];
       
       if (contactIds.length === 0) return {};
       
