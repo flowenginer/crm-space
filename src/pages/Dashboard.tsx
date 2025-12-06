@@ -16,6 +16,7 @@ import {
   useAgentPerformance,
   useCriticalConversations,
   useTimelineData,
+  useHourlyTimeline,
   useConversionFunnel,
   useAgentsForFilter,
   useDepartmentsForFilter,
@@ -26,7 +27,7 @@ import {
 import { KPICard } from '@/components/dashboard/KPICard';
 import { ConversionFunnel } from '@/components/dashboard/ConversionFunnel';
 import { LeadStatusChart } from '@/components/dashboard/LeadStatusChart';
-import { TimelineChart } from '@/components/dashboard/TimelineChart';
+import { TimelineTabs } from '@/components/dashboard/TimelineTabs';
 import { AgentPerformanceTable } from '@/components/dashboard/AgentPerformanceTable';
 import { CriticalConversations } from '@/components/dashboard/CriticalConversations';
 import { DashboardFilters } from '@/components/dashboard/DashboardFilters';
@@ -67,6 +68,7 @@ export default function Dashboard() {
   const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentPerformance(filters);
   const { data: criticalConversations = [], isLoading: loadingCritical } = useCriticalConversations(filters);
   const { data: timelineData = [], isLoading: loadingTimeline } = useTimelineData(filters);
+  const { data: hourlyData = [], isLoading: loadingHourly } = useHourlyTimeline(filters);
   const { data: funnelData = [], isLoading: loadingFunnel } = useConversionFunnel(filters);
   const { data: recentActivity = [], isLoading: loadingActivity } = useRecentActivity();
   
@@ -167,9 +169,14 @@ export default function Dashboard() {
         <LeadStatusChart data={leadsByStatus} isLoading={loadingStatus} />
       </div>
 
-      {/* Charts Row 2: Timeline */}
+      {/* Charts Row 2: Timeline with Tabs (Daily/Hourly) */}
       <div className="animate-fade-in">
-        <TimelineChart data={timelineData} isLoading={loadingTimeline} />
+        <TimelineTabs 
+          dailyData={timelineData} 
+          hourlyData={hourlyData}
+          isLoadingDaily={loadingTimeline}
+          isLoadingHourly={loadingHourly}
+        />
       </div>
 
       {/* Bottom Section: Agent Ranking + Critical + Recent */}

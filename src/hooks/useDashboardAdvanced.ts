@@ -566,3 +566,168 @@ export function useDepartmentsForFilter() {
     staleTime: 300000,
   });
 }
+
+// Hourly Timeline Data Interface
+export interface HourlyData {
+  hour: string;           // "06:00", "07:00", etc.
+  hourNum: number;        // 6, 7, 8... for sorting
+  newLeads: number;       // Leads created at this hour
+  messagesSent: number;   // Messages from agents (is_from_me = true)
+  messagesReceived: number; // Messages from clients (is_from_me = false)
+  leadResponses: number;  // Leads responding to agent messages
+  noResponse: number;     // Conversations without lead response
+}
+
+// Hourly Timeline Hook - Shows activity patterns by hour of day
+export function useHourlyTimeline(filters: DashboardFilters) {
+  return useQuery({
+    queryKey: ['hourly_timeline', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId],
+    queryFn: async (): Promise<HourlyData[]> => {
+      const dateFrom = startOfDay(filters.dateFrom).toISOString();
+      const dateTo = endOfDay(filters.dateTo).toISOString();
+
+      // Initialize hours array (6h to 22h)
+      const hours: HourlyData[] = [];
+      for (let h = 6; h <= 22; h++) {
+        hours.push({
+          hour: `${h.toString().padStart(2, '0')}:00`,
+          hourNum: h,
+          newLeads: 0,
+          messagesSent: 0,
+          messagesReceived: 0,
+          leadResponses: 0,
+          noResponse: 0
+        });
+      }
+
+      // Get all contacts created in period
+      let contactsQuery = supabase
+        .from('contacts')
+        .select('id, created_at')
+        .gte('created_at', dateFrom)
+        .lte('created_at', dateTo);
+
+      if (filters.agentId) {
+        contactsQuery = contactsQuery.eq('assigned_to', filters.agentId);
+      }
+      if (filters.departmentId) {
+        contactsQuery = contactsQuery.eq('department_id', filters.departmentId);
+      }
+
+      // Get all messages in period
+      let messagesQuery = supabase
+        .from('messages')
+        .select('id, conversation_id, is_from_me, created_at')
+        .gte('created_at', dateFrom)
+        .lte('created_at', dateTo)
+        .order('created_at', { ascending: true });
+
+      // Get conversations for filtering
+      let conversationsQuery = supabase
+        .from('conversations')
+        .select('id, assigned_to, department_id')
+        .gte('created_at', dateFrom)
+        .lte('created_at', dateTo);
+
+      if (filters.agentId) {
+        conversationsQuery = conversationsQuery.eq('assigned_to', filters.agentId);
+      }
+      if (filters.departmentId) {
+        conversationsQuery = conversationsQuery.eq('department_id', filters.departmentId);
+      }
+
+      const [
+        { data: contacts },
+        { data: allMessages },
+        { data: conversations }
+      ] = await Promise.all([
+        contactsQuery,
+        messagesQuery,
+        conversationsQuery
+      ]);
+
+      // Filter messages by conversations that match filters
+      const validConvIds = new Set(conversations?.map(c => c.id) || []);
+      const messages = allMessages?.filter(m => validConvIds.has(m.conversation_id)) || [];
+
+      // Count new leads by hour
+      contacts?.forEach(contact => {
+        const hour = new Date(contact.created_at).getHours();
+        const hourData = hours.find(h => h.hourNum === hour);
+        if (hourData) {
+          hourData.newLeads++;
+        }
+      });
+
+      // Count messages by hour and type
+      const messagesByConv = new Map<string, Array<{ is_from_me: boolean; created_at: string; hour: number }>>();
+      
+      messages?.forEach(msg => {
+        const hour = new Date(msg.created_at).getHours();
+        const hourData = hours.find(h => h.hourNum === hour);
+        
+        if (hourData) {
+          if (msg.is_from_me) {
+            hourData.messagesSent++;
+          } else {
+            hourData.messagesReceived++;
+          }
+        }
+
+        // Group messages by conversation for lead response analysis
+        if (!messagesByConv.has(msg.conversation_id)) {
+          messagesByConv.set(msg.conversation_id, []);
+        }
+        messagesByConv.get(msg.conversation_id)!.push({
+          is_from_me: msg.is_from_me || false,
+          created_at: msg.created_at,
+          hour
+        });
+      });
+
+      // Calculate lead responses (client messages that follow agent messages)
+      messagesByConv.forEach((convMessages) => {
+        // Sort by time
+        convMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        
+        for (let i = 1; i < convMessages.length; i++) {
+          const current = convMessages[i];
+          const previous = convMessages[i - 1];
+          
+          // If current message is from client and previous was from agent = lead response
+          if (!current.is_from_me && previous.is_from_me) {
+            const hourData = hours.find(h => h.hourNum === current.hour);
+            if (hourData) {
+              hourData.leadResponses++;
+            }
+          }
+        }
+      });
+
+      // Calculate no response (agent messages without subsequent client response in the period)
+      messagesByConv.forEach((convMessages) => {
+        convMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        
+        for (let i = 0; i < convMessages.length; i++) {
+          const current = convMessages[i];
+          
+          // If agent message
+          if (current.is_from_me) {
+            // Check if there's a client response after this
+            const hasResponse = convMessages.slice(i + 1).some(m => !m.is_from_me);
+            
+            if (!hasResponse) {
+              const hourData = hours.find(h => h.hourNum === current.hour);
+              if (hourData) {
+                hourData.noResponse++;
+              }
+            }
+          }
+        }
+      });
+
+      return hours;
+    },
+    staleTime: 60000,
+  });
+}
