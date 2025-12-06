@@ -1397,31 +1397,35 @@ export default function Conversations() {
         return true;
       })
       .sort((a, b) => {
+        // Helper para usar last_message_at com fallback para created_at
+        const getDate = (conv: Conversation) => 
+          new Date(conv.last_message_at || conv.created_at).getTime();
+        
         switch (sortFilter) {
           case 'unread':
             // Unread first, then by date
             if (a.is_unread && !b.is_unread) return -1;
             if (!a.is_unread && b.is_unread) return 1;
-            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+            return getDate(b) - getDate(a);
           case 'not_replied':
             // Conversations where last message is from client (not from me) first
             const aLastIsFromClient = lastMessageMap.has(a.id) && !lastMessageMap.get(a.id);
             const bLastIsFromClient = lastMessageMap.has(b.id) && !lastMessageMap.get(b.id);
             if (aLastIsFromClient && !bLastIsFromClient) return -1;
             if (!aLastIsFromClient && bLastIsFromClient) return 1;
-            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+            return getDate(b) - getDate(a);
           case 'client_not_replied':
             // Conversations where last message is from me first
             const aLastIsFromMe = lastMessageMap.has(a.id) && lastMessageMap.get(a.id);
             const bLastIsFromMe = lastMessageMap.has(b.id) && lastMessageMap.get(b.id);
             if (aLastIsFromMe && !bLastIsFromMe) return -1;
             if (!aLastIsFromMe && bLastIsFromMe) return 1;
-            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+            return getDate(b) - getDate(a);
           case 'oldest':
-            return new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+            return getDate(a) - getDate(b);
           case 'newest':
           default:
-            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+            return getDate(b) - getDate(a);
         }
       });
   }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter, customDateRange, pinnedConversations, quickFilter, lastMessageMap]);
