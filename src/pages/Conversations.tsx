@@ -2359,9 +2359,10 @@ export default function Conversations() {
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="bg-card border-b border-border px-4 md:px-6 py-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+            <div className="bg-card border-b border-border px-4 md:px-6 py-3 space-y-2">
+              {/* Linha 1: Avatar + Nome + Etiquetas (quando cabem) + Ícones */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3 flex-shrink-0">
                   {isMobile && (
                     <button onClick={handleBackToList} className="p-2 -ml-2 hover:bg-muted rounded-lg">
                       <ChevronLeft size={20} />
@@ -2373,38 +2374,37 @@ export default function Conversations() {
                         src={selectedConversation.contact.avatar_url}
                         alt={selectedConversation.contact.full_name || 'Contato'}
                         loading="lazy"
-                        className="w-12 h-12 rounded-full object-cover shadow-md"
+                        className="w-10 h-10 rounded-full object-cover shadow-md"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold shadow-md">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold shadow-md text-sm">
                         {(selectedConversation.contact?.full_name || 'C').charAt(0).toUpperCase()}
                       </div>
                     )}
                     {selectedConversation.contact?.is_online && (
-                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-success rounded-full border-2 border-card"></div>
+                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-success rounded-full border-2 border-card"></div>
                     )}
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{selectedConversation.contact?.full_name || 'Contato'}</h3>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-foreground text-sm truncate max-w-[120px] md:max-w-[180px]">
+                      {selectedConversation.contact?.full_name || 'Contato'}
+                    </h3>
                     {typingUsers.length > 0 ? (
-                      <p className="text-sm text-primary flex items-center gap-1">
+                      <p className="text-xs text-primary flex items-center gap-1">
                         <span className="flex gap-0.5">
-                          <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                          <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                          <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                          <span className="w-1 h-1 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                          <span className="w-1 h-1 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                          <span className="w-1 h-1 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                         </span>
-                        {typingUsers.length === 1 
-                          ? `${typingUsers[0].userName} está digitando...`
-                          : `${typingUsers.length} pessoas digitando...`
-                        }
+                        digitando...
                       </p>
                     ) : (
                       <p className={cn(
-                        'text-sm flex items-center gap-1',
+                        'text-xs flex items-center gap-1',
                         selectedConversation.contact?.is_online ? 'text-success' : 'text-muted-foreground'
                       )}>
                         {selectedConversation.contact?.is_online && (
-                          <span className="w-2 h-2 bg-success rounded-full animate-pulse"></span>
+                          <span className="w-1.5 h-1.5 bg-success rounded-full animate-pulse"></span>
                         )}
                         {selectedConversation.contact?.is_online ? 'Online' : 'Offline'}
                       </p>
@@ -2412,8 +2412,174 @@ export default function Conversations() {
                   </div>
                 </div>
 
-                {/* Contact Tags in Header */}
-                <div className="flex-1 mx-4 min-w-0 hidden md:flex items-center gap-1.5 flex-wrap">
+                {/* Etiquetas na linha 1 - apenas em telas grandes E com poucas etiquetas */}
+                {!isMobile && contactTags.length <= 2 && (
+                  <div className="hidden lg:flex items-center gap-1.5 flex-1 mx-3 min-w-0 overflow-hidden">
+                    {contactTags.map((tag: any) => (
+                      <span 
+                        key={tag.id}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0"
+                        style={{ 
+                          backgroundColor: `${tag.color || '#8B5CF6'}20`,
+                          color: tag.color || '#8B5CF6'
+                        }}
+                      >
+                        {tag.name}
+                        <button 
+                          onClick={() => {
+                            if (selectedConversation?.contact?.id) {
+                              removeTagFromContact.mutate(
+                                { contactId: selectedConversation.contact.id, tagId: tag.id },
+                                { onSuccess: () => refetchContactTags() }
+                              );
+                            }
+                          }}
+                          className="hover:opacity-70"
+                          disabled={removeTagFromContact.isPending}
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                    
+                    <Popover open={showHeaderTagPopover} onOpenChange={setShowHeaderTagPopover}>
+                      <PopoverTrigger asChild>
+                        <button className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors flex-shrink-0">
+                          <Plus size={10} />
+                          Etiqueta
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-3" align="start">
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-muted-foreground">Adicionar etiqueta</p>
+                          
+                          <div className="relative">
+                            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                              type="text"
+                              placeholder="Buscar etiqueta..."
+                              value={tagSearchQuery}
+                              onChange={(e) => setTagSearchQuery(e.target.value)}
+                              className="h-8 pl-8 text-sm"
+                            />
+                          </div>
+                          
+                          <div className="max-h-48 overflow-y-auto space-y-0.5">
+                            {tags
+                              .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
+                              .filter((t: any) => t.name.toLowerCase().includes(tagSearchQuery.toLowerCase()))
+                              .slice(0, 15)
+                              .map((tag: any) => (
+                                <button
+                                  key={tag.id}
+                                  onClick={() => {
+                                    if (selectedConversation?.contact?.id) {
+                                      addTagToContact.mutate(
+                                        { contactId: selectedConversation.contact.id, tagId: tag.id },
+                                        { onSuccess: () => { refetchContactTags(); setShowHeaderTagPopover(false); setTagSearchQuery(''); } }
+                                      );
+                                    }
+                                  }}
+                                  disabled={addTagToContact.isPending}
+                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-left text-sm"
+                                >
+                                  <span 
+                                    className="w-3 h-3 rounded-full flex-shrink-0" 
+                                    style={{ backgroundColor: tag.color || '#8B5CF6' }}
+                                  />
+                                  <span className="truncate">{tag.name}</span>
+                                </button>
+                              ))}
+                            {tags
+                              .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
+                              .filter((t: any) => t.name.toLowerCase().includes(tagSearchQuery.toLowerCase()))
+                              .length === 0 && (
+                              <p className="text-xs text-muted-foreground text-center py-2">
+                                {tagSearchQuery ? 'Nenhuma etiqueta encontrada' : 'Todas etiquetas adicionadas'}
+                              </p>
+                            )}
+                          </div>
+                          
+                          <div className="pt-2 border-t">
+                            <button
+                              onClick={() => {
+                                setShowHeaderTagPopover(false);
+                                setShowCreateTagModal(true);
+                              }}
+                              className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-left text-sm text-primary"
+                            >
+                              <Plus size={14} />
+                              <span>Criar nova etiqueta</span>
+                            </button>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
+
+                {/* Ícones de ação - sempre visíveis */}
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  {showMessageSearch ? (
+                    <div className="flex items-center gap-2 bg-muted rounded-lg px-2 py-1">
+                      <Search size={14} className="text-muted-foreground" />
+                      <Input
+                        type="text"
+                        placeholder="Buscar..."
+                        value={messageSearchQuery}
+                        onChange={(e) => setMessageSearchQuery(e.target.value)}
+                        className="h-7 w-28 md:w-40 border-0 bg-transparent p-0 text-sm focus-visible:ring-0"
+                        autoFocus
+                      />
+                      <button 
+                        onClick={() => { setShowMessageSearch(false); setMessageSearchQuery(''); }}
+                        className="p-1 hover:bg-background rounded"
+                      >
+                        <X size={14} className="text-muted-foreground" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setShowMessageSearch(true)}
+                      className="p-2 hover:bg-muted rounded-lg transition-colors"
+                    >
+                      <Search size={18} className="text-muted-foreground" />
+                    </button>
+                  )}
+                  <button className="p-2 hover:bg-muted rounded-lg transition-colors">
+                    <Phone size={18} className="text-muted-foreground" />
+                  </button>
+                  <button className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex">
+                    <Video size={18} className="text-muted-foreground" />
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="p-2 hover:bg-muted rounded-lg transition-colors">
+                        <MoreVertical size={18} className="text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48 bg-popover">
+                      <DropdownMenuItem onClick={handleMarkAsUnread}>
+                        <Mail size={16} className="mr-2" />
+                        Marcar como não lida
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleCloseConversation}>
+                        <X size={16} className="mr-2" />
+                        Fechar conversa
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handleExportConversation}>
+                        <Download size={16} className="mr-2" />
+                        Exportar conversa
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+
+              {/* Linha 2: Etiquetas - quando tem muitas OU em mobile/tablet */}
+              {(isMobile || contactTags.length > 2) && (
+                <div className="flex items-center gap-1.5 flex-wrap pl-0 md:pl-[52px]">
                   {contactTags.map((tag: any) => (
                     <span 
                       key={tag.id}
@@ -2441,7 +2607,7 @@ export default function Conversations() {
                     </span>
                   ))}
                   
-                  <Popover open={showHeaderTagPopover} onOpenChange={setShowHeaderTagPopover}>
+                  <Popover>
                     <PopoverTrigger asChild>
                       <button className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
                         <Plus size={10} />
@@ -2452,7 +2618,6 @@ export default function Conversations() {
                       <div className="space-y-2">
                         <p className="text-xs font-medium text-muted-foreground">Adicionar etiqueta</p>
                         
-                        {/* Search Input */}
                         <div className="relative">
                           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                           <Input
@@ -2464,7 +2629,6 @@ export default function Conversations() {
                           />
                         </div>
                         
-                        {/* Tags List */}
                         <div className="max-h-48 overflow-y-auto space-y-0.5">
                           {tags
                             .filter((t: any) => !contactTags.some((ct: any) => ct.id === t.id))
@@ -2477,7 +2641,7 @@ export default function Conversations() {
                                   if (selectedConversation?.contact?.id) {
                                     addTagToContact.mutate(
                                       { contactId: selectedConversation.contact.id, tagId: tag.id },
-                                      { onSuccess: () => { refetchContactTags(); setShowHeaderTagPopover(false); setTagSearchQuery(''); } }
+                                      { onSuccess: () => { refetchContactTags(); setTagSearchQuery(''); } }
                                     );
                                   }
                                 }}
@@ -2501,13 +2665,9 @@ export default function Conversations() {
                           )}
                         </div>
                         
-                        {/* Create Tag Button */}
                         <div className="pt-2 border-t">
                           <button
-                            onClick={() => {
-                              setShowHeaderTagPopover(false);
-                              setShowCreateTagModal(true);
-                            }}
+                            onClick={() => setShowCreateTagModal(true)}
                             className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-left text-sm text-primary"
                           >
                             <Plus size={14} />
@@ -2518,64 +2678,7 @@ export default function Conversations() {
                     </PopoverContent>
                   </Popover>
                 </div>
-
-                <div className="flex items-center gap-1">
-                  {showMessageSearch ? (
-                    <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-1">
-                      <Search size={16} className="text-muted-foreground" />
-                      <Input
-                        type="text"
-                        placeholder="Buscar na conversa..."
-                        value={messageSearchQuery}
-                        onChange={(e) => setMessageSearchQuery(e.target.value)}
-                        className="h-8 w-40 md:w-56 border-0 bg-transparent p-0 focus-visible:ring-0"
-                        autoFocus
-                      />
-                      <button 
-                        onClick={() => { setShowMessageSearch(false); setMessageSearchQuery(''); }}
-                        className="p-1 hover:bg-background rounded"
-                      >
-                        <X size={16} className="text-muted-foreground" />
-                      </button>
-                    </div>
-                  ) : (
-                    <button 
-                      onClick={() => setShowMessageSearch(true)}
-                      className="p-2 hover:bg-muted rounded-lg transition-colors"
-                    >
-                      <Search size={20} className="text-muted-foreground" />
-                    </button>
-                  )}
-                  <button className="p-2 hover:bg-muted rounded-lg transition-colors">
-                    <Phone size={20} className="text-muted-foreground" />
-                  </button>
-                  <button className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex">
-                    <Video size={20} className="text-muted-foreground" />
-                  </button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="p-2 hover:bg-muted rounded-lg transition-colors">
-                        <MoreVertical size={20} className="text-muted-foreground" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 bg-popover">
-                      <DropdownMenuItem onClick={handleMarkAsUnread}>
-                        <Mail size={16} className="mr-2" />
-                        Marcar como não lida
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleCloseConversation}>
-                        <X size={16} className="mr-2" />
-                        Fechar conversa
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={handleExportConversation}>
-                        <Download size={16} className="mr-2" />
-                        Exportar conversa
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-            </div>
+              )}
             </div>
 
             {/* Selection Mode Toolbar */}
