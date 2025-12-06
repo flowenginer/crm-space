@@ -44,10 +44,10 @@
     --muted: 210 20% 96%;
     --muted-foreground: 215 13% 34%;
 
-    --accent: 262 50% 91%;
+    --accent: 262 55% 82%;
     
     /* Conversation States */
-    --unread-bg: 262 55% 95%;
+    --unread-bg: 262 50% 92%;
     --accent-foreground: 262 83% 48%;
 
     /* Borders & Inputs */
