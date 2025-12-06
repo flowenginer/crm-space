@@ -8,8 +8,8 @@ const corsHeaders = {
 // Regex para extrair nome do usuário do padrão *Nome*: ou *NOME - SETOR*:
 const USER_PATTERN = /^\*([^*]+)\*:/;
 
-const BATCH_SIZE = 100; // Processar em batches de 100
-const MAX_EXECUTION_TIME_MS = 50000; // 50 segundos máximo (Edge functions têm limite de 60s)
+const BATCH_SIZE = 50; // Reduzido para processar mais rápido com batch de mensagens
+const MAX_EXECUTION_TIME_MS = 55000; // 55 segundos máximo
 
 interface UserInfo {
   userId: string;
@@ -24,6 +24,7 @@ interface AssignmentResult {
   userId: string;
   success: boolean;
   error?: string;
+  patternFound?: string;
 }
 
 // Função para normalizar nome (remover acentos, lowercase)
@@ -56,10 +57,10 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { mode = 'preview', limit, action } = await req.json().catch(() => ({}));
+    const { mode = 'preview', limit, action, startOffset = 0 } = await req.json().catch(() => ({}));
     
     console.log(`[AutoAssign] ========== INÍCIO ==========`);
-    console.log(`[AutoAssign] Modo: ${mode}, Limite: ${limit || 'SEM LIMITE'}, Ação: ${action || 'assign'}`);
+    console.log(`[AutoAssign] Modo: ${mode}, Limite: ${limit || 'SEM LIMITE'}, Ação: ${action || 'assign'}, Offset inicial: ${startOffset}`);
 
     // Se a ação for apenas listar usuários
     if (action === 'list-users') {
@@ -193,13 +194,17 @@ Deno.serve(async (req) => {
     let totalProcessed = 0;
     let stoppedByTimeout = false;
     let stoppedByTestComplete = false;
+    
+    // Estatísticas extras para debug
+    const unrecognizedPatterns: Record<string, number> = {};
+    const conversationsWithoutPattern: string[] = [];
 
     // ========== MODO TESTE: Encontrar 1 para cada usuário ==========
     if (mode === 'test') {
       console.log(`[AutoAssign] MODO TESTE: Buscando 1 conversa para cada um dos ${allUserNames.size} usuários`);
       
       const usersWithAssignment: Set<string> = new Set();
-      let offset = 0;
+      let offset = startOffset;
       
       // Continuar até encontrar 1 para cada usuário OU processar todas as conversas
       while (usersWithAssignment.size < allUserNames.size) {
@@ -210,7 +215,7 @@ Deno.serve(async (req) => {
           break;
         }
 
-        // Buscar próximo batch
+        // Buscar próximo batch de conversas
         const { data: conversations, error: convError } = await supabase
           .from('conversations')
           .select('id, contact:contacts(id, full_name)')
@@ -229,7 +234,36 @@ Deno.serve(async (req) => {
           break;
         }
 
-        console.log(`[AutoAssign] Batch ${offset / BATCH_SIZE + 1}: Processando ${conversations.length} conversas (offset ${offset})`);
+        console.log(`[AutoAssign] Batch ${Math.floor(offset / BATCH_SIZE) + 1}: Buscando mensagens de ${conversations.length} conversas...`);
+
+        // ⚡ OTIMIZAÇÃO: Buscar mensagens de TODAS as conversas do batch de uma vez
+        const conversationIds = conversations.map(c => c.id);
+        const { data: allMessages, error: msgBatchError } = await supabase
+          .from('messages')
+          .select('conversation_id, content')
+          .in('conversation_id', conversationIds)
+          .eq('is_from_me', true)
+          .not('content', 'is', null)
+          .order('created_at', { ascending: false });
+
+        if (msgBatchError) {
+          console.error('[AutoAssign] Erro ao buscar mensagens em batch:', msgBatchError);
+          statsErrors += conversations.length;
+          offset += BATCH_SIZE;
+          continue;
+        }
+
+        // Agrupar mensagens por conversa
+        const messagesByConversation: Record<string, string[]> = {};
+        for (const msg of allMessages || []) {
+          if (!messagesByConversation[msg.conversation_id]) {
+            messagesByConversation[msg.conversation_id] = [];
+          }
+          // Limitar a 30 mensagens por conversa para performance
+          if (messagesByConversation[msg.conversation_id].length < 30) {
+            messagesByConversation[msg.conversation_id].push(msg.content);
+          }
+        }
 
         for (const conv of conversations) {
           totalProcessed++;
@@ -241,31 +275,18 @@ Deno.serve(async (req) => {
             break;
           }
 
-          const { data: messages, error: msgError } = await supabase
-            .from('messages')
-            .select('content')
-            .eq('conversation_id', conv.id)
-            .eq('is_from_me', true)
-            .not('content', 'is', null)
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-          if (msgError) {
-            statsErrors++;
-            continue;
-          }
+          const messages = messagesByConversation[conv.id] || [];
+          const contactName = (conv.contact as any)?.full_name || 'Desconhecido';
 
           // Encontrar padrão *Nome*: nas mensagens
           let foundPattern: string | null = null;
-          for (const msg of messages || []) {
-            const match = msg.content?.match(USER_PATTERN);
+          for (const content of messages) {
+            const match = content?.match(USER_PATTERN);
             if (match) {
               foundPattern = match[1];
               break;
             }
           }
-
-          const contactName = (conv.contact as any)?.full_name || 'Desconhecido';
 
           if (!foundPattern) {
             statsNoPattern++;
@@ -276,6 +297,7 @@ Deno.serve(async (req) => {
           
           if (!userInfo) {
             statsUserNotFound++;
+            unrecognizedPatterns[foundPattern] = (unrecognizedPatterns[foundPattern] || 0) + 1;
             continue;
           }
 
@@ -303,6 +325,7 @@ Deno.serve(async (req) => {
               userId: userInfo.userId,
               success: false,
               error: updateError.message,
+              patternFound: foundPattern,
             });
             continue;
           }
@@ -317,6 +340,7 @@ Deno.serve(async (req) => {
             userName: userInfo.fullName,
             userId: userInfo.userId,
             success: true,
+            patternFound: foundPattern,
           });
         }
 
@@ -334,18 +358,18 @@ Deno.serve(async (req) => {
     else {
       console.log(`[AutoAssign] MODO ${mode.toUpperCase()}: Processando em batches de ${BATCH_SIZE}`);
       
-      let offset = 0;
+      let offset = startOffset;
       let hasMore = true;
       
       while (hasMore) {
         // Verificar timeout
         if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
-          console.log(`[AutoAssign] Timeout atingido após ${totalProcessed} conversas processadas`);
+          console.log(`[AutoAssign] Timeout atingido após ${totalProcessed} conversas processadas. Próximo offset: ${offset}`);
           stoppedByTimeout = true;
           break;
         }
 
-        // Buscar próximo batch
+        // Buscar próximo batch de conversas
         const { data: conversations, error: convError } = await supabase
           .from('conversations')
           .select('id, contact:contacts(id, full_name)')
@@ -365,39 +389,59 @@ Deno.serve(async (req) => {
           break;
         }
 
-        console.log(`[AutoAssign] Batch ${offset / BATCH_SIZE + 1}: Processando ${conversations.length} conversas (offset ${offset})`);
+        console.log(`[AutoAssign] Batch ${Math.floor(offset / BATCH_SIZE) + 1}: Buscando mensagens de ${conversations.length} conversas...`);
+
+        // ⚡ OTIMIZAÇÃO: Buscar mensagens de TODAS as conversas do batch de uma vez
+        const conversationIds = conversations.map(c => c.id);
+        const { data: allMessages, error: msgBatchError } = await supabase
+          .from('messages')
+          .select('conversation_id, content')
+          .in('conversation_id', conversationIds)
+          .eq('is_from_me', true)
+          .not('content', 'is', null)
+          .order('created_at', { ascending: false });
+
+        if (msgBatchError) {
+          console.error('[AutoAssign] Erro ao buscar mensagens em batch:', msgBatchError);
+          statsErrors += conversations.length;
+          offset += BATCH_SIZE;
+          continue;
+        }
+
+        // Agrupar mensagens por conversa
+        const messagesByConversation: Record<string, string[]> = {};
+        for (const msg of allMessages || []) {
+          if (!messagesByConversation[msg.conversation_id]) {
+            messagesByConversation[msg.conversation_id] = [];
+          }
+          // Limitar a 30 mensagens por conversa para performance
+          if (messagesByConversation[msg.conversation_id].length < 30) {
+            messagesByConversation[msg.conversation_id].push(msg.content);
+          }
+        }
 
         for (const conv of conversations) {
           totalProcessed++;
 
-          const { data: messages, error: msgError } = await supabase
-            .from('messages')
-            .select('content')
-            .eq('conversation_id', conv.id)
-            .eq('is_from_me', true)
-            .not('content', 'is', null)
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-          if (msgError) {
-            statsErrors++;
-            continue;
-          }
+          const messages = messagesByConversation[conv.id] || [];
+          const contactName = (conv.contact as any)?.full_name || 'Desconhecido';
 
           // Encontrar padrão *Nome*: nas mensagens
           let foundPattern: string | null = null;
-          for (const msg of messages || []) {
-            const match = msg.content?.match(USER_PATTERN);
+          for (const content of messages) {
+            const match = content?.match(USER_PATTERN);
             if (match) {
               foundPattern = match[1];
               break;
             }
           }
 
-          const contactName = (conv.contact as any)?.full_name || 'Desconhecido';
-
           if (!foundPattern) {
             statsNoPattern++;
+            // Registrar algumas conversas sem padrão para debug (máximo 10)
+            if (conversationsWithoutPattern.length < 10) {
+              conversationsWithoutPattern.push(`${contactName} (${conv.id.substring(0,8)}...)`);
+            }
             continue;
           }
 
@@ -405,6 +449,7 @@ Deno.serve(async (req) => {
           
           if (!userInfo) {
             statsUserNotFound++;
+            unrecognizedPatterns[foundPattern] = (unrecognizedPatterns[foundPattern] || 0) + 1;
             results.push({
               conversationId: conv.id,
               contactName,
@@ -412,6 +457,7 @@ Deno.serve(async (req) => {
               userId: '',
               success: false,
               error: 'Usuário não encontrado no sistema',
+              patternFound: foundPattern,
             });
             continue;
           }
@@ -426,6 +472,7 @@ Deno.serve(async (req) => {
               userName: userInfo.fullName,
               userId: userInfo.userId,
               success: true,
+              patternFound: foundPattern,
             });
             continue;
           }
@@ -448,11 +495,12 @@ Deno.serve(async (req) => {
               userId: userInfo.userId,
               success: false,
               error: updateError.message,
+              patternFound: foundPattern,
             });
             continue;
           }
 
-          if (totalProcessed % 50 === 0 || totalProcessed <= 10) {
+          if (totalProcessed % 100 === 0 || totalProcessed <= 10) {
             console.log(`[AutoAssign] [${totalProcessed}/${totalUnassignedCount}] ✓ ${contactName} -> ${userInfo.fullName}`);
           }
           
@@ -464,6 +512,7 @@ Deno.serve(async (req) => {
             userName: userInfo.fullName,
             userId: userInfo.userId,
             success: true,
+            patternFound: foundPattern,
           });
         }
 
@@ -477,19 +526,38 @@ Deno.serve(async (req) => {
     }
 
     const elapsedTime = Date.now() - startTime;
+    const nextOffset = startOffset + totalProcessed;
 
     // Resumo detalhado
     console.log(`[AutoAssign] ========== ESTATÍSTICAS ==========`);
     console.log(`[AutoAssign] Tempo de execução: ${(elapsedTime / 1000).toFixed(1)}s`);
     console.log(`[AutoAssign] Total no banco (não atribuídas): ${totalUnassignedCount}`);
-    console.log(`[AutoAssign] Conversas processadas: ${totalProcessed}`);
-    console.log(`[AutoAssign] - Sem padrão *Nome*: ${statsNoPattern}`);
+    console.log(`[AutoAssign] Conversas processadas nesta execução: ${totalProcessed}`);
+    console.log(`[AutoAssign] Offset inicial: ${startOffset} | Próximo offset: ${nextOffset}`);
+    console.log(`[AutoAssign] - Sem padrão *Nome*: ${statsNoPattern} (${((statsNoPattern/totalProcessed)*100).toFixed(1)}%)`);
     console.log(`[AutoAssign] - Padrão encontrado mas usuário não existe: ${statsUserNotFound}`);
     console.log(`[AutoAssign] - Atribuídas com sucesso: ${statsAssigned}`);
     console.log(`[AutoAssign] - Puladas (já atribuído no teste): ${statsSkippedTestMode}`);
     console.log(`[AutoAssign] - Erros: ${statsErrors}`);
     console.log(`[AutoAssign] Por usuário: ${JSON.stringify(userCounts)}`);
-    if (stoppedByTimeout) console.log(`[AutoAssign] ⚠️ PARADO POR TIMEOUT`);
+    
+    // Log padrões não reconhecidos
+    if (Object.keys(unrecognizedPatterns).length > 0) {
+      console.log(`[AutoAssign] Padrões NÃO reconhecidos (top 10):`);
+      const topUnrecognized = Object.entries(unrecognizedPatterns)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+      for (const [pattern, count] of topUnrecognized) {
+        console.log(`[AutoAssign]   "${pattern}": ${count}x`);
+      }
+    }
+    
+    // Log conversas sem padrão
+    if (conversationsWithoutPattern.length > 0) {
+      console.log(`[AutoAssign] Exemplos de conversas sem padrão *Nome*: ${conversationsWithoutPattern.join(', ')}`);
+    }
+    
+    if (stoppedByTimeout) console.log(`[AutoAssign] ⚠️ PARADO POR TIMEOUT - Execute novamente com startOffset: ${nextOffset}`);
     if (stoppedByTestComplete) console.log(`[AutoAssign] ✓ TESTE COMPLETO - todos os usuários atendidos`);
     console.log(`[AutoAssign] ========== FIM ==========`);
 
@@ -506,6 +574,14 @@ Deno.serve(async (req) => {
       executionTimeMs: elapsedTime,
       stoppedByTimeout,
       stoppedByTestComplete,
+      startOffset,
+      nextOffset,
+      canContinue: stoppedByTimeout && nextOffset < (totalUnassignedCount || 0),
+      unrecognizedPatterns: Object.entries(unrecognizedPatterns)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 20)
+        .reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}),
+      conversationsWithoutPatternExamples: conversationsWithoutPattern,
       availableUsers: users?.map(u => u.full_name).filter(Boolean) || [],
     };
 

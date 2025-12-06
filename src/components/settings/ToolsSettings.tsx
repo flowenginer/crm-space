@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Wand2, Loader2, AlertTriangle, CheckCircle, Users, RefreshCw } from 'lucide-react';
+import { Wand2, Loader2, AlertTriangle, CheckCircle, Users, RefreshCw, Clock, SkipForward, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -21,6 +21,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 
 interface AssignmentResult {
   conversationId: string;
@@ -29,15 +35,28 @@ interface AssignmentResult {
   userId: string;
   success: boolean;
   error?: string;
+  patternFound?: string;
 }
 
 interface AssignmentSummary {
+  totalInDatabase: number;
   totalProcessed: number;
+  noPatternFound: number;
+  userNotFound: number;
   successful: number;
-  failed: number;
+  skippedTestMode: number;
+  errors: number;
   byUser: Record<string, number>;
   mode: string;
-  availableUsers?: string[];
+  executionTimeMs: number;
+  stoppedByTimeout: boolean;
+  stoppedByTestComplete: boolean;
+  startOffset: number;
+  nextOffset: number;
+  canContinue: boolean;
+  unrecognizedPatterns: Record<string, number>;
+  conversationsWithoutPatternExamples: string[];
+  availableUsers: string[];
 }
 
 interface RecognizedUser {
@@ -54,6 +73,7 @@ export function ToolsSettings() {
   const [results, setResults] = useState<AssignmentResult[] | null>(null);
   const [summary, setSummary] = useState<AssignmentSummary | null>(null);
   const [recognizedUsers, setRecognizedUsers] = useState<RecognizedUser[]>([]);
+  const [nextOffset, setNextOffset] = useState(0);
 
   const fetchRecognizedUsers = async () => {
     setIsLoadingUsers(true);
@@ -92,10 +112,12 @@ export function ToolsSettings() {
     fetchRecognizedUsers();
   }, []);
 
-  const handleAutoAssign = async () => {
+  const handleAutoAssign = async (continueFromOffset = 0) => {
     setIsLoading(true);
-    setResults(null);
-    setSummary(null);
+    if (continueFromOffset === 0) {
+      setResults(null);
+      setSummary(null);
+    }
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -110,7 +132,7 @@ export function ToolsSettings() {
           },
           body: JSON.stringify({ 
             mode,
-            limit: mode === 'test' ? 50 : undefined,
+            startOffset: continueFromOffset,
           }),
         }
       );
@@ -121,11 +143,20 @@ export function ToolsSettings() {
         throw new Error(data.error || 'Erro ao executar atribuição automática');
       }
 
-      setResults(data.results);
+      // Merge results if continuing
+      if (continueFromOffset > 0 && results) {
+        setResults([...results, ...data.results]);
+      } else {
+        setResults(data.results);
+      }
+      
       setSummary(data.summary);
+      setNextOffset(data.summary.nextOffset);
 
       if (mode === 'preview') {
         toast.info(`Preview: ${data.summary.successful} conversas seriam atribuídas`);
+      } else if (data.summary.stoppedByTimeout) {
+        toast.warning(`Processadas ${data.summary.totalProcessed} conversas. Clique em "Continuar" para processar mais.`);
       } else {
         toast.success(`${data.summary.successful} conversas atribuídas com sucesso!`);
       }
@@ -141,6 +172,12 @@ export function ToolsSettings() {
     setResults(null);
     setSummary(null);
     setMode('preview');
+    setNextOffset(0);
+  };
+
+  const formatTime = (ms: number) => {
+    const seconds = Math.floor(ms / 1000);
+    return `${seconds}s`;
   };
 
   return (
@@ -162,9 +199,9 @@ export function ToolsSettings() {
               <div className="text-sm text-muted-foreground">
                 <p className="font-medium text-foreground mb-1">Como funciona:</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li>Busca a última mensagem enviada com o padrão <code className="bg-muted px-1 rounded">*Nome*:</code></li>
+                  <li>Busca mensagens enviadas com o padrão <code className="bg-muted px-1 rounded">*Nome*:</code></li>
                   <li>Identifica o usuário pelo nome e atribui a conversa a ele</li>
-                  <li>Qualquer usuário cadastrado no sistema pode receber atribuições</li>
+                  <li>Conversas já atribuídas são ignoradas automaticamente</li>
                 </ul>
               </div>
             </div>
@@ -221,7 +258,7 @@ export function ToolsSettings() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh]">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wand2 className="h-5 w-5 text-primary" />
@@ -235,7 +272,7 @@ export function ToolsSettings() {
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Modo de Execução</label>
-              <Select value={mode} onValueChange={(v) => setMode(v as any)}>
+              <Select value={mode} onValueChange={(v) => setMode(v as any)} disabled={isLoading}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -263,76 +300,203 @@ export function ToolsSettings() {
             </div>
 
             {summary && (
-              <div className="p-4 rounded-lg bg-muted/50 border border-border space-y-3">
-                <div className="flex items-center gap-2">
-                  {summary.mode === 'preview' ? (
-                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                  ) : (
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                  )}
-                  <span className="font-medium">
-                    {summary.mode === 'preview' ? 'Preview' : 'Resultado'}
-                  </span>
-                </div>
+              <div className="space-y-4">
+                {/* Header com status */}
+                <div className="p-4 rounded-lg bg-muted/50 border border-border space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {summary.stoppedByTimeout ? (
+                        <Clock className="h-5 w-5 text-yellow-500" />
+                      ) : summary.mode === 'preview' ? (
+                        <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                      ) : (
+                        <CheckCircle className="h-5 w-5 text-green-500" />
+                      )}
+                      <span className="font-medium">
+                        {summary.stoppedByTimeout 
+                          ? 'Pausado por Timeout' 
+                          : summary.mode === 'preview' 
+                            ? 'Preview' 
+                            : 'Resultado'}
+                      </span>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {formatTime(summary.executionTimeMs)}
+                    </Badge>
+                  </div>
 
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div className="p-3 rounded-lg bg-background">
-                    <div className="text-2xl font-bold text-primary">{summary.totalProcessed}</div>
-                    <div className="text-xs text-muted-foreground">Total</div>
+                  {/* Grid de estatísticas principais */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3 rounded-lg bg-background text-center">
+                      <div className="text-xl font-bold text-muted-foreground">{summary.totalInDatabase}</div>
+                      <div className="text-xs text-muted-foreground">No Banco</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-background text-center">
+                      <div className="text-xl font-bold text-primary">{summary.totalProcessed}</div>
+                      <div className="text-xs text-muted-foreground">Processadas</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-background text-center">
+                      <div className="text-xl font-bold text-green-500">{summary.successful}</div>
+                      <div className="text-xs text-muted-foreground">Atribuídas</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-background text-center">
+                      <div className="text-xl font-bold text-red-500">{summary.errors}</div>
+                      <div className="text-xs text-muted-foreground">Erros</div>
+                    </div>
                   </div>
-                  <div className="p-3 rounded-lg bg-background">
-                    <div className="text-2xl font-bold text-green-500">{summary.successful}</div>
-                    <div className="text-xs text-muted-foreground">Sucesso</div>
-                  </div>
-                  <div className="p-3 rounded-lg bg-background">
-                    <div className="text-2xl font-bold text-red-500">{summary.failed}</div>
-                    <div className="text-xs text-muted-foreground">Falhas</div>
-                  </div>
-                </div>
 
-                <div className="space-y-2">
-                  <span className="text-sm font-medium flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Por Usuário:
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(summary.byUser).map(([name, count]) => (
-                      <Badge key={name} variant="secondary">
-                        {name}: {count}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {results && results.length > 0 && (
-              <div className="space-y-2">
-                <span className="text-sm font-medium">Detalhes:</span>
-                <ScrollArea className="h-[200px] rounded-lg border border-border">
-                  <div className="p-2 space-y-1">
-                    {results.map((result, i) => (
-                      <div
-                        key={i}
-                        className={`p-2 rounded text-sm flex items-center justify-between ${
-                          result.success ? 'bg-green-500/10' : 'bg-red-500/10'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {result.success ? (
-                            <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                          ) : (
-                            <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
-                          )}
-                          <span className="truncate">{result.contactName}</span>
-                        </div>
-                        <Badge variant={result.success ? 'default' : 'destructive'} className="shrink-0">
-                          {result.userName}
-                        </Badge>
+                  {/* Estatísticas detalhadas */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+                    <div className="flex justify-between p-2 bg-background rounded">
+                      <span className="text-muted-foreground">Sem padrão *Nome*:</span>
+                      <span className="font-medium">{summary.noPatternFound}</span>
+                    </div>
+                    <div className="flex justify-between p-2 bg-background rounded">
+                      <span className="text-muted-foreground">Usuário não encontrado:</span>
+                      <span className="font-medium">{summary.userNotFound}</span>
+                    </div>
+                    {summary.skippedTestMode > 0 && (
+                      <div className="flex justify-between p-2 bg-background rounded">
+                        <span className="text-muted-foreground">Puladas (teste):</span>
+                        <span className="font-medium">{summary.skippedTestMode}</span>
                       </div>
-                    ))}
+                    )}
                   </div>
-                </ScrollArea>
+
+                  {/* Por usuário */}
+                  {Object.keys(summary.byUser).length > 0 && (
+                    <div className="space-y-2">
+                      <span className="text-sm font-medium flex items-center gap-2">
+                        <Users className="h-4 w-4" />
+                        Por Usuário:
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(summary.byUser)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([name, count]) => (
+                            <Badge key={name} variant="secondary">
+                              {name}: {count}
+                            </Badge>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Timeout warning com botão de continuar */}
+                  {summary.stoppedByTimeout && summary.canContinue && (
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                      <div className="flex items-center gap-2 text-sm">
+                        <SkipForward className="h-4 w-4 text-yellow-500" />
+                        <span>Restam ~{summary.totalInDatabase - summary.nextOffset} conversas para processar</span>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleAutoAssign(summary.nextOffset)}
+                        disabled={isLoading}
+                      >
+                        {isLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                        ) : (
+                          <Play className="h-4 w-4 mr-1" />
+                        )}
+                        Continuar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Accordion com detalhes extras */}
+                <Accordion type="single" collapsible className="w-full">
+                  {/* Padrões não reconhecidos */}
+                  {Object.keys(summary.unrecognizedPatterns).length > 0 && (
+                    <AccordionItem value="unrecognized">
+                      <AccordionTrigger className="text-sm">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                          Padrões não reconhecidos ({Object.keys(summary.unrecognizedPatterns).length})
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="flex flex-wrap gap-2 p-2">
+                          {Object.entries(summary.unrecognizedPatterns)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([pattern, count]) => (
+                              <Badge key={pattern} variant="outline" className="text-xs">
+                                "{pattern}": {count}x
+                              </Badge>
+                            ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2 px-2">
+                          Estes padrões foram encontrados nas mensagens mas não correspondem a nenhum usuário cadastrado.
+                        </p>
+                      </AccordionContent>
+                    </AccordionItem>
+                  )}
+
+                  {/* Conversas sem padrão */}
+                  {summary.conversationsWithoutPatternExamples.length > 0 && (
+                    <AccordionItem value="no-pattern">
+                      <AccordionTrigger className="text-sm">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                          Exemplos sem padrão *Nome*: ({summary.conversationsWithoutPatternExamples.length})
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="flex flex-wrap gap-2 p-2">
+                          {summary.conversationsWithoutPatternExamples.map((example, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {example}
+                            </Badge>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2 px-2">
+                          Essas conversas não têm mensagens com o padrão *Nome*: nas mensagens enviadas.
+                        </p>
+                      </AccordionContent>
+                    </AccordionItem>
+                  )}
+
+                  {/* Detalhes das atribuições */}
+                  {results && results.length > 0 && (
+                    <AccordionItem value="results">
+                      <AccordionTrigger className="text-sm">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          Detalhes das atribuições ({results.length})
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <ScrollArea className="h-[200px]">
+                          <div className="space-y-1 p-2">
+                            {results.map((result, i) => (
+                              <div
+                                key={i}
+                                className={`p-2 rounded text-sm flex items-center justify-between ${
+                                  result.success ? 'bg-green-500/10' : 'bg-red-500/10'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  {result.success ? (
+                                    <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+                                  ) : (
+                                    <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                                  )}
+                                  <span className="truncate">{result.contactName}</span>
+                                </div>
+                                <Badge variant={result.success ? 'default' : 'destructive'} className="shrink-0">
+                                  {result.userName}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </AccordionContent>
+                    </AccordionItem>
+                  )}
+                </Accordion>
               </div>
             )}
           </div>
@@ -341,7 +505,7 @@ export function ToolsSettings() {
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Fechar
             </Button>
-            <Button onClick={handleAutoAssign} disabled={isLoading}>
+            <Button onClick={() => handleAutoAssign(0)} disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -350,7 +514,7 @@ export function ToolsSettings() {
               ) : (
                 <>
                   <Wand2 className="h-4 w-4 mr-2" />
-                  {mode === 'preview' ? 'Visualizar' : 'Executar'}
+                  {mode === 'preview' ? 'Visualizar' : summary ? 'Executar Novamente' : 'Executar'}
                 </>
               )}
             </Button>
