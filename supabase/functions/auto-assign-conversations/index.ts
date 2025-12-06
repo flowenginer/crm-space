@@ -25,6 +25,7 @@ interface AssignmentResult {
   success: boolean;
   error?: string;
   patternFound?: string;
+  contactUpdated?: boolean;
 }
 
 // Função para normalizar nome (remover acentos, lowercase)
@@ -57,10 +58,10 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { mode = 'preview', limit, action, startOffset = 0 } = await req.json().catch(() => ({}));
+    const { mode = 'preview', limit, action, startOffset = 0, processAll = false } = await req.json().catch(() => ({}));
     
     console.log(`[AutoAssign] ========== INÍCIO ==========`);
-    console.log(`[AutoAssign] Modo: ${mode}, Limite: ${limit || 'SEM LIMITE'}, Ação: ${action || 'assign'}, Offset inicial: ${startOffset}`);
+    console.log(`[AutoAssign] Modo: ${mode}, Limite: ${limit || 'SEM LIMITE'}, Ação: ${action || 'assign'}, Offset inicial: ${startOffset}, ProcessAll: ${processAll}`);
 
     // Se a ação for apenas listar usuários
     if (action === 'list-users') {
@@ -135,17 +136,23 @@ Deno.serve(async (req) => {
     console.log(`[AutoAssign] Mapa de usuários criado: ${Object.keys(userMap).length} entradas de ${users?.length || 0} usuários`);
     console.log(`[AutoAssign] Usuários disponíveis: ${users?.map(u => u.full_name).join(', ')}`);
 
-    // Contar total de conversas não atribuídas no banco
-    const { count: totalUnassignedCount, error: countError } = await supabase
+    // Contar total de conversas no banco (dependendo do modo processAll)
+    let totalCountQuery = supabase
       .from('conversations')
       .select('*', { count: 'exact', head: true })
-      .is('assigned_to', null)
       .eq('status', 'open');
+    
+    // Se não for processAll, filtra apenas conversas sem assigned_to
+    if (!processAll) {
+      totalCountQuery = totalCountQuery.is('assigned_to', null);
+    }
+    
+    const { count: totalConversationsCount, error: countError } = await totalCountQuery;
 
     if (countError) {
       console.error('[AutoAssign] Erro ao contar conversas:', countError);
     } else {
-      console.log(`[AutoAssign] *** TOTAL DE CONVERSAS NÃO ATRIBUÍDAS NO BANCO: ${totalUnassignedCount} ***`);
+      console.log(`[AutoAssign] *** TOTAL DE CONVERSAS ${processAll ? '(TODAS)' : '(NÃO ATRIBUÍDAS)'}: ${totalConversationsCount} ***`);
     }
 
     // Função para encontrar usuário pelo nome no padrão da mensagem
@@ -189,6 +196,7 @@ Deno.serve(async (req) => {
     let statsNoPattern = 0;
     let statsUserNotFound = 0;
     let statsAssigned = 0;
+    let statsContactsUpdated = 0;
     let statsSkippedTestMode = 0;
     let statsErrors = 0;
     let totalProcessed = 0;
@@ -216,13 +224,19 @@ Deno.serve(async (req) => {
         }
 
         // Buscar próximo batch de conversas
-        const { data: conversations, error: convError } = await supabase
+        let convQuery = supabase
           .from('conversations')
           .select('id, contact:contacts(id, full_name)')
-          .is('assigned_to', null)
           .eq('status', 'open')
           .order('last_message_at', { ascending: false })
           .range(offset, offset + BATCH_SIZE - 1);
+        
+        // Se não for processAll, filtra apenas conversas sem assigned_to
+        if (!processAll) {
+          convQuery = convQuery.is('assigned_to', null);
+        }
+
+        const { data: conversations, error: convError } = await convQuery;
 
         if (convError) {
           console.error('[AutoAssign] Erro ao buscar conversas:', convError);
@@ -277,6 +291,7 @@ Deno.serve(async (req) => {
 
           const messages = messagesByConversation[conv.id] || [];
           const contactName = (conv.contact as any)?.full_name || 'Desconhecido';
+          const contactId = (conv.contact as any)?.id;
 
           // Encontrar padrão *Nome*: nas mensagens
           let foundPattern: string | null = null;
@@ -307,7 +322,7 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          // Atribuir a conversa
+          // Atribuir a conversa (Atendente Atual)
           const { error: updateError } = await supabase
             .from('conversations')
             .update({
@@ -330,7 +345,26 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          console.log(`[AutoAssign] ✓ ${contactName} -> ${userInfo.fullName} (${usersWithAssignment.size + 1}/${allUserNames.size} usuários)`);
+          // Atualizar o contato (Atendente Responsável - dono fixo)
+          let contactUpdated = false;
+          if (contactId) {
+            const { error: contactError } = await supabase
+              .from('contacts')
+              .update({
+                assigned_to: userInfo.userId,
+                department_id: userInfo.departmentId,
+              })
+              .eq('id', contactId);
+            
+            if (!contactError) {
+              contactUpdated = true;
+              statsContactsUpdated++;
+            } else {
+              console.warn(`[AutoAssign] Erro ao atualizar contato ${contactId}:`, contactError.message);
+            }
+          }
+
+          console.log(`[AutoAssign] ✓ ${contactName} -> ${userInfo.fullName} (${usersWithAssignment.size + 1}/${allUserNames.size} usuários) ${contactUpdated ? '[Contato OK]' : ''}`);
           statsAssigned++;
           usersWithAssignment.add(userInfo.fullName);
           userCounts[userInfo.fullName] = 1;
@@ -341,6 +375,7 @@ Deno.serve(async (req) => {
             userId: userInfo.userId,
             success: true,
             patternFound: foundPattern,
+            contactUpdated,
           });
         }
 
@@ -356,7 +391,7 @@ Deno.serve(async (req) => {
     }
     // ========== MODO COMPLETO (full) ou PREVIEW: Processar em batches ==========
     else {
-      console.log(`[AutoAssign] MODO ${mode.toUpperCase()}: Processando em batches de ${BATCH_SIZE}`);
+      console.log(`[AutoAssign] MODO ${mode.toUpperCase()}: Processando em batches de ${BATCH_SIZE}${processAll ? ' (TODAS AS CONVERSAS)' : ''}`);
       
       let offset = startOffset;
       let hasMore = true;
@@ -370,13 +405,19 @@ Deno.serve(async (req) => {
         }
 
         // Buscar próximo batch de conversas
-        const { data: conversations, error: convError } = await supabase
+        let convQuery = supabase
           .from('conversations')
           .select('id, contact:contacts(id, full_name)')
-          .is('assigned_to', null)
           .eq('status', 'open')
           .order('last_message_at', { ascending: false })
           .range(offset, offset + BATCH_SIZE - 1);
+
+        // Se não for processAll, filtra apenas conversas sem assigned_to
+        if (!processAll) {
+          convQuery = convQuery.is('assigned_to', null);
+        }
+
+        const { data: conversations, error: convError } = await convQuery;
 
         if (convError) {
           console.error('[AutoAssign] Erro ao buscar conversas:', convError);
@@ -425,6 +466,7 @@ Deno.serve(async (req) => {
 
           const messages = messagesByConversation[conv.id] || [];
           const contactName = (conv.contact as any)?.full_name || 'Desconhecido';
+          const contactId = (conv.contact as any)?.id;
 
           // Encontrar padrão *Nome*: nas mensagens
           let foundPattern: string | null = null;
@@ -477,7 +519,7 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          // Modo full: Atualizar conversa
+          // Modo full: Atualizar conversa (Atendente Atual)
           const { error: updateError } = await supabase
             .from('conversations')
             .update({
@@ -500,8 +542,27 @@ Deno.serve(async (req) => {
             continue;
           }
 
+          // Atualizar o contato (Atendente Responsável - dono fixo)
+          let contactUpdated = false;
+          if (contactId) {
+            const { error: contactError } = await supabase
+              .from('contacts')
+              .update({
+                assigned_to: userInfo.userId,
+                department_id: userInfo.departmentId,
+              })
+              .eq('id', contactId);
+            
+            if (!contactError) {
+              contactUpdated = true;
+              statsContactsUpdated++;
+            } else {
+              console.warn(`[AutoAssign] Erro ao atualizar contato ${contactId}:`, contactError.message);
+            }
+          }
+
           if (totalProcessed % 100 === 0 || totalProcessed <= 10) {
-            console.log(`[AutoAssign] [${totalProcessed}/${totalUnassignedCount}] ✓ ${contactName} -> ${userInfo.fullName}`);
+            console.log(`[AutoAssign] [${totalProcessed}/${totalConversationsCount}] ✓ ${contactName} -> ${userInfo.fullName} ${contactUpdated ? '[Contato OK]' : ''}`);
           }
           
           statsAssigned++;
@@ -513,6 +574,7 @@ Deno.serve(async (req) => {
             userId: userInfo.userId,
             success: true,
             patternFound: foundPattern,
+            contactUpdated,
           });
         }
 
@@ -531,12 +593,13 @@ Deno.serve(async (req) => {
     // Resumo detalhado
     console.log(`[AutoAssign] ========== ESTATÍSTICAS ==========`);
     console.log(`[AutoAssign] Tempo de execução: ${(elapsedTime / 1000).toFixed(1)}s`);
-    console.log(`[AutoAssign] Total no banco (não atribuídas): ${totalUnassignedCount}`);
+    console.log(`[AutoAssign] Total no banco: ${totalConversationsCount}`);
     console.log(`[AutoAssign] Conversas processadas nesta execução: ${totalProcessed}`);
     console.log(`[AutoAssign] Offset inicial: ${startOffset} | Próximo offset: ${nextOffset}`);
     console.log(`[AutoAssign] - Sem padrão *Nome*: ${statsNoPattern} (${((statsNoPattern/totalProcessed)*100).toFixed(1)}%)`);
     console.log(`[AutoAssign] - Padrão encontrado mas usuário não existe: ${statsUserNotFound}`);
     console.log(`[AutoAssign] - Atribuídas com sucesso: ${statsAssigned}`);
+    console.log(`[AutoAssign] - Contatos atualizados (Atendente Responsável): ${statsContactsUpdated}`);
     console.log(`[AutoAssign] - Puladas (já atribuído no teste): ${statsSkippedTestMode}`);
     console.log(`[AutoAssign] - Erros: ${statsErrors}`);
     console.log(`[AutoAssign] Por usuário: ${JSON.stringify(userCounts)}`);
@@ -562,21 +625,23 @@ Deno.serve(async (req) => {
     console.log(`[AutoAssign] ========== FIM ==========`);
 
     const summary = {
-      totalInDatabase: totalUnassignedCount || 0,
+      totalInDatabase: totalConversationsCount || 0,
       totalProcessed,
       noPatternFound: statsNoPattern,
       userNotFound: statsUserNotFound,
       successful: statsAssigned,
+      contactsUpdated: statsContactsUpdated,
       skippedTestMode: statsSkippedTestMode,
       errors: statsErrors,
       byUser: userCounts,
       mode,
+      processAll,
       executionTimeMs: elapsedTime,
       stoppedByTimeout,
       stoppedByTestComplete,
       startOffset,
       nextOffset,
-      canContinue: stoppedByTimeout && nextOffset < (totalUnassignedCount || 0),
+      canContinue: stoppedByTimeout && nextOffset < (totalConversationsCount || 0),
       unrecognizedPatterns: Object.entries(unrecognizedPatterns)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 20)

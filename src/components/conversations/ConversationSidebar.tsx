@@ -7,9 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
-  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft
+  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock
 } from 'lucide-react';
+import { usePermissions } from '@/hooks/usePermissions';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -46,6 +48,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { isAdmin } = usePermissions();
 
   // Fetch conversation with contact data - campos específicos para otimização
   const { data: conversation, isLoading: loadingConversation } = useQuery({
@@ -714,16 +717,28 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
         {/* Owner Agent (Atendente Responsável - do contato) */}
         <div className="p-3 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
             Atendente Responsável
-            <span className="ml-1 text-[10px] font-normal text-muted-foreground/70">(dono do contato)</span>
+            <span className="text-[10px] font-normal text-muted-foreground/70">(dono do contato)</span>
+            {!isAdmin && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Lock className="h-3 w-3 text-muted-foreground/50" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p className="text-xs">Apenas administradores podem alterar</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </label>
           <Select 
             value={(contact as any)?.assigned_to || 'unassigned'}
             onValueChange={(value) => updateOwnerAgent.mutate(value === 'unassigned' ? null : value)}
-            disabled={updateOwnerAgent.isPending}
+            disabled={updateOwnerAgent.isPending || !isAdmin}
           >
-            <SelectTrigger className="w-full h-9 text-sm">
+            <SelectTrigger className={`w-full h-9 text-sm ${!isAdmin ? 'opacity-70 cursor-not-allowed' : ''}`}>
               <SelectValue placeholder="Selecionar responsável" />
             </SelectTrigger>
             <SelectContent>
