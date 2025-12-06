@@ -1183,8 +1183,49 @@ export default function Conversations() {
   useRealtimeConversations();
   const { typingUsers, startTyping, stopTyping } = useTypingIndicator(selectedConversationId);
 
-  // Find selected conversation from real data
-  const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
+  // Direct fetch for selected conversation when not in paginated list (fallback)
+  const { data: directSelectedConversation } = useQuery({
+    queryKey: ['conversation-direct', selectedConversationId],
+    queryFn: async () => {
+      if (!selectedConversationId) return null;
+      
+      const { data, error } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          contact_id,
+          channel_id,
+          assigned_to,
+          department_id,
+          status,
+          is_unread,
+          unread_count,
+          last_message_at,
+          last_message_preview,
+          lead_status,
+          created_at,
+          referral_source,
+          referral_data,
+          contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data),
+          assignee:profiles!conversations_assigned_to_fkey(id, full_name),
+          channel:whatsapp_channels(id, name)
+        `)
+        .eq('id', selectedConversationId)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('Error fetching direct conversation:', error);
+        return null;
+      }
+      
+      return data as unknown as Conversation;
+    },
+    enabled: !!selectedConversationId && !conversations.find(c => c.id === selectedConversationId),
+    staleTime: 10000, // 10 seconds
+  });
+
+  // Find selected conversation from paginated list OR use direct fetch as fallback
+  const selectedConversation = conversations.find(c => c.id === selectedConversationId) || directSelectedConversation || null;
   
   // Fetch contact tags for the selected conversation
   const { data: contactTags = [], refetch: refetchContactTags } = useQuery({
@@ -3149,9 +3190,20 @@ export default function Conversations() {
           /* Empty State with Start Conversation */
           <StartConversation 
             onConversationCreated={(conversationId) => {
-              // Clear search to ensure conversation appears in list
+              // Reset ALL filters to ensure conversation appears in list
+              setQuickFilter('all');
+              setChannelFilter('all');
+              setDateFilter('all');
               setSearchQuery('');
               setDebouncedSearchQuery('');
+              setSortFilter('newest');
+              setAdvancedFilters({
+                agentId: 'all',
+                tagIds: [],
+                protocolNumber: '',
+                departmentId: 'all',
+                origin: 'all',
+              });
               navigate(
                 { pathname: '/conversations', search: `?id=${conversationId}` },
                 { replace: true }

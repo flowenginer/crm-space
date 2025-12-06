@@ -181,7 +181,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       toast.success('Status atualizado!');
     },
     onError: () => {
@@ -204,7 +204,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       toast.success('Atendente atual atualizado!');
     },
     onError: () => {
@@ -252,7 +252,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       toast.success('Departamento atualizado!');
     },
     onError: () => {
@@ -329,7 +329,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       toast.success('Conversa fechada!');
       setShowCloseModal(false);
     },
@@ -451,7 +451,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
               })
               .eq('id', anyConv.id);
             
-            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+            queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
             toast.success('Conversa reaberta!');
           } else {
             toast.info('Conversa encontrada!');
@@ -525,7 +525,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
       setNewConversationPhone('');
       setPendingContactForConversation(null);
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
     } catch (error) {
       console.error('Error creating conversation:', error);
       toast.error('Erro ao criar conversa');
