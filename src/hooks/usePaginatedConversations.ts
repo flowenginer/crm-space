@@ -25,25 +25,72 @@ const CONVERSATION_FIELDS = `
   channel:whatsapp_channels(id, name)
 `;
 
-export function usePaginatedConversations(filter?: AssignmentFilter) {
+// Server-side sorting options
+export type ServerSortFilter = 'newest' | 'oldest' | 'unread';
+
+// All sort filter options (some are local-only)
+export type SortFilter = ServerSortFilter | 'not_replied' | 'client_not_replied';
+
+export interface ConversationFilters {
+  assignment?: AssignmentFilter;
+  sortBy?: ServerSortFilter; // Only server-sortable options
+  channelId?: string;
+  isUnread?: boolean;
+}
+
+export function usePaginatedConversations(filters?: ConversationFilters) {
+  const { assignment, sortBy = 'newest', channelId, isUnread } = filters || {};
+  
   return useInfiniteQuery({
-    queryKey: ['conversations-paginated', filter],
+    queryKey: ['conversations-paginated', assignment, sortBy, channelId, isUnread],
     queryFn: async ({ pageParam = 0 }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
       let query = supabase
         .from('conversations')
         .select(CONVERSATION_FIELDS)
-        .eq('status', 'open')
-        .order('last_message_at', { ascending: false, nullsFirst: false })
-        .range(pageParam * PAGE_SIZE, (pageParam + 1) * PAGE_SIZE - 1);
+        .eq('status', 'open');
 
       // Apply assignment filter
-      if (filter === 'mine' && user) {
+      if (assignment === 'mine' && user) {
         query = query.eq('assigned_to', user.id);
-      } else if (filter === 'unassigned') {
+      } else if (assignment === 'unassigned') {
         query = query.is('assigned_to', null);
       }
+
+      // Apply channel filter
+      if (channelId && channelId !== 'all') {
+        if (channelId === 'no_channel') {
+          query = query.is('channel_id', null);
+        } else {
+          query = query.eq('channel_id', channelId);
+        }
+      }
+
+      // Apply unread filter
+      if (isUnread) {
+        query = query.eq('is_unread', true);
+      }
+
+      // Apply sorting - THIS IS THE KEY: sorting happens on the SERVER
+      switch (sortBy) {
+        case 'oldest':
+          query = query.order('last_message_at', { ascending: true, nullsFirst: false });
+          break;
+        case 'unread':
+          // Unread first (is_unread desc), then by date
+          query = query
+            .order('is_unread', { ascending: false })
+            .order('last_message_at', { ascending: false, nullsFirst: false });
+          break;
+        case 'newest':
+        default:
+          query = query.order('last_message_at', { ascending: false, nullsFirst: false });
+          break;
+      }
+
+      // Apply pagination
+      query = query.range(pageParam * PAGE_SIZE, (pageParam + 1) * PAGE_SIZE - 1);
 
       const { data, error } = await query;
 

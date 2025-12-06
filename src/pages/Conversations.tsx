@@ -74,7 +74,8 @@ import { StartConversation } from '@/components/conversations/StartConversation'
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
-import { usePaginatedConversations } from '@/hooks/usePaginatedConversations';
+import { usePaginatedConversations, type SortFilter, type ConversationFilters } from '@/hooks/usePaginatedConversations';
+import { useConversationTotalCounts, useChannelCounts } from '@/hooks/useConversationCounts';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
@@ -958,7 +959,7 @@ export default function Conversations() {
   const [dateFilter, setDateFilter] = useState('all');
   const [customDateRange, setCustomDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
-  const [sortFilter, setSortFilter] = useState('newest');
+  const [sortFilter, setSortFilter] = useState<SortFilter>('newest');
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
@@ -1002,15 +1003,26 @@ export default function Conversations() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
-  // Fetch real conversations from database with filter (PAGINATED)
-  const assignmentFilter: AssignmentFilter = quickFilter === 'pinned' ? 'all' : quickFilter;
+  // Build filters for server-side filtering and sorting
+  const conversationFilters: ConversationFilters = useMemo(() => ({
+    assignment: quickFilter === 'pinned' ? 'all' : quickFilter,
+    sortBy: (sortFilter === 'newest' || sortFilter === 'oldest' || sortFilter === 'unread') ? sortFilter : 'newest',
+    channelId: channelFilter !== 'all' ? channelFilter : undefined,
+    isUnread: sortFilter === 'unread' ? true : undefined,
+  }), [quickFilter, sortFilter, channelFilter]);
+
+  // Fetch real conversations from database with filter (PAGINATED + SERVER SORTED)
   const { 
     data: conversationsData, 
     isLoading: conversationsLoading,
     fetchNextPage: fetchNextConversations,
     hasNextPage: hasMoreConversations,
     isFetchingNextPage: isFetchingMoreConversations,
-  } = usePaginatedConversations(assignmentFilter);
+  } = usePaginatedConversations(conversationFilters);
+
+  // Fetch REAL counts from database (not from loaded conversations)
+  const { data: totalCounts } = useConversationTotalCounts();
+  const { data: channelCountsData } = useChannelCounts();
   
   // Flatten paginated conversations
   const conversations = useMemo(() => {
@@ -1397,16 +1409,18 @@ export default function Conversations() {
         return true;
       })
       .sort((a, b) => {
+        // For server-sorted filters (newest, oldest, unread), preserve server order
+        // Only apply local sorting for filters that require message data (not_replied, client_not_replied)
+        if (sortFilter === 'newest' || sortFilter === 'oldest' || sortFilter === 'unread') {
+          // Server already sorted these, just maintain relative order for pinned
+          return 0;
+        }
+        
         // Helper para usar last_message_at com fallback para created_at
         const getDate = (conv: Conversation) => 
           new Date(conv.last_message_at || conv.created_at).getTime();
         
         switch (sortFilter) {
-          case 'unread':
-            // Unread first, then by date
-            if (a.is_unread && !b.is_unread) return -1;
-            if (!a.is_unread && b.is_unread) return 1;
-            return getDate(b) - getDate(a);
           case 'not_replied':
             // Conversations where last message is from client (not from me) first
             const aLastIsFromClient = lastMessageMap.has(a.id) && !lastMessageMap.get(a.id);
@@ -1421,11 +1435,8 @@ export default function Conversations() {
             if (aLastIsFromMe && !bLastIsFromMe) return -1;
             if (!aLastIsFromMe && bLastIsFromMe) return 1;
             return getDate(b) - getDate(a);
-          case 'oldest':
-            return getDate(a) - getDate(b);
-          case 'newest':
           default:
-            return getDate(b) - getDate(a);
+            return 0;
         }
       });
   }, [conversations, searchQuery, channelFilter, sortFilter, advancedFilters, dateFilter, customDateRange, pinnedConversations, quickFilter, lastMessageMap]);
@@ -1441,19 +1452,18 @@ export default function Conversations() {
     ).length;
   }, [conversations, pinnedConversations, quickFilter, selectedConversationId]);
 
-  // Calculate filter counts for each quick filter
+  // Calculate filter counts - USE REAL COUNTS FROM DATABASE
   const filterCounts = useMemo(() => {
-    const pinnedIds = new Set(pinnedConversations.map(p => p.conversation_id));
-    
-    const allCount = conversations.filter(conv => !pinnedIds.has(conv.id)).length;
     const pinnedCount = pinnedConversations.length;
-    const mineCount = currentUser 
-      ? conversations.filter(conv => !pinnedIds.has(conv.id) && conv.assigned_to === currentUser.id).length 
-      : 0;
-    const unassignedCount = conversations.filter(conv => !pinnedIds.has(conv.id) && !conv.assigned_to).length;
     
-    return { all: allCount, pinned: pinnedCount, mine: mineCount, unassigned: unassignedCount };
-  }, [conversations, pinnedConversations, currentUser]);
+    // Use real database counts when available, fallback to loaded conversations
+    return { 
+      all: totalCounts?.all ?? conversations.length, 
+      pinned: pinnedCount, 
+      mine: totalCounts?.mine ?? 0, 
+      unassigned: totalCounts?.unassigned ?? 0 
+    };
+  }, [totalCounts, conversations.length, pinnedConversations]);
 
   // Calculate date filter counts
   const dateFilterCounts = useMemo(() => {
@@ -1491,23 +1501,27 @@ export default function Conversations() {
     return counts;
   }, [conversations]);
 
-  // Calculate channel filter counts
+  // Calculate channel filter counts - USE REAL COUNTS FROM DATABASE
   const channelFilterCounts = useMemo(() => {
+    // Use real database counts when available
+    if (channelCountsData) {
+      return channelCountsData;
+    }
+    // Fallback to loaded conversations
     const counts: Record<string, number> = {};
-    
     conversations.forEach(conv => {
       const channelId = conv.channel_id || 'no_channel';
       counts[channelId] = (counts[channelId] || 0) + 1;
     });
-    
     return counts;
-  }, [conversations]);
+  }, [channelCountsData, conversations]);
 
-  // Calculate sort filter counts (unread, not_replied, client_not_replied)
+  // Calculate sort filter counts - use real database count for unread
   const sortFilterCounts = useMemo(() => {
-    const unreadCount = conversations.filter(conv => conv.is_unread).length;
+    // Use real database count for unread
+    const unreadCount = totalCounts?.unread ?? conversations.filter(conv => conv.is_unread).length;
     
-    // Count not replied (last message from client)
+    // Count not replied (last message from client) - these are calculated from loaded data
     let notRepliedCount = 0;
     let clientNotRepliedCount = 0;
     
@@ -1518,7 +1532,7 @@ export default function Conversations() {
     });
     
     return { unread: unreadCount, not_replied: notRepliedCount, client_not_replied: clientNotRepliedCount };
-  }, [conversations, lastMessageMap]);
+  }, [totalCounts, conversations, lastMessageMap]);
 
   // Conversation action handlers
   const handleMarkAsUnread = () => {
@@ -2207,7 +2221,7 @@ export default function Conversations() {
               </SelectContent>
             </Select>
 
-            <Select value={sortFilter} onValueChange={setSortFilter}>
+            <Select value={sortFilter} onValueChange={(v) => setSortFilter(v as SortFilter)}>
               <SelectTrigger className="flex-1 h-10 rounded-lg">
                 <SelectValue placeholder="Mais novas" />
               </SelectTrigger>
