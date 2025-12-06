@@ -15,6 +15,7 @@ export interface ConversationEvent {
     to_department_name?: string;
     note?: string;
     close_reason?: string;
+    is_return?: boolean;
   };
   created_at: string;
   actor?: {
@@ -51,6 +52,71 @@ interface TransferConversationParams {
   toDepartmentId?: string | null;
   toDepartmentName?: string | null;
   note?: string;
+}
+
+export function useReturnConversation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      conversationId,
+      toUserId,
+      toUserName,
+    }: {
+      conversationId: string;
+      toUserId: string;
+      toUserName: string;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const { data: actorProfile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
+
+      // Update the conversation
+      const { error: updateError } = await supabase
+        .from('conversations')
+        .update({
+          assigned_to: toUserId,
+          transferred_at: new Date().toISOString(),
+          transferred_from: user.id,
+          transfer_note: 'Devolução de transferência',
+        })
+        .eq('id', conversationId);
+
+      if (updateError) throw updateError;
+
+      // Create the return transfer event
+      const { error: eventError } = await supabase
+        .from('conversation_events')
+        .insert({
+          conversation_id: conversationId,
+          event_type: 'transfer',
+          actor_id: user.id,
+          data: {
+            from_user_id: user.id,
+            from_user_name: actorProfile?.full_name || 'Usuário',
+            to_user_id: toUserId,
+            to_user_name: toUserName,
+            note: 'Devolução de transferência',
+            is_return: true,
+          },
+        });
+
+      if (eventError) throw eventError;
+
+      return { success: true };
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-events', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', variables.conversationId] });
+    },
+  });
 }
 
 export function useTransferConversation() {

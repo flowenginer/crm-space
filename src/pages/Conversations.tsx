@@ -79,7 +79,7 @@ import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useD
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
-import { useConversationEvents, type ConversationEvent } from '@/hooks/useConversationEvents';
+import { useConversationEvents, useReturnConversation, type ConversationEvent } from '@/hooks/useConversationEvents';
 import { TransferEventCard } from '@/components/conversations/TransferEventCard';
 import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1246,6 +1246,15 @@ export default function Conversations() {
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
   }, [messages, internalNotes, conversationEvents]);
+
+  // Find the latest transfer event for the return button
+  const latestTransferEvent = useMemo(() => {
+    const transferEvents = conversationEvents.filter(e => e.event_type === 'transfer');
+    return transferEvents.length > 0 ? transferEvents[transferEvents.length - 1] : null;
+  }, [conversationEvents]);
+
+  // Return conversation mutation
+  const returnConversation = useReturnConversation();
 
   // Filter messages for in-conversation search
   const filteredChatItems = useMemo(() => {
@@ -2818,7 +2827,27 @@ export default function Conversations() {
                     ) : item.itemType === 'event' ? (
                       <TransferEventCard 
                         key={`event-${item.id}`} 
-                        event={item as ConversationEvent} 
+                        event={item as ConversationEvent}
+                        currentUserId={currentUser?.id}
+                        isLatestTransfer={latestTransferEvent?.id === item.id}
+                        isReturning={returnConversation.isPending}
+                        onReturn={() => {
+                          const eventData = (item as ConversationEvent).data;
+                          if (eventData.from_user_id && eventData.from_user_name && selectedConversationId) {
+                            returnConversation.mutate({
+                              conversationId: selectedConversationId,
+                              toUserId: eventData.from_user_id,
+                              toUserName: eventData.from_user_name,
+                            }, {
+                              onSuccess: () => {
+                                toast.success('Conversa devolvida com sucesso');
+                              },
+                              onError: () => {
+                                toast.error('Erro ao devolver conversa');
+                              }
+                            });
+                          }
+                        }}
                       />
                     ) : (
                       <MessageBubble 
