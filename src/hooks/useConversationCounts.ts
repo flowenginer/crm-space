@@ -2,6 +2,17 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, startOfWeek, startOfMonth, subDays, subWeeks, subMonths, endOfDay, endOfWeek, endOfMonth, format } from 'date-fns';
 
+// Filters interface for contextual counts
+export interface CountFilters {
+  departmentId?: string;
+  agentId?: string;
+  origin?: 'meta_ads' | 'organic' | 'all';
+  dateFilter?: string;
+  customDateFrom?: Date;
+  customDateTo?: Date;
+  channelId?: string;
+}
+
 interface ConversationCounts {
   all: number;
   mine: number;
@@ -31,44 +42,66 @@ interface OriginCounts {
   organic: number;
 }
 
+// Helper to apply common filters to a query
+const applyFilters = (query: any, filters: CountFilters) => {
+  if (filters.departmentId) {
+    query = query.eq('department_id', filters.departmentId);
+  }
+  if (filters.agentId) {
+    query = query.eq('assigned_to', filters.agentId);
+  }
+  if (filters.channelId && filters.channelId !== 'no_channel') {
+    query = query.eq('channel_id', filters.channelId);
+  } else if (filters.channelId === 'no_channel') {
+    query = query.is('channel_id', null);
+  }
+  return query;
+};
+
 /**
  * Hook para buscar contagens REAIS de conversas do banco de dados
  * Usa queries COUNT(*) otimizadas - não carrega todas as conversas
+ * Aceita filtros para contagens contextuais
  */
-export function useConversationTotalCounts() {
+export function useConversationTotalCounts(filters?: CountFilters) {
   return useQuery({
-    queryKey: ['conversation-total-counts'],
+    queryKey: ['conversation-total-counts', filters],
     queryFn: async (): Promise<ConversationCounts> => {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Build base queries with filters
+      let allQuery = supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open');
+      let mineQuery = user ? supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open').eq('assigned_to', user.id) : null;
+      let unassignedQuery = supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open').is('assigned_to', null);
+      let unreadQuery = supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open').eq('is_unread', true);
+      
+      // Apply filters
+      if (filters) {
+        allQuery = applyFilters(allQuery, filters);
+        if (mineQuery) mineQuery = applyFilters(mineQuery, filters);
+        unassignedQuery = applyFilters(unassignedQuery, filters);
+        unreadQuery = applyFilters(unreadQuery, filters);
+        
+        // Origin filter
+        if (filters.origin === 'meta_ads') {
+          allQuery = allQuery.eq('referral_source', 'meta_ads');
+          if (mineQuery) mineQuery = mineQuery.eq('referral_source', 'meta_ads');
+          unassignedQuery = unassignedQuery.eq('referral_source', 'meta_ads');
+          unreadQuery = unreadQuery.eq('referral_source', 'meta_ads');
+        } else if (filters.origin === 'organic') {
+          allQuery = allQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
+          if (mineQuery) mineQuery = mineQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
+          unassignedQuery = unassignedQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
+          unreadQuery = unreadQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
+        }
+      }
+      
       // Fetch all counts in parallel for efficiency
       const [allResult, mineResult, unassignedResult, unreadResult] = await Promise.all([
-        // Total open conversations
-        supabase
-          .from('conversations')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'open'),
-        
-        // My conversations
-        user ? supabase
-          .from('conversations')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .eq('assigned_to', user.id) : Promise.resolve({ count: 0 }),
-        
-        // Unassigned conversations
-        supabase
-          .from('conversations')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .is('assigned_to', null),
-        
-        // Unread conversations
-        supabase
-          .from('conversations')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .eq('is_unread', true),
+        allQuery,
+        mineQuery ? mineQuery : Promise.resolve({ count: 0 }),
+        unassignedQuery,
+        unreadQuery,
       ]);
 
       return {
@@ -84,18 +117,26 @@ export function useConversationTotalCounts() {
 }
 
 /**
- * Hook para buscar contagens por canal
+ * Hook para buscar contagens por canal - contextual
  */
-export function useChannelCounts() {
+export function useChannelCounts(filters?: CountFilters) {
   return useQuery({
-    queryKey: ['channel-counts'],
+    queryKey: ['channel-counts', filters],
     queryFn: async (): Promise<ChannelCounts> => {
-      // Get counts grouped by channel
-      const { data, error } = await supabase
-        .from('conversations')
-        .select('channel_id')
-        .eq('status', 'open');
+      let query = supabase.from('conversations').select('channel_id').eq('status', 'open');
       
+      // Apply filters (excluding channelId since we're grouping by it)
+      if (filters) {
+        if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
+        if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
+        if (filters.origin === 'meta_ads') {
+          query = query.eq('referral_source', 'meta_ads');
+        } else if (filters.origin === 'organic') {
+          query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
+        }
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       
       const counts: ChannelCounts = {};
@@ -112,12 +153,11 @@ export function useChannelCounts() {
 }
 
 /**
- * Hook para buscar contagens por data do primeiro contato
- * Usa queries COUNT(*) diretas no banco para valores reais
+ * Hook para buscar contagens por data do primeiro contato - contextual
  */
-export function useDateFilterCounts() {
+export function useDateFilterCounts(filters?: CountFilters) {
   return useQuery({
-    queryKey: ['date-filter-counts'],
+    queryKey: ['date-filter-counts', filters],
     queryFn: async (): Promise<DateFilterCounts> => {
       const now = new Date();
       
@@ -136,55 +176,28 @@ export function useDateFilterCounts() {
       const lastMonthStart = format(startOfMonth(subMonths(now, 1)), 'yyyy-MM-dd');
       const lastMonthEnd = format(endOfMonth(subMonths(now, 1)), "yyyy-MM-dd'T'23:59:59");
       
+      // Build base query with filters (excluding date filters)
+      const buildQuery = () => {
+        let query = supabase.from('conversations').select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true }).eq('status', 'open');
+        if (filters) {
+          if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
+          if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
+          if (filters.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
+          else if (filters.channelId === 'no_channel') query = query.is('channel_id', null);
+          if (filters.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
+          else if (filters.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
+        }
+        return query;
+      };
+      
       // Execute all count queries in parallel
       const [todayResult, yesterdayResult, thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult] = await Promise.all([
-        // Today - based on contact's first_contact_at
-        supabase
-          .from('conversations')
-          .select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .gte('contact.first_contact_at', todayStart)
-          .lte('contact.first_contact_at', todayEnd),
-        
-        // Yesterday
-        supabase
-          .from('conversations')
-          .select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .gte('contact.first_contact_at', yesterdayStart)
-          .lte('contact.first_contact_at', yesterdayEnd),
-        
-        // This week
-        supabase
-          .from('conversations')
-          .select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .gte('contact.first_contact_at', thisWeekStart)
-          .lte('contact.first_contact_at', todayEnd),
-        
-        // Last week
-        supabase
-          .from('conversations')
-          .select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .gte('contact.first_contact_at', lastWeekStart)
-          .lte('contact.first_contact_at', lastWeekEnd),
-        
-        // This month
-        supabase
-          .from('conversations')
-          .select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .gte('contact.first_contact_at', thisMonthStart)
-          .lte('contact.first_contact_at', todayEnd),
-        
-        // Last month
-        supabase
-          .from('conversations')
-          .select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .gte('contact.first_contact_at', lastMonthStart)
-          .lte('contact.first_contact_at', lastMonthEnd),
+        buildQuery().gte('contact.first_contact_at', todayStart).lte('contact.first_contact_at', todayEnd),
+        buildQuery().gte('contact.first_contact_at', yesterdayStart).lte('contact.first_contact_at', yesterdayEnd),
+        buildQuery().gte('contact.first_contact_at', thisWeekStart).lte('contact.first_contact_at', todayEnd),
+        buildQuery().gte('contact.first_contact_at', lastWeekStart).lte('contact.first_contact_at', lastWeekEnd),
+        buildQuery().gte('contact.first_contact_at', thisMonthStart).lte('contact.first_contact_at', todayEnd),
+        buildQuery().gte('contact.first_contact_at', lastMonthStart).lte('contact.first_contact_at', lastMonthEnd),
       ]);
       
       return {
@@ -202,19 +215,24 @@ export function useDateFilterCounts() {
 }
 
 /**
- * Hook para buscar contagens por departamento
+ * Hook para buscar contagens por departamento - contextual
  */
-export function useDepartmentCounts() {
+export function useDepartmentCounts(filters?: CountFilters) {
   return useQuery({
-    queryKey: ['department-counts'],
+    queryKey: ['department-counts', filters],
     queryFn: async (): Promise<DepartmentCounts> => {
-      // Get all open conversations with department_id
-      const { data, error } = await supabase
-        .from('conversations')
-        .select('department_id')
-        .eq('status', 'open')
-        .not('department_id', 'is', null);
+      let query = supabase.from('conversations').select('department_id').eq('status', 'open').not('department_id', 'is', null);
       
+      // Apply filters (excluding departmentId since we're grouping by it)
+      if (filters) {
+        if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
+        if (filters.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
+        else if (filters.channelId === 'no_channel') query = query.is('channel_id', null);
+        if (filters.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
+        else if (filters.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       
       const counts: DepartmentCounts = {};
@@ -232,18 +250,23 @@ export function useDepartmentCounts() {
 }
 
 /**
- * Hook para buscar contagens por origem do lead (Meta Ads / Orgânico)
+ * Hook para buscar contagens por origem do lead (Meta Ads / Orgânico) - contextual
  */
-export function useOriginCounts() {
+export function useOriginCounts(filters?: CountFilters) {
   return useQuery({
-    queryKey: ['origin-counts'],
+    queryKey: ['origin-counts', filters],
     queryFn: async (): Promise<OriginCounts> => {
-      // Count Meta Ads - check both conversation referral_source and contact origin
-      const { data: allConversations, error } = await supabase
-        .from('conversations')
-        .select('id, referral_source, contact:contacts(origin)')
-        .eq('status', 'open');
+      let query = supabase.from('conversations').select('id, referral_source, contact:contacts(origin)').eq('status', 'open');
       
+      // Apply filters (excluding origin since we're grouping by it)
+      if (filters) {
+        if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
+        if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
+        if (filters.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
+        else if (filters.channelId === 'no_channel') query = query.is('channel_id', null);
+      }
+      
+      const { data: allConversations, error } = await query;
       if (error) throw error;
       
       let metaAdsCount = 0;
@@ -270,18 +293,25 @@ export function useOriginCounts() {
 }
 
 /**
- * Hook para buscar contagens de etiquetas em conversas
+ * Hook para buscar contagens de etiquetas em conversas - contextual
  */
-export function useTagCounts() {
+export function useTagCounts(filters?: CountFilters) {
   return useQuery({
-    queryKey: ['tag-counts'],
+    queryKey: ['tag-counts', filters],
     queryFn: async (): Promise<Record<string, number>> => {
-      // Get tag counts from contact_tags joined with conversations
-      const { data, error } = await supabase
-        .from('conversations')
-        .select('contact:contacts(id)')
-        .eq('status', 'open');
+      let query = supabase.from('conversations').select('contact:contacts(id)').eq('status', 'open');
       
+      // Apply filters
+      if (filters) {
+        if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
+        if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
+        if (filters.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
+        else if (filters.channelId === 'no_channel') query = query.is('channel_id', null);
+        if (filters.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
+        else if (filters.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       
       const contactIds = data?.map(c => (c.contact as any)?.id).filter(Boolean) || [];
@@ -309,22 +339,57 @@ export function useTagCounts() {
 }
 
 /**
- * Hook para buscar contagens de filtros de ordenação (não lidas, não respondidas, etc)
+ * Hook para buscar contagens por agente - contextual
  */
-export function useSortFilterCounts() {
+export function useAgentCounts(filters?: CountFilters) {
   return useQuery({
-    queryKey: ['sort-filter-counts'],
-    queryFn: async () => {
-      // Fetch unread count
-      const { count: unreadCount } = await supabase
-        .from('conversations')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'open')
-        .eq('is_unread', true);
+    queryKey: ['agent-counts', filters],
+    queryFn: async (): Promise<Record<string, number>> => {
+      let query = supabase.from('conversations').select('assigned_to').eq('status', 'open').not('assigned_to', 'is', null);
+      
+      // Apply filters (excluding agentId since we're grouping by it)
+      if (filters) {
+        if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
+        if (filters.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
+        else if (filters.channelId === 'no_channel') query = query.is('channel_id', null);
+        if (filters.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
+        else if (filters.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      const counts: Record<string, number> = {};
+      data?.forEach(conv => {
+        if (conv.assigned_to) {
+          counts[conv.assigned_to] = (counts[conv.assigned_to] || 0) + 1;
+        }
+      });
+      
+      return counts;
+    },
+    staleTime: 10000,
+    refetchInterval: 30000,
+  });
+}
 
-      // For not_replied and client_not_replied, we need to check last messages
-      // This is more complex and would require a join or subquery
-      // For now, we'll return approximate counts based on available data
+/**
+ * Hook para buscar contagens de filtros de ordenação (não lidas, não respondidas, etc) - contextual
+ */
+export function useSortFilterCounts(filters?: CountFilters) {
+  return useQuery({
+    queryKey: ['sort-filter-counts', filters],
+    queryFn: async () => {
+      let query = supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open').eq('is_unread', true);
+      
+      // Apply filters
+      if (filters) {
+        query = applyFilters(query, filters);
+        if (filters.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
+        else if (filters.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
+      }
+      
+      const { count: unreadCount } = await query;
       
       return {
         unread: unreadCount || 0,
