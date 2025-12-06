@@ -2,451 +2,188 @@ import { useState } from 'react';
 import { 
   UserPlus, 
   MessageSquare, 
-  Users, 
   Clock, 
   TrendingUp, 
-  TrendingDown,
-  Calendar,
-  Plus,
-  BarChart3,
   DollarSign,
-  ChevronDown,
-  RotateCcw,
-  Wallet,
-  Loader2
+  AlertCircle
 } from 'lucide-react';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer 
-} from 'recharts';
-import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { startOfMonth } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
-import { useDashboardMetrics, useRecentActivity } from '@/hooks/useDashboard';
-import { useNavigate } from 'react-router-dom';
+import { useRecentActivity } from '@/hooks/useDashboard';
+import {
+  useDashboardKPIs,
+  useLeadsByStatus,
+  useAgentPerformance,
+  useCriticalConversations,
+  useTimelineData,
+  useConversionFunnel,
+  useAgentsForFilter,
+  useDepartmentsForFilter,
+  type DashboardFilters as Filters
+} from '@/hooks/useDashboardAdvanced';
 
-// Stat Card Component
-interface StatCardProps {
-  title: string;
-  value: string;
-  change?: string;
-  changeText?: string;
-  trend?: 'up' | 'down';
-  icon: React.ElementType;
-  gradient: string;
-  isLoading?: boolean;
+// Components
+import { KPICard } from '@/components/dashboard/KPICard';
+import { ConversionFunnel } from '@/components/dashboard/ConversionFunnel';
+import { LeadStatusChart } from '@/components/dashboard/LeadStatusChart';
+import { TimelineChart } from '@/components/dashboard/TimelineChart';
+import { AgentPerformanceTable } from '@/components/dashboard/AgentPerformanceTable';
+import { CriticalConversations } from '@/components/dashboard/CriticalConversations';
+import { DashboardFilters } from '@/components/dashboard/DashboardFilters';
+import { RecentActivity } from '@/components/dashboard/RecentActivity';
+
+function formatTime(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}min`;
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.round((seconds % 3600) / 60);
+  return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
 }
 
-function StatCard({ title, value, change, changeText, trend, icon: Icon, gradient, isLoading }: StatCardProps) {
-  const isPositive = trend === 'up';
-  const isGoodTrend = title.includes('Tempo') ? trend === 'down' : trend === 'up';
-  
-  return (
-    <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated hover:shadow-elevated-lg transition-all duration-300 group">
-      <div className="flex items-start justify-between">
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-muted-foreground">
-            {title}
-          </p>
-          <div className="space-y-1">
-            {isLoading ? (
-              <div className="h-9 flex items-center">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              </div>
-            ) : (
-              <>
-                <h3 className="text-3xl font-bold text-foreground tracking-tight">
-                  {value}
-                </h3>
-                {change && (
-                  <p className={`text-sm font-medium flex items-center gap-1 ${
-                    isGoodTrend ? 'text-success' : 'text-destructive'
-                  }`}>
-                    {isPositive ? (
-                      <TrendingUp className="h-4 w-4" />
-                    ) : (
-                      <TrendingDown className="h-4 w-4" />
-                    )}
-                    {change} {changeText}
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-        <div className={`p-3 rounded-xl bg-gradient-to-br ${gradient} shadow-lg group-hover:scale-110 transition-transform duration-300`}>
-          <Icon className="h-6 w-6 text-white" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Custom Tooltip for Chart
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-card border border-border rounded-xl p-4 shadow-lg">
-        <p className="font-semibold text-foreground mb-2">{label}</p>
-        {payload.map((entry: any, index: number) => (
-          <div key={index} className="flex items-center gap-2 text-sm">
-            <div 
-              className="w-3 h-3 rounded-full" 
-              style={{ backgroundColor: entry.color }}
-            />
-            <span className="text-muted-foreground">{entry.name}:</span>
-            <span className="font-medium text-foreground">{entry.value}</span>
-          </div>
-        ))}
-      </div>
-    );
+function formatCurrency(value: number): string {
+  if (value >= 1000000) {
+    return `R$ ${(value / 1000000).toFixed(1)}M`;
   }
-  return null;
-};
+  if (value >= 1000) {
+    return `R$ ${(value / 1000).toFixed(1)}k`;
+  }
+  return `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+}
 
 export default function Dashboard() {
   const { profile } = useAuth();
-  const navigate = useNavigate();
-  const { data: metrics, isLoading: loadingMetrics } = useDashboardMetrics();
+  
+  // Filters state
+  const [filters, setFilters] = useState<Filters>({
+    dateFrom: startOfMonth(new Date()),
+    dateTo: new Date(),
+    agentId: undefined,
+    departmentId: undefined,
+  });
+
+  // Data queries
+  const { data: kpis, isLoading: loadingKPIs } = useDashboardKPIs(filters);
+  const { data: leadsByStatus = [], isLoading: loadingStatus } = useLeadsByStatus(filters);
+  const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentPerformance(filters);
+  const { data: criticalConversations = [], isLoading: loadingCritical } = useCriticalConversations(filters);
+  const { data: timelineData = [], isLoading: loadingTimeline } = useTimelineData(filters);
+  const { data: funnelData = [], isLoading: loadingFunnel } = useConversionFunnel(filters);
   const { data: recentActivity = [], isLoading: loadingActivity } = useRecentActivity();
   
-  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-    from: new Date(2025, 11, 1),
-    to: new Date(2025, 11, 3),
-  });
-  const [selectedUser, setSelectedUser] = useState('all');
-  const [selectedMetric, setSelectedMetric] = useState('conversations');
-
-  const quickActions = [
-    { title: 'Nova Conversa', icon: MessageSquare, gradient: 'from-blue-500 to-cyan-500', href: '/conversations' },
-    { title: 'Adicionar Lead', icon: UserPlus, gradient: 'from-purple-500 to-pink-500', href: '/crm' },
-    { title: 'Ver Relatório', icon: BarChart3, gradient: 'from-green-500 to-emerald-500', href: '/reports' },
-    { title: 'Nova Venda', icon: DollarSign, gradient: 'from-pink-500 to-rose-500', href: '/crm' },
-  ];
-
-  // Build chart data from metrics (empty if no data)
-  const chartData = metrics ? [
-    { 
-      date: format(new Date(), 'dd/MMM', { locale: ptBR }), 
-      newContacts: metrics.newContacts, 
-      answeredConversations: metrics.respondedConversations, 
-      interactedConversations: metrics.totalConversations,
-    },
-  ] : [];
+  // Filter options
+  const { data: agents = [] } = useAgentsForFilter(filters.departmentId);
+  const { data: departments = [] } = useDepartmentsForFilter();
 
   return (
-    <div className="space-y-8">
-      {/* Header with Welcome + Wallet */}
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-        <div className="animate-slide-up">
-          <h1 className="text-3xl font-bold text-foreground mb-2">
-            Bem Vindo{profile?.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''} - Space Sports
-          </h1>
-          <p className="text-muted-foreground">
-            Aqui estão algumas estatísticas da sua empresa
-          </p>
-        </div>
-        
-        {/* Wallet Card */}
-        <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated w-full lg:w-auto lg:min-w-[280px] animate-scale-in">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-lg bg-purple-100">
-              <Wallet className="h-5 w-5 text-purple-600" />
-            </div>
-            <p className="text-sm font-medium text-muted-foreground">Minha carteira</p>
-          </div>
-          <p className="text-3xl font-bold text-foreground mb-4">
-            R$ 0,00
-          </p>
-          <Button className="w-full btn-gradient text-white rounded-xl hover:shadow-lg transition-all">
-            <Plus className="h-4 w-4 mr-2" />
-            Adicionar Saldo
-          </Button>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="animate-slide-up">
+        <h1 className="text-2xl font-bold text-foreground mb-1">
+          Dashboard{profile?.full_name ? ` - ${profile.full_name.split(' ')[0]}` : ''}
+        </h1>
+        <p className="text-muted-foreground text-sm">
+          Acompanhe suas métricas de atendimento e vendas em tempo real
+        </p>
       </div>
 
-      {/* Filters and Controls */}
-      <div className="flex flex-wrap items-center gap-3 animate-fade-in">
-        {/* Date Range Picker */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button 
-              variant="outline" 
-              className="h-11 px-4 rounded-xl border-border/50 bg-card hover:bg-muted transition-all"
-            >
-              <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
-              <span className="text-sm">
-                {format(dateRange.from, 'dd/MM/yyyy', { locale: ptBR })} - {format(dateRange.to, 'dd/MM/yyyy', { locale: ptBR })}
-              </span>
-              <ChevronDown className="h-4 w-4 ml-2 text-muted-foreground" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <CalendarComponent
-              mode="range"
-              selected={{ from: dateRange.from, to: dateRange.to }}
-              onSelect={(range) => {
-                if (range?.from && range?.to) {
-                  setDateRange({ from: range.from, to: range.to });
-                }
-              }}
-              numberOfMonths={2}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
-
-        {/* User Filter */}
-        <Select value={selectedUser} onValueChange={setSelectedUser}>
-          <SelectTrigger className="h-11 w-[180px] rounded-xl border-border/50 bg-card">
-            <SelectValue placeholder="Todos os usuários" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os usuários</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {/* Reset Filters */}
-        <Button variant="ghost" className="h-11 text-muted-foreground hover:text-primary">
-          <RotateCcw className="h-4 w-4 mr-2" />
-          Restaurar filtros
-        </Button>
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Right side buttons */}
-        <Button className="h-11 btn-gradient text-white rounded-xl hover:shadow-lg transition-all">
-          <Plus className="h-4 w-4 mr-2" />
-          Métricas
-        </Button>
-
-        <Select value={selectedMetric} onValueChange={setSelectedMetric}>
-          <SelectTrigger className="h-11 w-[150px] rounded-xl border-border/50 bg-card">
-            <SelectValue placeholder="Conversas" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="conversations">Conversas</SelectItem>
-            <SelectItem value="sales">Vendas</SelectItem>
-            <SelectItem value="leads">Leads</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Filters */}
+      <div className="animate-fade-in">
+        <DashboardFilters
+          filters={filters}
+          onFiltersChange={setFilters}
+          agents={agents}
+          departments={departments}
+        />
       </div>
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* KPI Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <div className="animate-slide-up">
-          <StatCard 
-            title="Novos contatos"
-            value={metrics?.newContacts.toLocaleString('pt-BR') || '0'}
+          <KPICard
+            title="Novos Leads"
+            value={kpis?.newLeads.toLocaleString('pt-BR') || '0'}
             icon={UserPlus}
-            gradient="from-purple-500 to-pink-500"
-            isLoading={loadingMetrics}
+            color="purple"
+            isLoading={loadingKPIs}
           />
         </div>
-        <div className="animate-slide-up" style={{ animationDelay: '100ms' }}>
-          <StatCard 
-            title="Conversas respondidas"
-            value={metrics?.respondedConversations.toLocaleString('pt-BR') || '0'}
-            icon={MessageSquare}
-            gradient="from-blue-500 to-cyan-500"
-            isLoading={loadingMetrics}
-          />
-        </div>
-        <div className="animate-slide-up" style={{ animationDelay: '200ms' }}>
-          <StatCard 
-            title="Conversas interagidas"
-            value={metrics?.totalConversations.toLocaleString('pt-BR') || '0'}
-            icon={Users}
-            gradient="from-green-500 to-emerald-500"
-            isLoading={loadingMetrics}
-          />
-        </div>
-        <div className="animate-slide-up" style={{ animationDelay: '300ms' }}>
-          <StatCard 
-            title="Tempo de resposta"
-            value={metrics?.avgResponseTime ? `${metrics.avgResponseTime} min` : '- min'}
-            icon={Clock}
-            gradient="from-orange-500 to-red-500"
-            isLoading={loadingMetrics}
-          />
-        </div>
-      </div>
-
-      {/* Main Chart */}
-      <div className="bg-card rounded-2xl border border-border/50 p-6 md:p-8 shadow-elevated animate-fade-in">
-        <h2 className="text-xl font-semibold text-foreground mb-6">Visão geral</h2>
         
-        <div className="h-[350px] md:h-[400px]">
-          {chartData.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-muted-foreground">
-              <div className="text-center">
-                <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Nenhum dado disponível para o período selecionado</p>
-                <p className="text-sm mt-1">Os dados aparecerão aqui conforme você usa o sistema</p>
-              </div>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorInteracted" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorContacts" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorAnswered" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                
-                <XAxis 
-                  dataKey="date" 
-                  stroke="hsl(var(--muted-foreground))"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                
-                <YAxis 
-                  stroke="hsl(var(--muted-foreground))"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                
-                <Tooltip content={<CustomTooltip />} />
-                
-                <Legend 
-                  wrapperStyle={{ fontSize: '14px', paddingTop: '20px' }}
-                  iconType="circle"
-                />
-                
-                <Area
-                  type="monotone"
-                  dataKey="interactedConversations"
-                  stroke="#10B981"
-                  strokeWidth={3}
-                  fill="url(#colorInteracted)"
-                  name="Conversas interagidas"
-                  dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, strokeWidth: 0 }}
-                />
-                
-                <Area
-                  type="monotone"
-                  dataKey="newContacts"
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  fill="url(#colorContacts)"
-                  name="Novos Contatos"
-                  dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, strokeWidth: 0 }}
-                />
-                
-                <Area
-                  type="monotone"
-                  dataKey="answeredConversations"
-                  stroke="#F59E0B"
-                  strokeWidth={3}
-                  fill="url(#colorAnswered)"
-                  name="Conversas respondidas"
-                  dot={{ fill: '#F59E0B', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, strokeWidth: 0 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
+        <div className="animate-slide-up" style={{ animationDelay: '50ms' }}>
+          <KPICard
+            title="Em Atendimento"
+            value={kpis?.inService.toLocaleString('pt-BR') || '0'}
+            icon={MessageSquare}
+            color="blue"
+            isLoading={loadingKPIs}
+          />
+        </div>
+        
+        <div className="animate-slide-up" style={{ animationDelay: '100ms' }}>
+          <KPICard
+            title="Aguardando Resposta"
+            value={kpis?.awaitingResponse.toLocaleString('pt-BR') || '0'}
+            icon={AlertCircle}
+            color="orange"
+            isLoading={loadingKPIs}
+          />
+        </div>
+        
+        <div className="animate-slide-up" style={{ animationDelay: '150ms' }}>
+          <KPICard
+            title="Tempo Médio"
+            value={kpis ? formatTime(kpis.avgResponseTime) : '-'}
+            subtitle="de resposta"
+            icon={Clock}
+            color="cyan"
+            isLoading={loadingKPIs}
+          />
+        </div>
+        
+        <div className="animate-slide-up" style={{ animationDelay: '200ms' }}>
+          <KPICard
+            title="Taxa Conversão"
+            value={kpis ? `${kpis.conversionRate.toFixed(1)}%` : '0%'}
+            subtitle="pedidos fechados"
+            icon={TrendingUp}
+            color="green"
+            isLoading={loadingKPIs}
+          />
+        </div>
+        
+        <div className="animate-slide-up" style={{ animationDelay: '250ms' }}>
+          <KPICard
+            title="Valor Convertido"
+            value={kpis ? formatCurrency(kpis.convertedValue) : 'R$ 0'}
+            icon={DollarSign}
+            color="pink"
+            isLoading={loadingKPIs}
+          />
         </div>
       </div>
 
-      {/* Bottom Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activity */}
-        <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated animate-slide-up">
-          <h3 className="text-lg font-semibold text-foreground mb-4">Atividade Recente</h3>
-          
-          {loadingActivity ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
-          ) : recentActivity.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Clock className="h-10 w-10 mx-auto mb-3 opacity-50" />
-              <p>Nenhuma atividade recente</p>
-              <p className="text-sm mt-1">As atividades aparecerão aqui</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {recentActivity.map((activity) => (
-                <div 
-                  key={activity.id} 
-                  className="flex items-center gap-4 p-3 hover:bg-muted/50 rounded-xl transition-colors cursor-pointer"
-                >
-                  <div className="p-2.5 bg-purple-100 rounded-lg">
-                    {activity.type === 'contact' ? (
-                      <UserPlus className="h-5 w-5 text-purple-600" />
-                    ) : activity.type === 'deal' ? (
-                      <DollarSign className="h-5 w-5 text-purple-600" />
-                    ) : (
-                      <MessageSquare className="h-5 w-5 text-purple-600" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{activity.text}</p>
-                    <p className="text-xs text-muted-foreground">{activity.time}</p>
-                  </div>
-                  <div className="h-2.5 w-2.5 bg-success rounded-full animate-pulse"></div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Charts Row 1: Funnel + Lead Status */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
+        <ConversionFunnel data={funnelData} isLoading={loadingFunnel} />
+        <LeadStatusChart data={leadsByStatus} isLoading={loadingStatus} />
+      </div>
 
-        {/* Quick Actions */}
-        <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated animate-slide-up" style={{ animationDelay: '100ms' }}>
-          <h3 className="text-lg font-semibold text-foreground mb-4">Ações Rápidas</h3>
-          
-          <div className="grid grid-cols-2 gap-4">
-            {quickActions.map((action) => (
-              <button
-                key={action.title}
-                onClick={() => navigate(action.href)}
-                className="flex flex-col items-center justify-center p-6 rounded-xl bg-muted/50 hover:bg-muted border border-transparent hover:border-primary/20 transition-all duration-200 group"
-              >
-                <div className={`p-4 bg-gradient-to-br ${action.gradient} rounded-xl mb-3 group-hover:scale-110 transition-transform shadow-lg`}>
-                  <action.icon className="h-6 w-6 text-white" />
-                </div>
-                <span className="text-sm font-medium text-foreground">{action.title}</span>
-              </button>
-            ))}
-          </div>
+      {/* Charts Row 2: Timeline */}
+      <div className="animate-fade-in">
+        <TimelineChart data={timelineData} isLoading={loadingTimeline} />
+      </div>
+
+      {/* Bottom Section: Agent Ranking + Critical + Recent */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1 animate-slide-up">
+          <AgentPerformanceTable data={agentPerformance} isLoading={loadingAgents} />
+        </div>
+        
+        <div className="lg:col-span-1 animate-slide-up" style={{ animationDelay: '100ms' }}>
+          <CriticalConversations data={criticalConversations} isLoading={loadingCritical} />
+        </div>
+        
+        <div className="lg:col-span-1 animate-slide-up" style={{ animationDelay: '200ms' }}>
+          <RecentActivity data={recentActivity} isLoading={loadingActivity} />
         </div>
       </div>
     </div>
