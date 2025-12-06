@@ -565,6 +565,14 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                   className="w-8 h-8 rounded object-cover flex-shrink-0"
                 />
               )}
+              {/* Sticker thumbnail for sticker replies */}
+              {replyTo.message_type === 'sticker' && replyTo.media_url && (
+                <img 
+                  src={replyTo.media_url} 
+                  alt="Sticker" 
+                  className="w-8 h-8 object-contain flex-shrink-0"
+                />
+              )}
               <span className="truncate">
                 {replyTo.is_deleted 
                   ? 'Mensagem apagada' 
@@ -576,7 +584,9 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                         ? '🎬 Vídeo'
                         : replyTo.message_type === 'document'
                           ? '📄 Documento'
-                          : (replyTo.content?.substring(0, 50) || 'Mídia')}
+                          : replyTo.message_type === 'sticker'
+                            ? '🎭 Sticker'
+                            : (replyTo.content?.substring(0, 50) || 'Mídia')}
                 {replyTo.message_type === 'text' && replyTo.content && replyTo.content.length > 50 ? '...' : ''}
               </span>
             </div>
@@ -641,6 +651,21 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                         <FileText size={24} className={isMe ? 'text-white' : 'text-muted-foreground'} />
                         <span className="text-sm truncate">{message.content || 'Documento'}</span>
                       </a>
+                    )}
+                    {message.message_type === 'sticker' && message.media_url && (
+                      <img 
+                        src={message.media_url} 
+                        alt="Sticker" 
+                        className="max-h-32 w-auto object-contain"
+                        loading="lazy"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          target.parentElement?.insertAdjacentHTML('beforeend', 
+                            '<span class="text-sm text-muted-foreground">🎭 Sticker</span>'
+                          );
+                        }}
+                      />
                     )}
                   </div>
                 )}

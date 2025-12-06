@@ -270,14 +270,16 @@ export class ZAPIAdapter implements WhatsAppAdapter {
     return (payload.image as Record<string, unknown>)?.imageUrl as string ||
            (payload.audio as Record<string, unknown>)?.audioUrl as string ||
            (payload.video as Record<string, unknown>)?.videoUrl as string ||
-           (payload.document as Record<string, unknown>)?.documentUrl as string;
+           (payload.document as Record<string, unknown>)?.documentUrl as string ||
+           (payload.sticker as Record<string, unknown>)?.stickerUrl as string;
   }
 
   private extractMimetype(payload: Record<string, unknown>): string | undefined {
     return (payload.image as Record<string, unknown>)?.mimetype as string ||
            (payload.audio as Record<string, unknown>)?.mimetype as string ||
            (payload.video as Record<string, unknown>)?.mimetype as string ||
-           (payload.document as Record<string, unknown>)?.mimetype as string;
+           (payload.document as Record<string, unknown>)?.mimetype as string ||
+           (payload.sticker as Record<string, unknown>)?.mimetype as string;
   }
 
   private extractCaption(payload: Record<string, unknown>): string | undefined {
