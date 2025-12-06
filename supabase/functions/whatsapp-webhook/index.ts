@@ -608,28 +608,24 @@ serve(async (req) => {
           .single();
         conversation = conv;
       } else {
-        // Contato não encontrado - pode ser um LID
-        // Buscar conversa mais recente deste canal com atividade recente
-        console.log(`[Webhook] Contact not found directly, searching by recent conversation for LID resolution...`);
+        // Contato não encontrado pelo telefone
+        // IMPORTANTE: NÃO usar fallback de "conversa mais recente" para fromMe
+        // pois isso causa mensagens indo para a conversa errada!
+        // 
+        // Se o telefone é um LID (não começa com 55 ou tem formato estranho),
+        // logamos e pulamos - o contato será criado quando recebermos resposta
         
-        const { data: recentConv } = await supabase
-          .from("conversations")
-          .select(`
-            id,
-            contact:contacts!inner(id, phone)
-          `)
-          .eq("channel_id", channel.id)
-          .in("status", ["open", "pending"])
-          .order("last_message_at", { ascending: false })
-          .limit(1)
-          .single();
+        const isLikelyLID = !recipientPhone.startsWith('55') || recipientPhone.length > 13;
         
-        if (recentConv && recentConv.contact) {
-          console.log(`[Webhook] Found recent conversation with contact: ${(recentConv.contact as any).phone}`);
-          contact = { id: (recentConv.contact as any).id };
-          conversation = { id: recentConv.id };
-          recipientPhone = (recentConv.contact as any).phone;
+        if (isLikelyLID) {
+          console.log(`[Webhook] ⚠️ Phone ${recipientPhone} looks like a LID, skipping fromMe message to avoid wrong conversation`);
+          return new Response(JSON.stringify({ success: true, message: "LID phone for fromMe, skipping" }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
         }
+        
+        // Se é um telefone válido que não existe, será criado abaixo
+        console.log(`[Webhook] Contact not found for valid phone ${recipientPhone}, will create new contact`);
       }
 
       // =====================================================
