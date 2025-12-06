@@ -779,12 +779,88 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs text-muted-foreground">Origem</span>
                 <span className="text-sm text-foreground capitalize">
-                  {contact.origin}
+                  {contact.origin?.replace(/_/g, ' ')}
                 </span>
               </div>
             )}
           </div>
         </div>
+
+        {/* Meta Ads / Referral Data */}
+        {(contact.origin === 'meta_ads' || contact.referral_data || conversation.referral_data) && (() => {
+          const referralData = contact.referral_data || conversation.referral_data;
+          if (!referralData || typeof referralData !== 'object') return null;
+          
+          const rd = referralData as Record<string, any>;
+          const hasData = rd.adName || rd.headline || rd.sourceUrl || rd.body || rd.campaignName;
+          if (!hasData) return null;
+          
+          return (
+            <div className="p-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-b border-border">
+              <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <span>📣</span> Origem do Anúncio
+              </label>
+              
+              <div className="space-y-2">
+                {/* Campaign Name */}
+                {rd.campaignName && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-muted-foreground uppercase">Campanha</span>
+                    <span className="text-xs text-foreground font-medium">{rd.campaignName}</span>
+                  </div>
+                )}
+                
+                {/* Ad Name */}
+                {rd.adName && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-muted-foreground uppercase">Anúncio</span>
+                    <span className="text-xs text-foreground font-medium">{rd.adName}</span>
+                  </div>
+                )}
+                
+                {/* Headline */}
+                {rd.headline && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-muted-foreground uppercase">Título</span>
+                    <span className="text-xs text-foreground">{rd.headline}</span>
+                  </div>
+                )}
+                
+                {/* Body */}
+                {rd.body && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-muted-foreground uppercase">Texto</span>
+                    <span className="text-xs text-muted-foreground line-clamp-3">{rd.body}</span>
+                  </div>
+                )}
+                
+                {/* Source URL - Link to Ad */}
+                {rd.sourceUrl && typeof rd.sourceUrl === 'string' && rd.sourceUrl.startsWith('http') && (
+                  <a 
+                    href={rd.sourceUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 hover:underline mt-1"
+                  >
+                    <span>🔗</span> Ver anúncio original →
+                  </a>
+                )}
+                
+                {/* Thumbnail (if valid URL) */}
+                {rd.thumbnailUrl && typeof rd.thumbnailUrl === 'string' && rd.thumbnailUrl.startsWith('http') && (
+                  <div className="mt-2">
+                    <img 
+                      src={rd.thumbnailUrl} 
+                      alt="Ad thumbnail" 
+                      className="w-full h-auto rounded-lg border border-border max-h-32 object-cover"
+                      onError={(e) => (e.currentTarget.style.display = 'none')}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Notes */}
         {contact.notes && (

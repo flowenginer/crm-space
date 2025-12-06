@@ -296,6 +296,9 @@ function extractReferralData(msg: any): ReferralData | null {
   const message = msg.message;
   if (!message) return null;
   
+  // Log para debug - ver estrutura completa do contextInfo
+  console.log(`[Webhook] Checking for referral data in message...`);
+  
   // Tentar encontrar contextInfo em diferentes locais
   const contextInfo = 
     msg.contextInfo ||
@@ -307,6 +310,9 @@ function extractReferralData(msg: any): ReferralData | null {
     message.documentMessage?.contextInfo;
   
   if (!contextInfo) return null;
+  
+  // Log detalhado do contextInfo para debug
+  console.log(`[Webhook] contextInfo found:`, JSON.stringify(contextInfo).substring(0, 1000));
   
   // Verificar se há dados de anúncio
   const hasAdData = contextInfo.showAdAttribution || 
@@ -321,20 +327,45 @@ function extractReferralData(msg: any): ReferralData | null {
   const entryPoint = contextInfo.entryPointConversionSource || {};
   const adReply = contextInfo.adReplyInfo || contextInfo.externalAdReply || {};
   
+  // Log para debug
+  console.log(`[Webhook] entryPoint:`, JSON.stringify(entryPoint).substring(0, 500));
+  console.log(`[Webhook] adReply:`, JSON.stringify(adReply).substring(0, 500));
+  
+  // Função auxiliar para validar e extrair URLs
+  const extractValidUrl = (...sources: any[]): string | undefined => {
+    for (const source of sources) {
+      if (typeof source === 'string' && source.startsWith('http')) {
+        return source;
+      }
+    }
+    return undefined;
+  };
+  
+  // Função para extrair texto (evitar bytes/objetos)
+  const extractText = (...sources: any[]): string | undefined => {
+    for (const source of sources) {
+      if (typeof source === 'string' && source.length > 0 && source.length < 5000) {
+        return source;
+      }
+    }
+    return undefined;
+  };
+  
   const referralData: ReferralData = {
-    ctwaClid: contextInfo.ctwaClid || entryPoint.ctwaClid,
-    sourceId: entryPoint.sourceId || adReply.sourceId,
-    sourceType: entryPoint.sourceType || adReply.sourceType || (contextInfo.showAdAttribution ? 'ad' : undefined),
-    sourceUrl: entryPoint.sourceUrl || adReply.sourceUrl,
-    headline: adReply.headline || adReply.title,
-    body: adReply.body || adReply.description,
-    mediaType: adReply.mediaType,
-    imageUrl: adReply.thumbnail || adReply.thumbnailUrl || adReply.imageUrl,
-    videoUrl: adReply.videoUrl,
-    thumbnailUrl: adReply.thumbnail || adReply.thumbnailUrl,
+    ctwaClid: extractText(contextInfo.ctwaClid, entryPoint.ctwaClid),
+    sourceId: extractText(entryPoint.sourceId, adReply.sourceId),
+    sourceType: extractText(entryPoint.sourceType, adReply.sourceType) || (contextInfo.showAdAttribution ? 'ad' : undefined),
+    sourceUrl: extractValidUrl(entryPoint.sourceUrl, adReply.sourceUrl, adReply.url),
+    headline: extractText(adReply.headline, adReply.title),
+    body: extractText(adReply.body, adReply.description, adReply.text),
+    mediaType: extractText(adReply.mediaType),
+    // Validar URLs de imagem (evitar salvar bytes como base64)
+    imageUrl: extractValidUrl(adReply.thumbnail, adReply.thumbnailUrl, adReply.imageUrl, adReply.previewUrl),
+    videoUrl: extractValidUrl(adReply.videoUrl),
+    thumbnailUrl: extractValidUrl(adReply.thumbnail, adReply.thumbnailUrl, adReply.previewUrl),
     showAdAttribution: contextInfo.showAdAttribution === true,
-    adName: adReply.adName || adReply.title,
-    campaignName: adReply.campaignName,
+    adName: extractText(adReply.adName, adReply.title, adReply.name),
+    campaignName: extractText(adReply.campaignName, adReply.campaign),
   };
   
   // Limpar campos undefined
@@ -350,7 +381,7 @@ function extractReferralData(msg: any): ReferralData | null {
     return null;
   }
   
-  console.log(`[Webhook] 📣 REFERRAL DATA DETECTED (Meta Ads):`, JSON.stringify(referralData));
+  console.log(`[Webhook] 📣 REFERRAL DATA EXTRACTED (Meta Ads):`, JSON.stringify(referralData));
   
   return referralData;
 }
