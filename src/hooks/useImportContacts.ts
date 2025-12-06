@@ -70,7 +70,10 @@ export function useImportContacts() {
   const findLeadStatusByName = async (statusName: string) => {
     const searchTerm = statusName.trim();
     
-    // Tentar match exato primeiro (case insensitive)
+    // Remove numeric prefix like "01 - ", "02 - " for matching
+    const cleanTerm = searchTerm.replace(/^\d+\s*[-–]\s*/, '').trim();
+    
+    // Try exact match first (full name)
     const { data: exactMatch } = await supabase
       .from('lead_statuses')
       .select('id, name')
@@ -80,15 +83,32 @@ export function useImportContacts() {
     
     if (exactMatch) return exactMatch;
     
-    // Tentar match parcial (contém o texto)
-    const { data: partialMatch } = await supabase
+    // Try match with cleaned term (without prefix)
+    const { data: cleanMatch } = await supabase
       .from('lead_statuses')
       .select('id, name')
-      .ilike('name', `%${searchTerm}%`)
+      .ilike('name', `%${cleanTerm}%`)
       .eq('is_active', true)
       .maybeSingle();
     
-    return partialMatch;
+    if (cleanMatch) return cleanMatch;
+    
+    // Get all statuses and try to match by cleaning both sides
+    const { data: allStatuses } = await supabase
+      .from('lead_statuses')
+      .select('id, name')
+      .eq('is_active', true);
+    
+    if (allStatuses) {
+      for (const status of allStatuses) {
+        const cleanStatusName = status.name.replace(/^\d+\s*[-–]\s*/, '').trim().toLowerCase();
+        if (cleanStatusName === cleanTerm.toLowerCase()) {
+          return status;
+        }
+      }
+    }
+    
+    return null;
   };
 
   const getContactTags = async (contactId: string): Promise<string[]> => {
