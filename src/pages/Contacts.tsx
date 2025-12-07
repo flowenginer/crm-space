@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -36,7 +36,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useContacts, useContactsCount, useCreateContact, useUpdateContact, useDeleteContact, type Contact } from '@/hooks/useContacts';
+import { useContactsCount, useCreateContact, useUpdateContact, useDeleteContact, type Contact } from '@/hooks/useContacts';
+import { usePaginatedContacts, useContactsFilterCounts, useFilteredContactsCount } from '@/hooks/usePaginatedContacts';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useTags, useCreateTag, useDeleteTag, useAddTagToContact, useRemoveTagFromContact } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
@@ -67,8 +69,76 @@ export default function Contacts() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   
-  const { data: contacts = [], isLoading: contactsLoading } = useContacts();
+  // Estados de filtro
+  const [searchQuery, setSearchQuery] = useState('');
+  const [stateFilter, setStateFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [assignedFilter, setAssignedFilter] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [showTagsDropdown, setShowTagsDropdown] = useState(false);
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState(50);
+
+  // Debounce da busca para evitar muitas requisições
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
+  // Busca paginada com filtros server-side
+  const { 
+    data: paginatedData, 
+    isLoading: contactsLoading, 
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = usePaginatedContacts({
+    searchQuery: debouncedSearch,
+    stateFilter,
+    statusFilter,
+    assignedTo: assignedFilter,
+    tagIds: selectedTags.length > 0 ? selectedTags : undefined,
+  });
+
+  // Contagem total filtrada
+  const { data: filteredCount = 0 } = useFilteredContactsCount({
+    searchQuery: debouncedSearch,
+    stateFilter,
+    statusFilter,
+    assignedTo: assignedFilter,
+    tagIds: selectedTags.length > 0 ? selectedTags : undefined,
+  });
+
+  // Contagem total geral
   const { data: totalContacts = 0 } = useContactsCount();
+
+  // Contagens para os filtros (server-side)
+  const { data: filterCounts } = useContactsFilterCounts();
+
+  // Todos os contatos da página atual
+  const contacts = useMemo(() => {
+    return paginatedData?.pages.flatMap(p => p.contacts) ?? [];
+  }, [paginatedData]);
+
+  // Paginação local dos dados já carregados
+  const paginatedContacts = useMemo(() => {
+    const startIndex = (currentPage - 1) * perPage;
+    return contacts.slice(startIndex, startIndex + perPage);
+  }, [contacts, currentPage, perPage]);
+
+  const totalPages = Math.ceil(filteredCount / perPage);
+
+  // Carregar mais páginas automaticamente quando necessário
+  useEffect(() => {
+    const neededItems = currentPage * perPage;
+    if (contacts.length < neededItems && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [currentPage, perPage, contacts.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Reset para página 1 quando filtros mudam
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, stateFilter, statusFilter, assignedFilter, selectedTags]);
+
   const { data: tags = [], isLoading: tagsLoading } = useTags();
   const { data: team = [] } = useTeam();
   const { data: departments = [] } = useDepartments();
@@ -90,37 +160,10 @@ export default function Contacts() {
     return 'bg-muted text-muted-foreground';
   };
 
-  // Contagem de contatos por responsável
-  const contactCountByAssignee = useMemo(() => {
-    const counts: Record<string, number> = {};
-    contacts.forEach(contact => {
-      if (contact.assigned_to) {
-        counts[contact.assigned_to] = (counts[contact.assigned_to] || 0) + 1;
-      }
-    });
-    return counts;
-  }, [contacts]);
-
-  // Contagem de contatos por estado
-  const contactCountByState = useMemo(() => {
-    const counts: Record<string, number> = {};
-    contacts.forEach(contact => {
-      if (contact.state) {
-        counts[contact.state] = (counts[contact.state] || 0) + 1;
-      }
-    });
-    return counts;
-  }, [contacts]);
-
-  // Contagem de contatos por status de lead
-  const contactCountByLeadStatus = useMemo(() => {
-    const counts: Record<string, number> = {};
-    contacts.forEach(contact => {
-      const status = contact.lead_status || 'sem_status';
-      counts[status] = (counts[status] || 0) + 1;
-    });
-    return counts;
-  }, [contacts]);
+  // Usar contagens do servidor
+  const contactCountByAssignee = filterCounts?.byAssignee ?? {};
+  const contactCountByState = filterCounts?.byState ?? {};
+  const contactCountByLeadStatus = filterCounts?.byStatus ?? {};
   
   const createContact = useCreateContact();
   const updateContact = useUpdateContact();
@@ -131,25 +174,7 @@ export default function Contacts() {
   const removeTagFromContact = useRemoveTagFromContact();
   
   const [isOpeningChat, setIsOpeningChat] = useState(false);
-
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [stateFilter, setStateFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [assignedFilter, setAssignedFilter] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [showTagsDropdown, setShowTagsDropdown] = useState(false);
-  const [tagSearchQuery, setTagSearchQuery] = useState('');
-
-  // Filtrar etiquetas pela busca
-  const filteredTags = useMemo(() => {
-    if (!tagSearchQuery.trim()) return tags;
-    return tags.filter(tag => 
-      tag.name.toLowerCase().includes(tagSearchQuery.toLowerCase())
-    );
-  }, [tags, tagSearchQuery]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [perPage, setPerPage] = useState(50);
 
   // Modal states
   const [showContactModal, setShowContactModal] = useState(false);
@@ -185,23 +210,15 @@ export default function Contacts() {
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#8B5CF6');
 
-  // Filter contacts
-  const filteredContacts = contacts.filter((contact) => {
-    const matchesSearch =
-      searchQuery === '' ||
-      contact.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      contact.phone.includes(searchQuery) ||
-      (contact.email?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
-    const matchesState = stateFilter === '' || contact.state === stateFilter;
-    const matchesStatus = statusFilter === '' || contact.lead_status === statusFilter;
-    const matchesAssigned = assignedFilter === '' || contact.assigned_to === assignedFilter;
-    const matchesTags =
-      selectedTags.length === 0 || selectedTags.some((tagId) => contact.tags?.some(t => t.id === tagId));
-    return matchesSearch && matchesState && matchesStatus && matchesAssigned && matchesTags;
-  });
+  // Filtrar etiquetas pela busca
+  const filteredTags = useMemo(() => {
+    if (!tagSearchQuery.trim()) return tags;
+    return tags.filter(tag => 
+      tag.name.toLowerCase().includes(tagSearchQuery.toLowerCase())
+    );
+  }, [tags, tagSearchQuery]);
 
-  const paginatedContacts = filteredContacts.slice((currentPage - 1) * perPage, currentPage * perPage);
-  const totalPages = Math.ceil(filteredContacts.length / perPage);
+  const isLoading = contactsLoading || tagsLoading;
 
   const handleSelectAll = () => {
     if (selectedContacts.length === paginatedContacts.length) {
@@ -403,7 +420,6 @@ export default function Contacts() {
     }
   };
 
-  const isLoading = contactsLoading || tagsLoading;
 
   return (
     <div className="space-y-6">
@@ -878,7 +894,7 @@ export default function Contacts() {
           </div>
 
           {/* Pagination */}
-          {filteredContacts.length > 0 && (
+          {filteredCount > 0 && (
             <div className="px-6 py-4 border-t border-border flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span>Mostrando</span>
@@ -891,7 +907,7 @@ export default function Contacts() {
                   <option value={100}>100</option>
                   <option value={200}>200</option>
                 </select>
-                <span>de {filteredContacts.length.toLocaleString('pt-BR')} contatos</span>
+                <span>de {filteredCount.toLocaleString('pt-BR')} contatos</span>
               </div>
 
               <div className="flex items-center gap-1">
