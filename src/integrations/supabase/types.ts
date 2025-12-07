@@ -2422,6 +2422,15 @@ export type Database = {
         Returns: boolean
       }
       get_contact_filter_counts: { Args: never; Returns: Json }
+      get_conversation_tag_counts: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_department_id?: string
+          p_origin?: string
+        }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

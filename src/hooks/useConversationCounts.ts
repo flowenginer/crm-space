@@ -450,44 +450,25 @@ export function useOriginCounts(filters?: CountFilters) {
 
 /**
  * Hook para buscar contagens de etiquetas em conversas - contextual
+ * Usa função RPC otimizada para evitar URLs muito longas
  */
 export function useTagCounts(filters?: CountFilters) {
   return useQuery({
     queryKey: ['tag-counts', filters],
     queryFn: async (): Promise<Record<string, number>> => {
-      // Buscar contact_id diretamente das conversas abertas
-      let query = supabase.from('conversations').select('contact_id').eq('status', 'open');
-      
-      // Apply filters APENAS se existirem valores reais
-      if (filters?.departmentId) query = query.eq('department_id', filters.departmentId);
-      if (filters?.agentId) query = query.eq('assigned_to', filters.agentId);
-      if (filters?.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
-      else if (filters?.channelId === 'no_channel') query = query.is('channel_id', null);
-      if (filters?.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
-      else if (filters?.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      
-      // Pegar contact_ids únicos diretamente
-      const contactIds = [...new Set(data?.map(c => c.contact_id).filter(Boolean) || [])];
-      
-      if (contactIds.length === 0) return {};
-      
-      // Get tag assignments for these contacts
-      const { data: tagData, error: tagError } = await supabase
-        .from('contact_tags')
-        .select('tag_id')
-        .in('contact_id', contactIds);
-      
-      if (tagError) throw tagError;
-      
-      const counts: Record<string, number> = {};
-      tagData?.forEach(ct => {
-        counts[ct.tag_id] = (counts[ct.tag_id] || 0) + 1;
+      const { data, error } = await supabase.rpc('get_conversation_tag_counts', {
+        p_department_id: filters?.departmentId || null,
+        p_agent_id: filters?.agentId || null,
+        p_channel_id: filters?.channelId && filters.channelId !== 'no_channel' ? filters.channelId : null,
+        p_origin: filters?.origin && filters.origin !== 'all' ? filters.origin : null,
       });
+
+      if (error) {
+        console.error('Error fetching tag counts:', error);
+        throw error;
+      }
       
-      return counts;
+      return (data as Record<string, number>) || {};
     },
     staleTime: 10000,
     refetchInterval: 30000,
