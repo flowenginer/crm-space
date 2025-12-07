@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Search, Bell, Calendar, Menu, MessageCircle, Clock, UserPlus, AlertTriangle, ArrowRightLeft, CheckCheck, X } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -116,8 +117,45 @@ export function Header({ title, onMenuClick }: HeaderProps) {
   const [dismissedIds, setDismissedIds] = useState<string[]>(getDismissedNotifications);
   const searchRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
+
+  // CRM-specific state
+  const isCRMPage = location.pathname === '/crm';
+  const crmTab = searchParams.get('tab') || 'leads';
+  const crmSearch = searchParams.get('search') || '';
+  const [localCrmSearch, setLocalCrmSearch] = useState(crmSearch);
+
+  // Sync local search with URL params for CRM
+  useEffect(() => {
+    if (isCRMPage) {
+      const timeout = setTimeout(() => {
+        const newParams = new URLSearchParams(searchParams);
+        if (localCrmSearch) {
+          newParams.set('search', localCrmSearch);
+        } else {
+          newParams.delete('search');
+        }
+        setSearchParams(newParams, { replace: true });
+      }, 300);
+      return () => clearTimeout(timeout);
+    }
+  }, [localCrmSearch, isCRMPage]);
+
+  // Reset local search when leaving CRM or when URL changes
+  useEffect(() => {
+    if (isCRMPage) {
+      setLocalCrmSearch(crmSearch);
+    }
+  }, [crmSearch, isCRMPage]);
+
+  const handleCrmTabChange = (tab: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('tab', tab);
+    setSearchParams(newParams, { replace: true });
+  };
 
   // Fetch useful notifications: assignments, transfers, SLA alerts
   const { data: notifications = [] } = useQuery({
@@ -383,63 +421,89 @@ export function Header({ title, onMenuClick }: HeaderProps) {
             {title}
           </h1>
         </div>
+
+        {/* CRM Search - Next to title */}
+        {isCRMPage && !isMobile && (
+          <div className="relative" ref={searchRef}>
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Buscar contatos..."
+              value={localCrmSearch}
+              onChange={(e) => setLocalCrmSearch(e.target.value)}
+              className="w-64 h-10 pl-10 bg-muted/50 border-border/50 rounded-xl focus:bg-card focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground"
+            />
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3 md:gap-4">
-        {/* Global Search */}
-        <div className="relative hidden md:block" ref={searchRef}>
-          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Buscar leads, conversas..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => searchQuery.length >= 2 && setShowSearchResults(true)}
-            className="w-80 h-11 pl-11 bg-muted/50 border-border/50 rounded-xl focus:bg-card focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground"
-          />
-          
-          {/* Search Results Dropdown */}
-          {showSearchResults && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-popover border border-border rounded-xl shadow-xl z-50 overflow-hidden">
-              {isSearching ? (
-                <div className="p-4 text-center text-muted-foreground text-sm">
-                  Buscando...
-                </div>
-              ) : searchResults.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground text-sm">
-                  Nenhum resultado encontrado
-                </div>
-              ) : (
-                <div className="max-h-80 overflow-y-auto">
-                  {searchResults.map((result) => (
-                    <button
-                      key={result.id}
-                      onClick={() => handleResultClick(result)}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-muted transition-colors text-left"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold flex-shrink-0">
-                        {result.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {result.name}
-                        </p>
-                        {result.phone && (
-                          <p className="text-xs text-muted-foreground truncate">
-                            {result.phone}
+        {/* CRM Tabs - In place of global search */}
+        {isCRMPage && !isMobile && (
+          <Tabs value={crmTab} onValueChange={handleCrmTabChange} className="w-auto">
+            <TabsList>
+              <TabsTrigger value="leads">Gestão de Leads</TabsTrigger>
+              <TabsTrigger value="deals">Negócios</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+
+        {/* Global Search - Hidden on CRM page */}
+        {!isCRMPage && (
+          <div className="relative hidden md:block" ref={searchRef}>
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Buscar leads, conversas..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => searchQuery.length >= 2 && setShowSearchResults(true)}
+              className="w-80 h-11 pl-11 bg-muted/50 border-border/50 rounded-xl focus:bg-card focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground"
+            />
+            
+            {/* Search Results Dropdown */}
+            {showSearchResults && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-popover border border-border rounded-xl shadow-xl z-50 overflow-hidden">
+                {isSearching ? (
+                  <div className="p-4 text-center text-muted-foreground text-sm">
+                    Buscando...
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <div className="p-4 text-center text-muted-foreground text-sm">
+                    Nenhum resultado encontrado
+                  </div>
+                ) : (
+                  <div className="max-h-80 overflow-y-auto">
+                    {searchResults.map((result) => (
+                      <button
+                        key={result.id}
+                        onClick={() => handleResultClick(result)}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-muted transition-colors text-left"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold flex-shrink-0">
+                          {result.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {result.name}
                           </p>
+                          {result.phone && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {result.phone}
+                            </p>
+                          )}
+                        </div>
+                        {result.conversationId && (
+                          <MessageCircle size={16} className="text-primary flex-shrink-0" />
                         )}
-                      </div>
-                      {result.conversationId && (
-                        <MessageCircle size={16} className="text-primary flex-shrink-0" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Date Picker */}
         <Popover>

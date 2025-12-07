@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -64,7 +65,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
@@ -96,7 +102,12 @@ import LeadKanban from '@/components/crm/LeadKanban';
 
 export default function CRM() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'deals' | 'leads'>('leads');
+  const [searchParams] = useSearchParams();
+  
+  // Get tab and search from URL (controlled by Header)
+  const activeTab = (searchParams.get('tab') || 'leads') as 'deals' | 'leads';
+  const crmSearchQuery = searchParams.get('search') || '';
+  
   const [activeDeal, setActiveDeal] = useState<DealType | null>(null);
   const [showAddDealModal, setShowAddDealModal] = useState(false);
   const [showDealDetailsModal, setShowDealDetailsModal] = useState(false);
@@ -238,22 +249,9 @@ export default function CRM() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Header with Tabs */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-foreground">CRM</h1>
-          
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'deals' | 'leads')} className="w-auto">
-            <TabsList>
-              <TabsTrigger value="leads">Gestão de Leads</TabsTrigger>
-              <TabsTrigger value="deals">Negócios</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        {/* Deals Tab Header */}
-        {activeTab === 'deals' && (
+    <div className="space-y-4">
+      {/* Deals Tab Header - Only show when on deals tab */}
+      {activeTab === 'deals' && (
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Label className="text-sm text-muted-foreground font-medium">Pipeline:</Label>
@@ -343,14 +341,13 @@ export default function CRM() {
                 <Plus size={18} />
                 Novo Negócio
               </Button>
-            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Lead Kanban Tab Content */}
       {activeTab === 'leads' && (
-        <LeadKanban />
+        <LeadKanban searchQuery={crmSearchQuery} />
       )}
 
       {/* Deals Tab Content */}
