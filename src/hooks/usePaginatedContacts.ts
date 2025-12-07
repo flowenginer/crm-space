@@ -164,50 +164,22 @@ export function usePaginatedContacts(filters: ContactFilters) {
   });
 }
 
-// Hook para buscar contagens dos filtros - direto do servidor
+// Hook para buscar contagens dos filtros - usando RPC para contagem agregada
 export function useContactsFilterCounts() {
   return useQuery({
     queryKey: ['contacts-filter-counts'],
     queryFn: async () => {
-      // Buscar contagens por estado
-      const { data: byStateData } = await supabase
-        .from('contacts')
-        .select('state')
-        .not('state', 'is', null);
+      const { data, error } = await supabase.rpc('get_contact_filter_counts');
 
-      // Buscar contagens por status
-      const { data: byStatusData } = await supabase
-        .from('contacts')
-        .select('lead_status');
+      if (error) throw error;
 
-      // Buscar contagens por responsável
-      const { data: byAssigneeData } = await supabase
-        .from('contacts')
-        .select('assigned_to')
-        .not('assigned_to', 'is', null);
+      const result = data as { byState?: Record<string, number>; byStatus?: Record<string, number>; byAssignee?: Record<string, number> } | null;
 
-      // Processar contagens
-      const byState: Record<string, number> = {};
-      byStateData?.forEach(c => {
-        if (c.state) {
-          byState[c.state] = (byState[c.state] || 0) + 1;
-        }
-      });
-
-      const byStatus: Record<string, number> = {};
-      byStatusData?.forEach(c => {
-        const status = c.lead_status || 'sem_status';
-        byStatus[status] = (byStatus[status] || 0) + 1;
-      });
-
-      const byAssignee: Record<string, number> = {};
-      byAssigneeData?.forEach(c => {
-        if (c.assigned_to) {
-          byAssignee[c.assigned_to] = (byAssignee[c.assigned_to] || 0) + 1;
-        }
-      });
-
-      return { byState, byStatus, byAssignee };
+      return {
+        byState: (result?.byState || {}) as Record<string, number>,
+        byStatus: (result?.byStatus || {}) as Record<string, number>,
+        byAssignee: (result?.byAssignee || {}) as Record<string, number>,
+      };
     },
     staleTime: 60000, // 1 minute cache
   });
