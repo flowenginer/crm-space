@@ -48,7 +48,7 @@ const navItems: NavItem[] = [
   { title: 'Agendamentos', href: '/agendamentos', icon: CalendarClock, permission: 'templates.read' },
   { title: 'Automações', href: '/automations', icon: Workflow, permission: 'settings.view' },
   { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.read' },
-  { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.read' },
+  { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.view' },
   { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.read' },
   // Marketing
   { title: 'Meta Ads', href: '/meta-ads', icon: Megaphone, permission: 'reports.view' },
