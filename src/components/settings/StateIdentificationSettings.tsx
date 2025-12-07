@@ -1,25 +1,28 @@
 import { useState, useEffect } from 'react';
-import { MapPin, Play, Loader2, CheckCircle, Tag, AlertCircle } from 'lucide-react';
+import { MapPin, Play, Loader2, CheckCircle, Tag, AlertCircle, RefreshCw, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { getStateFromPhone, STATE_NAMES } from '@/utils/ddd';
+import { getStateFromPhone } from '@/utils/ddd';
 import { findOrCreateTag } from '@/hooks/useTags';
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-
-interface ProcessResult {
-  processed: number;
-  statesIdentified: number;
-  tagsCreated: number;
-  tagsAssigned: number;
-  errors: number;
-}
+import { Button } from '@/components/ui/button';
+import { useStateIdentificationStore } from '@/store/stateIdentificationStore';
 
 export function StateIdentificationSettings() {
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState<ProcessResult | null>(null);
-  const [contactsWithoutState, setContactsWithoutState] = useState<number | null>(null);
+  const {
+    isProcessing,
+    progress,
+    result,
+    shouldCancel,
+    contactsWithoutState,
+    startProcessing,
+    updateProgress,
+    setResult,
+    cancelProcessing,
+    setContactsWithoutState,
+  } = useStateIdentificationStore();
+
   const [isLoadingCount, setIsLoadingCount] = useState(false);
 
   const loadContactsCount = async () => {
@@ -60,11 +63,9 @@ export function StateIdentificationSettings() {
   };
 
   const processContacts = async () => {
-    setIsProcessing(true);
-    setProgress(0);
-    setResult(null);
+    startProcessing();
 
-    const processResult: ProcessResult = {
+    const processResult = {
       processed: 0,
       statesIdentified: 0,
       tagsCreated: 0,
@@ -73,15 +74,20 @@ export function StateIdentificationSettings() {
     };
 
     try {
-      // Busca contatos sem estado em lotes
       const BATCH_SIZE = 100;
       let offset = 0;
       let hasMore = true;
-
-      // Cache de tags de estado já criadas
       const stateTagCache: Record<string, { id: string; isNew: boolean }> = {};
+      const store = useStateIdentificationStore.getState();
 
       while (hasMore) {
+        // Verificar cancelamento
+        if (useStateIdentificationStore.getState().shouldCancel) {
+          toast.info('Processamento cancelado');
+          setResult(processResult);
+          return;
+        }
+
         const { data: contacts, error } = await supabase
           .from('contacts')
           .select('id, phone')
@@ -96,11 +102,17 @@ export function StateIdentificationSettings() {
         }
 
         for (const contact of contacts) {
+          // Verificar cancelamento a cada contato
+          if (useStateIdentificationStore.getState().shouldCancel) {
+            toast.info('Processamento cancelado');
+            setResult(processResult);
+            return;
+          }
+
           try {
             const state = getStateFromPhone(contact.phone);
             
             if (state) {
-              // Atualiza o estado do contato
               await supabase
                 .from('contacts')
                 .update({ state })
@@ -108,7 +120,6 @@ export function StateIdentificationSettings() {
               
               processResult.statesIdentified++;
 
-              // Busca ou cria a tag do estado
               if (!stateTagCache[state]) {
                 const existingTag = await findOrCreateTag(state, '#10B981');
                 stateTagCache[state] = { 
@@ -120,7 +131,6 @@ export function StateIdentificationSettings() {
                 }
               }
 
-              // Verifica se o contato já tem a tag
               const existingTags = await getContactTags(contact.id);
               if (!existingTags.includes(stateTagCache[state].id)) {
                 await addTagToContact(contact.id, stateTagCache[state].id);
@@ -136,32 +146,28 @@ export function StateIdentificationSettings() {
         }
 
         offset += BATCH_SIZE;
-        
-        // Atualiza progresso
         const total = contactsWithoutState || 1;
-        setProgress(Math.min(100, Math.round((offset / total) * 100)));
+        updateProgress(Math.min(100, Math.round((offset / total) * 100)));
 
-        // Se retornou menos que o batch, não tem mais
         if (contacts.length < BATCH_SIZE) {
           hasMore = false;
         }
       }
 
-      setProgress(100);
       setResult(processResult);
       setContactsWithoutState(0);
       toast.success(`Processamento concluído! ${processResult.statesIdentified} estados identificados.`);
     } catch (error) {
       console.error('Error processing contacts:', error);
       toast.error('Erro durante o processamento');
-    } finally {
-      setIsProcessing(false);
+      setResult(processResult);
     }
   };
 
-  // Carrega a contagem ao montar
   useEffect(() => {
-    loadContactsCount();
+    if (contactsWithoutState === null) {
+      loadContactsCount();
+    }
   }, []);
 
   return (
@@ -171,9 +177,7 @@ export function StateIdentificationSettings() {
           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
             <MapPin className="w-5 h-5 text-primary" />
           </div>
-          <div>
-            <span className="text-lg">Identificação de Estado</span>
-          </div>
+          Identificação de Estado
         </CardTitle>
         <CardDescription>
           Identifica estados pelo DDD e cria etiquetas automaticamente
@@ -196,19 +200,25 @@ export function StateIdentificationSettings() {
                 </p>
               </div>
             </div>
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={loadContactsCount}
               disabled={isLoadingCount}
-              className="px-3 py-1.5 text-sm bg-background border border-border rounded-lg hover:bg-muted transition-colors"
             >
-              Atualizar
-            </button>
+              {isLoadingCount ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span className="ml-2">Atualizar</span>
+            </Button>
           </div>
         </div>
 
         {/* Progress */}
         {isProcessing && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Processando contatos...</span>
               <span className="font-medium">{progress}%</span>
@@ -218,7 +228,7 @@ export function StateIdentificationSettings() {
         )}
 
         {/* Results */}
-        {result && (
+        {result && !isProcessing && (
           <div className="bg-status-success/10 rounded-xl p-4 border border-status-success/20">
             <div className="flex items-center gap-2 mb-3">
               <CheckCircle className="w-5 h-5 text-status-success" />
@@ -245,24 +255,28 @@ export function StateIdentificationSettings() {
           </div>
         )}
 
-        {/* Action Button */}
-        <button
-          onClick={processContacts}
-          disabled={isProcessing || contactsWithoutState === 0}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        {/* Action Buttons */}
+        <div className="flex gap-3">
           {isProcessing ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Processando...
-            </>
+            <Button
+              variant="destructive"
+              onClick={cancelProcessing}
+              className="flex-1"
+            >
+              <XCircle className="w-5 h-5 mr-2" />
+              Cancelar
+            </Button>
           ) : (
-            <>
-              <Play className="w-5 h-5" />
+            <Button
+              onClick={processContacts}
+              disabled={contactsWithoutState === 0}
+              className="flex-1 btn-gradient"
+            >
+              <Play className="w-5 h-5 mr-2" />
               Identificar Estados e Criar Etiquetas
-            </>
+            </Button>
           )}
-        </button>
+        </div>
 
         {/* Info Box */}
         <div className="bg-muted/30 rounded-xl p-4 text-sm text-muted-foreground">
