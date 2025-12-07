@@ -28,6 +28,7 @@ import {
   Loader2,
   MessageCircle,
   X,
+  DollarSign,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -153,6 +154,11 @@ export default function LeadKanban() {
     return filteredContacts.filter((c) => c.lead_status === statusName);
   };
 
+  // Calculate total value for a list of contacts
+  const getTotalValue = (contactsList: ContactForKanban[]) => {
+    return contactsList.reduce((sum, c) => sum + (c.negotiated_value || 0), 0);
+  };
+
   // Handle contacts without status (new leads)
   const getContactsWithoutStatus = () => {
     return filteredContacts.filter((c) => 
@@ -229,6 +235,7 @@ export default function LeadKanban() {
               <LeadKanbanColumn
                 status={{ id: 'no-status', name: 'Sem Status', order_position: -1, color: '#9CA3AF', is_active: true, created_at: '' }}
                 contacts={getContactsWithoutStatus()}
+                totalValue={getTotalValue(getContactsWithoutStatus())}
                 onOpenConversation={handleOpenConversation}
                 canDelete={false}
                 isExpanded={expandedColumns.has('no-status')}
@@ -236,17 +243,21 @@ export default function LeadKanban() {
               />
             )}
 
-            {leadStatuses.map((status) => (
-              <LeadKanbanColumn
-                key={status.id}
-                status={status}
-                contacts={getContactsForStatus(status.name)}
-                onOpenConversation={handleOpenConversation}
-                canDelete={true}
-                isExpanded={expandedColumns.has(status.id)}
-                onToggleExpand={() => toggleColumnExpansion(status.id)}
-              />
-            ))}
+            {leadStatuses.map((status) => {
+              const statusContacts = getContactsForStatus(status.name);
+              return (
+                <LeadKanbanColumn
+                  key={status.id}
+                  status={status}
+                  contacts={statusContacts}
+                  totalValue={getTotalValue(statusContacts)}
+                  onOpenConversation={handleOpenConversation}
+                  canDelete={true}
+                  isExpanded={expandedColumns.has(status.id)}
+                  onToggleExpand={() => toggleColumnExpansion(status.id)}
+                />
+              );
+            })}
             
             <AddStatusButton onClick={() => setShowAddStatusModal(true)} />
           </div>
@@ -281,6 +292,7 @@ const CONTACTS_LIMIT = 5;
 function LeadKanbanColumn({
   status,
   contacts,
+  totalValue,
   onOpenConversation,
   canDelete,
   isExpanded,
@@ -288,6 +300,7 @@ function LeadKanbanColumn({
 }: {
   status: LeadStatus;
   contacts: ContactForKanban[];
+  totalValue: number;
   onOpenConversation: (contact: ContactForKanban) => void;
   canDelete: boolean;
   isExpanded: boolean;
@@ -347,8 +360,16 @@ function LeadKanbanColumn({
           )}
         </div>
 
-        <div className="text-xs text-gray-700 font-medium">
-          {contacts.length} {contacts.length === 1 ? 'contato' : 'contatos'}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-700 font-medium bg-white/50 px-1.5 py-0.5 rounded">
+            👤 {contacts.length}
+          </span>
+          {totalValue > 0 && (
+            <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-800 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+              <DollarSign size={10} />
+              R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          )}
         </div>
       </div>
 

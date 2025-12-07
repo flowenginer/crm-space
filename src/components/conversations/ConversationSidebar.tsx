@@ -59,7 +59,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
             id, full_name, phone, email, avatar_url, is_online, is_typing,
             street, number, complement, neighborhood, city, state, zip_code,
             cpf_cnpj, notes, birth_date, first_contact_at, last_interaction_at, created_at,
-            origin, origin_campaign, referral_data, lead_status, assigned_to,
+            origin, origin_campaign, referral_data, lead_status, assigned_to, negotiated_value,
             owner_agent:profiles!contacts_assigned_to_fkey(
               id, full_name, avatar_url
             ),
@@ -199,6 +199,35 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     onError: (error) => {
       console.error('[updateLeadStatus] Mutation error:', error);
       toast.error('Erro ao atualizar status');
+    }
+  });
+
+  // Mutation: Update negotiated value
+  const updateNegotiatedValue = useMutation({
+    mutationFn: async (value: number) => {
+      const contact = Array.isArray(conversation?.contact) 
+        ? conversation?.contact[0] 
+        : conversation?.contact;
+      
+      if (!contact?.id) throw new Error('No contact');
+      
+      const { error } = await supabase
+        .from('contacts')
+        .update({ 
+          negotiated_value: value,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', contact.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
+      toast.success('Valor negociado atualizado!');
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar valor');
     }
   });
 
@@ -668,6 +697,29 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
+        {/* Valor Negociado */}
+        <div className="p-3 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+            Valor Negociado
+          </label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">R$</span>
+            <Input
+              type="number"
+              value={(contact as any)?.negotiated_value || ''}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value) || 0;
+                updateNegotiatedValue.mutate(value);
+              }}
+              className="pl-10 h-9 text-sm"
+              placeholder="0,00"
+              min={0}
+              step={0.01}
+              disabled={updateNegotiatedValue.isPending}
+            />
+          </div>
+        </div>
+
         {/* Lead Status */}
         <div className="p-3 border-b border-border">
           <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
