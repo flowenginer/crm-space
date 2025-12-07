@@ -75,6 +75,8 @@ export function useCreateTemplate() {
       category?: string | null;
       folder_id?: string | null;
       variables?: string[] | null;
+      media_url?: string | null;
+      media_type?: string | null;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -86,6 +88,8 @@ export function useCreateTemplate() {
           category: template.category || 'messages',
           folder_id: template.folder_id,
           variables: template.variables || [],
+          media_url: template.media_url || null,
+          media_type: template.media_type || null,
           created_by: user?.id,
         })
         .select()
