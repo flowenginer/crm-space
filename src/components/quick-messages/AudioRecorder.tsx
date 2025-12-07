@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
 interface AudioRecorderProps {
-  onAudioUploaded: (url: string, type: string) => void;
+  onAudioUploaded: (url: string, type: string, name: string) => void;
   existingUrl?: string | null;
   onRemove?: () => void;
 }
@@ -39,7 +39,7 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        await uploadAudio(audioBlob, 'audio/webm');
+        await uploadAudio(audioBlob, 'audio/webm', `gravacao_${Date.now()}.webm`);
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -70,11 +70,12 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
     }
   };
 
-  const uploadAudio = async (blob: Blob, mimeType: string) => {
+  const uploadAudio = async (blob: Blob, mimeType: string, originalName?: string) => {
     setIsUploading(true);
     try {
-      const fileName = `audio_${Date.now()}.${mimeType.includes('webm') ? 'webm' : mimeType.split('/')[1]}`;
-      const filePath = `audios/${fileName}`;
+      const extension = mimeType.includes('webm') ? 'webm' : mimeType.split('/')[1];
+      const fileName = originalName || `audio_${Date.now()}.${extension}`;
+      const filePath = `audios/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
       const { error: uploadError } = await supabase.storage
         .from('template-attachments')
@@ -87,7 +88,7 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
         .getPublicUrl(filePath);
 
       setAudioUrl(publicUrl);
-      onAudioUploaded(publicUrl, 'audio');
+      onAudioUploaded(publicUrl, 'audio', fileName);
       toast({ title: 'Áudio salvo com sucesso!' });
     } catch (error) {
       console.error('Error uploading audio:', error);
@@ -107,7 +108,7 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
       return;
     }
 
-    await uploadAudio(file, file.type);
+    await uploadAudio(file, file.type, file.name);
   };
 
   const togglePlayback = () => {

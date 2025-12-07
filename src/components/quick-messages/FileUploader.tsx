@@ -5,9 +5,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
 interface FileUploaderProps {
-  onFileUploaded: (url: string, type: string) => void;
+  onFileUploaded: (url: string, type: string, name: string) => void;
   existingUrl?: string | null;
   existingType?: string | null;
+  existingName?: string | null;
   onRemove?: () => void;
   category: 'media' | 'documents';
   compact?: boolean;
@@ -39,6 +40,7 @@ export function FileUploader({
   onFileUploaded, 
   existingUrl, 
   existingType,
+  existingName,
   onRemove,
   category,
   compact = false
@@ -48,7 +50,7 @@ export function FileUploader({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [fileUrl, setFileUrl] = useState<string | null>(existingUrl || null);
   const [fileType, setFileType] = useState<string | null>(existingType || null);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(existingName || null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -117,7 +119,7 @@ export function FileUploader({
                        file.type.startsWith('video') ? 'video' : 
                        file.type.includes('pdf') ? 'document' : 'document';
       
-      onFileUploaded(publicUrl, mediaType);
+      onFileUploaded(publicUrl, mediaType, file.name);
       toast({ title: 'Arquivo enviado com sucesso!' });
     } catch (error) {
       console.error('Error uploading file:', error);

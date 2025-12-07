@@ -103,6 +103,7 @@ export default function QuickMessages() {
   const [templateCategory, setTemplateCategory] = useState('messages');
   const [templateMediaUrl, setTemplateMediaUrl] = useState<string | null>(null);
   const [templateMediaType, setTemplateMediaType] = useState<string | null>(null);
+  const [templateMediaName, setTemplateMediaName] = useState<string | null>(null);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
   
   // Multiple content blocks state
@@ -145,6 +146,7 @@ export default function QuickMessages() {
     setTemplateCategory(activeCategory);
     setTemplateMediaUrl(null);
     setTemplateMediaType(null);
+    setTemplateMediaName(null);
     setShowTemplateModal(true);
   };
 
@@ -158,6 +160,7 @@ export default function QuickMessages() {
     setTemplateCategory(template.category || 'messages');
     setTemplateMediaUrl(template.media_url || null);
     setTemplateMediaType(template.media_type || null);
+    setTemplateMediaName(template.media_name || null);
     
     // Load content blocks or convert from legacy content
     if (template.content_blocks && Array.isArray(template.content_blocks) && template.content_blocks.length > 0) {
@@ -246,6 +249,7 @@ export default function QuickMessages() {
           variables,
           media_url: templateMediaUrl,
           media_type: templateMediaType,
+          media_name: templateMediaName,
           content_blocks: contentBlocks.filter(b => b.content?.trim() || b.media_url),
         });
         toast({ title: 'Template atualizado!' });
@@ -257,6 +261,7 @@ export default function QuickMessages() {
           variables,
           media_url: templateMediaUrl,
           media_type: templateMediaType,
+          media_name: templateMediaName,
           content_blocks: contentBlocks.filter(b => b.content?.trim() || b.media_url),
         });
         toast({ title: 'Template criado!' });
@@ -267,14 +272,16 @@ export default function QuickMessages() {
     }
   };
 
-  const handleMediaUploaded = (url: string, type: string) => {
+  const handleMediaUploaded = (url: string, type: string, name: string) => {
     setTemplateMediaUrl(url);
     setTemplateMediaType(type);
+    setTemplateMediaName(name);
   };
 
   const handleMediaRemoved = () => {
     setTemplateMediaUrl(null);
     setTemplateMediaType(null);
+    setTemplateMediaName(null);
   };
 
   // Block management functions
@@ -626,6 +633,7 @@ export default function QuickMessages() {
                       onFileUploaded={handleMediaUploaded}
                       existingUrl={templateMediaUrl}
                       existingType={templateMediaType}
+                      existingName={templateMediaName}
                       onRemove={handleMediaRemoved}
                     />
                     <div className="mt-4">
@@ -653,6 +661,7 @@ export default function QuickMessages() {
                       onFileUploaded={handleMediaUploaded}
                       existingUrl={templateMediaUrl}
                       existingType={templateMediaType}
+                      existingName={templateMediaName}
                       onRemove={handleMediaRemoved}
                     />
                     <div className="mt-4">
@@ -737,6 +746,7 @@ export default function QuickMessages() {
                         onFileUploaded={handleMediaUploaded}
                         existingUrl={templateMediaUrl}
                         existingType={templateMediaType}
+                        existingName={templateMediaName}
                         onRemove={handleMediaRemoved}
                         compact
                       />
@@ -840,8 +850,8 @@ export default function QuickMessages() {
                                     {templateMediaType === 'document' && (
                                       <div className="flex items-center gap-2 p-3 bg-white/70 rounded">
                                         <FileText size={24} className="text-red-500" />
-                                        <span className="text-xs font-medium text-gray-700 truncate">
-                                          Documento
+                                        <span className="text-xs font-medium text-gray-700 truncate max-w-[150px]">
+                                          {templateMediaName || 'Documento'}
                                         </span>
                                       </div>
                                     )}

@@ -1230,6 +1230,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           is_favorite: boolean | null
+          media_name: string | null
           media_type: string | null
           media_url: string | null
           shortcut: string | null
@@ -1249,6 +1250,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_favorite?: boolean | null
+          media_name?: string | null
           media_type?: string | null
           media_url?: string | null
           shortcut?: string | null
@@ -1268,6 +1270,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_favorite?: boolean | null
+          media_name?: string | null
           media_type?: string | null
           media_url?: string | null
           shortcut?: string | null

@@ -23,6 +23,7 @@ export interface MessageTemplate {
   updated_at: string;
   media_url: string | null;
   media_type: string | null;
+  media_name: string | null;
   content_blocks: ContentBlock[] | null;
   folder?: { id: string; name: string } | null;
 }
@@ -91,6 +92,7 @@ export function useCreateTemplate() {
       variables?: string[] | null;
       media_url?: string | null;
       media_type?: string | null;
+      media_name?: string | null;
       content_blocks?: ContentBlock[] | null;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -105,6 +107,7 @@ export function useCreateTemplate() {
           variables: template.variables || [],
           media_url: template.media_url || null,
           media_type: template.media_type || null,
+          media_name: template.media_name || null,
           content_blocks: template.content_blocks as unknown as Json || null,
           created_by: user?.id,
         })
