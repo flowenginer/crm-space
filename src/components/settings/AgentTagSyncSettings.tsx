@@ -140,41 +140,48 @@ export function AgentTagSyncSettings() {
         tagToAssignment = count || 0;
       }
 
-      // Contagem correta de "Atribuição → Tag" usando query direta
-      // Conta contatos que TÊM assigned_to em um vendedor mapeado mas NÃO TÊM a tag correspondente
+      // Contagem correta de "Atribuição → Tag" usando paginação para buscar TODOS os contatos
       let assignmentToTag = 0;
       if (agentIds.length > 0 && agentMappings.length > 0) {
-        // Para cada mapeamento, contar contatos atribuídos ao vendedor que não têm a tag
         for (const mapping of agentMappings) {
           if (!mapping.agentId) continue;
           
-          // Buscar contatos atribuídos a este vendedor
-          const { count: assignedCount } = await supabase
-            .from('contacts')
-            .select('id', { count: 'exact', head: true })
-            .eq('assigned_to', mapping.agentId);
+          // Buscar TODOS os IDs de contatos atribuídos a este vendedor usando paginação
+          const allContactIds: string[] = [];
+          let offset = 0;
+          const pageSize = 1000;
           
-          // Buscar contatos atribuídos a este vendedor que JÁ TÊM a tag
-          const { data: contactsWithTag } = await supabase
-            .from('contacts')
-            .select('id')
-            .eq('assigned_to', mapping.agentId);
-          
-          if (contactsWithTag && contactsWithTag.length > 0) {
-            const contactIds = contactsWithTag.map(c => c.id);
+          while (true) {
+            const { data: contactsPage } = await supabase
+              .from('contacts')
+              .select('id')
+              .eq('assigned_to', mapping.agentId)
+              .range(offset, offset + pageSize - 1);
             
-            // Contar quantos desses contatos já têm a tag correta
-            const { count: withTagCount } = await supabase
+            if (!contactsPage || contactsPage.length === 0) break;
+            allContactIds.push(...contactsPage.map(c => c.id));
+            if (contactsPage.length < pageSize) break;
+            offset += pageSize;
+          }
+          
+          if (allContactIds.length === 0) continue;
+          
+          // Contar quantos desses contatos JÁ TÊM a tag usando paginação também
+          let withTagCount = 0;
+          for (let i = 0; i < allContactIds.length; i += 1000) {
+            const batch = allContactIds.slice(i, i + 1000);
+            const { count } = await supabase
               .from('contact_tags')
               .select('contact_id', { count: 'exact', head: true })
-              .in('contact_id', contactIds)
+              .in('contact_id', batch)
               .eq('tag_id', mapping.tagId);
-            
-            // Contatos que precisam de tag = total atribuídos - contatos que já têm a tag
-            assignmentToTag += (assignedCount || 0) - (withTagCount || 0);
-          } else {
-            assignmentToTag += assignedCount || 0;
+            withTagCount += count || 0;
           }
+          
+          // Contatos que precisam de tag = total atribuídos - contatos que já têm a tag
+          const needsTag = allContactIds.length - withTagCount;
+          console.log(`${mapping.agentName}: ${allContactIds.length} atribuídos, ${withTagCount} com tag, ${needsTag} precisam de tag`);
+          assignmentToTag += needsTag;
         }
       }
 
@@ -307,6 +314,7 @@ export function AgentTagSyncSettings() {
         }
       } else if (mode === 'assignment-to-tag') {
         // Processar cada mapeamento para encontrar contatos que precisam de tag
+        // Usando PAGINAÇÃO para buscar TODOS os contatos
         const contactsNeedingTags: Array<{
           contactId: string;
           contactName: string;
@@ -315,31 +323,48 @@ export function AgentTagSyncSettings() {
           mapping: AgentTagMapping;
         }> = [];
 
-        // Para cada mapeamento, buscar contatos que precisam de tag
+        // Para cada mapeamento, buscar TODOS os contatos usando paginação
         for (const mapping of mappings) {
           if (!mapping.agentId) continue;
 
-          // Buscar contatos atribuídos a este vendedor
-          const { data: assignedContacts } = await supabase
-            .from('contacts')
-            .select('id, full_name, phone')
-            .eq('assigned_to', mapping.agentId);
+          // Buscar TODOS os contatos atribuídos a este vendedor usando paginação
+          const allContacts: Array<{ id: string; full_name: string; phone: string }> = [];
+          let offset = 0;
+          const pageSize = 1000;
+          
+          while (true) {
+            const { data: contactsPage } = await supabase
+              .from('contacts')
+              .select('id, full_name, phone')
+              .eq('assigned_to', mapping.agentId)
+              .range(offset, offset + pageSize - 1);
+            
+            if (!contactsPage || contactsPage.length === 0) break;
+            allContacts.push(...contactsPage);
+            if (contactsPage.length < pageSize) break;
+            offset += pageSize;
+          }
 
-          if (!assignedContacts || assignedContacts.length === 0) continue;
+          if (allContacts.length === 0) continue;
+          console.log(`${mapping.agentName}: encontrados ${allContacts.length} contatos atribuídos`);
 
-          const contactIds = assignedContacts.map(c => c.id);
-
-          // Buscar quais desses contatos JÁ têm a tag do vendedor
-          const { data: existingTags } = await supabase
-            .from('contact_tags')
-            .select('contact_id')
-            .in('contact_id', contactIds)
-            .eq('tag_id', mapping.tagId);
-
-          const contactsWithTag = new Set(existingTags?.map(t => t.contact_id) || []);
+          // Buscar quais desses contatos JÁ têm a tag do vendedor (também com paginação)
+          const contactIds = allContacts.map(c => c.id);
+          const contactsWithTag = new Set<string>();
+          
+          for (let i = 0; i < contactIds.length; i += 1000) {
+            const batch = contactIds.slice(i, i + 1000);
+            const { data: existingTags } = await supabase
+              .from('contact_tags')
+              .select('contact_id')
+              .in('contact_id', batch)
+              .eq('tag_id', mapping.tagId);
+            
+            existingTags?.forEach(t => contactsWithTag.add(t.contact_id));
+          }
 
           // Filtrar contatos que NÃO têm a tag
-          for (const contact of assignedContacts) {
+          for (const contact of allContacts) {
             if (!contactsWithTag.has(contact.id)) {
               contactsNeedingTags.push({
                 contactId: contact.id,
@@ -350,6 +375,8 @@ export function AgentTagSyncSettings() {
               });
             }
           }
+          
+          console.log(`${mapping.agentName}: ${contactsWithTag.size} já têm tag, ${allContacts.length - contactsWithTag.size} precisam de tag`);
         }
 
         const totalToProcess = contactsNeedingTags.length;
