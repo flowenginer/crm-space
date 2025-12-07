@@ -6,20 +6,21 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MultiSelect } from '@/components/ui/multi-select';
 import {
-  ClipboardList, Search, Calendar, Printer,
+  ClipboardList, Search, Printer,
   FileSpreadsheet, Loader2, ChevronLeft, ChevronRight, Eye, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
+import { DateRangePicker } from '@/components/reports/DateRangePicker';
 
 interface Filters {
   startDate: string;
   endDate: string;
   name: string;
   phone: string;
-  status: string[];
+  leadStatus: string[];
   channel: string[];
   agent: string[];
   department: string[];
@@ -31,18 +32,12 @@ const initialFilters: Filters = {
   endDate: format(new Date(), 'yyyy-MM-dd'),
   name: '',
   phone: '',
-  status: [],
+  leadStatus: [],
   channel: [],
   agent: [],
   department: [],
   tag: [],
 };
-
-const statusOptions = [
-  { value: 'open', label: 'Ativo' },
-  { value: 'pending', label: 'Pendente' },
-  { value: 'closed', label: 'Fechado' },
-];
 
 export default function ConversationReportPage() {
   const queryClient = useQueryClient();
@@ -134,6 +129,23 @@ export default function ConversationReportPage() {
     }
   });
 
+  // Fetch lead statuses dynamically from contacts table
+  const { data: leadStatuses = [] } = useQuery({
+    queryKey: ['lead-statuses-filter'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('contacts')
+        .select('lead_status')
+        .not('lead_status', 'is', null);
+      
+      // Return unique sorted values
+      const unique = [...new Set(data?.map(c => c.lead_status))]
+        .filter(Boolean)
+        .sort() as string[];
+      return unique;
+    }
+  });
+
   // Fetch report data
   const { data: reportData, isLoading, refetch } = useQuery({
     queryKey: ['conversation-report', appliedFilters, page],
@@ -165,9 +177,6 @@ export default function ConversationReportPage() {
       }
       
       // Apply multi-select filters
-      if (appliedFilters.status.length > 0) {
-        query = query.in('status', appliedFilters.status);
-      }
       if (appliedFilters.agent.length > 0) {
         query = query.in('assigned_to', appliedFilters.agent);
       }
@@ -199,6 +208,13 @@ export default function ConversationReportPage() {
         const phoneDigits = appliedFilters.phone.replace(/\D/g, '');
         filtered = filtered.filter(c => 
           c.contact?.phone?.includes(phoneDigits)
+        );
+      }
+
+      // Filter by lead status (from contact)
+      if (appliedFilters.leadStatus.length > 0) {
+        filtered = filtered.filter(c => 
+          c.contact?.lead_status && appliedFilters.leadStatus.includes(c.contact.lead_status)
         );
       }
 
@@ -359,6 +375,7 @@ export default function ConversationReportPage() {
   const agentOptions = agents.map(a => ({ value: a.id, label: a.full_name || '' }));
   const departmentOptions = departments.map(d => ({ value: d.id, label: d.name }));
   const tagOptions = tags.map(t => ({ value: t.id, label: t.name }));
+  const leadStatusOptions = leadStatuses.map(status => ({ value: status, label: status }));
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -394,65 +411,50 @@ export default function ConversationReportPage() {
       {/* Filters Section */}
       <div className="px-6 py-4 bg-muted/30 border-b border-border">
         <div className="space-y-4">
-          {/* Row 1 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">De</label>
-              <div className="relative">
-                <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          {/* Date Range Picker with Quick Buttons */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2">
+              <DateRangePicker
+                startDate={filters.startDate}
+                endDate={filters.endDate}
+                onStartDateChange={(date) => setFilters(prev => ({ ...prev, startDate: date }))}
+                onEndDateChange={(date) => setFilters(prev => ({ ...prev, endDate: date }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Nome</label>
                 <Input
-                  type="date"
-                  value={filters.startDate}
-                  onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                  className="pl-10"
+                  value={filters.name}
+                  onChange={(e) => setFilters(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Nome do contato"
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Até</label>
-              <div className="relative">
-                <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Contato</label>
                 <Input
-                  type="date"
-                  value={filters.endDate}
-                  onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                  className="pl-10"
+                  value={filters.phone}
+                  onChange={(e) => setFilters(prev => ({ ...prev, phone: e.target.value }))}
+                  placeholder="Telefone"
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Nome</label>
-              <Input
-                value={filters.name}
-                onChange={(e) => setFilters(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Nome do contato"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Contato</label>
-              <Input
-                value={filters.phone}
-                onChange={(e) => setFilters(prev => ({ ...prev, phone: e.target.value }))}
-                placeholder="Telefone"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Status</label>
-              <MultiSelect
-                options={statusOptions}
-                value={filters.status}
-                onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
-                placeholder="Todos"
-              />
             </div>
           </div>
 
-          {/* Row 2 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* Row 2 - Filters */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Status do Lead</label>
+              <MultiSelect
+                options={leadStatusOptions}
+                value={filters.leadStatus}
+                onChange={(value) => setFilters(prev => ({ ...prev, leadStatus: value }))}
+                placeholder="Todos"
+                searchable
+                searchPlaceholder="Pesquisar status..."
+              />
+            </div>
+
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Canal</label>
               <MultiSelect
