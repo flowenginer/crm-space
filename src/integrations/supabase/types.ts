@@ -2421,6 +2421,7 @@ export type Database = {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
       }
+      get_contact_filter_counts: { Args: never; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
