@@ -49,7 +49,8 @@ export function usePermissions() {
   // Fetch role definition
   const { data: roleDefinition, isLoading: roleLoading } = useQuery({
     queryKey: ['roleDefinition', profile?.role],
-    staleTime: 300000, // 5 minutes cache - role definitions rarely change
+    staleTime: 30000, // 30 seconds cache for faster permission updates
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       if (!profile?.role) return null;
       
