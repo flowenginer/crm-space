@@ -283,15 +283,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                   ? "bg-primary text-primary-foreground border-primary" 
                   : "bg-white text-purple-600 border-white"
               )}>
-                {getInitials(profile?.full_name)}
+              {getInitials(profile?.full_name)}
               </div>
-              {/* Notification badge */}
-              <span className={cn(
-                "absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground border-2 shadow-md",
-                isDark ? "border-slate-900" : "border-purple-600"
-              )}>
-                3
-              </span>
             </div>
 
             {!isCollapsed && (
