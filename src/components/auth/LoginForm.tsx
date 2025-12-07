@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { registerSession } from '@/hooks/useUserSessions';
 
 const loginSchema = z.object({
   email: z.string().trim().email('Email inválido').max(255, 'Email muito longo'),
@@ -57,6 +58,11 @@ export function LoginForm() {
         description: message,
       });
     } else {
+      // Register the session after successful login
+      registerSession().catch(err => {
+        console.error('Failed to register session:', err);
+      });
+      
       toast({
         title: 'Bem-vindo!',
         description: 'Login realizado com sucesso',
