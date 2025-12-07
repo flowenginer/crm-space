@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Mic,
   MessageSquare,
@@ -13,10 +13,10 @@ import {
   Edit3,
   Trash2,
   Send,
-  Copy,
   Paperclip,
   HelpCircle,
   CheckCheck,
+  Loader2,
 } from 'lucide-react';
 import {
   Dialog,
@@ -37,244 +37,22 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
+import {
+  useTemplates,
+  useCreateTemplate,
+  useUpdateTemplate,
+  useDeleteTemplate,
+} from '@/hooks/useTemplates';
 
-interface Template {
-  id: string;
-  category: string;
-  title: string;
-  content: string;
-  usageCount: number;
-  variables: string[];
-  folder: string;
-  isFavorite: boolean;
-  hasAttachment: boolean;
-  createdAt: string;
-}
-
-const categories = [
-  { id: 'messages', icon: MessageSquare, label: 'Mensagens', count: 12 },
-  { id: 'audios', icon: Mic, label: 'Áudios', count: 5 },
-  { id: 'media', icon: Image, label: 'Mídias', count: 8 },
-  { id: 'documents', icon: FileText, label: 'Documentos', count: 3 },
-  { id: 'funnels', icon: GitBranch, label: 'Funis', count: 2 },
-  { id: 'triggers', icon: Zap, label: 'Gatilhos', count: 4 },
-];
-
-const mockTemplates: Template[] = [
-  {
-    id: '1',
-    category: 'messages',
-    title: 'DADOS-SC',
-    content: `*Me informa seus dados por gentileza!* 
-NOME: 
-CPF ou CNPJ: 
-DATA DE NASCIMENTO: 
-CEP: 
-ENDEREÇO: Nº: 
-COMPLEMENTO: 
-BAIRRO: 
-CIDADE: 
-ESTADO: 
-E-MAIL: 
-TELEFONE:`,
-    usageCount: 145,
-    variables: [],
-    folder: 'Vendas',
-    isFavorite: true,
-    hasAttachment: false,
-    createdAt: '2025-11-01T10:00:00',
-  },
-  {
-    id: '2',
-    category: 'messages',
-    title: 'RESGATE',
-    content: `Opa! Imagino que por conta da correria do dia a dia, não conseguiu me responder... rs 
-
-Sem problemas... 
-
-Podemos dar continuidade ao seu atendimento agora?`,
-    usageCount: 267,
-    variables: [],
-    folder: 'Resgates',
-    isFavorite: false,
-    hasAttachment: false,
-    createdAt: '2025-11-05T14:00:00',
-  },
-  {
-    id: '3',
-    category: 'messages',
-    title: 'RESGATE VERÃO-SC',
-    content: `*Scarlet:* Olá, {{nome}}! Aqui é a *Scarlet* da *Space Sports* ☀️
-
-O verão está chegando com tudo e esse é o momento ideal para deixar sua equipe preparada com conforto, estilo e proteção contra os raios solares! 
-
-☀️ Vamos renovar suas camisas?`,
-    usageCount: 89,
-    variables: ['nome'],
-    folder: 'Resgates',
-    isFavorite: true,
-    hasAttachment: false,
-    createdAt: '2025-11-10T09:00:00',
-  },
-  {
-    id: '4',
-    category: 'messages',
-    title: 'ORÇAMENTO MANGA CURTA-SC',
-    content: `*Scarlet:* *ORÇAMENTO* 
-
-*10 CAMISAS MANGA CURTA UV50+* 
-*VALOR UNITÁRIO - R$ 59,90* 
-*TOTAL R$ 599,00* 
-
-*CAMISAS PLUS SIZE (Tamanhos do G1 aos G4), tem R$ 10,00 de acréscimo.* 
-
----------------
-📦 Frete por conta do cliente
-⏰ Prazo de produção: 7 a 10 dias úteis`,
-    usageCount: 312,
-    variables: ['quantidade', 'valor_unitario', 'valor_total'],
-    folder: 'Orçamentos',
-    isFavorite: true,
-    hasAttachment: false,
-    createdAt: '2025-11-15T11:00:00',
-  },
-  {
-    id: '5',
-    category: 'messages',
-    title: 'ORÇAMENTO MANGA LONGA ZÍPER-SC',
-    content: `*Scarlet:* *ORÇAMENTO* 
-
-*10 CAMISAS MANGA LONGA ZÍPER UV50+* 
-*VALOR UNITÁRIO - R$ 89,90* 
-*TOTAL R$ 899,00* 
-
-*CAMISAS PLUS SIZE (Tamanhos do G1 aos G4), tem R$ 10,00 de acréscimo.* 
-
----------------
-📦 Frete por conta do cliente
-⏰ Prazo de produção: 7 a 10 dias úteis`,
-    usageCount: 198,
-    variables: ['quantidade', 'valor_unitario', 'valor_total'],
-    folder: 'Orçamentos',
-    isFavorite: false,
-    hasAttachment: false,
-    createdAt: '2025-11-20T16:00:00',
-  },
-  {
-    id: '6',
-    category: 'messages',
-    title: 'ORÇAMENTO MANGA LONGA-SC',
-    content: `*Scarlet:* *ORÇAMENTO* 
-
-*10 CAMISAS MANGA LONGA UV50+* 
-*VALOR UNITÁRIO - R$ 79,90* 
-*TOTAL R$ 799,00* 
-
-*CAMISAS PLUS SIZE (Tamanhos do G1 aos G4), tem R$ 10,00 de acréscimo.*`,
-    usageCount: 256,
-    variables: ['quantidade', 'valor_unitario', 'valor_total'],
-    folder: 'Orçamentos',
-    isFavorite: false,
-    hasAttachment: false,
-    createdAt: '2025-11-22T08:00:00',
-  },
-  {
-    id: '7',
-    category: 'messages',
-    title: 'ENCERRAMENTO VENDA 1-SC',
-    content: `*Scarlet:* Perfeito! Já inseri seu pedido para andamento. 
-
-Parabéns pelo investimento! 🎉
-
-Foi um prazer atendê-lo. Desejo a você e à sua família um excelente final de ano, repleto de saúde, paz e boas festas! 🎊`,
-    usageCount: 134,
-    variables: [],
-    folder: 'Vendas',
-    isFavorite: true,
-    hasAttachment: false,
-    createdAt: '2025-11-25T13:00:00',
-  },
-  {
-    id: '8',
-    category: 'messages',
-    title: 'DÚVIDA ORÇAMENTO-SC',
-    content: `*Scarlet:* Perfeito, {{nome}}! 
-
-Vou te encaminhar o orçamento detalhado.
-
-Caso tenha ficado algum tipo de dúvida pode me perguntar, ok? 😊`,
-    usageCount: 78,
-    variables: ['nome'],
-    folder: 'Orçamentos',
-    isFavorite: false,
-    hasAttachment: false,
-    createdAt: '2025-11-28T15:00:00',
-  },
-  {
-    id: '9',
-    category: 'messages',
-    title: 'RESGATE RECOMPRA',
-    content: `*Scarlet:* Opa, {{nome}}! Como você está? 😊 
-
-Aqui é a *Scarlet* da *Space Sports*. 
-
-Já faz um tempo desde a sua última compra e gostaria de lembrá-lo dos benefícios das nossas camisas com proteção UV 50+. 
-
-Deseja renovar o estoque ou fazer um novo pedido?`,
-    usageCount: 45,
-    variables: ['nome'],
-    folder: 'Resgates',
-    isFavorite: false,
-    hasAttachment: false,
-    createdAt: '2025-12-01T10:00:00',
-  },
-  {
-    id: '10',
-    category: 'messages',
-    title: 'ENCERRAMENTO VENDA 2-SC',
-    content: `*Scarlet:* Vou te encaminhar ao setor de atendimento ao cliente para o acompanhamento do seu pedido! 
-
-Qualquer dúvida, estou à disposição. 😊`,
-    usageCount: 67,
-    variables: [],
-    folder: 'Vendas',
-    isFavorite: false,
-    hasAttachment: false,
-    createdAt: '2025-12-02T12:00:00',
-  },
-  {
-    id: '11',
-    category: 'messages',
-    title: 'APRESENTAÇÃO-SC',
-    content: `*Scarlet:* Que alegria receber o seu contato! 🎉
-
-Meu nome é *Scarlet*, sou especialista comercial da *Space Sports*, a marca líder em camisas personalizadas no Brasil! 👕
-
-*Me informa seu nome, por gentileza* 😊`,
-    usageCount: 423,
-    variables: [],
-    folder: 'Apresentação',
-    isFavorite: true,
-    hasAttachment: false,
-    createdAt: '2025-12-03T09:00:00',
-  },
-  {
-    id: '12',
-    category: 'messages',
-    title: 'INSTAGRAM-SC',
-    content: `*Scarlet:* Enquanto isso, aqui você conhece um pouco mais sobre o nosso trabalho: 
-
-📸 https://www.instagram.com/spacesports/
-
-Dá uma olhada nos nossos trabalhos! 🔥`,
-    usageCount: 189,
-    variables: [],
-    folder: 'Apresentação',
-    isFavorite: false,
-    hasAttachment: false,
-    createdAt: '2025-12-03T11:00:00',
-  },
+const categoryConfig = [
+  { id: 'messages', icon: MessageSquare, label: 'Mensagens' },
+  { id: 'audios', icon: Mic, label: 'Áudios' },
+  { id: 'media', icon: Image, label: 'Mídias' },
+  { id: 'documents', icon: FileText, label: 'Documentos' },
+  { id: 'funnels', icon: GitBranch, label: 'Funis' },
+  { id: 'triggers', icon: Zap, label: 'Gatilhos' },
 ];
 
 const variableOptions = [
@@ -293,53 +71,81 @@ const quickEmojis = ['👋', '😊', '🎉', '✅', '📦', '💬', '☀️', '�
 export default function QuickMessages() {
   const [activeCategory, setActiveCategory] = useState('messages');
   const [searchQuery, setSearchQuery] = useState('');
-  const [templates, setTemplates] = useState<Template[]>(mockTemplates);
+
+  // Supabase hooks
+  const { data: templates = [], isLoading } = useTemplates();
+  const createTemplate = useCreateTemplate();
+  const updateTemplate = useUpdateTemplate();
+  const deleteTemplate = useDeleteTemplate();
 
   // Modal states
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showUseTemplateModal, setShowUseTemplateModal] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
   // Form states
   const [templateTitle, setTemplateTitle] = useState('');
   const [templateContent, setTemplateContent] = useState('');
   const [templateCategory, setTemplateCategory] = useState('messages');
-  const [templateFolder, setTemplateFolder] = useState('');
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
-  const filteredTemplates = templates.filter((template) => {
-    const matchesCategory = template.category === activeCategory;
-    const matchesSearch =
-      searchQuery === '' ||
-      template.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      template.content.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  // Calculate category counts dynamically
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    categoryConfig.forEach((cat) => {
+      counts[cat.id] = templates.filter((t) => t.category === cat.id).length;
+    });
+    return counts;
+  }, [templates]);
+
+  // Filter templates
+  const filteredTemplates = useMemo(() => {
+    return templates.filter((template) => {
+      const matchesCategory = template.category === activeCategory;
+      const matchesSearch =
+        searchQuery === '' ||
+        template.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        template.content.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCategory && matchesSearch;
+    });
+  }, [templates, activeCategory, searchQuery]);
+
+  // Get selected template from filtered list
+  const selectedTemplate = useMemo(() => {
+    if (!selectedTemplateId) return null;
+    return templates.find((t) => t.id === selectedTemplateId) || null;
+  }, [templates, selectedTemplateId]);
 
   const handleNewTemplate = () => {
     setIsEditing(false);
-    setSelectedTemplate(null);
+    setSelectedTemplateId(null);
     setTemplateTitle('');
     setTemplateContent('');
-    setTemplateCategory('messages');
-    setTemplateFolder('');
+    setTemplateCategory(activeCategory);
     setShowTemplateModal(true);
   };
 
-  const handleEditTemplate = (template: Template) => {
+  const handleEditTemplate = (templateId: string) => {
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) return;
+    
     setIsEditing(true);
-    setSelectedTemplate(template);
+    setSelectedTemplateId(templateId);
     setTemplateTitle(template.title);
     setTemplateContent(template.content);
-    setTemplateCategory(template.category);
-    setTemplateFolder(template.folder);
+    setTemplateCategory(template.category || 'messages');
     setShowTemplateModal(true);
   };
 
-  const handleUseTemplate = (template: Template) => {
-    setSelectedTemplate(template);
-    if (template.variables.length > 0) {
+  const handleUseTemplate = (templateId: string) => {
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) return;
+
+    setSelectedTemplateId(templateId);
+    const variables = template.variables as string[] || [];
+    
+    if (variables.length > 0) {
       setVariableValues({});
       setShowUseTemplateModal(true);
     } else {
@@ -348,12 +154,16 @@ export default function QuickMessages() {
     }
   };
 
-  const handleDeleteTemplate = (templateId: string) => {
-    setTemplates((prev) => prev.filter((t) => t.id !== templateId));
-    toast({ title: 'Template excluído!' });
+  const handleDeleteTemplate = async (templateId: string) => {
+    try {
+      await deleteTemplate.mutateAsync(templateId);
+      toast({ title: 'Template excluído!' });
+    } catch (error) {
+      toast({ title: 'Erro ao excluir template', variant: 'destructive' });
+    }
   };
 
-  const handleSaveTemplate = () => {
+  const handleSaveTemplate = async () => {
     if (!templateTitle || !templateContent) {
       toast({ title: 'Preencha todos os campos obrigatórios', variant: 'destructive' });
       return;
@@ -362,32 +172,29 @@ export default function QuickMessages() {
     const variablesMatch = templateContent.match(/\{\{(\w+)\}\}/g) || [];
     const variables = variablesMatch.map((v) => v.replace(/\{\{|\}\}/g, ''));
 
-    if (isEditing && selectedTemplate) {
-      setTemplates((prev) =>
-        prev.map((t) =>
-          t.id === selectedTemplate.id
-            ? { ...t, title: templateTitle, content: templateContent, category: templateCategory, folder: templateFolder, variables }
-            : t
-        )
-      );
-      toast({ title: 'Template atualizado!' });
-    } else {
-      const newTemplate: Template = {
-        id: Date.now().toString(),
-        title: templateTitle,
-        content: templateContent,
-        category: templateCategory,
-        folder: templateFolder || 'Vendas',
-        variables,
-        usageCount: 0,
-        isFavorite: false,
-        hasAttachment: false,
-        createdAt: new Date().toISOString(),
-      };
-      setTemplates((prev) => [...prev, newTemplate]);
-      toast({ title: 'Template criado!' });
+    try {
+      if (isEditing && selectedTemplateId) {
+        await updateTemplate.mutateAsync({
+          id: selectedTemplateId,
+          title: templateTitle,
+          content: templateContent,
+          category: templateCategory,
+          variables,
+        });
+        toast({ title: 'Template atualizado!' });
+      } else {
+        await createTemplate.mutateAsync({
+          title: templateTitle,
+          content: templateContent,
+          category: templateCategory,
+          variables,
+        });
+        toast({ title: 'Template criado!' });
+      }
+      setShowTemplateModal(false);
+    } catch (error) {
+      toast({ title: 'Erro ao salvar template', variant: 'destructive' });
     }
-    setShowTemplateModal(false);
   };
 
   const handleInsertVariable = (variable: string) => {
@@ -419,6 +226,8 @@ export default function QuickMessages() {
     return text.substring(0, maxLength) + '...';
   };
 
+  const isSaving = createTemplate.isPending || updateTemplate.isPending;
+
   return (
     <div className="flex h-[calc(100vh-72px)]">
       {/* Left Sidebar - Categories */}
@@ -432,7 +241,7 @@ export default function QuickMessages() {
 
         <ScrollArea className="flex-1">
           <nav className="p-2 space-y-1">
-            {categories.map((item) => (
+            {categoryConfig.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setActiveCategory(item.id)}
@@ -453,7 +262,7 @@ export default function QuickMessages() {
                       : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  {item.count}
+                  {categoryCounts[item.id] || 0}
                 </span>
               </button>
             ))}
@@ -506,81 +315,96 @@ export default function QuickMessages() {
         <ScrollArea className="flex-1">
           <div className="p-4">
             <div className="bg-card rounded-lg border border-border overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50">
-                    <TableHead className="w-12 text-center">#</TableHead>
-                    <TableHead className="w-48">Chave</TableHead>
-                    <TableHead>Mensagem</TableHead>
-                    <TableHead className="w-20 text-center">Anexo</TableHead>
-                    <TableHead className="w-32 text-center">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTemplates.map((template, index) => (
-                    <TableRow key={template.id} className="group">
-                      <TableCell className="text-center text-muted-foreground font-mono text-sm">
-                        {index + 1}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-foreground">
-                            {template.title}
-                          </span>
-                          {template.isFavorite && (
-                            <Star size={12} className="text-yellow-500 fill-yellow-500" />
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-muted-foreground text-sm">
-                          {truncateMessage(template.content)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {template.hasAttachment ? (
-                          <Paperclip size={14} className="mx-auto text-primary" />
-                        ) : (
-                          <span className="text-muted-foreground text-sm">Não</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleUseTemplate(template)}
-                            title="Usar"
-                          >
-                            <Send size={14} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleEditTemplate(template)}
-                            title="Editar"
-                          >
-                            <Edit3 size={14} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteTemplate(template.id)}
-                            title="Excluir"
-                          >
-                            <Trash2 size={14} />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+              {isLoading ? (
+                <div className="p-4 space-y-3">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <Skeleton className="h-4 w-8" />
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-4 flex-1" />
+                      <Skeleton className="h-4 w-16" />
+                      <Skeleton className="h-8 w-24" />
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead className="w-12 text-center">#</TableHead>
+                      <TableHead className="w-48">Chave</TableHead>
+                      <TableHead>Mensagem</TableHead>
+                      <TableHead className="w-20 text-center">Anexo</TableHead>
+                      <TableHead className="w-32 text-center">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTemplates.map((template, index) => (
+                      <TableRow key={template.id} className="group">
+                        <TableCell className="text-center text-muted-foreground font-mono text-sm">
+                          {index + 1}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-foreground">
+                              {template.title}
+                            </span>
+                            {template.is_favorite && (
+                              <Star size={12} className="text-yellow-500 fill-yellow-500" />
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-muted-foreground text-sm">
+                            {truncateMessage(template.content)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {template.media_url ? (
+                            <Paperclip size={14} className="mx-auto text-primary" />
+                          ) : (
+                            <span className="text-muted-foreground text-sm">Não</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleUseTemplate(template.id)}
+                              title="Usar"
+                            >
+                              <Send size={14} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleEditTemplate(template.id)}
+                              title="Editar"
+                            >
+                              <Edit3 size={14} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteTemplate(template.id)}
+                              disabled={deleteTemplate.isPending}
+                              title="Excluir"
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
 
-              {filteredTemplates.length === 0 && (
+              {!isLoading && filteredTemplates.length === 0 && (
                 <div className="text-center py-12">
                   <MessageSquare className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
                   <h3 className="text-sm font-semibold text-foreground">Nenhum template encontrado</h3>
@@ -636,24 +460,6 @@ export default function QuickMessages() {
                     <option value="audios">Áudios</option>
                     <option value="media">Mídias</option>
                     <option value="documents">Documentos</option>
-                  </select>
-                </div>
-
-                {/* Folder */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Pasta
-                  </label>
-                  <select
-                    value={templateFolder}
-                    onChange={(e) => setTemplateFolder(e.target.value)}
-                    className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                  >
-                    <option value="">Nenhuma pasta</option>
-                    <option value="Orçamentos">Orçamentos</option>
-                    <option value="Vendas">Vendas</option>
-                    <option value="Resgates">Resgates</option>
-                    <option value="Apresentação">Apresentação</option>
                   </select>
                 </div>
 
@@ -788,10 +594,11 @@ Use {{variavel}} para campos dinâmicos`}
           </div>
 
           <DialogFooter className="border-t border-border pt-4">
-            <Button variant="ghost" onClick={() => setShowTemplateModal(false)}>
+            <Button variant="ghost" onClick={() => setShowTemplateModal(false)} disabled={isSaving}>
               Cancelar
             </Button>
-            <Button onClick={handleSaveTemplate}>
+            <Button onClick={handleSaveTemplate} disabled={isSaving}>
+              {isSaving && <Loader2 size={16} className="mr-2 animate-spin" />}
               {isEditing ? 'Salvar alterações' : 'Criar template'}
             </Button>
           </DialogFooter>
@@ -808,7 +615,7 @@ Use {{variavel}} para campos dinâmicos`}
 
           <div className="space-y-4 py-4">
             {/* Dynamic Variable Fields */}
-            {selectedTemplate?.variables.map((variable) => (
+            {(selectedTemplate?.variables as string[] || []).map((variable) => (
               <div key={variable}>
                 <label className="block text-sm font-medium text-foreground mb-2 capitalize">
                   {variable.replace('_', ' ')}

@@ -13,6 +13,8 @@ export interface MessageTemplate {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  media_url: string | null;
+  media_type: string | null;
   folder?: { id: string; name: string } | null;
 }
 
