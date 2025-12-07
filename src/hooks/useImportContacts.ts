@@ -16,6 +16,7 @@ export interface ImportOptions {
   createMissingTags: boolean;
   updateLeadStatus: boolean;
   updateAssignee: boolean;
+  onlyAssignIfEmpty: boolean;
 }
 
 export interface ImportLogEntry {
@@ -270,17 +271,29 @@ export function useImportContacts() {
 
         // Update assignee
         if (options.updateAssignee && row.vendedor && row.vendedor.trim()) {
-          const agent = await findProfileByName(row.vendedor);
-          if (agent) {
-            await supabase
-              .from('contacts')
-              .update({ assigned_to: agent.id })
-              .eq('id', contact.id);
-            wasUpdated = true;
+          // Check if should assign: only if onlyAssignIfEmpty is false OR contact has no assignee
+          const shouldAssign = !options.onlyAssignIfEmpty || !contact.assigned_to;
+          
+          if (shouldAssign) {
+            const agent = await findProfileByName(row.vendedor);
+            if (agent) {
+              await supabase
+                .from('contacts')
+                .update({ assigned_to: agent.id })
+                .eq('id', contact.id);
+              wasUpdated = true;
+            } else {
+              importResult.log.push({
+                type: 'warning',
+                message: `Vendedor não encontrado: "${row.vendedor}"`,
+                row: rowNum,
+              });
+            }
           } else {
+            // Log that assignee was kept because contact already has one
             importResult.log.push({
-              type: 'warning',
-              message: `Vendedor não encontrado: "${row.vendedor}"`,
+              type: 'info',
+              message: `Vendedor mantido (já tinha responsável): ${contact.full_name || row.nome}`,
               row: rowNum,
             });
           }

@@ -66,6 +66,7 @@ export function ContactImporter() {
     createMissingTags: true,
     updateLeadStatus: true,
     updateAssignee: true,
+    onlyAssignIfEmpty: true,
   });
   const [activeTab, setActiveTab] = useState<'file' | 'sheets'>('file');
   const [sheetsUrl, setSheetsUrl] = useState('');
@@ -500,15 +501,29 @@ export function ContactImporter() {
                         Atualizar status de lead
                       </Label>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="updateAssignee"
-                        checked={options.updateAssignee}
-                        onCheckedChange={(c) => setOptions(prev => ({ ...prev, updateAssignee: c === true }))}
-                      />
-                      <Label htmlFor="updateAssignee" className="text-sm cursor-pointer">
-                        Atualizar vendedor atribuído
-                      </Label>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="updateAssignee"
+                          checked={options.updateAssignee}
+                          onCheckedChange={(c) => setOptions(prev => ({ ...prev, updateAssignee: c === true }))}
+                        />
+                        <Label htmlFor="updateAssignee" className="text-sm cursor-pointer">
+                          Atualizar vendedor atribuído
+                        </Label>
+                      </div>
+                      {options.updateAssignee && (
+                        <div className="flex items-center gap-2 ml-6">
+                          <Checkbox
+                            id="onlyAssignIfEmpty"
+                            checked={options.onlyAssignIfEmpty}
+                            onCheckedChange={(c) => setOptions(prev => ({ ...prev, onlyAssignIfEmpty: c === true }))}
+                          />
+                          <Label htmlFor="onlyAssignIfEmpty" className="text-xs text-muted-foreground cursor-pointer">
+                            Apenas se o contato não tiver responsável
+                          </Label>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
