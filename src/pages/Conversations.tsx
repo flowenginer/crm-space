@@ -3421,33 +3421,110 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                   <QuickTemplatesPopover
                     contactName={selectedConversation?.contact?.full_name}
                     contactPhone={selectedConversation?.contact?.phone}
-                  onSelectTemplate={async (content, type, mediaUrl, mediaType) => {
-                      // If template has media attached, send text and file separately
-                      if (mediaUrl && selectedConversationId) {
-                        const channelId = selectedConversation?.channel_id;
-                        const contactPhone = selectedConversation?.contact?.phone;
-                        const assigneeName = selectedConversation?.assignee?.full_name;
-                        
-                        // Determine message type from media_type
-                        let messageType: 'text' | 'image' | 'audio' | 'video' | 'document' = 'document';
-                        if (mediaType?.startsWith('audio')) messageType = 'audio';
-                        else if (mediaType?.startsWith('image')) messageType = 'image';
-                        else if (mediaType?.startsWith('video')) messageType = 'video';
-                        
-                        // Build full media URL if relative
-                        const fullMediaUrl = mediaUrl.startsWith('http') 
-                          ? mediaUrl 
-                          : `${supabase.storage.from('template-attachments').getPublicUrl(mediaUrl).data.publicUrl}`;
+                    onSelectTemplate={async (content, type, mediaUrl, mediaType, mediaName, contentBlocks) => {
+                      const channelId = selectedConversation?.channel_id;
+                      const contactPhone = selectedConversation?.contact?.phone;
+                      const assigneeName = selectedConversation?.assignee?.full_name;
+                      
+                      // Helper to build full media URL
+                      const getFullMediaUrl = (url: string) => 
+                        url.startsWith('http') 
+                          ? url 
+                          : `${supabase.storage.from('template-attachments').getPublicUrl(url).data.publicUrl}`;
+                      
+                      // Helper to determine message type from mime type
+                      const getMessageType = (mimeType?: string | null): 'text' | 'image' | 'audio' | 'video' | 'document' => {
+                        if (mimeType?.startsWith('audio')) return 'audio';
+                        if (mimeType?.startsWith('image')) return 'image';
+                        if (mimeType?.startsWith('video')) return 'video';
+                        return 'document';
+                      };
+                      
+                      // If template has content_blocks, send each block separately
+                      if (contentBlocks && contentBlocks.length > 0 && selectedConversationId) {
+                        try {
+                          for (let i = 0; i < contentBlocks.length; i++) {
+                            const block = contentBlocks[i];
+                            
+                            if (block.type === 'text' && block.content?.trim()) {
+                              let textContent = block.content;
+                              if (assigneeName && i === 0) {
+                                textContent = `*${assigneeName}*:\n${block.content}`;
+                              }
+                              
+                              // Save to database
+                              sendMessage.mutate({
+                                conversation_id: selectedConversationId,
+                                content: textContent,
+                                is_from_me: true,
+                                message_type: 'text',
+                              });
+                              
+                              // Send via WhatsApp
+                              if (channelId && contactPhone) {
+                                await sendWhatsAppMessage(channelId, contactPhone, textContent, 'text');
+                              }
+                            } else if (block.type === 'media' && block.media_url) {
+                              const fullUrl = getFullMediaUrl(block.media_url);
+                              const msgType = getMessageType(block.media_type);
+                              
+                              sendMessage.mutate({
+                                conversation_id: selectedConversationId,
+                                content: '',
+                                is_from_me: true,
+                                message_type: msgType,
+                                media_url: fullUrl,
+                                media_mime_type: block.media_type,
+                              });
+                              
+                              if (channelId && contactPhone) {
+                                await sendWhatsAppMessage(channelId, contactPhone, '', msgType, fullUrl);
+                              }
+                            }
+                            
+                            // Delay between messages
+                            if (i < contentBlocks.length - 1 || mediaUrl) {
+                              await new Promise(resolve => setTimeout(resolve, 700));
+                            }
+                          }
+                          
+                          // After all blocks, send the main attachment if exists
+                          if (mediaUrl) {
+                            const fullMediaUrl = getFullMediaUrl(mediaUrl);
+                            const messageType = getMessageType(mediaType);
+                            
+                            sendMessage.mutate({
+                              conversation_id: selectedConversationId,
+                              content: '',
+                              is_from_me: true,
+                              message_type: messageType,
+                              media_url: fullMediaUrl,
+                              media_mime_type: mediaType,
+                            });
+                            
+                            if (channelId && contactPhone) {
+                              await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl);
+                            }
+                          }
+                          
+                          toast.success('Mensagens enviadas!');
+                        } catch (error) {
+                          console.error('Error sending template blocks:', error);
+                          toast.error('Erro ao enviar mensagens');
+                        }
+                      } else if (mediaUrl && selectedConversationId) {
+                        // Template without content_blocks but with media
+                        const fullMediaUrl = getFullMediaUrl(mediaUrl);
+                        const messageType = getMessageType(mediaType);
                         
                         try {
-                          // === MENSAGEM 1: TEXTO (se houver) ===
+                          // Send text first if exists
                           if (content && content.trim()) {
                             let textContent = content;
                             if (assigneeName) {
                               textContent = `*${assigneeName}*:\n${content}`;
                             }
                             
-                            // Salvar texto no banco
                             sendMessage.mutate({
                               conversation_id: selectedConversationId,
                               content: textContent,
@@ -3455,26 +3532,23 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                               message_type: 'text',
                             });
                             
-                            // Enviar texto via WhatsApp
                             if (channelId && contactPhone) {
                               await sendWhatsAppMessage(channelId, contactPhone, textContent, 'text');
                             }
+                            
+                            await new Promise(resolve => setTimeout(resolve, 500));
                           }
                           
-                          // Pequeno delay para garantir ordem das mensagens
-                          await new Promise(resolve => setTimeout(resolve, 500));
-                          
-                          // === MENSAGEM 2: ARQUIVO ===
+                          // Then send media
                           sendMessage.mutate({
                             conversation_id: selectedConversationId,
-                            content: '', // Sem texto/caption
+                            content: '',
                             is_from_me: true,
                             message_type: messageType,
                             media_url: fullMediaUrl,
                             media_mime_type: mediaType,
                           });
                           
-                          // Enviar arquivo via WhatsApp
                           if (channelId && contactPhone) {
                             await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl);
                           }

@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { useTemplates, useIncrementTemplateUsage, type MessageTemplate } from '@/hooks/useTemplates';
+import { useTemplates, useIncrementTemplateUsage, type MessageTemplate, type ContentBlock } from '@/hooks/useTemplates';
 import { useChatbotFlows } from '@/hooks/useChatbotFlows';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
@@ -58,7 +58,9 @@ interface QuickTemplatesPopoverProps {
     content: string, 
     type: 'text' | 'audio' | 'image' | 'document',
     mediaUrl?: string | null,
-    mediaType?: string | null
+    mediaType?: string | null,
+    mediaName?: string | null,
+    contentBlocks?: ContentBlock[] | null
   ) => void;
   onStartFlow?: (flowId: string) => void;
   onTriggerAutomation?: (triggerId: string) => void;
@@ -141,6 +143,12 @@ export function QuickTemplatesPopover({
   const handleSelectTemplate = useCallback((template: MessageTemplate) => {
     const processedContent = replaceVariables(template.content);
     
+    // Process content_blocks with variable replacement
+    const processedBlocks = template.content_blocks?.map(block => ({
+      ...block,
+      content: block.content ? replaceVariables(block.content) : undefined
+    })) || null;
+    
     // Determine type based on category or media_url presence
     let type: 'text' | 'audio' | 'image' | 'document' = 'text';
     
@@ -156,7 +164,7 @@ export function QuickTemplatesPopover({
       else if (template.category === 'document' || template.category === 'documents') type = 'document';
     }
 
-    onSelectTemplate(processedContent, type, template.media_url, template.media_type);
+    onSelectTemplate(processedContent, type, template.media_url, template.media_type, template.media_name, processedBlocks);
     incrementUsage.mutate(template.id);
     setOpen(false);
     setSearchQuery('');
