@@ -40,36 +40,13 @@ import { useContacts, useContactsCount, useCreateContact, useUpdateContact, useD
 import { useTags, useCreateTag, useDeleteTag, useAddTagToContact, useRemoveTagFromContact } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
+import { useLeadStatuses } from '@/hooks/useLeadKanban';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const brazilianStates = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
 ];
-
-type LeadStatus = 'new' | 'active' | 'qualified' | 'unqualified' | 'client';
-
-const getLeadStatusLabel = (status: string | null) => {
-  const labels: Record<string, string> = {
-    new: 'Novo',
-    active: 'Ativo',
-    qualified: 'Qualificado',
-    unqualified: 'Não qualificado',
-    client: 'Cliente',
-  };
-  return labels[status || 'new'] || 'Novo';
-};
-
-const getLeadStatusColor = (status: string | null) => {
-  const colors: Record<string, string> = {
-    new: 'bg-blue-100 text-blue-700',
-    active: 'bg-yellow-100 text-yellow-700',
-    qualified: 'bg-green-100 text-green-700',
-    unqualified: 'bg-muted text-muted-foreground',
-    client: 'bg-primary/10 text-primary',
-  };
-  return colors[status || 'new'] || 'bg-muted text-muted-foreground';
-};
 
 const getTagColorClass = (color: string | null) => {
   if (!color) return 'bg-muted text-muted-foreground';
@@ -95,6 +72,55 @@ export default function Contacts() {
   const { data: tags = [], isLoading: tagsLoading } = useTags();
   const { data: team = [] } = useTeam();
   const { data: departments = [] } = useDepartments();
+  const { data: leadStatuses = [] } = useLeadStatuses();
+
+  // Funções para status do lead (dinâmico)
+  const getLeadStatusLabel = (status: string | null) => {
+    if (!status) return 'Sem status';
+    const found = leadStatuses.find(s => s.name === status || s.id === status);
+    return found?.name || status;
+  };
+
+  const getLeadStatusColor = (status: string | null) => {
+    if (!status) return 'bg-muted text-muted-foreground';
+    const found = leadStatuses.find(s => s.name === status || s.id === status);
+    if (found?.color) {
+      return `bg-[${found.color}]/10 text-[${found.color}]`;
+    }
+    return 'bg-muted text-muted-foreground';
+  };
+
+  // Contagem de contatos por responsável
+  const contactCountByAssignee = useMemo(() => {
+    const counts: Record<string, number> = {};
+    contacts.forEach(contact => {
+      if (contact.assigned_to) {
+        counts[contact.assigned_to] = (counts[contact.assigned_to] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [contacts]);
+
+  // Contagem de contatos por estado
+  const contactCountByState = useMemo(() => {
+    const counts: Record<string, number> = {};
+    contacts.forEach(contact => {
+      if (contact.state) {
+        counts[contact.state] = (counts[contact.state] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [contacts]);
+
+  // Contagem de contatos por status de lead
+  const contactCountByLeadStatus = useMemo(() => {
+    const counts: Record<string, number> = {};
+    contacts.forEach(contact => {
+      const status = contact.lead_status || 'sem_status';
+      counts[status] = (counts[status] || 0) + 1;
+    });
+    return counts;
+  }, [contacts]);
   
   const createContact = useCreateContact();
   const updateContact = useUpdateContact();
@@ -520,7 +546,9 @@ export default function Contacts() {
           >
             <option value="">Responsável</option>
             {team.map((member) => (
-              <option key={member.id} value={member.id}>{member.full_name}</option>
+              <option key={member.id} value={member.id}>
+                {member.full_name} ({contactCountByAssignee[member.id] || 0})
+              </option>
             ))}
           </select>
 
@@ -532,22 +560,24 @@ export default function Contacts() {
           >
             <option value="">Estado</option>
             {brazilianStates.map((state) => (
-              <option key={state} value={state}>{state}</option>
+              <option key={state} value={state}>
+                {state} ({contactCountByState[state] || 0})
+              </option>
             ))}
           </select>
 
-          {/* Status Filter */}
+          {/* Status Filter - Dinâmico do CRM */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-4 py-2.5 bg-muted/50 border border-border rounded-xl text-sm text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
           >
             <option value="">Status Lead</option>
-            <option value="new">Novo</option>
-            <option value="active">Ativo</option>
-            <option value="qualified">Qualificado</option>
-            <option value="unqualified">Não qualificado</option>
-            <option value="client">Cliente</option>
+            {leadStatuses.map((status) => (
+              <option key={status.id} value={status.name}>
+                {status.name} ({contactCountByLeadStatus[status.name] || 0})
+              </option>
+            ))}
           </select>
 
           {/* Date Range */}
