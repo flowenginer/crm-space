@@ -11,6 +11,14 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAgentTagSyncStore } from '@/store/agentTagSyncStore';
@@ -667,32 +675,45 @@ export function AgentTagSyncSettings() {
                     <span>Ver detalhes ({summary.results.length})</span>
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4">
-                    <ScrollArea className="h-[200px]">
-                      <div className="space-y-2">
-                        {summary.results.slice(0, 50).map((r, i) => (
-                          <div key={i} className="flex items-center justify-between p-2 rounded bg-muted/30 text-sm">
-                            <div className="flex items-center gap-2 min-w-0">
-                              {r.success ? (
-                                <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                              ) : (
-                                <XCircle className="h-4 w-4 text-red-500 shrink-0" />
-                              )}
-                              <span className="truncate">{r.contactName}</span>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              {r.tagName && (
-                                <Badge variant="secondary" className="text-xs">{r.tagName}</Badge>
-                              )}
-                              <span className="text-xs text-muted-foreground">{r.action}</span>
-                            </div>
-                          </div>
-                        ))}
-                        {summary.results.length > 50 && (
-                          <p className="text-xs text-muted-foreground text-center py-2">
-                            ... e mais {summary.results.length - 50} resultados
-                          </p>
-                        )}
-                      </div>
+                    <ScrollArea className="h-[300px]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Cliente</TableHead>
+                            <TableHead>Etiqueta</TableHead>
+                            <TableHead>Vendedor</TableHead>
+                            <TableHead className="text-right">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {summary.results.slice(0, 50).map((r, i) => (
+                            <TableRow key={i}>
+                              <TableCell className="font-medium">{r.contactName}</TableCell>
+                              <TableCell>
+                                {r.tagName ? (
+                                  <Badge variant="outline" className="text-xs">{r.tagName}</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>{r.agentName || '-'}</TableCell>
+                              <TableCell className="text-right">
+                                <Badge 
+                                  variant={r.success ? 'default' : 'destructive'}
+                                  className="text-xs"
+                                >
+                                  {r.success ? '✓ Atribuído' : '✗ Erro'}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      {summary.results.length > 50 && (
+                        <p className="text-xs text-muted-foreground text-center py-2">
+                          ... e mais {summary.results.length - 50} resultados
+                        </p>
+                      )}
                     </ScrollArea>
                   </AccordionContent>
                 </AccordionItem>
