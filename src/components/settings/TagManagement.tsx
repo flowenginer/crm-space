@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { 
   Plus, 
   Edit3, 
@@ -32,6 +32,7 @@ import {
 import { toast } from 'sonner';
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag, Tag as TagType, TagVisibility } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useContactsFilterCounts } from '@/hooks/usePaginatedContacts';
 
 const predefinedColors = [
   '#8B5CF6', '#EC4899', '#EF4444', '#F97316', '#EAB308', '#22C55E',
@@ -41,9 +42,21 @@ const predefinedColors = [
 export function TagManagement() {
   const { data: tags = [], isLoading } = useTags();
   const { data: departments = [] } = useDepartments();
+  const { data: filterCounts } = useContactsFilterCounts();
   const createTag = useCreateTag();
   const updateTag = useUpdateTag();
   const deleteTag = useDeleteTag();
+
+  // Criar mapa de contagens reais das etiquetas
+  const tagCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (filterCounts?.byTag) {
+      Object.entries(filterCounts.byTag).forEach(([tagId, count]) => {
+        map.set(tagId, count as number);
+      });
+    }
+    return map;
+  }, [filterCounts]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [visibilityFilter, setVisibilityFilter] = useState<TagVisibility | 'all'>('all');
@@ -321,7 +334,7 @@ export function TagManagement() {
                   {tag.name}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {tag.usage_count || 0} uso{(tag.usage_count || 0) !== 1 ? 's' : ''}
+                  {tagCountMap.get(tag.id) || 0} uso{(tagCountMap.get(tag.id) || 0) !== 1 ? 's' : ''}
                 </span>
               </div>
             </div>
