@@ -9,6 +9,7 @@ interface SyncResult {
   agentName?: string;
   success: boolean;
   error?: string;
+  skipped?: boolean;
 }
 
 interface SyncSummary {
@@ -16,6 +17,7 @@ interface SyncSummary {
   processed: number;
   successful: number;
   errors: number;
+  skipped?: number;
   results: SyncResult[];
 }
 
