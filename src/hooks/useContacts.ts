@@ -209,6 +209,9 @@ export function useCreateContact() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-filtered-count'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-filter-counts'] });
     },
   });
 }
@@ -247,6 +250,9 @@ export function useUpdateContact() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-filtered-count'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-filter-counts'] });
     },
   });
 }
@@ -265,6 +271,9 @@ export function useDeleteContact() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-filtered-count'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-filter-counts'] });
     },
   });
 }

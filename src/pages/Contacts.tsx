@@ -1249,11 +1249,12 @@ export default function Contacts() {
                       onChange={(e) => setFormData({ ...formData, lead_status: e.target.value })}
                       className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                     >
-                      <option value="new">Novo</option>
-                      <option value="active">Ativo</option>
-                      <option value="qualified">Qualificado</option>
-                      <option value="unqualified">Não qualificado</option>
-                      <option value="client">Cliente</option>
+                      <option value="">Selecione</option>
+                      {leadStatuses.map((status) => (
+                        <option key={status.id} value={status.name}>
+                          {status.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
