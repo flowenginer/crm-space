@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/accordion';
 import { ContactImporter } from './ContactImporter';
 import { StateIdentificationSettings } from './StateIdentificationSettings';
+import { AgentTagSyncSettings } from './AgentTagSyncSettings';
 
 interface AssignmentResult {
   conversationId: string;
@@ -564,6 +565,9 @@ export function ToolsSettings() {
 
       {/* State Identification */}
       <StateIdentificationSettings />
+
+      {/* Agent Tag Sync */}
+      <AgentTagSyncSettings />
     </div>
   );
 }
