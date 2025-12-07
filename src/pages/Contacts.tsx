@@ -347,6 +347,16 @@ export default function Contacts() {
       const { data: { user } } = await supabase.auth.getUser();
       const currentUserId = user?.id;
 
+      // DEBUG LOG - Verificação de permissão
+      console.log('[handleOpenChat DEBUG]', {
+        isAdmin,
+        currentUserId,
+        contactId: contact.id,
+        contactName: contact.full_name,
+        contactAssignedTo: contact.assigned_to,
+        willBlockByContact: !isAdmin && contact.assigned_to && contact.assigned_to !== currentUserId
+      });
+
       // ============ VERIFICAÇÃO DE PERMISSÃO ============
       // Se NÃO for admin, verificar se o contato está atribuído a outro vendedor
       if (!isAdmin && contact.assigned_to && contact.assigned_to !== currentUserId) {
