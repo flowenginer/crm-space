@@ -92,8 +92,10 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     // Dashboard is always visible
     if (item.href === '/') return true;
     
-    // While loading, show all items (ProtectedRoute handles actual access)
-    if (permissionsLoading) return true;
+    // While loading, hide items that require permission (show only public items)
+    if (permissionsLoading) {
+      return !item.permission && !item.roles;
+    }
     
     // Admin sees everything
     if (isAdmin) return true;

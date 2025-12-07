@@ -93,7 +93,7 @@ export function useUpdateRole() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<RoleDefinition> & { id: string }) => {
+    mutationFn: async ({ id, role_key, ...updates }: Partial<RoleDefinition> & { id: string; role_key?: string }) => {
       const { data, error } = await supabase
         .from('role_definitions')
         .update(updates)
@@ -102,10 +102,13 @@ export function useUpdateRole() {
         .single();
 
       if (error) throw error;
-      return data;
+      return { data, role_key };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      // Invalidate all permission-related caches
       queryClient.invalidateQueries({ queryKey: ['role_definitions'] });
+      queryClient.invalidateQueries({ queryKey: ['roleDefinition'] });
+      queryClient.invalidateQueries({ queryKey: ['profile-permissions'] });
     },
   });
 }
