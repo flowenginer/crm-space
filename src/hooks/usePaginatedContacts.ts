@@ -173,12 +173,18 @@ export function useContactsFilterCounts() {
 
       if (error) throw error;
 
-      const result = data as { byState?: Record<string, number>; byStatus?: Record<string, number>; byAssignee?: Record<string, number> } | null;
+      const result = data as { 
+        byState?: Record<string, number>; 
+        byStatus?: Record<string, number>; 
+        byAssignee?: Record<string, number>;
+        byTag?: Record<string, number>;
+      } | null;
 
       return {
         byState: (result?.byState || {}) as Record<string, number>,
         byStatus: (result?.byStatus || {}) as Record<string, number>,
         byAssignee: (result?.byAssignee || {}) as Record<string, number>,
+        byTag: (result?.byTag || {}) as Record<string, number>,
       };
     },
     staleTime: 60000, // 1 minute cache

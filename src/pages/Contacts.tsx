@@ -545,7 +545,9 @@ export default function Contacts() {
                           style={{ backgroundColor: tag.color || '#8B5CF6' }}
                         />
                         <span className="flex-1 text-sm text-foreground">{tag.name}</span>
-                        <span className="text-xs text-muted-foreground">{tag.usage_count || 0}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {filterCounts?.byTag?.[tag.id] || 0}
+                        </span>
                       </label>
                     ))
                   )}
