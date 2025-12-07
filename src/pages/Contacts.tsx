@@ -91,29 +91,23 @@ export default function Contacts() {
   // Debounce da busca para evitar muitas requisições
   const debouncedSearch = useDebounce(searchQuery, 300);
 
-  // Busca paginada com filtros server-side
+  // Filtros para os hooks
+  const filters = {
+    searchQuery: debouncedSearch,
+    stateFilter,
+    statusFilter,
+    assignedTo: assignedFilter,
+    tagIds: selectedTags.length > 0 ? selectedTags : undefined,
+  };
+
+  // Busca paginada com filtros server-side (paginação direta no servidor)
   const { 
     data: paginatedData, 
     isLoading: contactsLoading, 
-    fetchNextPage, 
-    hasNextPage, 
-    isFetchingNextPage 
-  } = usePaginatedContacts({
-    searchQuery: debouncedSearch,
-    stateFilter,
-    statusFilter,
-    assignedTo: assignedFilter,
-    tagIds: selectedTags.length > 0 ? selectedTags : undefined,
-  });
+  } = usePaginatedContacts(filters, { page: currentPage, perPage });
 
   // Contagem total filtrada
-  const { data: filteredCount = 0 } = useFilteredContactsCount({
-    searchQuery: debouncedSearch,
-    stateFilter,
-    statusFilter,
-    assignedTo: assignedFilter,
-    tagIds: selectedTags.length > 0 ? selectedTags : undefined,
-  });
+  const { data: filteredCount = 0 } = useFilteredContactsCount(filters);
 
   // Contagem total geral
   const { data: totalContacts = 0 } = useContactsCount();
@@ -121,26 +115,12 @@ export default function Contacts() {
   // Contagens para os filtros (server-side)
   const { data: filterCounts } = useContactsFilterCounts();
 
-  // Todos os contatos da página atual
-  const contacts = useMemo(() => {
-    return paginatedData?.pages.flatMap(p => p.contacts) ?? [];
+  // Contatos da página atual (direto do servidor)
+  const paginatedContacts = useMemo(() => {
+    return paginatedData?.contacts ?? [];
   }, [paginatedData]);
 
-  // Paginação local dos dados já carregados
-  const paginatedContacts = useMemo(() => {
-    const startIndex = (currentPage - 1) * perPage;
-    return contacts.slice(startIndex, startIndex + perPage);
-  }, [contacts, currentPage, perPage]);
-
   const totalPages = Math.ceil(filteredCount / perPage);
-
-  // Carregar mais páginas automaticamente quando necessário
-  useEffect(() => {
-    const neededItems = currentPage * perPage;
-    if (contacts.length < neededItems && hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
-  }, [currentPage, perPage, contacts.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Reset para página 1 quando filtros mudam
   useEffect(() => {
@@ -730,7 +710,7 @@ export default function Contacts() {
             <span className="text-muted-foreground">Carregando contatos...</span>
           </div>
         </div>
-      ) : contacts.length === 0 ? (
+      ) : paginatedContacts.length === 0 ? (
         /* Empty State - No contacts at all */
         <div className="bg-card rounded-2xl border border-border shadow-sm">
           <div className="text-center py-16">
