@@ -41,7 +41,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { title: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { title: 'Dashboard', href: '/', icon: LayoutDashboard, permission: 'dashboard.view' },
   { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.read' },
   { title: 'Ao Vivo', href: '/ao-vivo', icon: Radio, roles: ['admin', 'supervisor'] },
   { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.read' },
@@ -89,9 +89,6 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
   // Filter nav items based on permissions
   const filteredNavItems = navItems.filter((item) => {
-    // Dashboard is always visible
-    if (item.href === '/') return true;
-    
     // While NOT fully loaded, hide items that require permission for safety
     if (!isFullyLoaded) {
       return !item.permission && !item.roles;
