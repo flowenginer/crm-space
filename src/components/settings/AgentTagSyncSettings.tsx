@@ -6,13 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Accordion,
   AccordionContent,
   AccordionItem,
@@ -20,6 +13,7 @@ import {
 } from '@/components/ui/accordion';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useAgentTagSyncStore } from '@/store/agentTagSyncStore';
 
 type SyncMode = 'tag-to-assignment' | 'assignment-to-tag' | 'orphans' | 'conflicts';
 
@@ -50,24 +44,23 @@ interface SyncResult {
   error?: string;
 }
 
-interface SyncSummary {
-  total: number;
-  processed: number;
-  successful: number;
-  errors: number;
-  results: SyncResult[];
-}
-
 export function AgentTagSyncSettings() {
-  const [isLoading, setIsLoading] = useState(false);
+  const {
+    isProcessing,
+    progress,
+    summary,
+    shouldCancel,
+    startProcessing,
+    updateProgress,
+    setSummary,
+    cancelProcessing,
+  } = useAgentTagSyncStore();
+
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [mode, setMode] = useState<SyncMode>('tag-to-assignment');
   const [mappings, setMappings] = useState<AgentTagMapping[]>([]);
   const [stats, setStats] = useState<SyncStats | null>(null);
-  const [summary, setSummary] = useState<SyncSummary | null>(null);
-  const [progress, setProgress] = useState(0);
 
-  // Busca estatísticas e mapeamentos ao carregar
   useEffect(() => {
     loadStatsAndMappings();
   }, []);
@@ -75,7 +68,6 @@ export function AgentTagSyncSettings() {
   const loadStatsAndMappings = async () => {
     setIsLoadingStats(true);
     try {
-      // Buscar todos os vendedores (profiles com role de vendedor ou similar)
       const { data: agents, error: agentsError } = await supabase
         .from('profiles')
         .select('id, full_name')
@@ -84,8 +76,6 @@ export function AgentTagSyncSettings() {
 
       if (agentsError) throw agentsError;
 
-      // Buscar todas as tags que parecem ser de vendedores
-      // (tags cujo nome corresponde a um nome de vendedor)
       const { data: allTags, error: tagsError } = await supabase
         .from('tags')
         .select('id, name, color')
@@ -93,7 +83,6 @@ export function AgentTagSyncSettings() {
 
       if (tagsError) throw tagsError;
 
-      // Criar mapeamento tag -> vendedor
       const agentMappings: AgentTagMapping[] = [];
       const agentNames = agents?.map(a => ({
         id: a.id,
@@ -103,11 +92,7 @@ export function AgentTagSyncSettings() {
 
       for (const tag of allTags || []) {
         const tagNameUpper = tag.name.toUpperCase();
-        
-        // Buscar correspondência exata com primeiro nome
         const exactMatch = agentNames.find(a => a.firstName === tagNameUpper);
-        
-        // Buscar correspondência parcial
         const partialMatch = !exactMatch ? agentNames.find(a => 
           a.name.toUpperCase().includes(tagNameUpper) || 
           tagNameUpper.includes(a.firstName)
@@ -129,23 +114,9 @@ export function AgentTagSyncSettings() {
 
       setMappings(agentMappings);
 
-      // Calcular estatísticas
       const agentTagIds = agentMappings.map(m => m.tagId);
       const agentIds = agentMappings.filter(m => m.agentId).map(m => m.agentId);
 
-      // 1. Tag -> Atribuição: contatos com tag de vendedor mas sem atribuição
-      const { count: tagToAssignmentCount } = await supabase
-        .from('contact_tags')
-        .select('contact_id', { count: 'exact', head: true })
-        .in('tag_id', agentTagIds.length > 0 ? agentTagIds : ['00000000-0000-0000-0000-000000000000'])
-        .in('contact_id', (
-          await supabase
-            .from('contacts')
-            .select('id')
-            .is('assigned_to', null)
-        ).data?.map(c => c.id) || []);
-
-      // Buscar de forma mais eficiente
       const { data: contactsWithTagNoAssignment } = await supabase
         .from('contacts')
         .select('id')
@@ -159,11 +130,10 @@ export function AgentTagSyncSettings() {
           .from('contact_tags')
           .select('contact_id', { count: 'exact', head: true })
           .in('tag_id', agentTagIds)
-          .in('contact_id', contactIdsNoAssignment.slice(0, 1000)); // Limitar para performance
+          .in('contact_id', contactIdsNoAssignment.slice(0, 1000));
         tagToAssignment = count || 0;
       }
 
-      // 2. Atribuição -> Tag: contatos atribuídos mas sem tag do vendedor
       let assignmentToTag = 0;
       if (agentIds.length > 0) {
         const { data: assignedContacts } = await supabase
@@ -172,7 +142,6 @@ export function AgentTagSyncSettings() {
           .in('assigned_to', agentIds as string[]);
 
         if (assignedContacts && assignedContacts.length > 0) {
-          // Para cada contato atribuído, verificar se tem a tag correta
           const contactIds = assignedContacts.map(c => c.id);
           const { data: contactTags } = await supabase
             .from('contact_tags')
@@ -180,8 +149,6 @@ export function AgentTagSyncSettings() {
             .in('contact_id', contactIds.slice(0, 1000))
             .in('tag_id', agentTagIds);
 
-          const contactsWithCorrectTag = new Set(contactTags?.map(ct => ct.contact_id) || []);
-          
           for (const contact of assignedContacts) {
             const mapping = agentMappings.find(m => m.agentId === contact.assigned_to);
             if (mapping) {
@@ -196,16 +163,13 @@ export function AgentTagSyncSettings() {
         }
       }
 
-      // 3. Órfãos: sem tag de vendedor E sem atribuição
       const { count: orphansCount } = await supabase
         .from('contacts')
         .select('id', { count: 'exact', head: true })
         .is('assigned_to', null);
 
-      // Subtrair os que têm tag de vendedor
       const orphans = (orphansCount || 0) - tagToAssignment;
 
-      // 4. Conflitos: tag de um vendedor, atribuído a outro
       let conflicts = 0;
       if (agentTagIds.length > 0 && agentIds.length > 0) {
         const { data: contactsWithTags } = await supabase
@@ -251,9 +215,7 @@ export function AgentTagSyncSettings() {
   };
 
   const executeSync = async () => {
-    setIsLoading(true);
-    setSummary(null);
-    setProgress(0);
+    startProcessing();
 
     try {
       const results: SyncResult[] = [];
@@ -265,7 +227,6 @@ export function AgentTagSyncSettings() {
       const agentIds = mappings.filter(m => m.agentId).map(m => m.agentId);
 
       if (mode === 'tag-to-assignment') {
-        // Buscar contatos com tag de vendedor mas sem atribuição
         const { data: contactsNoAssignment } = await supabase
           .from('contacts')
           .select('id, full_name, phone')
@@ -281,9 +242,15 @@ export function AgentTagSyncSettings() {
             .in('contact_id', contactIds)
             .in('tag_id', agentTagIds);
 
-          const total = contactTags?.length || 0;
+          const total = contactTags?.length || 1;
 
           for (const ct of contactTags || []) {
+            if (useAgentTagSyncStore.getState().shouldCancel) {
+              toast.info('Sincronização cancelada');
+              setSummary({ total: processed, processed, successful, errors, results });
+              return;
+            }
+
             const contact = contactsNoAssignment.find(c => c.id === ct.contact_id);
             const mapping = mappings.find(m => m.tagId === ct.tag_id);
 
@@ -294,7 +261,7 @@ export function AgentTagSyncSettings() {
                 .eq('id', contact.id);
 
               processed++;
-              setProgress(Math.round((processed / total) * 100));
+              updateProgress(Math.round((processed / total) * 100));
 
               if (error) {
                 errors++;
@@ -324,7 +291,6 @@ export function AgentTagSyncSettings() {
           }
         }
       } else if (mode === 'assignment-to-tag') {
-        // Buscar contatos atribuídos a vendedores
         const { data: assignedContacts } = await supabase
           .from('contacts')
           .select('id, full_name, phone, assigned_to')
@@ -351,6 +317,12 @@ export function AgentTagSyncSettings() {
           const total = assignedContacts.length;
 
           for (const contact of assignedContacts) {
+            if (useAgentTagSyncStore.getState().shouldCancel) {
+              toast.info('Sincronização cancelada');
+              setSummary({ total: processed, processed, successful, errors, results });
+              return;
+            }
+
             const mapping = mappings.find(m => m.agentId === contact.assigned_to);
             
             if (mapping) {
@@ -362,7 +334,7 @@ export function AgentTagSyncSettings() {
                   .insert({ contact_id: contact.id, tag_id: mapping.tagId });
 
                 processed++;
-                setProgress(Math.round((processed / total) * 100));
+                updateProgress(Math.round((processed / total) * 100));
 
                 if (error) {
                   errors++;
@@ -390,13 +362,12 @@ export function AgentTagSyncSettings() {
                 }
               } else {
                 processed++;
-                setProgress(Math.round((processed / total) * 100));
+                updateProgress(Math.round((processed / total) * 100));
               }
             }
           }
         }
       } else if (mode === 'orphans') {
-        // Apenas listar órfãos - não faz nada
         const { data: orphanContacts } = await supabase
           .from('contacts')
           .select('id, full_name, phone')
@@ -428,9 +399,8 @@ export function AgentTagSyncSettings() {
           }
         }
 
-        setProgress(100);
+        updateProgress(100);
       } else if (mode === 'conflicts') {
-        // Listar conflitos
         const { data: contactTags } = await supabase
           .from('contact_tags')
           .select('contact_id, tag_id')
@@ -476,7 +446,7 @@ export function AgentTagSyncSettings() {
           }
         }
 
-        setProgress(100);
+        updateProgress(100);
       }
 
       setSummary({
@@ -493,14 +463,12 @@ export function AgentTagSyncSettings() {
         toast.success(`${successful} contatos sincronizados com sucesso!`);
       }
 
-      // Recarregar estatísticas
       await loadStatsAndMappings();
 
     } catch (error: any) {
       console.error('Sync error:', error);
       toast.error(error.message || 'Erro ao executar sincronização');
-    } finally {
-      setIsLoading(false);
+      setSummary({ total: 0, processed: 0, successful: 0, errors: 1, results: [] });
     }
   };
 
@@ -550,8 +518,10 @@ export function AgentTagSyncSettings() {
   return (
     <Card className="bg-card border-border">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ArrowRightLeft className="h-5 w-5 text-primary" />
+        <CardTitle className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <ArrowRightLeft className="w-5 h-5 text-primary" />
+          </div>
           Sincronização Vendedor ↔ Etiqueta
         </CardTitle>
         <CardDescription>
@@ -662,18 +632,18 @@ export function AgentTagSyncSettings() {
         </Accordion>
 
         {/* Progress */}
-        {isLoading && (
-          <div className="space-y-2">
+        {isProcessing && (
+          <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
-              <span>Processando...</span>
-              <span>{progress}%</span>
+              <span className="text-muted-foreground">Processando...</span>
+              <span className="font-medium">{progress}%</span>
             </div>
             <Progress value={progress} className="h-2" />
           </div>
         )}
 
         {/* Results */}
-        {summary && (
+        {summary && !isProcessing && (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-3">
               <div className="p-3 rounded-lg bg-muted/50 text-center">
@@ -736,7 +706,7 @@ export function AgentTagSyncSettings() {
           <Button
             variant="outline"
             onClick={loadStatsAndMappings}
-            disabled={isLoading || isLoadingStats}
+            disabled={isProcessing || isLoadingStats}
           >
             {isLoadingStats ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -746,17 +716,23 @@ export function AgentTagSyncSettings() {
             Atualizar
           </Button>
 
-          <Button
-            onClick={executeSync}
-            disabled={isLoading || isLoadingStats || mappings.length === 0}
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
+          {isProcessing ? (
+            <Button
+              variant="destructive"
+              onClick={cancelProcessing}
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              Cancelar
+            </Button>
+          ) : (
+            <Button
+              onClick={executeSync}
+              disabled={isLoadingStats || mappings.length === 0}
+            >
               <ArrowRightLeft className="h-4 w-4 mr-2" />
-            )}
-            {mode === 'orphans' || mode === 'conflicts' ? 'Identificar' : 'Executar Sincronização'}
-          </Button>
+              {mode === 'orphans' || mode === 'conflicts' ? 'Identificar' : 'Executar Sincronização'}
+            </Button>
+          )}
         </div>
 
         {/* Info */}
