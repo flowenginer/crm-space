@@ -29,7 +29,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Link } from 'react-router-dom';
 
 type TemplateCategory = 'messages' | 'audios' | 'media' | 'documents' | 'flows' | 'triggers';
@@ -234,7 +234,7 @@ export function QuickTemplatesPopover({
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1 max-h-[300px]">
+      <ScrollArea className="flex-1 max-h-[350px]" type="always">
         <div className="p-2 space-y-1">
           {activeCategory === 'flows' ? (
             // Flows list
@@ -353,6 +353,7 @@ export function QuickTemplatesPopover({
             )
           )}
         </div>
+        <ScrollBar className="w-2.5 bg-muted/30 hover:bg-muted/50" />
       </ScrollArea>
     </div>
   );
