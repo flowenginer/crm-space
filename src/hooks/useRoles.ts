@@ -105,10 +105,15 @@ export function useUpdateRole() {
       return { data, role_key };
     },
     onSuccess: (result) => {
-      // Invalidate all permission-related caches
+      // Invalidate ALL permission-related caches aggressively
       queryClient.invalidateQueries({ queryKey: ['role_definitions'] });
       queryClient.invalidateQueries({ queryKey: ['roleDefinition'] });
       queryClient.invalidateQueries({ queryKey: ['profile-permissions'] });
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      
+      // Force refetch for immediate effect
+      queryClient.refetchQueries({ queryKey: ['role_definitions'] });
+      queryClient.refetchQueries({ queryKey: ['roleDefinition'] });
     },
   });
 }

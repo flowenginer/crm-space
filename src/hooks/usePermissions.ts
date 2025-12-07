@@ -67,14 +67,21 @@ export function usePermissions() {
     enabled: !!profile?.role,
   });
 
-  // Check permission function
+  // Determine if fully loaded (profile + roleDefinition for non-admins)
+  const isFullyLoaded = !profileLoading && !!profile && (profile.role === 'admin' || (!roleLoading && !!roleDefinition));
+
+  // Check permission function - returns false while loading for safety
   const hasPermission = (category: string, action: string): boolean => {
-    if (!profile || !roleDefinition) return false;
+    // If not fully loaded yet, deny access for safety
+    if (!profile) return false;
     
-    // Admin has all permissions
+    // Admin always has all permissions
     if (profile.role === 'admin') return true;
     
-    // Check user's custom permissions first
+    // For non-admins, require roleDefinition to be loaded
+    if (!roleDefinition) return false;
+    
+    // Check user's custom permissions first (overrides)
     if (profile.permissions?.[category]?.[action] !== undefined) {
       return profile.permissions[category][action];
     }
@@ -151,6 +158,7 @@ export function usePermissions() {
     isDesigner: profile?.role === 'designer',
     role: profile?.role,
     isLoading: profileLoading || roleLoading,
+    isFullyLoaded, // NEW: indicates when it's safe to check permissions
   };
 }
 

@@ -10,10 +10,10 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, permission, roles }: ProtectedRouteProps) {
-  const { hasPermission, role, isLoading, isAdmin } = usePermissions();
+  const { hasPermission, role, isLoading, isAdmin, isFullyLoaded } = usePermissions();
 
-  // Show loading while checking permissions
-  if (isLoading) {
+  // Show loading while checking permissions (wait for full load including roleDefinition)
+  if (isLoading || !isFullyLoaded) {
     return (
       <div className="flex items-center justify-center h-full min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
