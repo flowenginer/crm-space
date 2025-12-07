@@ -364,12 +364,10 @@ function LeadKanbanColumn({
           <span className="text-xs text-gray-700 font-medium bg-white/50 px-1.5 py-0.5 rounded">
             👤 {contacts.length}
           </span>
-          {totalValue > 0 && (
-            <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-800 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-              <DollarSign size={10} />
-              R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </span>
-          )}
+          <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-800 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+            <DollarSign size={10} />
+            R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </span>
         </div>
       </div>
 
