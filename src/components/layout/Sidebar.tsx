@@ -21,6 +21,7 @@ import {
   Megaphone,
   Target,
   Workflow,
+  Link2,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -56,6 +57,8 @@ const navItems: NavItem[] = [
   // Relatórios
   { title: 'Atendimentos', href: '/relatorios/atendimentos', icon: ClipboardList, permission: 'reports.view' },
   { title: 'Relatórios', href: '/reports', icon: BarChart3, permission: 'reports.view' },
+  // Integrações
+  { title: 'Webhooks', href: '/webhooks', icon: Link2, permission: 'settings.view' },
   { title: 'Configurações', href: '/settings', icon: Settings, permission: 'settings.view' },
 ];
 

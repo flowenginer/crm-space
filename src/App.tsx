@@ -29,6 +29,7 @@ import CampaignReport from "@/pages/CampaignReport";
 import MetaAdsManager from "@/pages/MetaAdsManager";
 import Automations from "@/pages/Automations";
 import FlowEditor from "@/pages/FlowEditor";
+import Webhooks from "@/pages/Webhooks";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -130,6 +131,11 @@ const App = () => (
               <Route path="/automations/:id/stats" element={
                 <ProtectedRoute permission="settings.view">
                   <Automations />
+                </ProtectedRoute>
+              } />
+              <Route path="/webhooks" element={
+                <ProtectedRoute permission="settings.view">
+                  <Webhooks />
                 </ProtectedRoute>
               } />
             </Route>
