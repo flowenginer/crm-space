@@ -3495,7 +3495,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                             
                             sendMessage.mutate({
                               conversation_id: selectedConversationId,
-                              content: '',
+                              content: mediaName || '',
                               is_from_me: true,
                               message_type: messageType,
                               media_url: fullMediaUrl,
@@ -3541,7 +3541,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                           // Then send media
                           sendMessage.mutate({
                             conversation_id: selectedConversationId,
-                            content: '',
+                            content: mediaName || '',
                             is_from_me: true,
                             message_type: messageType,
                             media_url: fullMediaUrl,
