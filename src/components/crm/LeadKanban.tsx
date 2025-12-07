@@ -351,7 +351,7 @@ function LeadKanbanColumn({
         </div>
       </div>
 
-      <div className="bg-muted/30 rounded-b-2xl border border-t-0 border-border max-h-80 overflow-y-auto">
+      <div className="bg-muted/30 rounded-b-2xl border border-t-0 border-border max-h-[400px] overflow-y-auto">
         <div className="p-3 space-y-2">
           {isLoading ? (
             <div className="flex items-center justify-center py-4">
