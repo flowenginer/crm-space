@@ -18,7 +18,6 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   Plus,
-  Search,
   MoreVertical,
   User,
   Phone,
@@ -67,11 +66,17 @@ const DEFAULT_COLORS = [
   '#93C5FD', '#34D399'
 ];
 
-export default function LeadKanban() {
+interface LeadKanbanProps {
+  searchQuery?: string;
+}
+
+export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: LeadKanbanProps) {
   const navigate = useNavigate();
   const [activeContact, setActiveContact] = useState<ContactForKanban | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [showAddStatusModal, setShowAddStatusModal] = useState(false);
+
+  // Use external search query from Header
+  const searchQuery = externalSearchQuery;
 
   const { data: leadStatuses, isLoading: statusesLoading } = useLeadStatuses();
   const { data: summaryMap, isLoading: summaryLoading } = useLeadStatusSummary();
@@ -168,20 +173,6 @@ export default function LeadKanban() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Buscar contatos..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-      </div>
-
       {/* Kanban Board */}
       {leadStatuses && leadStatuses.length > 0 ? (
         <DndContext
