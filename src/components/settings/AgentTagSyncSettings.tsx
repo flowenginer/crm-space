@@ -237,6 +237,11 @@ export function AgentTagSyncSettings() {
   };
 
   const executeSync = async () => {
+    console.log('=== INICIANDO SINCRONIZAÇÃO ===');
+    console.log('Modo selecionado:', mode);
+    console.log('Número de mapeamentos:', mappings.length);
+    console.log('Mapeamentos:', mappings.map(m => `${m.tagName} -> ${m.agentName}`));
+    
     startProcessing();
 
     try {
@@ -313,90 +318,123 @@ export function AgentTagSyncSettings() {
           }
         }
       } else if (mode === 'assignment-to-tag') {
-        // Processar cada mapeamento para encontrar contatos que precisam de tag
-        // Usando PAGINAÇÃO para buscar TODOS os contatos
-        const contactsNeedingTags: Array<{
+        console.log('=== MODO ASSIGNMENT-TO-TAG ===');
+        
+        // Buscar contatos que precisam de tag DIRETAMENTE para cada mapeamento
+        let totalNeedingTags = 0;
+        const allContactsToProcess: Array<{
           contactId: string;
           contactName: string;
           contactPhone: string;
-          assignedTo: string;
-          mapping: AgentTagMapping;
+          tagId: string;
+          tagName: string;
+          agentName: string;
         }> = [];
 
-        // Para cada mapeamento, buscar TODOS os contatos usando paginação
         for (const mapping of mappings) {
-          if (!mapping.agentId) continue;
+          if (!mapping.agentId) {
+            console.log(`Pulando mapeamento sem agentId: ${mapping.tagName}`);
+            continue;
+          }
 
-          // Buscar TODOS os contatos atribuídos a este vendedor usando paginação
-          const allContacts: Array<{ id: string; full_name: string; phone: string }> = [];
+          console.log(`\n--- Processando: ${mapping.agentName} (tag: ${mapping.tagName}) ---`);
+          
+          // Buscar TODOS os contatos atribuídos a este vendedor que NÃO têm a tag
+          // Fazer em páginas de 1000
           let offset = 0;
           const pageSize = 1000;
+          let contactsForThisAgent = 0;
           
           while (true) {
-            const { data: contactsPage } = await supabase
+            console.log(`  Buscando página offset=${offset}...`);
+            
+            const { data: contacts, error: contactsError } = await supabase
               .from('contacts')
               .select('id, full_name, phone')
               .eq('assigned_to', mapping.agentId)
               .range(offset, offset + pageSize - 1);
             
-            if (!contactsPage || contactsPage.length === 0) break;
-            allContacts.push(...contactsPage);
-            if (contactsPage.length < pageSize) break;
-            offset += pageSize;
-          }
-
-          if (allContacts.length === 0) continue;
-          console.log(`${mapping.agentName}: encontrados ${allContacts.length} contatos atribuídos`);
-
-          // Buscar quais desses contatos JÁ têm a tag do vendedor (também com paginação)
-          const contactIds = allContacts.map(c => c.id);
-          const contactsWithTag = new Set<string>();
-          
-          for (let i = 0; i < contactIds.length; i += 1000) {
-            const batch = contactIds.slice(i, i + 1000);
-            const { data: existingTags } = await supabase
+            if (contactsError) {
+              console.error(`  Erro ao buscar contatos:`, contactsError);
+              break;
+            }
+            
+            if (!contacts || contacts.length === 0) {
+              console.log(`  Nenhum contato encontrado nesta página`);
+              break;
+            }
+            
+            console.log(`  Encontrados ${contacts.length} contatos nesta página`);
+            
+            // Verificar quais desses contatos JÁ têm a tag
+            const contactIds = contacts.map(c => c.id);
+            const { data: existingTags, error: tagsError } = await supabase
               .from('contact_tags')
               .select('contact_id')
-              .in('contact_id', batch)
+              .in('contact_id', contactIds)
               .eq('tag_id', mapping.tagId);
             
-            existingTags?.forEach(t => contactsWithTag.add(t.contact_id));
-          }
-
-          // Filtrar contatos que NÃO têm a tag
-          for (const contact of allContacts) {
-            if (!contactsWithTag.has(contact.id)) {
-              contactsNeedingTags.push({
-                contactId: contact.id,
-                contactName: contact.full_name,
-                contactPhone: contact.phone,
-                assignedTo: mapping.agentId,
-                mapping
-              });
+            if (tagsError) {
+              console.error(`  Erro ao buscar tags existentes:`, tagsError);
             }
+            
+            const contactsWithTag = new Set(existingTags?.map(t => t.contact_id) || []);
+            console.log(`  ${contactsWithTag.size} já têm a tag`);
+            
+            // Adicionar contatos que NÃO têm a tag
+            for (const contact of contacts) {
+              if (!contactsWithTag.has(contact.id)) {
+                allContactsToProcess.push({
+                  contactId: contact.id,
+                  contactName: contact.full_name,
+                  contactPhone: contact.phone,
+                  tagId: mapping.tagId,
+                  tagName: mapping.tagName,
+                  agentName: mapping.agentName || ''
+                });
+                contactsForThisAgent++;
+              }
+            }
+            
+            if (contacts.length < pageSize) {
+              console.log(`  Última página (${contacts.length} < ${pageSize})`);
+              break;
+            }
+            
+            offset += pageSize;
           }
           
-          console.log(`${mapping.agentName}: ${contactsWithTag.size} já têm tag, ${allContacts.length - contactsWithTag.size} precisam de tag`);
+          console.log(`  Total para ${mapping.agentName}: ${contactsForThisAgent} contatos precisam de tag`);
+          totalNeedingTags += contactsForThisAgent;
         }
 
-        const totalToProcess = contactsNeedingTags.length;
-        console.log(`Total de contatos que precisam de tag: ${totalToProcess}`);
+        console.log(`\n=== TOTAL GERAL: ${allContactsToProcess.length} contatos precisam de tag ===`);
+        
+        if (allContactsToProcess.length === 0) {
+          console.log('Nenhum contato precisa de tag!');
+          toast.info('Nenhum contato precisa de tag');
+          setSummary({ total: 0, processed: 0, successful: 0, errors: 0, results: [] });
+          return;
+        }
 
-        // Processar em lotes de 50 para não sobrecarregar
+        // Processar em lotes de 50
         const batchSize = 50;
-        for (let i = 0; i < contactsNeedingTags.length; i += batchSize) {
+        const totalToProcess = allContactsToProcess.length;
+        
+        for (let i = 0; i < allContactsToProcess.length; i += batchSize) {
           if (useAgentTagSyncStore.getState().shouldCancel) {
             toast.info('Sincronização cancelada');
             setSummary({ total: totalToProcess, processed, successful, errors, results });
             return;
           }
 
-          const batch = contactsNeedingTags.slice(i, i + batchSize);
+          const batch = allContactsToProcess.slice(i, i + batchSize);
+          console.log(`Processando lote ${Math.floor(i/batchSize) + 1}: ${batch.length} contatos`);
           
           // Inserir tags em lote
           const tagsToInsert = batch.map(c => ({
             contact_id: c.contactId,
-            tag_id: c.mapping.tagId
+            tag_id: c.tagId
           }));
 
           const { error } = await supabase
@@ -404,11 +442,12 @@ export function AgentTagSyncSettings() {
             .insert(tagsToInsert);
 
           if (error) {
+            console.error(`Erro no lote, processando individualmente:`, error);
             // Se erro no lote, processar individualmente
             for (const contact of batch) {
               const { error: singleError } = await supabase
                 .from('contact_tags')
-                .insert({ contact_id: contact.contactId, tag_id: contact.mapping.tagId });
+                .insert({ contact_id: contact.contactId, tag_id: contact.tagId });
 
               processed++;
               if (singleError) {
@@ -418,8 +457,8 @@ export function AgentTagSyncSettings() {
                   contactName: contact.contactName,
                   contactPhone: contact.contactPhone,
                   action: 'Adicionar tag',
-                  tagName: contact.mapping.tagName,
-                  agentName: contact.mapping.agentName || undefined,
+                  tagName: contact.tagName,
+                  agentName: contact.agentName,
                   success: false,
                   error: singleError.message
                 });
@@ -430,8 +469,8 @@ export function AgentTagSyncSettings() {
                   contactName: contact.contactName,
                   contactPhone: contact.contactPhone,
                   action: 'Tag adicionada',
-                  tagName: contact.mapping.tagName,
-                  agentName: contact.mapping.agentName || undefined,
+                  tagName: contact.tagName,
+                  agentName: contact.agentName,
                   success: true
                 });
               }
@@ -440,21 +479,24 @@ export function AgentTagSyncSettings() {
             // Sucesso no lote
             processed += batch.length;
             successful += batch.length;
+            console.log(`Lote inserido com sucesso: ${batch.length} tags`);
             for (const contact of batch) {
               results.push({
                 contactId: contact.contactId,
                 contactName: contact.contactName,
                 contactPhone: contact.contactPhone,
                 action: 'Tag adicionada',
-                tagName: contact.mapping.tagName,
-                agentName: contact.mapping.agentName || undefined,
+                tagName: contact.tagName,
+                agentName: contact.agentName,
                 success: true
               });
             }
           }
 
-          updateProgress(Math.round((processed / Math.max(totalToProcess, 1)) * 100));
+          updateProgress(Math.round((processed / totalToProcess) * 100));
         }
+        
+        console.log(`=== SINCRONIZAÇÃO CONCLUÍDA: ${successful} sucesso, ${errors} erros ===`);
       } else if (mode === 'orphans') {
         const { data: orphanContacts } = await supabase
           .from('contacts')
