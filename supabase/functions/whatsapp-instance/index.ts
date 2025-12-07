@@ -23,6 +23,7 @@ interface CreateInstanceRequest {
   type?: 'text' | 'image' | 'audio' | 'video' | 'document';
   mediaUrl?: string;
   quotedMessageId?: string;
+  filename?: string;  // Nome do arquivo para documentos
   // For deleteMessage/editMessage action
   whatsappMessageId?: string;
   remoteJid?: string;
@@ -76,7 +77,8 @@ async function sendEvolutionMessage(
   content: string,
   type: string,
   mediaUrl?: string,
-  quotedMessageId?: string
+  quotedMessageId?: string,
+  filename?: string
 ) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   const formattedPhone = phone.replace(/\D/g, '') + '@s.whatsapp.net';
@@ -134,7 +136,7 @@ async function sendEvolutionMessage(
       number: formattedPhone,
       mediatype: 'document',
       media: mediaUrl,
-      fileName: content || 'document',
+      fileName: filename || content || 'document',
       ...quotedContext,
     };
   }
@@ -167,7 +169,8 @@ async function sendUAZAPIMessage(
   content: string,
   type: string,
   mediaUrl?: string,
-  quotedMessageId?: string
+  quotedMessageId?: string,
+  filename?: string
 ) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   const formattedPhone = phone.replace(/\D/g, '');
@@ -214,7 +217,7 @@ async function sendUAZAPIMessage(
     body = {
       phone: formattedPhone,
       document: mediaUrl,
-      fileName: content || 'document',
+      fileName: filename || content || 'document',
       ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
     };
   }
@@ -247,7 +250,8 @@ async function sendZAPIMessage(
   content: string,
   type: string,
   mediaUrl?: string,
-  quotedMessageId?: string
+  quotedMessageId?: string,
+  filename?: string
 ) {
   const formattedPhone = phone.replace(/\D/g, '');
   
@@ -292,7 +296,7 @@ async function sendZAPIMessage(
     endpoint = `${baseUrl}/send-document/${formattedPhone}`;
     body = {
       document: mediaUrl,
-      fileName: content || 'document',
+      fileName: filename || content || 'document',
       ...(quotedMessageId && { messageId: quotedMessageId }),
     };
   }
@@ -1320,7 +1324,7 @@ serve(async (req) => {
     const body: CreateInstanceRequest = await req.json();
     console.log('[WhatsApp Instance] Request:', body);
 
-    const { action, providerCode, instanceName, instanceId, instanceToken, webhookUrl, channelId, phone, content, type, mediaUrl, quotedMessageId } = body;
+    const { action, providerCode, instanceName, instanceId, instanceToken, webhookUrl, channelId, phone, content, type, mediaUrl, quotedMessageId, filename } = body;
 
     // =====================================================
     // SEND ACTION - Rota especial que busca dados do canal
@@ -1387,7 +1391,8 @@ serve(async (req) => {
               content || '',
               messageType,
               mediaUrl,
-              quotedMessageId
+              quotedMessageId,
+              filename
             );
             break;
           case 'uazapi':
@@ -1399,7 +1404,8 @@ serve(async (req) => {
               content || '',
               messageType,
               mediaUrl,
-              quotedMessageId
+              quotedMessageId,
+              filename
             );
             break;
           case 'zapi':
@@ -1411,7 +1417,8 @@ serve(async (req) => {
               content || '',
               messageType,
               mediaUrl,
-              quotedMessageId
+              quotedMessageId,
+              filename
             );
             break;
           default:
