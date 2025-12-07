@@ -65,6 +65,76 @@ export function usePaginatedContacts(filters: ContactFilters) {
       departmentId
     ],
     queryFn: async ({ pageParam = 0 }) => {
+      // Se tem filtro de tags, usa RPC para evitar limite de URL
+      if (tagIds && tagIds.length > 0) {
+        const { data: taggedContactIds, error: rpcError } = await supabase.rpc(
+          'get_contacts_by_tag_filter',
+          {
+            p_tag_ids: tagIds,
+            p_search_query: searchQuery || null,
+            p_state_filter: stateFilter || null,
+            p_status_filter: statusFilter || null,
+            p_assigned_to: assignedTo || null,
+            p_department_id: departmentId || null,
+            p_offset: pageParam * PAGE_SIZE,
+            p_limit: PAGE_SIZE,
+          }
+        );
+
+        if (rpcError) throw rpcError;
+
+        if (!taggedContactIds || taggedContactIds.length === 0) {
+          return {
+            contacts: [] as Contact[],
+            nextPage: undefined,
+            pageParam: 0,
+            totalCount: 0,
+          };
+        }
+
+        const contactIds = taggedContactIds.map((r: { contact_id: string }) => r.contact_id);
+        
+        // Busca os detalhes dos contatos
+        const { data: contacts, error: contactsError } = await supabase
+          .from('contacts')
+          .select(`
+            ${CONTACT_FIELDS},
+            assignee:profiles!contacts_assigned_to_fkey(id, full_name),
+            department:departments(id, name)
+          `)
+          .in('id', contactIds)
+          .order('created_at', { ascending: false });
+
+        if (contactsError) throw contactsError;
+
+        // Buscar tags dos contatos
+        let contactsWithTags = contacts || [];
+        if (contactIds.length > 0) {
+          const { data: contactTags } = await supabase
+            .from('contact_tags')
+            .select('contact_id, tag:tags(id, name, color)')
+            .in('contact_id', contactIds);
+
+          const tagMap: Record<string, { id: string; name: string; color: string | null }[]> = {};
+          contactTags?.forEach(ct => {
+            if (!tagMap[ct.contact_id]) tagMap[ct.contact_id] = [];
+            if (ct.tag) tagMap[ct.contact_id].push(ct.tag as { id: string; name: string; color: string | null });
+          });
+
+          contactsWithTags = contacts?.map(contact => ({
+            ...contact,
+            tags: tagMap[contact.id] || []
+          })) || [];
+        }
+
+        return {
+          contacts: contactsWithTags as Contact[],
+          nextPage: taggedContactIds.length === PAGE_SIZE ? pageParam + 1 : undefined,
+          pageParam,
+        };
+      }
+
+      // Query normal sem filtro de tags
       let query = supabase
         .from('contacts')
         .select(`
@@ -98,27 +168,6 @@ export function usePaginatedContacts(filters: ContactFilters) {
       // FILTRO POR DEPARTAMENTO
       if (departmentId) {
         query = query.eq('department_id', departmentId);
-      }
-
-      // FILTRO POR TAGS - busca server-side
-      if (tagIds && tagIds.length > 0) {
-        const { data: taggedContacts } = await supabase
-          .from('contact_tags')
-          .select('contact_id')
-          .in('tag_id', tagIds);
-
-        if (taggedContacts && taggedContacts.length > 0) {
-          const contactIds = [...new Set(taggedContacts.map(tc => tc.contact_id))];
-          query = query.in('id', contactIds);
-        } else {
-          // Nenhum contato com essas tags
-          return {
-            contacts: [] as Contact[],
-            nextPage: undefined,
-            pageParam: 0,
-            totalCount: 0,
-          };
-        }
       }
 
       // Ordenação e paginação

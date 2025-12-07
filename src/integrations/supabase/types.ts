@@ -2425,6 +2425,22 @@ export type Database = {
         Returns: boolean
       }
       get_contact_filter_counts: { Args: never; Returns: Json }
+      get_contacts_by_tag_filter: {
+        Args: {
+          p_assigned_to?: string
+          p_department_id?: string
+          p_limit?: number
+          p_offset?: number
+          p_search_query?: string
+          p_state_filter?: string
+          p_status_filter?: string
+          p_tag_ids: string[]
+        }
+        Returns: {
+          contact_id: string
+          total_count: number
+        }[]
+      }
       get_conversation_tag_counts: {
         Args: {
           p_agent_id?: string

@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { normalizePhoneForStorage, getPhoneSearchVariations } from '@/utils/phone';
+import { getStateFromPhone } from '@/utils/ddd';
 import { findTagByName, findOrCreateTag } from './useTags';
 
 export interface ImportRow {
@@ -32,6 +33,8 @@ export interface ImportResult {
   updated: number;
   tagsCreated: number;
   tagsAssigned: number;
+  statesIdentified: number;
+  stateTagsAssigned: number;
   skipped: number;
   errors: number;
   log: ImportLogEntry[];
@@ -145,10 +148,15 @@ export function useImportContacts() {
       updated: 0,
       tagsCreated: 0,
       tagsAssigned: 0,
+      statesIdentified: 0,
+      stateTagsAssigned: 0,
       skipped: 0,
       errors: 0,
       log: [],
     };
+
+    // Cache de tags de estado para evitar múltiplas buscas
+    const stateTagCache: Record<string, string> = {};
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -164,27 +172,36 @@ export function useImportContacts() {
         // Normalize phone
         const normalizedPhone = normalizePhoneForStorage(row.telefone);
         
+        // Identifica estado pelo DDD
+        const identifiedState = getStateFromPhone(normalizedPhone);
+        
         // Find contact
         let contact = await findContactByPhone(normalizedPhone);
         
         if (!contact) {
           if (options.createMissingContacts && row.nome) {
-            // Create new contact
+            // Create new contact with state if identified
             const { data: newContact, error } = await supabase
               .from('contacts')
               .insert({
                 full_name: row.nome.trim(),
                 phone: normalizedPhone,
+                state: identifiedState || null,
               })
-              .select('id, full_name, phone, assigned_to, lead_status')
+              .select('id, full_name, phone, assigned_to, lead_status, state')
               .single();
             
             if (error) throw error;
             contact = newContact;
             importResult.created++;
+            
+            if (identifiedState) {
+              importResult.statesIdentified++;
+            }
+            
             importResult.log.push({
               type: 'info',
-              message: `Contato criado: ${row.nome}`,
+              message: `Contato criado: ${row.nome}${identifiedState ? ` (${identifiedState})` : ''}`,
               row: rowNum,
             });
           } else {
@@ -207,11 +224,14 @@ export function useImportContacts() {
           
           for (const tagName of tagNames) {
             try {
-              let tag = await findTagByName(tagName);
+              let tag: { id: string } | null = await findTagByName(tagName);
               
               if (!tag && options.createMissingTags) {
-                tag = await findOrCreateTag(tagName);
-                importResult.tagsCreated++;
+                const created = await findOrCreateTag(tagName);
+                tag = created;
+                if (created.isNew) {
+                  importResult.tagsCreated++;
+                }
               }
               
               if (tag && !existingTagIds.includes(tag.id)) {
@@ -226,6 +246,30 @@ export function useImportContacts() {
                 row: rowNum,
               });
             }
+          }
+        }
+
+        // Processa tag de estado se foi identificado
+        if (identifiedState && options.createMissingTags) {
+          try {
+            // Verifica se já tem no cache ou busca/cria
+            if (!stateTagCache[identifiedState]) {
+              const stateTag = await findOrCreateTag(identifiedState, '#10B981');
+              stateTagCache[identifiedState] = stateTag.id;
+              if (stateTag.isNew) {
+                importResult.tagsCreated++;
+              }
+            }
+
+            // Atribui tag de estado se não tiver
+            const existingTags = await getContactTags(contact.id);
+            if (!existingTags.includes(stateTagCache[identifiedState])) {
+              await addTagToContact(contact.id, stateTagCache[identifiedState]);
+              importResult.stateTagsAssigned++;
+              wasUpdated = true;
+            }
+          } catch (stateTagError: any) {
+            console.warn('Erro ao criar tag de estado:', stateTagError);
           }
         }
 
