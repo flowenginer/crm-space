@@ -70,7 +70,19 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const isMobile = useIsMobile();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
-  const { hasPermission, isAdmin, role: userRole, isLoading: permissionsLoading } = usePermissions();
+  const { hasPermission, isAdmin, role: userRole, isLoading: permissionsLoading, roleDefinition } = usePermissions();
+
+  // Debug log - remover depois de testar
+  console.log('[Sidebar Debug]', {
+    userRole,
+    isAdmin,
+    permissionsLoading,
+    rolePermissions: roleDefinition?.permissions,
+    settingsView: hasPermission('settings', 'view'),
+    reportsView: hasPermission('reports', 'view'),
+    contactsRead: hasPermission('contacts', 'read'),
+    conversationsRead: hasPermission('conversations', 'read'),
+  });
 
   // Fetch pending scheduled messages count
   const { data: pendingCount } = useQuery({
