@@ -92,15 +92,19 @@ export function useEndOtherSessions() {
 }
 
 // Function to register session after login
-export async function registerSession() {
+export async function registerSession(): Promise<{ success: boolean; sessionToken?: string; error?: string } | null> {
   try {
+    console.log('Calling register-session edge function...');
+    
     const { data, error } = await supabase.functions.invoke('register-session', {
       body: { userAgent: navigator.userAgent }
     });
 
+    console.log('Register session response:', { data, error });
+
     if (error) {
       console.error('Failed to register session:', error);
-      return null;
+      return { success: false, error: error.message };
     }
 
     // Store session token in localStorage for later reference
@@ -108,9 +112,9 @@ export async function registerSession() {
       localStorage.setItem('session_token', data.sessionToken);
     }
 
-    return data;
+    return { success: true, sessionToken: data?.sessionToken };
   } catch (err) {
     console.error('Error registering session:', err);
-    return null;
+    return { success: false, error: String(err) };
   }
 }
