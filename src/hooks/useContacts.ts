@@ -108,6 +108,21 @@ export function useContacts() {
   });
 }
 
+export function useContactsCount() {
+  return useQuery({
+    queryKey: ['contacts-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('contacts')
+        .select('id', { count: 'exact', head: true });
+
+      if (error) throw error;
+      return count || 0;
+    },
+    staleTime: 30000,
+  });
+}
+
 /**
  * Busca contato existente pelo telefone (verifica múltiplas variações do formato)
  */
