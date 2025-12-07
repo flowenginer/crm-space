@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -113,6 +113,15 @@ export default function Contacts() {
   const [assignedFilter, setAssignedFilter] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showTagsDropdown, setShowTagsDropdown] = useState(false);
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
+
+  // Filtrar etiquetas pela busca
+  const filteredTags = useMemo(() => {
+    if (!tagSearchQuery.trim()) return tags;
+    return tags.filter(tag => 
+      tag.name.toLowerCase().includes(tagSearchQuery.toLowerCase())
+    );
+  }, [tags, tagSearchQuery]);
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
 
@@ -445,12 +454,42 @@ export default function Contacts() {
             </button>
 
             {showTagsDropdown && (
-              <div className="absolute top-full left-0 mt-2 w-64 bg-card rounded-xl border border-border shadow-elevated z-50">
-                <div className="p-3 space-y-2">
-                  {tags.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-2">Nenhuma etiqueta cadastrada</p>
+              <div className="absolute top-full left-0 mt-2 w-72 bg-card rounded-xl border border-border shadow-elevated z-50">
+                {/* Header com título e botão limpar */}
+                <div className="flex items-center justify-between px-3 pt-3 pb-2">
+                  <span className="text-sm font-medium text-foreground">Etiquetas</span>
+                  {selectedTags.length > 0 && (
+                    <button
+                      onClick={() => setSelectedTags([])}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      Limpar ({selectedTags.length})
+                    </button>
+                  )}
+                </div>
+                
+                {/* Campo de busca */}
+                <div className="px-3 pb-2">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Buscar etiqueta..."
+                      value={tagSearchQuery}
+                      onChange={(e) => setTagSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 bg-muted/50 border border-border rounded-lg text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                  </div>
+                </div>
+                
+                {/* Lista com scroll - MESMO VISUAL ATUAL */}
+                <div className="max-h-[250px] overflow-y-auto px-3 pb-3 space-y-1">
+                  {filteredTags.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      {tagSearchQuery ? 'Nenhuma etiqueta encontrada' : 'Nenhuma etiqueta cadastrada'}
+                    </p>
                   ) : (
-                    tags.map((tag) => (
+                    filteredTags.map((tag) => (
                       <label
                         key={tag.id}
                         className="flex items-center gap-2 p-2 hover:bg-muted rounded-lg cursor-pointer"
@@ -1439,7 +1478,10 @@ export default function Contacts() {
 
       {/* Click outside to close tags dropdown */}
       {showTagsDropdown && (
-        <div className="fixed inset-0 z-40" onClick={() => setShowTagsDropdown(false)} />
+        <div className="fixed inset-0 z-40" onClick={() => {
+          setShowTagsDropdown(false);
+          setTagSearchQuery('');
+        }} />
       )}
     </div>
   );
