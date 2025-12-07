@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Monitor, Smartphone, Tablet, Loader2, X } from 'lucide-react';
-import { useUserSessions, useEndSession, useEndOtherSessions, UserSession } from '@/hooks/useUserSessions';
+import { useUserSessions, useEndSession, useEndOtherSessions, UserSession, registerSession } from '@/hooks/useUserSessions';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -41,9 +43,43 @@ function formatLastActivity(session: UserSession): string {
 }
 
 export function ActiveSessions() {
-  const { data: sessions = [], isLoading, error } = useUserSessions();
+  const { user } = useAuth();
+  const { data: sessions = [], isLoading, error, refetch } = useUserSessions();
   const endSession = useEndSession();
   const endOtherSessions = useEndOtherSessions();
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  // Auto-register current session if not registered yet
+  useEffect(() => {
+    const checkAndRegisterSession = async () => {
+      if (!user?.id || isLoading || isRegistering) return;
+      
+      // Check if current session token exists
+      const currentToken = localStorage.getItem('session_token');
+      
+      // If no token or no sessions found, register current session
+      if (!currentToken || sessions.length === 0) {
+        setIsRegistering(true);
+        console.log('Registering current session...');
+        
+        const result = await registerSession();
+        
+        if (result?.success) {
+          console.log('Session registered successfully:', result);
+          // Wait a bit then refetch
+          setTimeout(() => {
+            refetch();
+            setIsRegistering(false);
+          }, 500);
+        } else {
+          console.error('Failed to register session:', result);
+          setIsRegistering(false);
+        }
+      }
+    };
+    
+    checkAndRegisterSession();
+  }, [user?.id, isLoading, sessions.length]);
 
   const handleEndSession = async (sessionId: string) => {
     try {
@@ -69,12 +105,15 @@ export function ActiveSessions() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isRegistering) {
     return (
       <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-foreground mb-6">Sessões Ativas</h3>
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          {isRegistering && (
+            <span className="ml-2 text-sm text-muted-foreground">Registrando sessão...</span>
+          )}
         </div>
       </div>
     );
