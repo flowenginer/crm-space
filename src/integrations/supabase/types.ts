@@ -2309,6 +2309,63 @@ export type Database = {
         }
         Relationships: []
       }
+      user_sessions: {
+        Row: {
+          browser: string | null
+          city: string | null
+          country: string | null
+          created_at: string | null
+          device_type: string | null
+          ended_at: string | null
+          expires_at: string | null
+          id: string
+          ip_address: string | null
+          is_current: boolean | null
+          last_activity_at: string | null
+          os: string | null
+          region: string | null
+          session_token: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          browser?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string | null
+          device_type?: string | null
+          ended_at?: string | null
+          expires_at?: string | null
+          id?: string
+          ip_address?: string | null
+          is_current?: boolean | null
+          last_activity_at?: string | null
+          os?: string | null
+          region?: string | null
+          session_token: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          browser?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string | null
+          device_type?: string | null
+          ended_at?: string | null
+          expires_at?: string | null
+          id?: string
+          ip_address?: string | null
+          is_current?: boolean | null
+          last_activity_at?: string | null
+          os?: string | null
+          region?: string | null
+          session_token?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       webhook_configs: {
         Row: {
           auth_header_name: string | null

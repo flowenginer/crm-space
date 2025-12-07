@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.dispatch-webhook]
 verify_jwt = true
+
+[functions.register-session]
+verify_jwt = false

@@ -37,6 +37,7 @@ import { MetaAdsSettings } from '@/components/settings/MetaAdsSettings';
 import { ToolsSettings } from '@/components/settings/ToolsSettings';
 import { OwnerAgentSettings } from '@/components/settings/OwnerAgentSettings';
 import { CloseReasonManagement } from '@/components/settings/CloseReasonManagement';
+import { ActiveSessions } from '@/components/settings/ActiveSessions';
 import { Facebook, UserCheck } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -851,29 +852,8 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Sessions */}
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-foreground mb-6">Sessões Ativas</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-status-success/10 rounded-lg flex items-center justify-center">
-                    <Monitor size={20} className="text-status-success" />
-                  </div>
-                  <div>
-                    <div className="font-medium text-foreground">Chrome - Windows</div>
-                    <div className="text-sm text-muted-foreground">Rio de Janeiro, Brasil • Ativo agora</div>
-                  </div>
-                </div>
-                <span className="px-2.5 py-1 bg-status-success/10 text-status-success rounded-full text-xs font-medium">
-                  Sessão atual
-                </span>
-              </div>
-            </div>
-            <button className="mt-4 px-4 py-2 border border-status-error/30 text-status-error rounded-xl hover:bg-status-error/10 transition-colors">
-              Encerrar todas as outras sessões
-            </button>
-          </div>
+          {/* Sessions - Real data */}
+          <ActiveSessions />
 
           {/* Two-Factor Authentication */}
           <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
