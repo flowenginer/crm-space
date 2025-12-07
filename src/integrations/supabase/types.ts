@@ -2247,6 +2247,125 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_configs: {
+        Row: {
+          auth_header_name: string | null
+          auth_header_value: string | null
+          auth_token: string | null
+          auth_type: string | null
+          created_at: string | null
+          created_by: string | null
+          events: Json | null
+          filters: Json | null
+          id: string
+          is_active: boolean | null
+          last_error: string | null
+          last_sent_at: string | null
+          name: string
+          total_failed: number | null
+          total_sent: number | null
+          total_success: number | null
+          updated_at: string | null
+          url: string
+        }
+        Insert: {
+          auth_header_name?: string | null
+          auth_header_value?: string | null
+          auth_token?: string | null
+          auth_type?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          events?: Json | null
+          filters?: Json | null
+          id?: string
+          is_active?: boolean | null
+          last_error?: string | null
+          last_sent_at?: string | null
+          name: string
+          total_failed?: number | null
+          total_sent?: number | null
+          total_success?: number | null
+          updated_at?: string | null
+          url: string
+        }
+        Update: {
+          auth_header_name?: string | null
+          auth_header_value?: string | null
+          auth_token?: string | null
+          auth_type?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          events?: Json | null
+          filters?: Json | null
+          id?: string
+          is_active?: boolean | null
+          last_error?: string | null
+          last_sent_at?: string | null
+          name?: string
+          total_failed?: number | null
+          total_sent?: number | null
+          total_success?: number | null
+          updated_at?: string | null
+          url?: string
+        }
+        Relationships: []
+      }
+      webhook_deliveries: {
+        Row: {
+          attempts: number | null
+          created_at: string | null
+          delivered_at: string | null
+          error_message: string | null
+          event_type: string
+          id: string
+          next_retry_at: string | null
+          payload: Json
+          response_body: string | null
+          response_time_ms: number | null
+          status: string | null
+          status_code: number | null
+          webhook_id: string | null
+        }
+        Insert: {
+          attempts?: number | null
+          created_at?: string | null
+          delivered_at?: string | null
+          error_message?: string | null
+          event_type: string
+          id?: string
+          next_retry_at?: string | null
+          payload: Json
+          response_body?: string | null
+          response_time_ms?: number | null
+          status?: string | null
+          status_code?: number | null
+          webhook_id?: string | null
+        }
+        Update: {
+          attempts?: number | null
+          created_at?: string | null
+          delivered_at?: string | null
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          next_retry_at?: string | null
+          payload?: Json
+          response_body?: string | null
+          response_time_ms?: number | null
+          status?: string | null
+          status_code?: number | null
+          webhook_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_webhook_id_fkey"
+            columns: ["webhook_id"]
+            isOneToOne: false
+            referencedRelation: "webhook_configs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_logs: {
         Row: {
           created_at: string | null
@@ -2472,6 +2591,14 @@ export type Database = {
         Returns: boolean
       }
       increment_unread: { Args: { conv_id: string }; Returns: undefined }
+      increment_webhook_stats: {
+        Args: {
+          p_error_message?: string
+          p_is_success: boolean
+          p_webhook_id: string
+        }
+        Returns: undefined
+      }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_lid_contact: { Args: { phone: string }; Returns: boolean }
       merge_duplicate_contacts: {
