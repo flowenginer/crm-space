@@ -98,24 +98,22 @@ export function AgentTagSyncSettings() {
         firstName: (a.full_name || '').split(' ')[0].toUpperCase()
       })) || [];
 
+      // Mapeamento APENAS por correspondência EXATA entre nome da tag e primeiro nome do vendedor
       for (const tag of allTags || []) {
-        const tagNameUpper = tag.name.toUpperCase();
+        const tagNameUpper = tag.name.toUpperCase().trim();
+        
+        // Apenas match EXATO: nome da tag = primeiro nome do vendedor
+        // Isso evita que tags de estados (ES, AL, SC) sejam mapeadas incorretamente
         const exactMatch = agentNames.find(a => a.firstName === tagNameUpper);
-        const partialMatch = !exactMatch ? agentNames.find(a => 
-          a.name.toUpperCase().includes(tagNameUpper) || 
-          tagNameUpper.includes(a.firstName)
-        ) : null;
 
-        const match = exactMatch || partialMatch;
-
-        if (match) {
+        if (exactMatch) {
           agentMappings.push({
             tagId: tag.id,
             tagName: tag.name,
             tagColor: tag.color || '#8B5CF6',
-            agentId: match.id,
-            agentName: match.name,
-            matchConfidence: exactMatch ? 'exact' : 'partial'
+            agentId: exactMatch.id,
+            agentName: exactMatch.name,
+            matchConfidence: 'exact'
           });
         }
       }
