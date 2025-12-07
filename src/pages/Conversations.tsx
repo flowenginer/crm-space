@@ -54,6 +54,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Popover,
@@ -96,6 +97,7 @@ import { useTags, useAddTagToContact, useRemoveTagFromContact, useCreateTag, Tag
 import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
+import { usePermissions } from '@/hooks/usePermissions';
 
 // Helper function to linkify URLs in text
 const linkifyText = (text: string) => {
@@ -1038,6 +1040,11 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
+  const { isAdmin, profile } = usePermissions();
+
+  // Modal de bloqueio de acesso
+  const [showAccessDeniedModal, setShowAccessDeniedModal] = useState(false);
+  const [blockedByAgentName, setBlockedByAgentName] = useState<string | null>(null);
 
   // Debounce search query for server-side search (300ms)
   useEffect(() => {
@@ -1781,6 +1788,17 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
       willUpdate: searchParams.get('id') !== conv.id
     });
     
+    // ============ VERIFICAÇÃO DE PERMISSÃO ============
+    // Se NÃO for admin, verificar se a conversa está atribuída a outro vendedor
+    if (!isAdmin && conv.assigned_to && conv.assigned_to !== profile?.id) {
+      // Buscar nome do vendedor responsável
+      const assignedAgentName = conv.assignee?.full_name || teamMembers.find(t => t.id === conv.assigned_to)?.full_name || 'outro vendedor';
+      setBlockedByAgentName(assignedAgentName);
+      setShowAccessDeniedModal(true);
+      return;
+    }
+    // ============ FIM DA VERIFICAÇÃO ============
+    
     const currentId = searchParams.get('id');
     if (currentId !== conv.id) {
       console.log('[DEBUG] 🚀 Navigating with object format');
@@ -1795,7 +1813,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     if (isMobile) {
       setShowMobileChat(true);
     }
-  }, [searchParams, navigate, isMobile]);
+  }, [searchParams, navigate, isMobile, isAdmin, profile?.id, teamMembers]);
 
   const handleBackToList = () => {
     setShowMobileChat(false);
@@ -2263,6 +2281,32 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
 
   return (
     <div className="flex h-full w-full bg-background overflow-hidden">
+      {/* Modal de Acesso Negado */}
+      <Dialog open={showAccessDeniedModal} onOpenChange={setShowAccessDeniedModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+              <Lock className="w-6 h-6 text-destructive" />
+            </div>
+            <DialogTitle className="text-center">Acesso Restrito</DialogTitle>
+            <DialogDescription className="text-center">
+              Este cliente está atribuído ao vendedor{' '}
+              <span className="font-semibold text-foreground">{blockedByAgentName}</span>.
+              <br /><br />
+              Favor contactar o vendedor responsável para ter acesso a este cliente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-center">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowAccessDeniedModal(false)}
+            >
+              Entendi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Column 1: Conversations List */}
       <div className={cn(
         'w-full md:w-[400px] md:min-w-[400px] md:max-w-[400px] bg-card border-r border-border flex flex-col flex-shrink-0',
