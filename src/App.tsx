@@ -47,7 +47,11 @@ const App = () => (
 
             {/* Protected routes with MainLayout */}
             <Route element={<MainLayout />}>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/" element={
+                <ProtectedRoute permission="dashboard.view">
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
               <Route path="/conversations" element={
                 <ProtectedRoute permission="conversations.read">
                   <Conversations />
