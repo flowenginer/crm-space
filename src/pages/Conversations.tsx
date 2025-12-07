@@ -3503,10 +3503,9 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                             });
                             
                             if (channelId && contactPhone) {
-                              await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl);
+                              await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl, undefined, mediaName || undefined);
                             }
                           }
-                          
                           toast.success('Mensagens enviadas!');
                         } catch (error) {
                           console.error('Error sending template blocks:', error);
@@ -3550,7 +3549,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                           });
                           
                           if (channelId && contactPhone) {
-                            await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl);
+                            await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl, undefined, mediaName || undefined);
                           }
                           
                           toast.success('Mensagem e anexo enviados!');
