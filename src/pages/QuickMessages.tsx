@@ -17,6 +17,9 @@ import {
   HelpCircle,
   CheckCheck,
   Loader2,
+  Music,
+  FileImage,
+  File,
 } from 'lucide-react';
 import {
   Dialog,
@@ -45,6 +48,9 @@ import {
   useUpdateTemplate,
   useDeleteTemplate,
 } from '@/hooks/useTemplates';
+import { AudioRecorder } from '@/components/quick-messages/AudioRecorder';
+import { FileUploader } from '@/components/quick-messages/FileUploader';
+import { EmojiPickerButton } from '@/components/quick-messages/EmojiPickerButton';
 
 const categoryConfig = [
   { id: 'messages', icon: MessageSquare, label: 'Mensagens' },
@@ -68,6 +74,14 @@ const variableOptions = [
 
 const quickEmojis = ['👋', '😊', '🎉', '✅', '📦', '💬', '☀️', '🔥', '👕', '📸'];
 
+// Helper to get icon for media type
+const getMediaIcon = (mediaType: string | null) => {
+  if (!mediaType) return null;
+  if (mediaType === 'audio') return <Music size={14} className="text-primary" />;
+  if (mediaType === 'image' || mediaType === 'video') return <FileImage size={14} className="text-primary" />;
+  return <File size={14} className="text-primary" />;
+};
+
 export default function QuickMessages() {
   const [activeCategory, setActiveCategory] = useState('messages');
   const [searchQuery, setSearchQuery] = useState('');
@@ -88,6 +102,8 @@ export default function QuickMessages() {
   const [templateTitle, setTemplateTitle] = useState('');
   const [templateContent, setTemplateContent] = useState('');
   const [templateCategory, setTemplateCategory] = useState('messages');
+  const [templateMediaUrl, setTemplateMediaUrl] = useState<string | null>(null);
+  const [templateMediaType, setTemplateMediaType] = useState<string | null>(null);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
   // Calculate category counts dynamically
@@ -123,6 +139,8 @@ export default function QuickMessages() {
     setTemplateTitle('');
     setTemplateContent('');
     setTemplateCategory(activeCategory);
+    setTemplateMediaUrl(null);
+    setTemplateMediaType(null);
     setShowTemplateModal(true);
   };
 
@@ -135,6 +153,8 @@ export default function QuickMessages() {
     setTemplateTitle(template.title);
     setTemplateContent(template.content);
     setTemplateCategory(template.category || 'messages');
+    setTemplateMediaUrl(template.media_url || null);
+    setTemplateMediaType(template.media_type || null);
     setShowTemplateModal(true);
   };
 
@@ -164,8 +184,21 @@ export default function QuickMessages() {
   };
 
   const handleSaveTemplate = async () => {
-    if (!templateTitle || !templateContent) {
-      toast({ title: 'Preencha todos os campos obrigatórios', variant: 'destructive' });
+    // For audio/media/documents, content is optional but media is required
+    const needsMedia = ['audios', 'media', 'documents'].includes(templateCategory);
+    
+    if (!templateTitle) {
+      toast({ title: 'Preencha o título', variant: 'destructive' });
+      return;
+    }
+    
+    if (needsMedia && !templateMediaUrl) {
+      toast({ title: 'Faça upload de um arquivo', variant: 'destructive' });
+      return;
+    }
+    
+    if (!needsMedia && !templateContent) {
+      toast({ title: 'Preencha o conteúdo da mensagem', variant: 'destructive' });
       return;
     }
 
@@ -177,17 +210,21 @@ export default function QuickMessages() {
         await updateTemplate.mutateAsync({
           id: selectedTemplateId,
           title: templateTitle,
-          content: templateContent,
+          content: templateContent || templateTitle,
           category: templateCategory,
           variables,
+          media_url: templateMediaUrl,
+          media_type: templateMediaType,
         });
         toast({ title: 'Template atualizado!' });
       } else {
         await createTemplate.mutateAsync({
           title: templateTitle,
-          content: templateContent,
+          content: templateContent || templateTitle,
           category: templateCategory,
           variables,
+          media_url: templateMediaUrl,
+          media_type: templateMediaType,
         });
         toast({ title: 'Template criado!' });
       }
@@ -195,6 +232,16 @@ export default function QuickMessages() {
     } catch (error) {
       toast({ title: 'Erro ao salvar template', variant: 'destructive' });
     }
+  };
+
+  const handleMediaUploaded = (url: string, type: string) => {
+    setTemplateMediaUrl(url);
+    setTemplateMediaType(type);
+  };
+
+  const handleMediaRemoved = () => {
+    setTemplateMediaUrl(null);
+    setTemplateMediaType(null);
   };
 
   const handleInsertVariable = (variable: string) => {
@@ -361,9 +408,9 @@ export default function QuickMessages() {
                         </TableCell>
                         <TableCell className="text-center">
                           {template.media_url ? (
-                            <Paperclip size={14} className="mx-auto text-primary" />
+                            getMediaIcon(template.media_type) || <Paperclip size={14} className="mx-auto text-primary" />
                           ) : (
-                            <span className="text-muted-foreground text-sm">Não</span>
+                            <span className="text-muted-foreground text-sm">—</span>
                           )}
                         </TableCell>
                         <TableCell>
@@ -463,61 +510,129 @@ export default function QuickMessages() {
                   </select>
                 </div>
 
-                {/* Content */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Conteúdo da mensagem <span className="text-destructive">*</span>
-                  </label>
-                  <textarea
-                    rows={10}
-                    placeholder={`Digite sua mensagem aqui...
+                {/* Content - Conditional based on category */}
+                {templateCategory === 'audios' && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Áudio <span className="text-destructive">*</span>
+                    </label>
+                    <AudioRecorder
+                      onAudioUploaded={handleMediaUploaded}
+                      existingUrl={templateMediaUrl}
+                      onRemove={handleMediaRemoved}
+                    />
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Legenda (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Legenda do áudio..."
+                        value={templateContent}
+                        onChange={(e) => setTemplateContent(e.target.value)}
+                        className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {templateCategory === 'media' && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Arquivo de mídia <span className="text-destructive">*</span>
+                    </label>
+                    <FileUploader
+                      category="media"
+                      onFileUploaded={handleMediaUploaded}
+                      existingUrl={templateMediaUrl}
+                      existingType={templateMediaType}
+                      onRemove={handleMediaRemoved}
+                    />
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Legenda (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Legenda da mídia..."
+                        value={templateContent}
+                        onChange={(e) => setTemplateContent(e.target.value)}
+                        className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {templateCategory === 'documents' && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Documento <span className="text-destructive">*</span>
+                    </label>
+                    <FileUploader
+                      category="documents"
+                      onFileUploaded={handleMediaUploaded}
+                      existingUrl={templateMediaUrl}
+                      existingType={templateMediaType}
+                      onRemove={handleMediaRemoved}
+                    />
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Legenda (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Legenda do documento..."
+                        value={templateContent}
+                        onChange={(e) => setTemplateContent(e.target.value)}
+                        className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {templateCategory === 'messages' && (
+                  <>
+                    {/* Content */}
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Conteúdo da mensagem <span className="text-destructive">*</span>
+                      </label>
+                      <textarea
+                        rows={8}
+                        placeholder={`Digite sua mensagem aqui...
 
 Use *texto* para negrito
 Use _texto_ para itálico
 Use {{variavel}} para campos dinâmicos`}
-                    value={templateContent}
-                    onChange={(e) => setTemplateContent(e.target.value)}
-                    className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none font-mono text-sm bg-background"
-                  />
-                </div>
+                        value={templateContent}
+                        onChange={(e) => setTemplateContent(e.target.value)}
+                        className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none font-mono text-sm bg-background"
+                      />
+                    </div>
 
-                {/* Quick Insert Variables */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Inserir variável
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {variableOptions.map((variable) => (
-                      <button
-                        key={variable.key}
-                        type="button"
-                        onClick={() => handleInsertVariable(variable.key)}
-                        className="px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-sm font-medium hover:bg-primary/20 transition-colors"
-                      >
-                        {`{{${variable.key}}}`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                    {/* Quick Insert Variables */}
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Inserir variável
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {variableOptions.map((variable) => (
+                          <button
+                            key={variable.key}
+                            type="button"
+                            onClick={() => handleInsertVariable(variable.key)}
+                            className="px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-sm font-medium hover:bg-primary/20 transition-colors"
+                          >
+                            {`{{${variable.key}}}`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-                {/* Quick Insert Emoji */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Emojis rápidos
-                  </label>
-                  <div className="flex gap-2">
-                    {quickEmojis.map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => handleInsertEmoji(emoji)}
-                        className="w-10 h-10 flex items-center justify-center text-xl hover:bg-muted rounded-lg transition-colors"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                    {/* Emoji Picker */}
+                    <EmojiPickerButton onEmojiSelect={handleInsertEmoji} />
+                  </>
+                )}
               </div>
 
               {/* Right Column - Preview */}
@@ -542,12 +657,50 @@ Use {{variavel}} para campos dinâmicos`}
 
                       {/* Chat Area */}
                       <div className="p-4 min-h-[300px]">
-                        {templateContent ? (
+                        {(templateContent || templateMediaUrl) ? (
                           <div className="max-w-[85%] ml-auto">
                             <div className="bg-[#DCF8C6] rounded-lg rounded-tr-none p-3 shadow-sm">
-                              <p className="text-sm text-gray-900 whitespace-pre-line">
-                                {templateContent}
-                              </p>
+                              {/* Media Preview */}
+                              {templateMediaUrl && templateMediaType === 'audio' && (
+                                <div className="flex items-center gap-2 mb-2 p-2 bg-white/50 rounded">
+                                  <Music size={20} className="text-green-600" />
+                                  <div className="h-1 flex-1 bg-gray-300 rounded" />
+                                  <span className="text-xs text-gray-500">0:15</span>
+                                </div>
+                              )}
+                              {templateMediaUrl && templateMediaType === 'image' && (
+                                <img 
+                                  src={templateMediaUrl} 
+                                  alt="Preview" 
+                                  className="rounded mb-2 max-h-32 object-cover"
+                                />
+                              )}
+                              {templateMediaUrl && templateMediaType === 'video' && (
+                                <div className="relative mb-2 bg-black rounded overflow-hidden aspect-video">
+                                  <video src={templateMediaUrl} className="w-full h-full object-cover" />
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
+                                      <div className="w-0 h-0 border-l-[16px] border-l-gray-800 border-y-[10px] border-y-transparent ml-1" />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {templateMediaUrl && templateMediaType === 'document' && (
+                                <div className="flex items-center gap-2 mb-2 p-3 bg-white/70 rounded">
+                                  <FileText size={24} className="text-red-500" />
+                                  <span className="text-xs font-medium text-gray-700 truncate">
+                                    Documento
+                                  </span>
+                                </div>
+                              )}
+                              
+                              {/* Text Content */}
+                              {templateContent && (
+                                <p className="text-sm text-gray-900 whitespace-pre-line">
+                                  {templateContent}
+                                </p>
+                              )}
+                              
                               <div className="flex items-center justify-end gap-1 mt-1">
                                 <span className="text-xs text-gray-500">15:30</span>
                                 <CheckCheck size={14} className="text-blue-500" />
@@ -556,7 +709,10 @@ Use {{variavel}} para campos dinâmicos`}
                           </div>
                         ) : (
                           <p className="text-center text-gray-500 text-sm pt-20">
-                            Digite sua mensagem para ver o preview...
+                            {templateCategory === 'messages' 
+                              ? 'Digite sua mensagem para ver o preview...'
+                              : 'Faça upload de um arquivo para ver o preview...'
+                            }
                           </p>
                         )}
                       </div>
