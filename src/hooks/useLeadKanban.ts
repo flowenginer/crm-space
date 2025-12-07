@@ -27,6 +27,12 @@ export interface ContactForKanban {
   } | null;
 }
 
+export interface LeadStatusSummary {
+  lead_status: string;
+  contact_count: number;
+  total_value: number;
+}
+
 // Fetch all lead statuses
 export function useLeadStatuses() {
   return useQuery({
@@ -42,6 +48,30 @@ export function useLeadStatuses() {
       return data as LeadStatus[];
     },
     staleTime: 60000,
+  });
+}
+
+// Fetch aggregated counts and values per lead status (real database counts)
+export function useLeadStatusSummary() {
+  return useQuery({
+    queryKey: ['lead-status-summary'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_lead_status_summary');
+      if (error) throw error;
+      
+      // Transform to a map for easy lookup
+      const summaryMap: Record<string, LeadStatusSummary> = {};
+      (data as LeadStatusSummary[]).forEach(item => {
+        summaryMap[item.lead_status] = {
+          lead_status: item.lead_status,
+          contact_count: Number(item.contact_count),
+          total_value: Number(item.total_value),
+        };
+      });
+      
+      return summaryMap;
+    },
+    staleTime: 30000,
   });
 }
 
@@ -62,6 +92,7 @@ export function useCreateLeadStatus() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lead-statuses'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-status-summary'] });
     },
   });
 }
@@ -81,6 +112,7 @@ export function useUpdateLeadStatus() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lead-statuses'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-status-summary'] });
     },
   });
 }
@@ -100,59 +132,49 @@ export function useDeleteLeadStatus() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lead-statuses'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-status-summary'] });
     },
   });
 }
 
-// Fetch contacts grouped by lead status for Kanban (with pagination to bypass 1000 limit)
-export function useContactsByLeadStatus() {
+// Fetch contacts for a specific lead status with limit (optimized - not all contacts)
+export function useContactsByLeadStatus(statusName?: string | null, limit = 20) {
   return useQuery({
-    queryKey: ['contacts-for-kanban'],
+    queryKey: ['contacts-for-kanban', statusName, limit],
     queryFn: async () => {
-      const allContacts: ContactForKanban[] = [];
-      const pageSize = 1000;
-      let page = 0;
-      let hasMore = true;
-
-      while (hasMore) {
-        const from = page * pageSize;
-        const to = from + pageSize - 1;
-
-        const { data, error } = await supabase
-          .from('contacts')
-          .select(`
+      let query = supabase
+        .from('contacts')
+        .select(`
+          id,
+          full_name,
+          phone,
+          email,
+          avatar_url,
+          lead_status,
+          assigned_to,
+          updated_at,
+          negotiated_value,
+          assignee:profiles!contacts_assigned_to_fkey(
             id,
             full_name,
-            phone,
-            email,
-            avatar_url,
-            lead_status,
-            assigned_to,
-            updated_at,
-            negotiated_value,
-            assignee:profiles!contacts_assigned_to_fkey(
-              id,
-              full_name,
-              avatar_url
-            )
-          `)
-          .order('updated_at', { ascending: false })
-          .range(from, to);
+            avatar_url
+          )
+        `)
+        .order('updated_at', { ascending: false })
+        .limit(limit);
 
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          allContacts.push(...(data as ContactForKanban[]));
-          page++;
-          hasMore = data.length === pageSize;
-        } else {
-          hasMore = false;
-        }
+      // Handle the special "__no_status__" case
+      if (statusName === '__no_status__') {
+        query = query.is('lead_status', null);
+      } else if (statusName) {
+        query = query.eq('lead_status', statusName);
       }
 
-      console.log(`[Kanban] Loaded ${allContacts.length} contacts (${page} pages)`);
-      return allContacts;
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as ContactForKanban[];
     },
+    enabled: statusName !== undefined,
     staleTime: 30000,
   });
 }
@@ -175,6 +197,7 @@ export function useUpdateContactLeadStatus() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-status-summary'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-details'] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });

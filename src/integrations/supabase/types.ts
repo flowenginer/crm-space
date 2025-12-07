@@ -2434,6 +2434,14 @@ export type Database = {
         }
         Returns: Json
       }
+      get_lead_status_summary: {
+        Args: never
+        Returns: {
+          contact_count: number
+          lead_status: string
+          total_value: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

@@ -96,7 +96,7 @@ import LeadKanban from '@/components/crm/LeadKanban';
 
 export default function CRM() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'deals' | 'leads'>('deals');
+  const [activeTab, setActiveTab] = useState<'deals' | 'leads'>('leads');
   const [activeDeal, setActiveDeal] = useState<DealType | null>(null);
   const [showAddDealModal, setShowAddDealModal] = useState(false);
   const [showDealDetailsModal, setShowDealDetailsModal] = useState(false);
@@ -246,8 +246,8 @@ export default function CRM() {
           
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'deals' | 'leads')} className="w-auto">
             <TabsList>
-              <TabsTrigger value="deals">Negócios</TabsTrigger>
               <TabsTrigger value="leads">Gestão de Leads</TabsTrigger>
+              <TabsTrigger value="deals">Negócios</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>

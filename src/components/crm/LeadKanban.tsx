@@ -26,7 +26,6 @@ import {
   Clock,
   Trash2,
   Loader2,
-  MessageCircle,
   X,
   DollarSign,
 } from 'lucide-react';
@@ -45,13 +44,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
   useLeadStatuses,
+  useLeadStatusSummary,
   useContactsByLeadStatus,
   useUpdateContactLeadStatus,
   useCreateLeadStatus,
@@ -73,10 +72,9 @@ export default function LeadKanban() {
   const [activeContact, setActiveContact] = useState<ContactForKanban | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddStatusModal, setShowAddStatusModal] = useState(false);
-  const [expandedColumns, setExpandedColumns] = useState<Set<string>>(new Set());
 
   const { data: leadStatuses, isLoading: statusesLoading } = useLeadStatuses();
-  const { data: contacts, isLoading: contactsLoading } = useContactsByLeadStatus();
+  const { data: summaryMap, isLoading: summaryLoading } = useLeadStatusSummary();
   const updateLeadStatus = useUpdateContactLeadStatus();
 
   const sensors = useSensors(
@@ -86,34 +84,9 @@ export default function LeadKanban() {
     useSensor(KeyboardSensor)
   );
 
-  const toggleColumnExpansion = (statusId: string) => {
-    setExpandedColumns(prev => {
-      const next = new Set(prev);
-      if (next.has(statusId)) {
-        next.delete(statusId);
-      } else {
-        next.add(statusId);
-      }
-      return next;
-    });
-  };
-
-  // Filter contacts
-  const filteredContacts = useMemo(() => {
-    if (!contacts) return [];
-    if (!searchQuery) return contacts;
-    
-    const search = searchQuery.toLowerCase();
-    return contacts.filter(c =>
-      c.full_name.toLowerCase().includes(search) ||
-      c.phone.includes(search) ||
-      c.email?.toLowerCase().includes(search)
-    );
-  }, [contacts, searchQuery]);
-
   const handleDragStart = (event: DragStartEvent) => {
-    const contact = filteredContacts.find((c) => c.id === event.active.id);
-    if (contact) setActiveContact(contact);
+    // We need to find the contact from the currently loaded contacts in the columns
+    setActiveContact(null); // Will be set when column provides data
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -127,49 +100,33 @@ export default function LeadKanban() {
 
     // Check if dropped on a status column
     const targetStatus = leadStatuses.find((s) => s.id === overId);
-    if (targetStatus) {
-      const contact = filteredContacts.find(c => c.id === activeId);
-      if (contact && contact.lead_status !== targetStatus.name) {
-        try {
-          await updateLeadStatus.mutateAsync({
-            contactId: activeId,
-            leadStatus: targetStatus.name,
-          });
-          toast({
-            title: 'Status atualizado',
-            description: `Movido para ${targetStatus.name}`,
-          });
-        } catch {
-          toast({
-            title: 'Erro',
-            description: 'Não foi possível mover o contato',
-            variant: 'destructive',
-          });
-        }
+    const isNoStatusColumn = overId === 'no-status';
+    
+    if (targetStatus || isNoStatusColumn) {
+      try {
+        // Get the target status name
+        const targetStatusName = isNoStatusColumn ? '' : targetStatus!.name;
+        
+        await updateLeadStatus.mutateAsync({
+          contactId: activeId,
+          leadStatus: targetStatusName,
+        });
+        toast({
+          title: 'Status atualizado',
+          description: targetStatus ? `Movido para ${targetStatus.name}` : 'Status removido',
+        });
+      } catch {
+        toast({
+          title: 'Erro',
+          description: 'Não foi possível mover o contato',
+          variant: 'destructive',
+        });
       }
     }
   };
 
-  const getContactsForStatus = (statusName: string) => {
-    return filteredContacts.filter((c) => c.lead_status === statusName);
-  };
-
-  // Calculate total value for a list of contacts
-  const getTotalValue = (contactsList: ContactForKanban[]) => {
-    return contactsList.reduce((sum, c) => sum + (c.negotiated_value || 0), 0);
-  };
-
-  // Handle contacts without status (new leads)
-  const getContactsWithoutStatus = () => {
-    return filteredContacts.filter((c) => 
-      !c.lead_status || 
-      !leadStatuses?.some(s => s.name === c.lead_status)
-    );
-  };
-
   const handleOpenConversation = async (contact: ContactForKanban) => {
     try {
-      // Find existing conversation for this contact
       const { data: conversation } = await supabase
         .from('conversations')
         .select('id')
@@ -195,7 +152,11 @@ export default function LeadKanban() {
     }
   };
 
-  const isLoading = statusesLoading || contactsLoading;
+  const isLoading = statusesLoading || summaryLoading;
+
+  // Get summary for "no status"
+  const noStatusSummary = summaryMap?.['__no_status__'];
+  const hasNoStatusContacts = noStatusSummary && noStatusSummary.contact_count > 0;
 
   if (isLoading && !leadStatuses) {
     return (
@@ -230,31 +191,31 @@ export default function LeadKanban() {
           onDragEnd={handleDragEnd}
         >
           <div className="flex flex-wrap gap-4">
-            {/* Sem Status column (optional) */}
-            {getContactsWithoutStatus().length > 0 && (
+            {/* Sem Status column */}
+            {hasNoStatusContacts && (
               <LeadKanbanColumn
                 status={{ id: 'no-status', name: 'Sem Status', order_position: -1, color: '#9CA3AF', is_active: true, created_at: '' }}
-                contacts={getContactsWithoutStatus()}
-                totalValue={getTotalValue(getContactsWithoutStatus())}
+                statusKey="__no_status__"
+                count={noStatusSummary.contact_count}
+                totalValue={noStatusSummary.total_value}
                 onOpenConversation={handleOpenConversation}
                 canDelete={false}
-                isExpanded={expandedColumns.has('no-status')}
-                onToggleExpand={() => toggleColumnExpansion('no-status')}
+                searchQuery={searchQuery}
               />
             )}
 
             {leadStatuses.map((status) => {
-              const statusContacts = getContactsForStatus(status.name);
+              const summary = summaryMap?.[status.name];
               return (
                 <LeadKanbanColumn
                   key={status.id}
                   status={status}
-                  contacts={statusContacts}
-                  totalValue={getTotalValue(statusContacts)}
+                  statusKey={status.name}
+                  count={summary?.contact_count || 0}
+                  totalValue={summary?.total_value || 0}
                   onOpenConversation={handleOpenConversation}
                   canDelete={true}
-                  isExpanded={expandedColumns.has(status.id)}
-                  onToggleExpand={() => toggleColumnExpansion(status.id)}
+                  searchQuery={searchQuery}
                 />
               );
             })}
@@ -286,31 +247,48 @@ export default function LeadKanban() {
   );
 }
 
-// Kanban Column Component
-const CONTACTS_LIMIT = 5;
+// Kanban Column Component - Now loads its own contacts
+const CONTACTS_LIMIT = 20;
 
 function LeadKanbanColumn({
   status,
-  contacts,
+  statusKey,
+  count,
   totalValue,
   onOpenConversation,
   canDelete,
-  isExpanded,
-  onToggleExpand,
+  searchQuery,
 }: {
   status: LeadStatus;
-  contacts: ContactForKanban[];
+  statusKey: string;
+  count: number;
   totalValue: number;
   onOpenConversation: (contact: ContactForKanban) => void;
   canDelete: boolean;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
+  searchQuery: string;
 }) {
+  const [showAll, setShowAll] = useState(false);
   const { setNodeRef } = useSortable({ id: status.id });
   const deleteStatus = useDeleteLeadStatus();
 
+  // Load contacts for this specific status
+  const { data: contacts, isLoading } = useContactsByLeadStatus(statusKey, showAll ? 100 : CONTACTS_LIMIT);
+
+  // Filter contacts by search query (client-side for loaded contacts)
+  const filteredContacts = useMemo(() => {
+    if (!contacts) return [];
+    if (!searchQuery) return contacts;
+    
+    const search = searchQuery.toLowerCase();
+    return contacts.filter(c =>
+      c.full_name.toLowerCase().includes(search) ||
+      c.phone.includes(search) ||
+      c.email?.toLowerCase().includes(search)
+    );
+  }, [contacts, searchQuery]);
+
   const handleDeleteStatus = async () => {
-    if (contacts.length > 0) {
+    if (count > 0) {
       toast({
         title: 'Não é possível excluir',
         description: 'Este status possui contatos. Mova-os antes de excluir.',
@@ -327,8 +305,8 @@ function LeadKanbanColumn({
     }
   };
 
-  const visibleContacts = isExpanded ? contacts : contacts.slice(0, CONTACTS_LIMIT);
-  const hiddenCount = contacts.length - CONTACTS_LIMIT;
+  const visibleContacts = filteredContacts;
+  const hasMore = count > filteredContacts.length && !showAll;
 
   return (
     <div ref={setNodeRef} className="flex-shrink-0 w-72">
@@ -361,9 +339,11 @@ function LeadKanbanColumn({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Real count from database */}
           <span className="text-xs text-gray-700 font-medium bg-white/50 px-1.5 py-0.5 rounded">
-            👤 {contacts.length}
+            👤 {count.toLocaleString('pt-BR')}
           </span>
+          {/* Real value from database */}
           <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-800 px-1.5 py-0.5 rounded flex items-center gap-0.5">
             <DollarSign size={10} />
             R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -373,34 +353,44 @@ function LeadKanbanColumn({
 
       <div className="bg-muted/30 rounded-b-2xl border border-t-0 border-border max-h-[calc(100vh-280px)] overflow-y-auto">
         <div className="p-3 space-y-2">
-          <SortableContext items={visibleContacts.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-            {visibleContacts.map((contact) => (
-              <ContactCard
-                key={contact.id}
-                contact={contact}
-                onClick={() => onOpenConversation(contact)}
-              />
-            ))}
-          </SortableContext>
-          
-          {/* Ver mais / Ver menos button */}
-          {hiddenCount > 0 && (
-            <button
-              onClick={onToggleExpand}
-              className="w-full py-2 text-xs text-primary hover:text-primary/80 font-medium transition-colors flex items-center justify-center gap-1"
-            >
-              {isExpanded ? (
-                <>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <>
+              <SortableContext items={visibleContacts.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                {visibleContacts.map((contact) => (
+                  <ContactCard
+                    key={contact.id}
+                    contact={contact}
+                    onClick={() => onOpenConversation(contact)}
+                  />
+                ))}
+              </SortableContext>
+              
+              {/* Ver mais button */}
+              {hasMore && (
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="w-full py-2 text-xs text-primary hover:text-primary/80 font-medium transition-colors flex items-center justify-center gap-1"
+                >
+                  <Plus size={12} />
+                  Ver mais ({count - filteredContacts.length} restantes)
+                </button>
+              )}
+              
+              {/* Show fewer button */}
+              {showAll && count > CONTACTS_LIMIT && (
+                <button
+                  onClick={() => setShowAll(false)}
+                  className="w-full py-2 text-xs text-muted-foreground hover:text-foreground font-medium transition-colors flex items-center justify-center gap-1"
+                >
                   <X size={12} />
                   Ver menos
-                </>
-              ) : (
-                <>
-                  <Plus size={12} />
-                  Ver mais {hiddenCount} contatos
-                </>
+                </button>
               )}
-            </button>
+            </>
           )}
         </div>
       </div>
@@ -501,10 +491,10 @@ function AddStatusButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="flex-shrink-0 w-72 min-h-[200px] border-2 border-dashed border-muted-foreground/30 rounded-2xl flex items-center justify-center gap-2 text-muted-foreground hover:border-primary hover:text-primary transition-all"
+      className="flex-shrink-0 w-72 h-32 rounded-2xl border-2 border-dashed border-border hover:border-primary/50 flex items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors"
     >
       <Plus size={20} />
-      <span className="font-medium">Nova Etapa</span>
+      <span className="font-medium">Novo Status</span>
     </button>
   );
 }
@@ -520,25 +510,24 @@ function AddStatusModal({
   existingCount: number;
 }) {
   const [name, setName] = useState('');
-  const [color, setColor] = useState(DEFAULT_COLORS[0]);
+  const [color, setColor] = useState(DEFAULT_COLORS[existingCount % DEFAULT_COLORS.length]);
   const createStatus = useCreateLeadStatus();
 
-  const handleCreate = async () => {
+  const handleSubmit = async () => {
     if (!name.trim()) {
-      toast({ title: 'Nome é obrigatório', variant: 'destructive' });
+      toast({ title: 'Digite um nome para o status', variant: 'destructive' });
       return;
     }
 
     try {
       await createStatus.mutateAsync({
-        name,
+        name: name.trim(),
         color,
-        order_position: existingCount + 1,
+        order_position: existingCount,
       });
-      toast({ title: 'Status criado!' });
-      onOpenChange(false);
+      toast({ title: 'Status criado com sucesso' });
       setName('');
-      setColor(DEFAULT_COLORS[0]);
+      onOpenChange(false);
     } catch {
       toast({ title: 'Erro ao criar status', variant: 'destructive' });
     }
@@ -546,32 +535,35 @@ function AddStatusModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Nova Etapa de Lead</DialogTitle>
-          <DialogDescription>Adicione uma nova etapa para gerenciar seus leads</DialogDescription>
+          <DialogTitle>Novo Status de Lead</DialogTitle>
+          <DialogDescription>
+            Crie um novo status para organizar seus leads no kanban.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          <div>
-            <Label>Nome da Etapa *</Label>
+          <div className="space-y-2">
+            <Label htmlFor="status-name">Nome do Status</Label>
             <Input
+              id="status-name"
+              placeholder="Ex: Qualificado, Em Negociação..."
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Em negociação, Proposta enviada..."
-              className="mt-2"
             />
           </div>
-          <div>
+
+          <div className="space-y-2">
             <Label>Cor</Label>
-            <div className="flex flex-wrap gap-2 mt-2">
+            <div className="flex flex-wrap gap-2">
               {DEFAULT_COLORS.map((c) => (
                 <button
                   key={c}
                   onClick={() => setColor(c)}
                   className={cn(
-                    'w-8 h-8 rounded-lg border-2 transition-all',
-                    color === c ? 'border-foreground scale-110' : 'border-transparent'
+                    'w-8 h-8 rounded-full border-2 transition-all',
+                    color === c ? 'border-primary scale-110' : 'border-transparent'
                   )}
                   style={{ backgroundColor: c }}
                 />
@@ -584,9 +576,11 @@ function AddStatusModal({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleCreate} disabled={createStatus.isPending} className="btn-gradient">
-            {createStatus.isPending && <Loader2 size={16} className="mr-2 animate-spin" />}
-            Criar Etapa
+          <Button onClick={handleSubmit} disabled={createStatus.isPending}>
+            {createStatus.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : null}
+            Criar Status
           </Button>
         </DialogFooter>
       </DialogContent>
