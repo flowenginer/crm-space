@@ -7,17 +7,29 @@ import {
   Users,
   MoreVertical,
   Loader2,
-  Check,
-  X,
   ChevronDown,
   ChevronRight,
   Save,
   Settings2,
+  LayoutDashboard,
+  MessageSquare,
+  Radio,
+  FileText,
+  Clock,
+  Workflow,
+  TrendingUp,
+  Smartphone,
+  UserCircle,
+  Megaphone,
+  BarChart3,
+  Settings,
+  LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -35,14 +47,20 @@ import {
 import { toast } from 'sonner';
 import { useRoles, usePermissionDefinitions, useCreateRole, useUpdateRole, useDeleteRole, RoleDefinition } from '@/hooks/useRoles';
 
-const categoryLabels: Record<string, string> = {
-  conversations: 'Conversas',
-  contacts: 'Contatos',
-  deals: 'Negócios',
-  reports: 'Relatórios',
-  settings: 'Configurações',
-  team: 'Equipe',
-  channels: 'Canais',
+// Configuração de categorias com ícones e labels
+const categoryConfig: Record<string, { label: string; icon: LucideIcon; order: number }> = {
+  dashboard: { label: 'Dashboard', icon: LayoutDashboard, order: 1 },
+  conversations: { label: 'Conversas', icon: MessageSquare, order: 2 },
+  live: { label: 'Ao Vivo', icon: Radio, order: 3 },
+  templates: { label: 'Mensagens Rápidas', icon: FileText, order: 4 },
+  schedules: { label: 'Agendamentos', icon: Clock, order: 5 },
+  automations: { label: 'Automações', icon: Workflow, order: 6 },
+  crm: { label: 'CRM', icon: TrendingUp, order: 7 },
+  channels: { label: 'Canais WhatsApp', icon: Smartphone, order: 8 },
+  contacts: { label: 'Contatos', icon: UserCircle, order: 9 },
+  marketing: { label: 'Marketing', icon: Megaphone, order: 10 },
+  reports: { label: 'Relatórios', icon: BarChart3, order: 11 },
+  settings: { label: 'Configurações', icon: Settings, order: 12 },
 };
 
 const colorOptions = [
@@ -69,12 +87,19 @@ export function RoleManagement() {
     permissions: {} as Record<string, Record<string, boolean>>,
   });
 
-  // Group permissions by category
+  // Group permissions by category and sort by order
   const permissionsByCategory = permissionDefs.reduce((acc, perm) => {
     if (!acc[perm.category]) acc[perm.category] = [];
     acc[perm.category].push(perm);
     return acc;
   }, {} as Record<string, typeof permissionDefs>);
+
+  // Sort categories by defined order
+  const sortedCategories = Object.keys(permissionsByCategory).sort((a, b) => {
+    const orderA = categoryConfig[a]?.order ?? 99;
+    const orderB = categoryConfig[b]?.order ?? 99;
+    return orderA - orderB;
+  });
 
   const handleOpenCreate = () => {
     setEditingRole(null);
@@ -198,6 +223,14 @@ export function RoleManagement() {
     }
   };
 
+  // Count enabled permissions for a role
+  const countEnabledPermissions = (permissions: Record<string, Record<string, boolean>> | undefined) => {
+    if (!permissions) return 0;
+    return Object.values(permissions).reduce((total, categoryPerms) => {
+      return total + Object.values(categoryPerms).filter(Boolean).length;
+    }, 0);
+  };
+
   const isLoading = loadingRoles || loadingPermissions;
 
   return (
@@ -267,8 +300,12 @@ export function RoleManagement() {
               </div>
 
               <h3 className="text-lg font-semibold text-foreground mb-1">{role.role_name}</h3>
-              <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+              <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
                 {role.description || 'Sem descrição'}
+              </p>
+              
+              <p className="text-xs text-primary mb-4">
+                {countEnabledPermissions(role.permissions as any)} permissões ativas
               </p>
 
               <div className="flex items-center justify-between pt-4 border-t border-border">
@@ -291,7 +328,7 @@ export function RoleManagement() {
 
       {/* Modal de criação/edição */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>
               {editingRole ? 'Editar Perfil' : 'Novo Perfil'}
@@ -301,7 +338,7 @@ export function RoleManagement() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 py-4">
+          <div className="flex-1 overflow-y-auto space-y-6 py-4 pr-2">
             {/* Informações básicas */}
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -362,16 +399,24 @@ export function RoleManagement() {
             <div>
               <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                 <Shield size={16} />
-                Permissões
+                Permissões por Módulo
               </h4>
 
               <div className="space-y-2">
-                {Object.entries(permissionsByCategory).map(([category, permissions]) => {
+                {sortedCategories.map((category) => {
+                  const permissions = permissionsByCategory[category];
+                  const config = categoryConfig[category] || { 
+                    label: category, 
+                    icon: Shield,
+                    order: 99 
+                  };
+                  const Icon = config.icon;
                   const isExpanded = expandedCategories.includes(category);
                   const enabledCount = permissions.filter(p => {
                     const key = p.permission_key.split('.')[1];
                     return form.permissions[category]?.[key] === true;
                   }).length;
+                  const allEnabled = enabledCount === permissions.length;
 
                   return (
                     <div key={category} className="border border-border rounded-xl overflow-hidden">
@@ -386,55 +431,80 @@ export function RoleManagement() {
                           ) : (
                             <ChevronRight size={18} className="text-muted-foreground" />
                           )}
+                          <div 
+                            className="w-8 h-8 rounded-lg flex items-center justify-center"
+                            style={{ backgroundColor: `${form.color}20` }}
+                          >
+                            <Icon size={16} style={{ color: form.color }} />
+                          </div>
                           <span className="font-medium text-foreground">
-                            {categoryLabels[category] || category}
+                            {config.label}
                           </span>
-                          <span className="text-xs text-muted-foreground">
-                            {enabledCount}/{permissions.length} habilitados
+                          <span 
+                            className={`text-xs px-2 py-0.5 rounded-full ${
+                              enabledCount > 0 
+                                ? 'bg-primary/10 text-primary' 
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {enabledCount}/{permissions.length}
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleAllCategory(category, permissions);
-                          }}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          {enabledCount === permissions.length ? 'Desmarcar todos' : 'Marcar todos'}
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleAllCategory(category, permissions);
+                            }}
+                            className={`text-xs px-3 py-1 rounded-lg transition-colors ${
+                              allEnabled 
+                                ? 'bg-destructive/10 text-destructive hover:bg-destructive/20' 
+                                : 'bg-primary/10 text-primary hover:bg-primary/20'
+                            }`}
+                          >
+                            {allEnabled ? 'Remover Todos' : 'Liberar Todos'}
+                          </button>
+                        </div>
                       </button>
 
                       {isExpanded && (
-                        <div className="p-4 space-y-3 bg-card">
-                          {permissions.map((perm) => {
-                            const key = perm.permission_key.split('.')[1];
-                            const isEnabled = form.permissions[category]?.[key] === true;
+                        <div className="p-4 bg-card border-t border-border">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {permissions.map((perm) => {
+                              const key = perm.permission_key.split('.')[1];
+                              const isEnabled = form.permissions[category]?.[key] === true;
 
-                            return (
-                              <div
-                                key={perm.id}
-                                className="flex items-center justify-between"
-                              >
-                                <div>
-                                  <span className="text-sm font-medium text-foreground">
-                                    {perm.permission_name}
-                                  </span>
-                                  {perm.description && (
-                                    <p className="text-xs text-muted-foreground">
-                                      {perm.description}
-                                    </p>
-                                  )}
-                                </div>
-                                <Switch
-                                  checked={isEnabled}
-                                  onCheckedChange={(checked) =>
-                                    handlePermissionChange(category, key, checked)
-                                  }
-                                />
-                              </div>
-                            );
-                          })}
+                              return (
+                                <label
+                                  key={perm.id}
+                                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                                    isEnabled 
+                                      ? 'border-primary bg-primary/5' 
+                                      : 'border-border hover:border-muted-foreground/30 hover:bg-muted/30'
+                                  }`}
+                                >
+                                  <Checkbox
+                                    checked={isEnabled}
+                                    onCheckedChange={(checked) =>
+                                      handlePermissionChange(category, key, checked === true)
+                                    }
+                                    className="mt-0.5"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-sm font-medium text-foreground block">
+                                      {perm.permission_name}
+                                    </span>
+                                    {perm.description && (
+                                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                                        {perm.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -444,7 +514,7 @@ export function RoleManagement() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="pt-4 border-t border-border">
             <Button variant="outline" onClick={() => setShowModal(false)}>
               Cancelar
             </Button>
