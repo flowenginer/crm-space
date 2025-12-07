@@ -1149,6 +1149,68 @@ export type Database = {
           },
         ]
       }
+      import_history: {
+        Row: {
+          created: number | null
+          created_at: string | null
+          created_by: string | null
+          errors: number | null
+          id: string
+          log: Json | null
+          processed: number | null
+          skipped: number | null
+          source_name: string
+          source_type: string
+          status: string | null
+          tags_assigned: number | null
+          tags_created: number | null
+          total_rows: number | null
+          updated: number | null
+        }
+        Insert: {
+          created?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          errors?: number | null
+          id?: string
+          log?: Json | null
+          processed?: number | null
+          skipped?: number | null
+          source_name: string
+          source_type: string
+          status?: string | null
+          tags_assigned?: number | null
+          tags_created?: number | null
+          total_rows?: number | null
+          updated?: number | null
+        }
+        Update: {
+          created?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          errors?: number | null
+          id?: string
+          log?: Json | null
+          processed?: number | null
+          skipped?: number | null
+          source_name?: string
+          source_type?: string
+          status?: string | null
+          tags_assigned?: number | null
+          tags_created?: number | null
+          total_rows?: number | null
+          updated?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_history_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       internal_notes: {
         Row: {
           author_id: string
