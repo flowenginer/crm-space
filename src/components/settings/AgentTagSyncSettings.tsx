@@ -236,9 +236,14 @@ export function AgentTagSyncSettings() {
     }
   };
 
-  const executeSync = async () => {
+  const executeSync = async (selectedMode?: SyncMode) => {
+    // Usar o mode passado como parâmetro OU o mode do estado
+    const currentMode = selectedMode || mode;
+    
     console.log('=== INICIANDO SINCRONIZAÇÃO ===');
-    console.log('Modo selecionado:', mode);
+    console.log('Modo passado como parâmetro:', selectedMode);
+    console.log('Modo do estado:', mode);
+    console.log('Modo que será usado:', currentMode);
     console.log('Número de mapeamentos:', mappings.length);
     console.log('Mapeamentos:', mappings.map(m => `${m.tagName} -> ${m.agentName}`));
     
@@ -253,7 +258,7 @@ export function AgentTagSyncSettings() {
       const agentTagIds = mappings.map(m => m.tagId);
       const agentIds = mappings.filter(m => m.agentId).map(m => m.agentId);
 
-      if (mode === 'tag-to-assignment') {
+      if (currentMode === 'tag-to-assignment') {
         const { data: contactsNoAssignment } = await supabase
           .from('contacts')
           .select('id, full_name, phone')
@@ -317,7 +322,7 @@ export function AgentTagSyncSettings() {
             }
           }
         }
-      } else if (mode === 'assignment-to-tag') {
+      } else if (currentMode === 'assignment-to-tag') {
         console.log('=== MODO ASSIGNMENT-TO-TAG ===');
         
         // Buscar contatos que precisam de tag DIRETAMENTE para cada mapeamento
@@ -497,7 +502,7 @@ export function AgentTagSyncSettings() {
         }
         
         console.log(`=== SINCRONIZAÇÃO CONCLUÍDA: ${successful} sucesso, ${errors} erros ===`);
-      } else if (mode === 'orphans') {
+      } else if (currentMode === 'orphans') {
         const { data: orphanContacts } = await supabase
           .from('contacts')
           .select('id, full_name, phone')
@@ -530,7 +535,7 @@ export function AgentTagSyncSettings() {
         }
 
         updateProgress(100);
-      } else if (mode === 'conflicts') {
+      } else if (currentMode === 'conflicts') {
         const { data: contactTags } = await supabase
           .from('contact_tags')
           .select('contact_id, tag_id')
@@ -587,7 +592,7 @@ export function AgentTagSyncSettings() {
         results
       });
 
-      if (mode === 'orphans' || mode === 'conflicts') {
+      if (currentMode === 'orphans' || currentMode === 'conflicts') {
         toast.info(`${processed} contatos identificados`);
       } else {
         toast.success(`${successful} contatos sincronizados com sucesso!`);
@@ -676,7 +681,11 @@ export function AgentTagSyncSettings() {
 
           <div 
             className={`p-3 rounded-lg border cursor-pointer transition-colors ${mode === 'assignment-to-tag' ? 'border-green-500 bg-green-500/10' : 'border-border bg-muted/30 hover:bg-muted/50'}`}
-            onClick={() => setMode('assignment-to-tag')}
+            onClick={() => {
+              console.log('=== CARD VERDE CLICADO ===');
+              console.log('Mudando mode para: assignment-to-tag');
+              setMode('assignment-to-tag');
+            }}
           >
             <div className="flex items-center gap-2 mb-1">
               <UserCheck className="h-4 w-4 text-green-500" />
@@ -869,7 +878,11 @@ export function AgentTagSyncSettings() {
             </Button>
           ) : (
             <Button
-              onClick={executeSync}
+              onClick={() => {
+                console.log('=== BOTÃO CLICADO ===');
+                console.log('Mode atual no clique:', mode);
+                executeSync(mode);
+              }}
               disabled={isLoadingStats || mappings.length === 0}
             >
               <ArrowRightLeft className="h-4 w-4 mr-2" />
