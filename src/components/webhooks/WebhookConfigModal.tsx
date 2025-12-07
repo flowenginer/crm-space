@@ -260,15 +260,17 @@ export function WebhookConfigModal({ open, onOpenChange, webhook }: WebhookConfi
                 </span>
               </div>
 
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-6">
-                  {renderEventCategory('Mensagens', WEBHOOK_EVENTS.messages)}
-                  {renderEventCategory('Contatos', WEBHOOK_EVENTS.contacts)}
-                  {renderEventCategory('Canais', WEBHOOK_EVENTS.channels)}
-                </div>
-                <div className="space-y-6">
-                  {renderEventCategory('Conversas', WEBHOOK_EVENTS.conversations)}
-                  {renderEventCategory('Negócios', WEBHOOK_EVENTS.deals)}
+              <div className="border rounded-lg p-4 max-h-[300px] overflow-y-auto">
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-6">
+                    {renderEventCategory('Mensagens', WEBHOOK_EVENTS.messages)}
+                    {renderEventCategory('Contatos', WEBHOOK_EVENTS.contacts)}
+                    {renderEventCategory('Canais', WEBHOOK_EVENTS.channels)}
+                  </div>
+                  <div className="space-y-6">
+                    {renderEventCategory('Conversas', WEBHOOK_EVENTS.conversations)}
+                    {renderEventCategory('Negócios', WEBHOOK_EVENTS.deals)}
+                  </div>
                 </div>
               </div>
             </div>
