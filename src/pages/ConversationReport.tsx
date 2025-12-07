@@ -129,140 +129,110 @@ export default function ConversationReportPage() {
     }
   });
 
-  // Fetch lead statuses dynamically from contacts table
+  // Fetch lead statuses dynamically from lead_statuses table
   const { data: leadStatuses = [] } = useQuery({
     queryKey: ['lead-statuses-filter'],
     queryFn: async () => {
       const { data } = await supabase
-        .from('contacts')
-        .select('lead_status')
-        .not('lead_status', 'is', null);
-      
-      // Return unique sorted values
-      const unique = [...new Set(data?.map(c => c.lead_status))]
-        .filter(Boolean)
-        .sort() as string[];
-      return unique;
+        .from('lead_statuses')
+        .select('id, name, color')
+        .eq('is_active', true)
+        .order('order_position');
+      return data || [];
     }
   });
 
-  // Fetch report data
+  // Fetch report data using RPC function
   const { data: reportData, isLoading, refetch } = useQuery({
     queryKey: ['conversation-report', appliedFilters, page],
     queryFn: async () => {
-      let query = supabase
-        .from('conversations')
-        .select(`
-          id,
-          status,
-          created_at,
-          closed_at,
-          close_reason,
-          lead_status,
-          last_message_preview,
-          contact:contacts(id, full_name, phone, lead_status),
-          assigned_user:profiles!conversations_assigned_to_fkey(id, full_name),
-          department:departments(id, name),
-          channel:whatsapp_channels(id, name, phone),
-          tags:conversation_tags(tag:tags(id, name, color))
-        `, { count: 'exact' })
-        .order('created_at', { ascending: false });
+      const { data, error } = await supabase.rpc('search_conversations_report', {
+        p_start_date: appliedFilters.startDate ? `${appliedFilters.startDate}T00:00:00` : null,
+        p_end_date: appliedFilters.endDate ? `${appliedFilters.endDate}T23:59:59` : null,
+        p_name: appliedFilters.name || null,
+        p_phone: appliedFilters.phone || null,
+        p_lead_status: appliedFilters.leadStatus.length > 0 ? appliedFilters.leadStatus : null,
+        p_channel_ids: appliedFilters.channel.length > 0 ? appliedFilters.channel : null,
+        p_agent_ids: appliedFilters.agent.length > 0 ? appliedFilters.agent : null,
+        p_department_ids: appliedFilters.department.length > 0 ? appliedFilters.department : null,
+        p_tag_ids: appliedFilters.tag.length > 0 ? appliedFilters.tag : null,
+        p_page: page,
+        p_page_size: pageSize
+      });
 
-      // Apply date filters
-      if (appliedFilters.startDate) {
-        query = query.gte('created_at', `${appliedFilters.startDate}T00:00:00`);
-      }
-      if (appliedFilters.endDate) {
-        query = query.lte('created_at', `${appliedFilters.endDate}T23:59:59`);
-      }
-      
-      // Apply multi-select filters
-      if (appliedFilters.agent.length > 0) {
-        query = query.in('assigned_to', appliedFilters.agent);
-      }
-      if (appliedFilters.department.length > 0) {
-        query = query.in('department_id', appliedFilters.department);
-      }
-      if (appliedFilters.channel.length > 0) {
-        query = query.in('channel_id', appliedFilters.channel);
-      }
-
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
       if (error) throw error;
 
-      let filtered = data || [];
-      
-      // Client-side filtering for name and phone (more flexible search)
-      if (appliedFilters.name) {
-        const searchLower = appliedFilters.name.toLowerCase();
-        filtered = filtered.filter(c => 
-          c.contact?.full_name?.toLowerCase().includes(searchLower)
-        );
-      }
-      
-      if (appliedFilters.phone) {
-        const phoneDigits = appliedFilters.phone.replace(/\D/g, '');
-        filtered = filtered.filter(c => 
-          c.contact?.phone?.includes(phoneDigits)
-        );
-      }
+      // Get total count from first row
+      const total = data?.[0]?.total_count || 0;
 
-      // Filter by lead status (from contact)
-      if (appliedFilters.leadStatus.length > 0) {
-        filtered = filtered.filter(c => 
-          c.contact?.lead_status && appliedFilters.leadStatus.includes(c.contact.lead_status)
-        );
-      }
+      // Process conversations
+      const conversations = (data || []).map((row: any) => {
+        let firstMessageText = row.first_message_content || '';
+        // Check for media types based on content patterns
+        if (firstMessageText.startsWith('[Áudio]') || firstMessageText.startsWith('[Imagem]') || 
+            firstMessageText.startsWith('[Vídeo]') || firstMessageText.startsWith('[Documento]')) {
+          // Keep as is
+        }
 
-      // Filter by tags (multi-select)
-      if (appliedFilters.tag.length > 0) {
-        filtered = filtered.filter(c => 
-          c.tags?.some((t: any) => appliedFilters.tag.includes(t.tag?.id))
-        );
-      }
+        return {
+          id: row.id,
+          contact_id: row.contact_id,
+          channel_id: row.channel_id,
+          assigned_to: row.assigned_to,
+          department_id: row.department_id,
+          status: row.status,
+          lead_status: row.lead_status,
+          created_at: row.created_at,
+          closed_at: row.closed_at,
+          close_reason: row.close_reason,
+          last_message_at: row.last_message_at,
+          contact: {
+            full_name: row.contact_full_name,
+            phone: row.contact_phone,
+            lead_status: row.contact_lead_status
+          },
+          channel: {
+            name: row.channel_name
+          },
+          assigned_user: {
+            full_name: row.agent_name
+          },
+          department: {
+            name: row.department_name
+          },
+          first_message: firstMessageText,
+          protocol_number: row.id.slice(-6).toUpperCase(),
+          tags: [] // Tags will be fetched separately if needed
+        };
+      });
 
-      // Fetch first message for each conversation
-      const conversationsWithFirstMessage = await Promise.all(
-        filtered.map(async (conv) => {
-          const { data: firstMsg } = await supabase
-            .from('messages')
-            .select('content, message_type')
-            .eq('conversation_id', conv.id)
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .maybeSingle();
+      // Fetch tags for conversations
+      if (conversations.length > 0) {
+        const conversationIds = conversations.map((c: any) => c.id);
+        const { data: tagsData } = await supabase
+          .from('conversation_tags')
+          .select('conversation_id, tag:tags(id, name, color)')
+          .in('conversation_id', conversationIds);
 
-          let firstMessageText = conv.last_message_preview || '';
-          if (firstMsg) {
-            if (firstMsg.message_type === 'audio') {
-              firstMessageText = '[Áudio]';
-            } else if (firstMsg.message_type === 'image') {
-              firstMessageText = '[Imagem]';
-            } else if (firstMsg.message_type === 'video') {
-              firstMessageText = '[Vídeo]';
-            } else if (firstMsg.message_type === 'document') {
-              firstMessageText = '[Documento]';
-            } else {
-              firstMessageText = firstMsg.content || '';
+        if (tagsData) {
+          const tagsByConversation = tagsData.reduce((acc: any, item: any) => {
+            if (!acc[item.conversation_id]) {
+              acc[item.conversation_id] = [];
             }
-          }
+            acc[item.conversation_id].push({ tag: item.tag });
+            return acc;
+          }, {});
 
-          return {
-            ...conv,
-            first_message: firstMessageText,
-            protocol_number: conv.id.slice(-6).toUpperCase()
-          };
-        })
-      );
+          conversations.forEach((conv: any) => {
+            conv.tags = tagsByConversation[conv.id] || [];
+          });
+        }
+      }
 
       return {
-        conversations: conversationsWithFirstMessage,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / pageSize)
+        conversations,
+        total: Number(total),
+        totalPages: Math.ceil(Number(total) / pageSize)
       };
     },
     refetchOnWindowFocus: false,
@@ -375,7 +345,7 @@ export default function ConversationReportPage() {
   const agentOptions = agents.map(a => ({ value: a.id, label: a.full_name || '' }));
   const departmentOptions = departments.map(d => ({ value: d.id, label: d.name }));
   const tagOptions = tags.map(t => ({ value: t.id, label: t.name }));
-  const leadStatusOptions = leadStatuses.map(status => ({ value: status, label: status }));
+  const leadStatusOptions = leadStatuses.map(ls => ({ value: ls.name, label: ls.name }));
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -411,8 +381,9 @@ export default function ConversationReportPage() {
       {/* Filters Section */}
       <div className="px-6 py-4 bg-muted/30 border-b border-border">
         <div className="space-y-4">
-          {/* Date Range Picker with Quick Buttons */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Row 1 - Date Range Picker with Quick Buttons + Nome + Contato aligned */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            {/* Date Range Picker takes 2 columns */}
             <div className="lg:col-span-2">
               <DateRangePicker
                 startDate={filters.startDate}
@@ -421,27 +392,29 @@ export default function ConversationReportPage() {
                 onEndDateChange={(date) => setFilters(prev => ({ ...prev, endDate: date }))}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Nome</label>
-                <Input
-                  value={filters.name}
-                  onChange={(e) => setFilters(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Nome do contato"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Contato</label>
-                <Input
-                  value={filters.phone}
-                  onChange={(e) => setFilters(prev => ({ ...prev, phone: e.target.value }))}
-                  placeholder="Telefone"
-                />
-              </div>
+            {/* Nome field */}
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Nome</label>
+              <Input
+                value={filters.name}
+                onChange={(e) => setFilters(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Nome do contato"
+                className="h-10"
+              />
+            </div>
+            {/* Contato field */}
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Contato</label>
+              <Input
+                value={filters.phone}
+                onChange={(e) => setFilters(prev => ({ ...prev, phone: e.target.value }))}
+                placeholder="Telefone"
+                className="h-10"
+              />
             </div>
           </div>
 
-          {/* Row 2 - Filters */}
+          {/* Row 2 - Other Filters */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Status do Lead</label>

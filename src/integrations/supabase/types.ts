@@ -2456,6 +2456,42 @@ export type Database = {
         }
         Returns: undefined
       }
+      search_conversations_report: {
+        Args: {
+          p_agent_ids?: string[]
+          p_channel_ids?: string[]
+          p_department_ids?: string[]
+          p_end_date?: string
+          p_lead_status?: string[]
+          p_name?: string
+          p_page?: number
+          p_page_size?: number
+          p_phone?: string
+          p_start_date?: string
+          p_tag_ids?: string[]
+        }
+        Returns: {
+          agent_name: string
+          assigned_to: string
+          channel_id: string
+          channel_name: string
+          close_reason: string
+          closed_at: string
+          contact_full_name: string
+          contact_id: string
+          contact_lead_status: string
+          contact_phone: string
+          created_at: string
+          department_id: string
+          department_name: string
+          first_message_content: string
+          id: string
+          last_message_at: string
+          lead_status: string
+          status: string
+          total_count: number
+        }[]
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
