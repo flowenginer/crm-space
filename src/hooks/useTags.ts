@@ -16,12 +16,12 @@ export async function findTagByName(name: string) {
   return data;
 }
 
-export async function findOrCreateTag(name: string) {
+export async function findOrCreateTag(name: string, preferredColor?: string): Promise<{ id: string; name: string; color: string; isNew?: boolean } & Record<string, any>> {
   const existing = await findTagByName(name);
-  if (existing) return existing;
+  if (existing) return { ...existing, isNew: false };
   
   const { data: { user } } = await supabase.auth.getUser();
-  const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
+  const color = preferredColor || TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
   
   const { data, error } = await supabase
     .from('tags')
@@ -35,7 +35,7 @@ export async function findOrCreateTag(name: string) {
     .single();
   
   if (error) throw error;
-  return data;
+  return { ...data, isNew: true };
 }
 
 // ============ Types ============
