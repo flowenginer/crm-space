@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
-  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock
+  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check
 } from 'lucide-react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { toast } from 'sonner';
@@ -37,6 +37,7 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [pendingContactForConversation, setPendingContactForConversation] = useState<{ id?: string; phone: string } | null>(null);
+  const [localNegotiatedValue, setLocalNegotiatedValue] = useState<string>('');
   
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -707,31 +708,58 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Valor Negociado - Campo para input de valor */}
+        {/* Valor Negociado - Campo para input de valor com botão confirmar */}
         <div className="p-3 border-b border-border bg-emerald-50/50 dark:bg-emerald-900/10">
           <label className="block text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
             <span className="text-base">💰</span>
             Valor Negociado
           </label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 dark:text-emerald-400 text-sm font-bold">R$</span>
-            <Input
-              type="number"
-              value={contact?.negotiated_value ?? ''}
-              onChange={(e) => {
-                const value = parseFloat(e.target.value) || 0;
-                updateNegotiatedValue.mutate(value);
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 dark:text-emerald-400 text-sm font-bold">R$</span>
+              <Input
+                type="number"
+                value={localNegotiatedValue || (contact?.negotiated_value ?? '')}
+                onChange={(e) => setLocalNegotiatedValue(e.target.value)}
+                className="pl-10 h-10 text-sm font-medium border-emerald-200 dark:border-emerald-800 focus:ring-emerald-500 focus:border-emerald-500"
+                placeholder="0,00"
+                min={0}
+                step={0.01}
+                disabled={updateNegotiatedValue.isPending}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const value = parseFloat(localNegotiatedValue) || 0;
+                    updateNegotiatedValue.mutate(value, {
+                      onSuccess: () => setLocalNegotiatedValue('')
+                    });
+                  }
+                }}
+              />
+            </div>
+            <Button
+              size="icon"
+              variant="default"
+              className="h-10 w-10 bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+              disabled={updateNegotiatedValue.isPending || !localNegotiatedValue}
+              onClick={() => {
+                const value = parseFloat(localNegotiatedValue) || 0;
+                updateNegotiatedValue.mutate(value, {
+                  onSuccess: () => setLocalNegotiatedValue('')
+                });
               }}
-              className="pl-10 h-10 text-sm font-medium border-emerald-200 dark:border-emerald-800 focus:ring-emerald-500 focus:border-emerald-500"
-              placeholder="0,00"
-              min={0}
-              step={0.01}
-              disabled={updateNegotiatedValue.isPending}
-            />
-            {updateNegotiatedValue.isPending && (
-              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-emerald-500" />
-            )}
+            >
+              {updateNegotiatedValue.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+            </Button>
           </div>
+          {contact?.negotiated_value > 0 && !localNegotiatedValue && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1.5">
+              Valor atual: R$ {contact.negotiated_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          )}
         </div>
 
         {/* Lead Status */}
