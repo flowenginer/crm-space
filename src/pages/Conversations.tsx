@@ -3421,8 +3421,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                   <QuickTemplatesPopover
                     contactName={selectedConversation?.contact?.full_name}
                     contactPhone={selectedConversation?.contact?.phone}
-                    onSelectTemplate={async (content, type, mediaUrl, mediaType) => {
-                      // If template has media attached, send it directly
+                  onSelectTemplate={async (content, type, mediaUrl, mediaType) => {
+                      // If template has media attached, send text and file separately
                       if (mediaUrl && selectedConversationId) {
                         const channelId = selectedConversation?.channel_id;
                         const contactPhone = selectedConversation?.contact?.phone;
@@ -3440,29 +3440,46 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                           : `${supabase.storage.from('template-attachments').getPublicUrl(mediaUrl).data.publicUrl}`;
                         
                         try {
-                          // Save to database with caption
+                          // === MENSAGEM 1: TEXTO (se houver) ===
+                          if (content && content.trim()) {
+                            let textContent = content;
+                            if (assigneeName) {
+                              textContent = `*${assigneeName}*:\n${content}`;
+                            }
+                            
+                            // Salvar texto no banco
+                            sendMessage.mutate({
+                              conversation_id: selectedConversationId,
+                              content: textContent,
+                              is_from_me: true,
+                              message_type: 'text',
+                            });
+                            
+                            // Enviar texto via WhatsApp
+                            if (channelId && contactPhone) {
+                              await sendWhatsAppMessage(channelId, contactPhone, textContent, 'text');
+                            }
+                          }
+                          
+                          // Pequeno delay para garantir ordem das mensagens
+                          await new Promise(resolve => setTimeout(resolve, 500));
+                          
+                          // === MENSAGEM 2: ARQUIVO ===
                           sendMessage.mutate({
                             conversation_id: selectedConversationId,
-                            content: content || '', // Use template text as caption
+                            content: '', // Sem texto/caption
                             is_from_me: true,
                             message_type: messageType,
                             media_url: fullMediaUrl,
                             media_mime_type: mediaType,
                           });
                           
-                          // Send via WhatsApp
+                          // Enviar arquivo via WhatsApp
                           if (channelId && contactPhone) {
-                            // Add agent signature to caption if text message
-                            let caption = content || '';
-                            if (assigneeName && caption) {
-                              caption = `*${assigneeName}*:\n${caption}`;
-                            }
-                            
-                            sendWhatsAppMessage(channelId, contactPhone, caption, messageType, fullMediaUrl)
-                              .catch(console.error);
+                            await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl);
                           }
                           
-                          toast.success('Mensagem enviada com anexo!');
+                          toast.success('Mensagem e anexo enviados!');
                         } catch (error) {
                           console.error('Error sending template with media:', error);
                           toast.error('Erro ao enviar mensagem');
