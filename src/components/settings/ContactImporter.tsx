@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle, XCircle, Info, Loader2, Link2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle, XCircle, Info, Loader2, Link2, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -26,6 +26,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { useImportContacts, ImportRow, ImportOptions, ImportLogEntry } from '@/hooks/useImportContacts';
+import { useImportHistory } from '@/hooks/useImportHistory';
+import { ImportHistoryTable } from './ImportHistoryTable';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ParsedData {
@@ -72,9 +74,12 @@ export function ContactImporter() {
   const [sheetsUrl, setSheetsUrl] = useState('');
   const [sheetName, setSheetName] = useState('');
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
+  const [currentSourceName, setCurrentSourceName] = useState('');
+  const [currentSourceType, setCurrentSourceType] = useState<'file' | 'google_sheets'>('file');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isImporting, progress, result, processImport, reset } = useImportContacts();
+  const { history, isLoading: isLoadingHistory, saveHistory } = useImportHistory();
 
   const autoMapColumns = useCallback((headers: string[]) => {
     const autoMapping: ColumnMapping = { ...defaultMapping };
@@ -177,6 +182,8 @@ export function ContactImporter() {
 
       setParsedData({ headers: data.headers, rows: data.rows });
       setColumnMapping(autoMapColumns(data.headers));
+      setCurrentSourceName(`Google Sheets: ${sheetName || 'Planilha'}${gid !== '0' ? ` (aba ${gid})` : ''}`);
+      setCurrentSourceType('google_sheets');
       toast.success(`${data.rows.length} linhas carregadas do Google Sheets`);
     } catch (error) {
       console.error('Error fetching Google Sheets:', error);
@@ -189,6 +196,8 @@ export function ContactImporter() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setCurrentSourceName(file.name);
+      setCurrentSourceType('file');
       parseFile(file);
     }
   };
@@ -197,6 +206,8 @@ export function ContactImporter() {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (file) {
+      setCurrentSourceName(file.name);
+      setCurrentSourceType('file');
       parseFile(file);
     }
   };
@@ -217,6 +228,28 @@ export function ContactImporter() {
 
     const importResult = await processImport(importRows, options);
     
+    // Salvar no histórico
+    try {
+      const status = importResult.errors === 0 ? 'completed' : 
+                     importResult.processed > 0 ? 'partial' : 'failed';
+      await saveHistory({
+        source_type: currentSourceType,
+        source_name: currentSourceName,
+        total_rows: importResult.total,
+        processed: importResult.processed,
+        created: importResult.created,
+        updated: importResult.updated,
+        skipped: importResult.skipped,
+        errors: importResult.errors,
+        tags_created: importResult.tagsCreated,
+        tags_assigned: importResult.tagsAssigned,
+        status,
+        log: importResult.log as unknown as import('@/integrations/supabase/types').Json,
+      });
+    } catch (error) {
+      console.error('Erro ao salvar histórico:', error);
+    }
+    
     if (importResult.errors === 0) {
       toast.success(`Importação concluída! ${importResult.updated} contatos atualizados, ${importResult.tagsAssigned} etiquetas atribuídas.`);
     } else {
@@ -230,6 +263,8 @@ export function ContactImporter() {
     setColumnMapping(defaultMapping);
     setSheetsUrl('');
     setSheetName('');
+    setCurrentSourceName('');
+    setCurrentSourceType('file');
     reset();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -284,6 +319,15 @@ export function ContactImporter() {
               <Upload className="h-4 w-4 mr-2" />
               Importar Planilha
             </Button>
+
+            {/* Histórico de Importações */}
+            <div className="pt-4 border-t border-border">
+              <div className="flex items-center gap-2 mb-3">
+                <History className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-sm font-medium">Histórico de Importações</h3>
+              </div>
+              <ImportHistoryTable history={history} isLoading={isLoadingHistory} />
+            </div>
           </div>
         </CardContent>
       </Card>
