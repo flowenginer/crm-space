@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { normalizePhoneForStorage, getPhoneSearchVariations } from '@/utils/phone';
+import { getStateFromPhone } from '@/utils/ddd';
 import { toast } from 'sonner';
 
 export interface Contact {
@@ -162,6 +163,9 @@ export function useCreateContact() {
         throw new Error(`Contato já existe: ${existingContact.full_name} (${existingContact.phone})`);
       }
 
+      // Detectar estado pelo DDD se não informado
+      const detectedState = contact.state || getStateFromPhone(normalizedPhone);
+
       // Criar o contato com telefone normalizado
       const { data, error } = await supabase
         .from('contacts')
@@ -169,7 +173,7 @@ export function useCreateContact() {
           full_name: contact.full_name!,
           phone: normalizedPhone,
           email: contact.email,
-          state: contact.state,
+          state: detectedState,
           city: contact.city,
           lead_status: contact.lead_status || 'new',
           assigned_to: contact.assigned_to,
