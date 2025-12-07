@@ -3421,13 +3421,54 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                   <QuickTemplatesPopover
                     contactName={selectedConversation?.contact?.full_name}
                     contactPhone={selectedConversation?.contact?.phone}
-                    onSelectTemplate={(content, type) => {
-                      if (type === 'text') {
-                        setMessageInput(content);
-                        messageInputRef.current?.focus();
+                    onSelectTemplate={async (content, type, mediaUrl, mediaType) => {
+                      // If template has media attached, send it directly
+                      if (mediaUrl && selectedConversationId) {
+                        const channelId = selectedConversation?.channel_id;
+                        const contactPhone = selectedConversation?.contact?.phone;
+                        const assigneeName = selectedConversation?.assignee?.full_name;
+                        
+                        // Determine message type from media_type
+                        let messageType: 'text' | 'image' | 'audio' | 'video' | 'document' = 'document';
+                        if (mediaType?.startsWith('audio')) messageType = 'audio';
+                        else if (mediaType?.startsWith('image')) messageType = 'image';
+                        else if (mediaType?.startsWith('video')) messageType = 'video';
+                        
+                        // Build full media URL if relative
+                        const fullMediaUrl = mediaUrl.startsWith('http') 
+                          ? mediaUrl 
+                          : `${supabase.storage.from('template-attachments').getPublicUrl(mediaUrl).data.publicUrl}`;
+                        
+                        try {
+                          // Save to database with caption
+                          sendMessage.mutate({
+                            conversation_id: selectedConversationId,
+                            content: content || '', // Use template text as caption
+                            is_from_me: true,
+                            message_type: messageType,
+                            media_url: fullMediaUrl,
+                            media_mime_type: mediaType,
+                          });
+                          
+                          // Send via WhatsApp
+                          if (channelId && contactPhone) {
+                            // Add agent signature to caption if text message
+                            let caption = content || '';
+                            if (assigneeName && caption) {
+                              caption = `*${assigneeName}*:\n${caption}`;
+                            }
+                            
+                            sendWhatsAppMessage(channelId, contactPhone, caption, messageType, fullMediaUrl)
+                              .catch(console.error);
+                          }
+                          
+                          toast.success('Mensagem enviada com anexo!');
+                        } catch (error) {
+                          console.error('Error sending template with media:', error);
+                          toast.error('Erro ao enviar mensagem');
+                        }
                       } else {
-                        // For audio/image/document, send directly
-                        // This would need to handle media URLs
+                        // Text only - just put in input field
                         setMessageInput(content);
                         messageInputRef.current?.focus();
                       }

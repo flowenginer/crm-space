@@ -54,7 +54,12 @@ const CATEGORIES: CategoryConfig[] = [
 interface QuickTemplatesPopoverProps {
   contactName?: string;
   contactPhone?: string;
-  onSelectTemplate: (content: string, type: 'text' | 'audio' | 'image' | 'document') => void;
+  onSelectTemplate: (
+    content: string, 
+    type: 'text' | 'audio' | 'image' | 'document',
+    mediaUrl?: string | null,
+    mediaType?: string | null
+  ) => void;
   onStartFlow?: (flowId: string) => void;
   onTriggerAutomation?: (triggerId: string) => void;
 }
@@ -136,13 +141,22 @@ export function QuickTemplatesPopover({
   const handleSelectTemplate = useCallback((template: MessageTemplate) => {
     const processedContent = replaceVariables(template.content);
     
-    // Determine type based on category
+    // Determine type based on category or media_url presence
     let type: 'text' | 'audio' | 'image' | 'document' = 'text';
-    if (template.category === 'audio' || template.category === 'audios') type = 'audio';
-    else if (template.category === 'media' || template.category === 'image') type = 'image';
-    else if (template.category === 'document' || template.category === 'documents') type = 'document';
+    
+    // If template has media_url, determine type from media_type
+    if (template.media_url) {
+      if (template.media_type?.startsWith('audio')) type = 'audio';
+      else if (template.media_type?.startsWith('image') || template.media_type?.startsWith('video')) type = 'image';
+      else type = 'document';
+    } else {
+      // Fallback to category
+      if (template.category === 'audio' || template.category === 'audios') type = 'audio';
+      else if (template.category === 'media' || template.category === 'image') type = 'image';
+      else if (template.category === 'document' || template.category === 'documents') type = 'document';
+    }
 
-    onSelectTemplate(processedContent, type);
+    onSelectTemplate(processedContent, type, template.media_url, template.media_type);
     incrementUsage.mutate(template.id);
     setOpen(false);
     setSearchQuery('');
