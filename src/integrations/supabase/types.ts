@@ -288,6 +288,7 @@ export type Database = {
           last_seen_at: string | null
           lead_score: number | null
           lead_status: string | null
+          negotiated_value: number | null
           neighborhood: string | null
           notes: string | null
           number: string | null
@@ -324,6 +325,7 @@ export type Database = {
           last_seen_at?: string | null
           lead_score?: number | null
           lead_status?: string | null
+          negotiated_value?: number | null
           neighborhood?: string | null
           notes?: string | null
           number?: string | null
@@ -360,6 +362,7 @@ export type Database = {
           last_seen_at?: string | null
           lead_score?: number | null
           lead_status?: string | null
+          negotiated_value?: number | null
           neighborhood?: string | null
           notes?: string | null
           number?: string | null

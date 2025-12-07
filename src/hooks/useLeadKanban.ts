@@ -19,6 +19,7 @@ export interface ContactForKanban {
   lead_status: string | null;
   assigned_to: string | null;
   updated_at: string;
+  negotiated_value: number | null;
   assignee?: {
     id: string;
     full_name: string | null;
@@ -128,6 +129,7 @@ export function useContactsByLeadStatus() {
             lead_status,
             assigned_to,
             updated_at,
+            negotiated_value,
             assignee:profiles!contacts_assigned_to_fkey(
               id,
               full_name,
