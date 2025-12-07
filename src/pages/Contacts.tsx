@@ -36,7 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useContacts, useCreateContact, useUpdateContact, useDeleteContact, type Contact } from '@/hooks/useContacts';
+import { useContacts, useContactsCount, useCreateContact, useUpdateContact, useDeleteContact, type Contact } from '@/hooks/useContacts';
 import { useTags, useCreateTag, useDeleteTag, useAddTagToContact, useRemoveTagFromContact } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
@@ -91,6 +91,7 @@ export default function Contacts() {
   const queryClient = useQueryClient();
   
   const { data: contacts = [], isLoading: contactsLoading } = useContacts();
+  const { data: totalContacts = 0 } = useContactsCount();
   const { data: tags = [], isLoading: tagsLoading } = useTags();
   const { data: team = [] } = useTeam();
   const { data: departments = [] } = useDepartments();
@@ -164,7 +165,6 @@ export default function Contacts() {
     return matchesSearch && matchesState && matchesStatus && matchesAssigned && matchesTags;
   });
 
-  const totalContacts = contacts.length;
   const paginatedContacts = filteredContacts.slice((currentPage - 1) * perPage, currentPage * perPage);
   const totalPages = Math.ceil(filteredContacts.length / perPage);
 
