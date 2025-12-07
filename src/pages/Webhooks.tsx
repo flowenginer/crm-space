@@ -33,6 +33,7 @@ import { WebhookConfigModal } from "@/components/webhooks/WebhookConfigModal";
 import { WebhookLogsModal } from "@/components/webhooks/WebhookLogsModal";
 import { WebhookTestModal } from "@/components/webhooks/WebhookTestModal";
 import { WebhookApiDocs } from "@/components/webhooks/WebhookApiDocs";
+import { RestApiDocs } from "@/components/webhooks/RestApiDocs";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -116,9 +117,13 @@ export default function Webhooks() {
             <Link2 className="h-4 w-4" />
             Webhooks
           </TabsTrigger>
-          <TabsTrigger value="docs" className="flex items-center gap-2">
+          <TabsTrigger value="api-docs" className="flex items-center gap-2">
             <BookOpen className="h-4 w-4" />
-            Documentação API
+            API REST
+          </TabsTrigger>
+          <TabsTrigger value="webhook-docs" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Eventos Webhook
           </TabsTrigger>
         </TabsList>
 
@@ -245,7 +250,11 @@ export default function Webhooks() {
           )}
         </TabsContent>
 
-        <TabsContent value="docs" className="mt-6">
+        <TabsContent value="api-docs" className="mt-6">
+          <RestApiDocs />
+        </TabsContent>
+
+        <TabsContent value="webhook-docs" className="mt-6">
           <WebhookApiDocs />
         </TabsContent>
       </Tabs>
