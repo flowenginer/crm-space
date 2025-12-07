@@ -5,6 +5,7 @@ import { getStateFromPhone, STATE_NAMES } from '@/utils/ddd';
 import { findOrCreateTag } from '@/hooks/useTags';
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface ProcessResult {
   processed: number;
@@ -164,119 +165,122 @@ export function StateIdentificationSettings() {
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-          <MapPin className="w-5 h-5 text-primary" />
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">Identificação de Estado</h3>
-          <p className="text-sm text-muted-foreground">
-            Identifica estados pelo DDD e cria etiquetas automaticamente
-          </p>
-        </div>
-      </div>
-
-      {/* Status Card */}
-      <div className="bg-muted/50 rounded-xl p-4 border border-border">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-warning" />
-            <div>
-              <p className="text-sm font-medium text-foreground">Contatos sem estado identificado</p>
-              <p className="text-2xl font-bold text-foreground">
-                {isLoadingCount ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  contactsWithoutState?.toLocaleString('pt-BR') ?? '--'
-                )}
-              </p>
-            </div>
+    <Card className="bg-card border-border">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <MapPin className="w-5 h-5 text-primary" />
           </div>
-          <button
-            onClick={loadContactsCount}
-            disabled={isLoadingCount}
-            className="px-3 py-1.5 text-sm bg-background border border-border rounded-lg hover:bg-muted transition-colors"
-          >
-            Atualizar
-          </button>
-        </div>
-      </div>
-
-      {/* Progress */}
-      {isProcessing && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Processando contatos...</span>
-            <span className="font-medium">{progress}%</span>
-          </div>
-          <Progress value={progress} className="h-2" />
-        </div>
-      )}
-
-      {/* Results */}
-      {result && (
-        <div className="bg-status-success/10 rounded-xl p-4 border border-status-success/20">
-          <div className="flex items-center gap-2 mb-3">
-            <CheckCircle className="w-5 h-5 text-status-success" />
-            <span className="font-medium text-foreground">Processamento Concluído</span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <p className="text-muted-foreground">Processados</p>
-              <p className="text-lg font-semibold text-foreground">{result.processed}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Estados Identificados</p>
-              <p className="text-lg font-semibold text-status-success">{result.statesIdentified}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Etiquetas Criadas</p>
-              <p className="text-lg font-semibold text-primary">{result.tagsCreated}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Etiquetas Atribuídas</p>
-              <p className="text-lg font-semibold text-accent">{result.tagsAssigned}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Action Button */}
-      <button
-        onClick={processContacts}
-        disabled={isProcessing || contactsWithoutState === 0}
-        className="w-full flex items-center justify-center gap-2 px-4 py-3 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {isProcessing ? (
-          <>
-            <Loader2 className="w-5 h-5 animate-spin" />
-            Processando...
-          </>
-        ) : (
-          <>
-            <Play className="w-5 h-5" />
-            Identificar Estados e Criar Etiquetas
-          </>
-        )}
-      </button>
-
-      {/* Info Box */}
-      <div className="bg-muted/30 rounded-xl p-4 text-sm text-muted-foreground">
-        <div className="flex items-start gap-2">
-          <Tag className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="font-medium text-foreground mb-1">Como funciona:</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>Analisa o DDD do telefone de cada contato</li>
-              <li>Identifica o estado brasileiro correspondente (SP, RJ, MG, etc.)</li>
-              <li>Atualiza o campo "Estado" do contato</li>
-              <li>Cria uma etiqueta com a sigla do estado (se não existir)</li>
-              <li>Atribui a etiqueta do estado ao contato</li>
-            </ul>
+            <span className="text-lg">Identificação de Estado</span>
+          </div>
+        </CardTitle>
+        <CardDescription>
+          Identifica estados pelo DDD e cria etiquetas automaticamente
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Status Card */}
+        <div className="bg-muted/50 rounded-xl p-4 border border-border">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-warning" />
+              <div>
+                <p className="text-sm font-medium text-foreground">Contatos sem estado identificado</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {isLoadingCount ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    contactsWithoutState?.toLocaleString('pt-BR') ?? '--'
+                  )}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={loadContactsCount}
+              disabled={isLoadingCount}
+              className="px-3 py-1.5 text-sm bg-background border border-border rounded-lg hover:bg-muted transition-colors"
+            >
+              Atualizar
+            </button>
           </div>
         </div>
-      </div>
-    </div>
+
+        {/* Progress */}
+        {isProcessing && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Processando contatos...</span>
+              <span className="font-medium">{progress}%</span>
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
+        )}
+
+        {/* Results */}
+        {result && (
+          <div className="bg-status-success/10 rounded-xl p-4 border border-status-success/20">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle className="w-5 h-5 text-status-success" />
+              <span className="font-medium text-foreground">Processamento Concluído</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground">Processados</p>
+                <p className="text-lg font-semibold text-foreground">{result.processed}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Estados Identificados</p>
+                <p className="text-lg font-semibold text-status-success">{result.statesIdentified}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Etiquetas Criadas</p>
+                <p className="text-lg font-semibold text-primary">{result.tagsCreated}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Etiquetas Atribuídas</p>
+                <p className="text-lg font-semibold text-accent">{result.tagsAssigned}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Button */}
+        <button
+          onClick={processContacts}
+          disabled={isProcessing || contactsWithoutState === 0}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isProcessing ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Processando...
+            </>
+          ) : (
+            <>
+              <Play className="w-5 h-5" />
+              Identificar Estados e Criar Etiquetas
+            </>
+          )}
+        </button>
+
+        {/* Info Box */}
+        <div className="bg-muted/30 rounded-xl p-4 text-sm text-muted-foreground">
+          <div className="flex items-start gap-2">
+            <Tag className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-foreground mb-1">Como funciona:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Analisa o DDD do telefone de cada contato</li>
+                <li>Identifica o estado brasileiro correspondente (SP, RJ, MG, etc.)</li>
+                <li>Atualiza o campo "Estado" do contato</li>
+                <li>Cria uma etiqueta com a sigla do estado (se não existir)</li>
+                <li>Atribui a etiqueta do estado ao contato</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
