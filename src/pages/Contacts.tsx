@@ -23,6 +23,7 @@ import {
   X,
   Users,
   Loader2,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   Dialog,
@@ -34,6 +35,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useContactsCount, useCreateContact, useUpdateContact, useDeleteContact, type Contact } from '@/hooks/useContacts';
@@ -43,6 +45,7 @@ import { useTags, useCreateTag, useDeleteTag, useAddTagToContact, useRemoveTagFr
 import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
 import { useLeadStatuses } from '@/hooks/useLeadKanban';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const brazilianStates = [
@@ -68,6 +71,11 @@ const getTagColorClass = (color: string | null) => {
 export default function Contacts() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { isAdmin, profile } = usePermissions();
+  
+  // Modal de bloqueio de acesso
+  const [showAccessDeniedModal, setShowAccessDeniedModal] = useState(false);
+  const [blockedByAgentName, setBlockedByAgentName] = useState<string | null>(null);
   
   // Estados de filtro
   const [searchQuery, setSearchQuery] = useState('');
@@ -334,18 +342,43 @@ export default function Contacts() {
     if (isOpeningChat) return;
     
     setIsOpeningChat(true);
-    toast.info(`Abrindo conversa com ${contact.full_name}...`);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      const currentUserId = user?.id;
 
-      // Check for existing open conversation with this contact
+      // ============ VERIFICAÇÃO DE PERMISSÃO ============
+      // Se NÃO for admin, verificar se o contato está atribuído a outro vendedor
+      if (!isAdmin && contact.assigned_to && contact.assigned_to !== currentUserId) {
+        // Buscar nome do vendedor responsável
+        const assignedAgentName = team.find(t => t.id === contact.assigned_to)?.full_name || 'outro vendedor';
+        setBlockedByAgentName(assignedAgentName);
+        setShowAccessDeniedModal(true);
+        setIsOpeningChat(false);
+        return;
+      }
+
+      // Verificar também se existe conversa ativa atribuída a outro vendedor
       const { data: existingConversation } = await supabase
         .from('conversations')
-        .select('id')
+        .select('id, assigned_to')
         .eq('contact_id', contact.id)
         .in('status', ['open', 'pending'])
         .maybeSingle();
+
+      if (existingConversation && !isAdmin) {
+        // Se a conversa está atribuída a outro vendedor, bloquear
+        if (existingConversation.assigned_to && existingConversation.assigned_to !== currentUserId) {
+          const assignedAgentName = team.find(t => t.id === existingConversation.assigned_to)?.full_name || 'outro vendedor';
+          setBlockedByAgentName(assignedAgentName);
+          setShowAccessDeniedModal(true);
+          setIsOpeningChat(false);
+          return;
+        }
+      }
+      // ============ FIM DA VERIFICAÇÃO ============
+
+      toast.info(`Abrindo conversa com ${contact.full_name}...`);
 
       let conversationId: string;
 
@@ -358,7 +391,7 @@ export default function Contacts() {
           .insert({
             contact_id: contact.id,
             status: 'open',
-            assigned_to: user?.id,
+            assigned_to: currentUserId,
             is_unread: false,
             unread_count: 0,
             last_message_at: new Date().toISOString(),
@@ -423,6 +456,32 @@ export default function Contacts() {
 
   return (
     <div className="space-y-6">
+      {/* Modal de Acesso Negado */}
+      <Dialog open={showAccessDeniedModal} onOpenChange={setShowAccessDeniedModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+              <ShieldAlert className="w-6 h-6 text-destructive" />
+            </div>
+            <DialogTitle className="text-center">Acesso Restrito</DialogTitle>
+            <DialogDescription className="text-center">
+              Este cliente está atribuído ao vendedor{' '}
+              <span className="font-semibold text-foreground">{blockedByAgentName}</span>.
+              <br /><br />
+              Favor contactar o vendedor responsável para ter acesso a este cliente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-center">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowAccessDeniedModal(false)}
+            >
+              Entendi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
