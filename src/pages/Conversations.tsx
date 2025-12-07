@@ -1040,7 +1040,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
-  const { isAdmin, profile } = usePermissions();
+  const { isAdmin, profile, isFullyLoaded } = usePermissions();
 
   // Modal de bloqueio de acesso
   const [showAccessDeniedModal, setShowAccessDeniedModal] = useState(false);
@@ -1370,6 +1370,36 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
 
   // Find selected conversation from the merged list
   const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
+
+  // ============ VERIFICAÇÃO DE PERMISSÃO VIA URL ============
+  // Bloquear acesso quando a conversa é carregada via URL e está atribuída a outro vendedor
+  useEffect(() => {
+    // Aguardar permissões carregarem completamente
+    if (!isFullyLoaded || !selectedConversationId || !selectedConversation) return;
+    
+    // Admin pode ver tudo
+    if (isAdmin) return;
+    
+    // Verificar se a conversa está atribuída a outro usuário
+    if (selectedConversation.assigned_to && selectedConversation.assigned_to !== profile?.id) {
+      const assignedAgentName = selectedConversation.assignee?.full_name || 
+        teamMembers.find(t => t.id === selectedConversation.assigned_to)?.full_name || 
+        'outro vendedor';
+      
+      console.log('[Conversations] Bloqueando acesso via URL:', {
+        conversationId: selectedConversationId,
+        assignedTo: selectedConversation.assigned_to,
+        currentUserId: profile?.id,
+        assignedAgentName
+      });
+      
+      setBlockedByAgentName(assignedAgentName);
+      setShowAccessDeniedModal(true);
+      
+      // Limpar a URL para remover o ID da conversa bloqueada
+      navigate('/conversations', { replace: true });
+    }
+  }, [selectedConversationId, selectedConversation, isAdmin, profile?.id, isFullyLoaded, teamMembers, navigate]);
 
   // Fetch last message for each conversation (OPTIMIZED - limited scope)
   // Only fetch for first 50 visible conversations to reduce query size
