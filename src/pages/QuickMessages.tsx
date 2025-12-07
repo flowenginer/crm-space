@@ -598,7 +598,7 @@ export default function QuickMessages() {
                         Conteúdo da mensagem <span className="text-destructive">*</span>
                       </label>
                       <textarea
-                        rows={8}
+                        rows={6}
                         placeholder={`Digite sua mensagem aqui...
 
 Use *texto* para negrito
@@ -607,6 +607,21 @@ Use {{variavel}} para campos dinâmicos`}
                         value={templateContent}
                         onChange={(e) => setTemplateContent(e.target.value)}
                         className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none font-mono text-sm bg-background"
+                      />
+                    </div>
+
+                    {/* Compact File Uploader */}
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Anexo (opcional)
+                      </label>
+                      <FileUploader
+                        category="documents"
+                        onFileUploaded={handleMediaUploaded}
+                        existingUrl={templateMediaUrl}
+                        existingType={templateMediaType}
+                        onRemove={handleMediaRemoved}
+                        compact
                       />
                     </div>
 
