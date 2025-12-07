@@ -234,7 +234,7 @@ export function QuickTemplatesPopover({
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1 max-h-[350px]" type="always">
+      <ScrollArea className="h-[300px]" type="always">
         <div className="p-2 space-y-1">
           {activeCategory === 'flows' ? (
             // Flows list
