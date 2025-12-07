@@ -1040,7 +1040,18 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
-  const { isAdmin, profile, isFullyLoaded } = usePermissions();
+  const { isAdmin, profile, isFullyLoaded, hasPermission } = usePermissions();
+  
+  // Permissão para ver conversas não atribuídas
+  const canViewUnassigned = isAdmin || hasPermission('conversations', 'view_unassigned');
+  
+  // Filtros disponíveis baseados na permissão
+  const availableQuickFilters = useMemo(() => {
+    if (canViewUnassigned) {
+      return ['all', 'pinned', 'mine', 'unassigned'] as const;
+    }
+    return ['all', 'pinned', 'mine'] as const;
+  }, [canViewUnassigned]);
 
   // Modal de bloqueio de acesso
   const [showAccessDeniedModal, setShowAccessDeniedModal] = useState(false);
@@ -1698,6 +1709,16 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const filterCounts = useMemo(() => {
     const pinnedCount = pinnedConversations.length;
     
+    // Se não pode ver não atribuídas, "Todas" exclui as não atribuídas
+    if (!canViewUnassigned) {
+      return { 
+        all: (totalCounts?.mine ?? 0) + pinnedCount, // Todas = minhas + fixadas
+        pinned: pinnedCount, 
+        mine: totalCounts?.mine ?? 0,
+        unassigned: 0 // Não mostrado, mas evita erro de tipo
+      };
+    }
+    
     // Use real database counts when available, fallback to loaded conversations
     return { 
       all: totalCounts?.all ?? conversations.length, 
@@ -1705,7 +1726,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
       mine: totalCounts?.mine ?? 0, 
       unassigned: totalCounts?.unassigned ?? 0 
     };
-  }, [totalCounts, conversations.length, pinnedConversations]);
+  }, [totalCounts, conversations.length, pinnedConversations, canViewUnassigned]);
 
   // Calculate date filter counts - USE REAL COUNTS FROM DATABASE
   const dateFilterCounts = useMemo(() => {
@@ -2609,7 +2630,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
 
           {/* Quick Filters */}
           <div className="flex gap-2">
-            {(['all', 'pinned', 'mine', 'unassigned'] as const).map((filter) => (
+            {availableQuickFilters.map((filter) => (
               <button
                 key={filter}
                 onClick={() => setQuickFilter(filter)}

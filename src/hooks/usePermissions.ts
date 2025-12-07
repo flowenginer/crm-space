@@ -112,6 +112,7 @@ export function usePermissions() {
     transferConversations: () => hasPermission('conversations', 'transfer'),
     closeConversations: () => hasPermission('conversations', 'close'),
     viewAllConversations: () => hasPermission('conversations', 'view_all'),
+    viewUnassignedConversations: () => hasPermission('conversations', 'view_unassigned'),
     
     // Deals
     createDeals: () => hasPermission('deals', 'create'),
