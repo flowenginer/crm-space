@@ -1104,6 +1104,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const { data: departmentCountsData } = useDepartmentCounts(deptCountFilters);
   const { data: originCountsData } = useOriginCounts(originCountFilters);
   const { data: tagCountsData } = useTagCounts(tagCountFilters);
+  const { data: absoluteTagCountsData } = useTagCounts(); // Contagens absolutas sem filtros para o modal
   const { data: agentCountsData } = useAgentCounts(agentCountFilters);
   
   // Flatten paginated conversations
@@ -1219,6 +1220,17 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     }
     return map;
   }, [tagCountsData]);
+
+  // Mapa de contagens absolutas de tags (sem filtros) para o modal de Filtros Avançados
+  const absoluteTagCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (absoluteTagCountsData) {
+      Object.entries(absoluteTagCountsData).forEach(([tagId, count]) => {
+        map.set(tagId, count);
+      });
+    }
+    return map;
+  }, [absoluteTagCountsData]);
 
   // Create a map of department counts from DATABASE (real counts)
   const departmentCountMap = useMemo(() => {
@@ -3500,7 +3512,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                     : tags;
                   
                   return filteredTags.length > 0 ? filteredTags.map((tag) => {
-                    const count = tagCountMap.get(tag.id) || 0;
+                    const count = absoluteTagCountMap.get(tag.id) || 0;
                     const isSelected = advancedFilters.tagIds.includes(tag.id);
                     return (
                       <label
