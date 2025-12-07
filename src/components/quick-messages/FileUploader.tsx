@@ -43,6 +43,14 @@ export function FileUploader({
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const sanitizeFileName = (name: string): string => {
+    return name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .replace(/_+/g, '_');
+  };
+
   const getFileIcon = (type: string | null) => {
     if (!type) return <File size={24} />;
     if (type.startsWith('image')) return <ImageIcon size={24} />;
@@ -57,7 +65,8 @@ export function FileUploader({
 
     try {
       const folder = category === 'media' ? 'media' : 'documents';
-      const fileName = `${folder}/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+      const sanitizedName = sanitizeFileName(file.name);
+      const fileName = `${folder}/${Date.now()}_${sanitizedName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('template-attachments')
