@@ -30,6 +30,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { ContactImporter } from './ContactImporter';
+import { StateIdentificationSettings } from './StateIdentificationSettings';
 
 interface AssignmentResult {
   conversationId: string;
@@ -560,6 +561,9 @@ export function ToolsSettings() {
 
       {/* Contact Importer */}
       <ContactImporter />
+
+      {/* State Identification */}
+      <StateIdentificationSettings />
     </div>
   );
 }
