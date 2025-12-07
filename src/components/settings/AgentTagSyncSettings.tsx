@@ -50,6 +50,7 @@ interface SyncResult {
   agentName?: string;
   success: boolean;
   error?: string;
+  skipped?: boolean; // Para indicar que já existia
 }
 
 export function AgentTagSyncSettings() {
@@ -253,6 +254,7 @@ export function AgentTagSyncSettings() {
       const results: SyncResult[] = [];
       let processed = 0;
       let successful = 0;
+      let skipped = 0; // Já existiam
       let errors = 0;
 
       const agentTagIds = mappings.map(m => m.tagId);
@@ -436,37 +438,59 @@ export function AgentTagSyncSettings() {
           const batch = allContactsToProcess.slice(i, i + batchSize);
           console.log(`Processando lote ${Math.floor(i/batchSize) + 1}: ${batch.length} contatos`);
           
-          // Inserir tags em lote
+          // Inserir tags em lote usando UPSERT com ignoreDuplicates
           const tagsToInsert = batch.map(c => ({
             contact_id: c.contactId,
             tag_id: c.tagId
           }));
 
-          const { error } = await supabase
+          const { error, data } = await supabase
             .from('contact_tags')
-            .insert(tagsToInsert);
+            .upsert(tagsToInsert, { 
+              onConflict: 'contact_id,tag_id',
+              ignoreDuplicates: true 
+            })
+            .select();
 
           if (error) {
-            console.error(`Erro no lote, processando individualmente:`, error);
+            console.error(`Erro no lote com upsert, processando individualmente:`, error);
             // Se erro no lote, processar individualmente
             for (const contact of batch) {
               const { error: singleError } = await supabase
                 .from('contact_tags')
-                .insert({ contact_id: contact.contactId, tag_id: contact.tagId });
+                .upsert(
+                  { contact_id: contact.contactId, tag_id: contact.tagId },
+                  { onConflict: 'contact_id,tag_id', ignoreDuplicates: true }
+                );
 
               processed++;
               if (singleError) {
-                errors++;
-                results.push({
-                  contactId: contact.contactId,
-                  contactName: contact.contactName,
-                  contactPhone: contact.contactPhone,
-                  action: 'Adicionar tag',
-                  tagName: contact.tagName,
-                  agentName: contact.agentName,
-                  success: false,
-                  error: singleError.message
-                });
+                // Verificar se é erro de duplicação (não deveria acontecer com upsert, mas por segurança)
+                if (singleError.message?.includes('duplicate key')) {
+                  skipped++;
+                  results.push({
+                    contactId: contact.contactId,
+                    contactName: contact.contactName,
+                    contactPhone: contact.contactPhone,
+                    action: 'Já existia',
+                    tagName: contact.tagName,
+                    agentName: contact.agentName,
+                    success: true,
+                    skipped: true
+                  });
+                } else {
+                  errors++;
+                  results.push({
+                    contactId: contact.contactId,
+                    contactName: contact.contactName,
+                    contactPhone: contact.contactPhone,
+                    action: 'Erro ao adicionar tag',
+                    tagName: contact.tagName,
+                    agentName: contact.agentName,
+                    success: false,
+                    error: singleError.message
+                  });
+                }
               } else {
                 successful++;
                 results.push({
@@ -481,19 +505,29 @@ export function AgentTagSyncSettings() {
               }
             }
           } else {
-            // Sucesso no lote
+            // Sucesso no lote - upsert retorna apenas os inseridos, não os ignorados
+            const insertedCount = data?.length || 0;
+            const skippedCount = batch.length - insertedCount;
+            
             processed += batch.length;
-            successful += batch.length;
-            console.log(`Lote inserido com sucesso: ${batch.length} tags`);
+            successful += insertedCount;
+            skipped += skippedCount;
+            
+            console.log(`Lote processado: ${insertedCount} inseridos, ${skippedCount} já existiam`);
+            
             for (const contact of batch) {
+              // Verificar se foi inserido comparando com os dados retornados
+              const wasInserted = data?.some(d => d.contact_id === contact.contactId && d.tag_id === contact.tagId);
+              
               results.push({
                 contactId: contact.contactId,
                 contactName: contact.contactName,
                 contactPhone: contact.contactPhone,
-                action: 'Tag adicionada',
+                action: wasInserted ? 'Tag adicionada' : 'Já existia',
                 tagName: contact.tagName,
                 agentName: contact.agentName,
-                success: true
+                success: true,
+                skipped: !wasInserted
               });
             }
           }
@@ -589,11 +623,21 @@ export function AgentTagSyncSettings() {
         processed,
         successful,
         errors,
+        skipped,
         results
       });
 
       if (currentMode === 'orphans' || currentMode === 'conflicts') {
         toast.info(`${processed} contatos identificados`);
+      } else if (currentMode === 'assignment-to-tag') {
+        // Mensagem específica para assignment-to-tag com contagem de já existentes
+        if (skipped > 0 && errors === 0) {
+          toast.success(`${successful} tags adicionadas, ${skipped} já existiam`);
+        } else if (errors > 0) {
+          toast.warning(`${successful} tags adicionadas, ${skipped} já existiam, ${errors} erros`);
+        } else {
+          toast.success(`${successful} tags adicionadas com sucesso!`);
+        }
       } else {
         toast.success(`${successful} contatos sincronizados com sucesso!`);
       }
@@ -603,7 +647,7 @@ export function AgentTagSyncSettings() {
     } catch (error: any) {
       console.error('Sync error:', error);
       toast.error(error.message || 'Erro ao executar sincronização');
-      setSummary({ total: 0, processed: 0, successful: 0, errors: 1, results: [] });
+      setSummary({ total: 0, processed: 0, successful: 0, errors: 1, skipped: 0, results: [] });
     }
   };
 
@@ -784,14 +828,18 @@ export function AgentTagSyncSettings() {
         {/* Results */}
         {summary && !isProcessing && (
           <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <div className="p-3 rounded-lg bg-muted/50 text-center">
                 <div className="text-lg font-bold text-primary">{summary.processed}</div>
                 <div className="text-xs text-muted-foreground">Processados</div>
               </div>
               <div className="p-3 rounded-lg bg-muted/50 text-center">
                 <div className="text-lg font-bold text-green-500">{summary.successful}</div>
-                <div className="text-xs text-muted-foreground">Sucesso</div>
+                <div className="text-xs text-muted-foreground">Novos</div>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50 text-center">
+                <div className="text-lg font-bold text-amber-500">{summary.skipped || 0}</div>
+                <div className="text-xs text-muted-foreground">Já existiam</div>
               </div>
               <div className="p-3 rounded-lg bg-muted/50 text-center">
                 <div className="text-lg font-bold text-red-500">{summary.errors}</div>
@@ -830,10 +878,10 @@ export function AgentTagSyncSettings() {
                               <TableCell>{r.agentName || '-'}</TableCell>
                               <TableCell className="text-right">
                                 <Badge 
-                                  variant={r.success ? 'default' : 'destructive'}
+                                  variant={r.success ? (r.skipped ? 'secondary' : 'default') : 'destructive'}
                                   className="text-xs"
                                 >
-                                  {r.success ? '✓ Atribuído' : '✗ Erro'}
+                                  {r.success ? (r.skipped ? '○ Já existia' : '✓ Adicionado') : '✗ Erro'}
                                 </Badge>
                               </TableCell>
                             </TableRow>
