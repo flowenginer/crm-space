@@ -1,8 +1,6 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Contact } from './useContacts';
-
-const PAGE_SIZE = 50;
 
 // Campos otimizados
 const CONTACT_FIELDS = `
@@ -44,7 +42,13 @@ export interface ContactFilters {
   departmentId?: string;
 }
 
-export function usePaginatedContacts(filters: ContactFilters) {
+export interface PaginationParams {
+  page: number;
+  perPage: number;
+}
+
+// Hook principal com paginação direta no servidor
+export function usePaginatedContacts(filters: ContactFilters, pagination: PaginationParams) {
   const { 
     searchQuery, 
     stateFilter, 
@@ -54,7 +58,10 @@ export function usePaginatedContacts(filters: ContactFilters) {
     departmentId 
   } = filters;
 
-  return useInfiniteQuery({
+  const { page, perPage } = pagination;
+  const offset = (page - 1) * perPage;
+
+  return useQuery({
     queryKey: [
       'contacts-paginated', 
       searchQuery, 
@@ -62,9 +69,13 @@ export function usePaginatedContacts(filters: ContactFilters) {
       statusFilter, 
       assignedTo, 
       tagIds?.join(','), 
-      departmentId
+      departmentId,
+      page,
+      perPage
     ],
-    queryFn: async ({ pageParam = 0 }) => {
+    queryFn: async () => {
+      console.log(`[usePaginatedContacts] Buscando página ${page}, offset ${offset}, limit ${perPage}`);
+
       // Se tem filtro de tags, usa RPC para evitar limite de URL
       if (tagIds && tagIds.length > 0) {
         const { data: taggedContactIds, error: rpcError } = await supabase.rpc(
@@ -76,22 +87,27 @@ export function usePaginatedContacts(filters: ContactFilters) {
             p_status_filter: statusFilter || null,
             p_assigned_to: assignedTo || null,
             p_department_id: departmentId || null,
-            p_offset: pageParam * PAGE_SIZE,
-            p_limit: PAGE_SIZE,
+            p_offset: offset,
+            p_limit: perPage,
           }
         );
 
-        if (rpcError) throw rpcError;
+        if (rpcError) {
+          console.error('[usePaginatedContacts] RPC Error:', rpcError);
+          throw rpcError;
+        }
+
+        console.log(`[usePaginatedContacts] RPC retornou ${taggedContactIds?.length || 0} contatos`);
 
         if (!taggedContactIds || taggedContactIds.length === 0) {
           return {
             contacts: [] as Contact[],
-            nextPage: undefined,
-            pageParam: 0,
             totalCount: 0,
           };
         }
 
+        // Pega o total_count da primeira linha (todas têm o mesmo valor)
+        const totalCount = taggedContactIds[0]?.total_count || 0;
         const contactIds = taggedContactIds.map((r: { contact_id: string }) => r.contact_id);
         
         // Busca os detalhes dos contatos
@@ -127,10 +143,11 @@ export function usePaginatedContacts(filters: ContactFilters) {
           })) || [];
         }
 
+        console.log(`[usePaginatedContacts] Retornando ${contactsWithTags.length} contatos, total: ${totalCount}`);
+
         return {
           contacts: contactsWithTags as Contact[],
-          nextPage: taggedContactIds.length === PAGE_SIZE ? pageParam + 1 : undefined,
-          pageParam,
+          totalCount: Number(totalCount),
         };
       }
 
@@ -170,10 +187,10 @@ export function usePaginatedContacts(filters: ContactFilters) {
         query = query.eq('department_id', departmentId);
       }
 
-      // Ordenação e paginação
+      // Ordenação e paginação direta no servidor
       query = query
         .order('created_at', { ascending: false })
-        .range(pageParam * PAGE_SIZE, (pageParam + 1) * PAGE_SIZE - 1);
+        .range(offset, offset + perPage - 1);
 
       const { data, error } = await query;
 
@@ -203,12 +220,10 @@ export function usePaginatedContacts(filters: ContactFilters) {
 
       return {
         contacts: contactsWithTags as Contact[],
-        nextPage: data?.length === PAGE_SIZE ? pageParam + 1 : undefined,
-        pageParam,
+        // Total count será buscado pelo hook useFilteredContactsCount
+        totalCount: undefined,
       };
     },
-    initialPageParam: 0,
-    getNextPageParam: (lastPage) => lastPage.nextPage,
     staleTime: 30000,
   });
 }
@@ -262,6 +277,33 @@ export function useFilteredContactsCount(filters: ContactFilters) {
       departmentId
     ],
     queryFn: async () => {
+      // Se tem filtro de tags, usa a RPC que já retorna o total_count
+      if (tagIds && tagIds.length > 0) {
+        const { data: taggedContactIds, error: rpcError } = await supabase.rpc(
+          'get_contacts_by_tag_filter',
+          {
+            p_tag_ids: tagIds,
+            p_search_query: searchQuery || null,
+            p_state_filter: stateFilter || null,
+            p_status_filter: statusFilter || null,
+            p_assigned_to: assignedTo || null,
+            p_department_id: departmentId || null,
+            p_offset: 0,
+            p_limit: 1, // Só precisa de 1 para pegar o total_count
+          }
+        );
+
+        if (rpcError) throw rpcError;
+        
+        // Se não tem resultados, busca contagem via query alternativa
+        if (!taggedContactIds || taggedContactIds.length === 0) {
+          return 0;
+        }
+        
+        return Number(taggedContactIds[0]?.total_count || 0);
+      }
+
+      // Query normal para contagem
       let query = supabase
         .from('contacts')
         .select('id', { count: 'exact', head: true });
@@ -286,21 +328,6 @@ export function useFilteredContactsCount(filters: ContactFilters) {
 
       if (departmentId) {
         query = query.eq('department_id', departmentId);
-      }
-
-      // Tags filter requires separate query
-      if (tagIds && tagIds.length > 0) {
-        const { data: taggedContacts } = await supabase
-          .from('contact_tags')
-          .select('contact_id')
-          .in('tag_id', tagIds);
-
-        if (taggedContacts && taggedContacts.length > 0) {
-          const contactIds = [...new Set(taggedContacts.map(tc => tc.contact_id))];
-          query = query.in('id', contactIds);
-        } else {
-          return 0;
-        }
       }
 
       const { count, error } = await query;
