@@ -13,17 +13,26 @@ interface FileUploaderProps {
   compact?: boolean;
 }
 
+// Limite de 50MB (padrão do Supabase Storage)
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
 const MEDIA_TYPES = {
   media: {
     accept: 'image/*,video/*,.pdf',
-    description: 'PNG, JPEG, GIF, MP4, PDF',
+    description: 'PNG, JPEG, GIF, MP4, PDF (máx. 50MB)',
     extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.mov', '.pdf'],
   },
   documents: {
     accept: '*/*',
-    description: 'Qualquer tipo de arquivo',
+    description: 'Qualquer tipo de arquivo (máx. 50MB)',
     extensions: ['*'],
   },
+};
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 export function FileUploader({ 
@@ -59,7 +68,26 @@ export function FileUploader({
     return <FileText size={24} />;
   };
 
+  const validateFileSize = (file: File): boolean => {
+    if (file.size > MAX_FILE_SIZE) {
+      const fileSize = formatFileSize(file.size);
+      const maxSize = formatFileSize(MAX_FILE_SIZE);
+      toast({ 
+        title: 'Arquivo muito grande', 
+        description: `O arquivo "${file.name}" tem ${fileSize}. O limite máximo é ${maxSize}.`,
+        variant: 'destructive' 
+      });
+      return false;
+    }
+    return true;
+  };
+
   const uploadFile = async (file: File) => {
+    // Validar tamanho antes de enviar
+    if (!validateFileSize(file)) {
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
 
@@ -93,7 +121,22 @@ export function FileUploader({
       toast({ title: 'Arquivo enviado com sucesso!' });
     } catch (error) {
       console.error('Error uploading file:', error);
-      toast({ title: 'Erro ao enviar arquivo', variant: 'destructive' });
+      
+      let errorMessage = 'Erro ao enviar arquivo';
+      let errorDescription = 'Tente novamente mais tarde.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('exceeded the maximum') || error.message.includes('Payload too large')) {
+          errorMessage = 'Arquivo muito grande';
+          errorDescription = `O arquivo excede o limite permitido pelo servidor. Reduza o tamanho e tente novamente.`;
+        }
+      }
+      
+      toast({ 
+        title: errorMessage, 
+        description: errorDescription,
+        variant: 'destructive' 
+      });
     } finally {
       setIsUploading(false);
       setUploadProgress(100);
