@@ -30,7 +30,8 @@ export function usePermissions() {
   // Fetch user profile with role
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ['profile-permissions', user?.id],
-    staleTime: 300000, // 5 minutes cache - user profile rarely changes
+    staleTime: 30000, // 30 seconds cache for faster permission updates
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       if (!user?.id) return null;
       
