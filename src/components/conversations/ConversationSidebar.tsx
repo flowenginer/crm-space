@@ -600,8 +600,18 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     );
   }
 
-  const contact = conversation.contact;
-  const contactTags = contact.tags?.map((t: any) => t.tag).filter(Boolean) || [];
+  // Handle contact being array or object (Supabase can return either)
+  const contact = Array.isArray(conversation.contact) 
+    ? conversation.contact[0] 
+    : conversation.contact;
+  
+  console.log('[ConversationSidebar] Contact data:', { 
+    id: contact?.id, 
+    negotiated_value: contact?.negotiated_value,
+    lead_status: contact?.lead_status 
+  });
+  
+  const contactTags = contact?.tags?.map((t: any) => t.tag).filter(Boolean) || [];
 
   // Format phone for display
   const formatPhone = (phone: string) => {
@@ -697,26 +707,30 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Valor Negociado */}
-        <div className="p-3 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+        {/* Valor Negociado - Campo para input de valor */}
+        <div className="p-3 border-b border-border bg-emerald-50/50 dark:bg-emerald-900/10">
+          <label className="block text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span className="text-base">💰</span>
             Valor Negociado
           </label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">R$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 dark:text-emerald-400 text-sm font-bold">R$</span>
             <Input
               type="number"
-              value={(contact as any)?.negotiated_value || ''}
+              value={contact?.negotiated_value ?? ''}
               onChange={(e) => {
                 const value = parseFloat(e.target.value) || 0;
                 updateNegotiatedValue.mutate(value);
               }}
-              className="pl-10 h-9 text-sm"
+              className="pl-10 h-10 text-sm font-medium border-emerald-200 dark:border-emerald-800 focus:ring-emerald-500 focus:border-emerald-500"
               placeholder="0,00"
               min={0}
               step={0.01}
               disabled={updateNegotiatedValue.isPending}
             />
+            {updateNegotiatedValue.isPending && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-emerald-500" />
+            )}
           </div>
         </div>
 
