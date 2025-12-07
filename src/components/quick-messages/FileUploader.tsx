@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload, X, FileText, Image as ImageIcon, Video, File, Loader2 } from 'lucide-react';
+import { Paperclip, X, FileText, Image as ImageIcon, Video, File, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -10,6 +10,7 @@ interface FileUploaderProps {
   existingType?: string | null;
   onRemove?: () => void;
   category: 'media' | 'documents';
+  compact?: boolean;
 }
 
 const MEDIA_TYPES = {
@@ -30,7 +31,8 @@ export function FileUploader({
   existingUrl, 
   existingType,
   onRemove,
-  category 
+  category,
+  compact = false
 }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -143,7 +145,8 @@ export function FileUploader({
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
           className={`
-            border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
+            border-2 border-dashed rounded-xl text-center cursor-pointer transition-all
+            ${compact ? 'p-4' : 'p-8'}
             ${isDragging 
               ? 'border-primary bg-primary/10' 
               : 'border-border hover:border-primary/50 hover:bg-muted/50'
@@ -151,26 +154,30 @@ export function FileUploader({
           `}
         >
           {isUploading ? (
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 size={32} className="animate-spin text-primary" />
-              <span className="text-sm text-muted-foreground">Enviando arquivo...</span>
-              <div className="w-full max-w-xs h-2 bg-muted rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-primary transition-all duration-300"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
+            <div className={`flex items-center gap-3 ${compact ? 'flex-row' : 'flex-col'}`}>
+              <Loader2 size={compact ? 20 : 32} className="animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">Enviando...</span>
+              {!compact && (
+                <div className="w-full max-w-xs h-2 bg-muted rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              )}
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-3">
-              <Upload size={32} className="text-muted-foreground" />
-              <div>
-                <p className="font-medium text-foreground">
-                  Arraste arquivos ou clique aqui
+            <div className={`flex items-center gap-3 ${compact ? 'flex-row' : 'flex-col'}`}>
+              <Paperclip size={compact ? 18 : 32} className="text-muted-foreground" />
+              <div className={compact ? 'text-left' : 'text-center'}>
+                <p className={`font-medium text-foreground ${compact ? 'text-sm' : ''}`}>
+                  {compact ? 'Anexar arquivo (opcional)' : 'Arraste arquivos ou clique aqui'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {config.description}
-                </p>
+                {!compact && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {config.description}
+                  </p>
+                )}
               </div>
             </div>
           )}
