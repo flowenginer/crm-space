@@ -70,19 +70,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const isMobile = useIsMobile();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
-  const { hasPermission, isAdmin, role: userRole, isLoading: permissionsLoading, roleDefinition } = usePermissions();
-
-  // Debug log - remover depois de testar
-  console.log('[Sidebar Debug]', {
-    userRole,
-    isAdmin,
-    permissionsLoading,
-    rolePermissions: roleDefinition?.permissions,
-    settingsView: hasPermission('settings', 'view'),
-    reportsView: hasPermission('reports', 'view'),
-    contactsRead: hasPermission('contacts', 'read'),
-    conversationsRead: hasPermission('conversations', 'read'),
-  });
+  const { hasPermission, isAdmin, role: userRole, isFullyLoaded } = usePermissions();
 
   // Fetch pending scheduled messages count
   const { data: pendingCount } = useQuery({
@@ -104,8 +92,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     // Dashboard is always visible
     if (item.href === '/') return true;
     
-    // While loading, hide items that require permission (show only public items)
-    if (permissionsLoading) {
+    // While NOT fully loaded, hide items that require permission for safety
+    if (!isFullyLoaded) {
       return !item.permission && !item.roles;
     }
     
