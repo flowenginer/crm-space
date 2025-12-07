@@ -140,31 +140,40 @@ export function AgentTagSyncSettings() {
         tagToAssignment = count || 0;
       }
 
+      // Contagem correta de "Atribuição → Tag" usando query direta
+      // Conta contatos que TÊM assigned_to em um vendedor mapeado mas NÃO TÊM a tag correspondente
       let assignmentToTag = 0;
-      if (agentIds.length > 0) {
-        const { data: assignedContacts } = await supabase
-          .from('contacts')
-          .select('id, assigned_to')
-          .in('assigned_to', agentIds as string[]);
-
-        if (assignedContacts && assignedContacts.length > 0) {
-          const contactIds = assignedContacts.map(c => c.id);
-          const { data: contactTags } = await supabase
-            .from('contact_tags')
-            .select('contact_id, tag_id')
-            .in('contact_id', contactIds.slice(0, 1000))
-            .in('tag_id', agentTagIds);
-
-          for (const contact of assignedContacts) {
-            const mapping = agentMappings.find(m => m.agentId === contact.assigned_to);
-            if (mapping) {
-              const hasCorrectTag = contactTags?.some(
-                ct => ct.contact_id === contact.id && ct.tag_id === mapping.tagId
-              );
-              if (!hasCorrectTag) {
-                assignmentToTag++;
-              }
-            }
+      if (agentIds.length > 0 && agentMappings.length > 0) {
+        // Para cada mapeamento, contar contatos atribuídos ao vendedor que não têm a tag
+        for (const mapping of agentMappings) {
+          if (!mapping.agentId) continue;
+          
+          // Buscar contatos atribuídos a este vendedor
+          const { count: assignedCount } = await supabase
+            .from('contacts')
+            .select('id', { count: 'exact', head: true })
+            .eq('assigned_to', mapping.agentId);
+          
+          // Buscar contatos atribuídos a este vendedor que JÁ TÊM a tag
+          const { data: contactsWithTag } = await supabase
+            .from('contacts')
+            .select('id')
+            .eq('assigned_to', mapping.agentId);
+          
+          if (contactsWithTag && contactsWithTag.length > 0) {
+            const contactIds = contactsWithTag.map(c => c.id);
+            
+            // Contar quantos desses contatos já têm a tag correta
+            const { count: withTagCount } = await supabase
+              .from('contact_tags')
+              .select('contact_id', { count: 'exact', head: true })
+              .in('contact_id', contactIds)
+              .eq('tag_id', mapping.tagId);
+            
+            // Contatos que precisam de tag = total atribuídos - contatos que já têm a tag
+            assignmentToTag += (assignedCount || 0) - (withTagCount || 0);
+          } else {
+            assignmentToTag += assignedCount || 0;
           }
         }
       }
@@ -297,81 +306,127 @@ export function AgentTagSyncSettings() {
           }
         }
       } else if (mode === 'assignment-to-tag') {
-        const { data: assignedContacts } = await supabase
-          .from('contacts')
-          .select('id, full_name, phone, assigned_to')
-          .in('assigned_to', agentIds as string[])
-          .limit(500);
+        // Processar cada mapeamento para encontrar contatos que precisam de tag
+        const contactsNeedingTags: Array<{
+          contactId: string;
+          contactName: string;
+          contactPhone: string;
+          assignedTo: string;
+          mapping: AgentTagMapping;
+        }> = [];
 
-        if (assignedContacts && assignedContacts.length > 0) {
+        // Para cada mapeamento, buscar contatos que precisam de tag
+        for (const mapping of mappings) {
+          if (!mapping.agentId) continue;
+
+          // Buscar contatos atribuídos a este vendedor
+          const { data: assignedContacts } = await supabase
+            .from('contacts')
+            .select('id, full_name, phone')
+            .eq('assigned_to', mapping.agentId);
+
+          if (!assignedContacts || assignedContacts.length === 0) continue;
+
           const contactIds = assignedContacts.map(c => c.id);
-          
+
+          // Buscar quais desses contatos JÁ têm a tag do vendedor
           const { data: existingTags } = await supabase
             .from('contact_tags')
-            .select('contact_id, tag_id')
+            .select('contact_id')
             .in('contact_id', contactIds)
-            .in('tag_id', agentTagIds);
+            .eq('tag_id', mapping.tagId);
 
-          const existingTagsMap = new Map<string, Set<string>>();
-          for (const et of existingTags || []) {
-            if (!existingTagsMap.has(et.contact_id)) {
-              existingTagsMap.set(et.contact_id, new Set());
+          const contactsWithTag = new Set(existingTags?.map(t => t.contact_id) || []);
+
+          // Filtrar contatos que NÃO têm a tag
+          for (const contact of assignedContacts) {
+            if (!contactsWithTag.has(contact.id)) {
+              contactsNeedingTags.push({
+                contactId: contact.id,
+                contactName: contact.full_name,
+                contactPhone: contact.phone,
+                assignedTo: mapping.agentId,
+                mapping
+              });
             }
-            existingTagsMap.get(et.contact_id)!.add(et.tag_id);
+          }
+        }
+
+        const totalToProcess = contactsNeedingTags.length;
+        console.log(`Total de contatos que precisam de tag: ${totalToProcess}`);
+
+        // Processar em lotes de 50 para não sobrecarregar
+        const batchSize = 50;
+        for (let i = 0; i < contactsNeedingTags.length; i += batchSize) {
+          if (useAgentTagSyncStore.getState().shouldCancel) {
+            toast.info('Sincronização cancelada');
+            setSummary({ total: totalToProcess, processed, successful, errors, results });
+            return;
           }
 
-          const total = assignedContacts.length;
+          const batch = contactsNeedingTags.slice(i, i + batchSize);
+          
+          // Inserir tags em lote
+          const tagsToInsert = batch.map(c => ({
+            contact_id: c.contactId,
+            tag_id: c.mapping.tagId
+          }));
 
-          for (const contact of assignedContacts) {
-            if (useAgentTagSyncStore.getState().shouldCancel) {
-              toast.info('Sincronização cancelada');
-              setSummary({ total: processed, processed, successful, errors, results });
-              return;
-            }
+          const { error } = await supabase
+            .from('contact_tags')
+            .insert(tagsToInsert);
 
-            const mapping = mappings.find(m => m.agentId === contact.assigned_to);
-            
-            if (mapping) {
-              const contactTagIds = existingTagsMap.get(contact.id) || new Set();
-              
-              if (!contactTagIds.has(mapping.tagId)) {
-                const { error } = await supabase
-                  .from('contact_tags')
-                  .insert({ contact_id: contact.id, tag_id: mapping.tagId });
+          if (error) {
+            // Se erro no lote, processar individualmente
+            for (const contact of batch) {
+              const { error: singleError } = await supabase
+                .from('contact_tags')
+                .insert({ contact_id: contact.contactId, tag_id: contact.mapping.tagId });
 
-                processed++;
-                updateProgress(Math.round((processed / total) * 100));
-
-                if (error) {
-                  errors++;
-                  results.push({
-                    contactId: contact.id,
-                    contactName: contact.full_name,
-                    contactPhone: contact.phone,
-                    action: 'Adicionar tag',
-                    tagName: mapping.tagName,
-                    agentName: mapping.agentName || undefined,
-                    success: false,
-                    error: error.message
-                  });
-                } else {
-                  successful++;
-                  results.push({
-                    contactId: contact.id,
-                    contactName: contact.full_name,
-                    contactPhone: contact.phone,
-                    action: 'Tag adicionada',
-                    tagName: mapping.tagName,
-                    agentName: mapping.agentName || undefined,
-                    success: true
-                  });
-                }
+              processed++;
+              if (singleError) {
+                errors++;
+                results.push({
+                  contactId: contact.contactId,
+                  contactName: contact.contactName,
+                  contactPhone: contact.contactPhone,
+                  action: 'Adicionar tag',
+                  tagName: contact.mapping.tagName,
+                  agentName: contact.mapping.agentName || undefined,
+                  success: false,
+                  error: singleError.message
+                });
               } else {
-                processed++;
-                updateProgress(Math.round((processed / total) * 100));
+                successful++;
+                results.push({
+                  contactId: contact.contactId,
+                  contactName: contact.contactName,
+                  contactPhone: contact.contactPhone,
+                  action: 'Tag adicionada',
+                  tagName: contact.mapping.tagName,
+                  agentName: contact.mapping.agentName || undefined,
+                  success: true
+                });
               }
             }
+          } else {
+            // Sucesso no lote
+            processed += batch.length;
+            successful += batch.length;
+            for (const contact of batch) {
+              results.push({
+                contactId: contact.contactId,
+                contactName: contact.contactName,
+                contactPhone: contact.contactPhone,
+                action: 'Tag adicionada',
+                tagName: contact.mapping.tagName,
+                agentName: contact.mapping.agentName || undefined,
+                success: true
+              });
+            }
           }
+
+          updateProgress(Math.round((processed / Math.max(totalToProcess, 1)) * 100));
         }
       } else if (mode === 'orphans') {
         const { data: orphanContacts } = await supabase
