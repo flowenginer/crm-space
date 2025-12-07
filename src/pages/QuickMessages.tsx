@@ -20,6 +20,7 @@ import {
   Music,
   FileImage,
   File,
+  X,
 } from 'lucide-react';
 import {
   Dialog,
@@ -47,6 +48,7 @@ import {
   useCreateTemplate,
   useUpdateTemplate,
   useDeleteTemplate,
+  ContentBlock,
 } from '@/hooks/useTemplates';
 import { AudioRecorder } from '@/components/quick-messages/AudioRecorder';
 import { FileUploader } from '@/components/quick-messages/FileUploader';
@@ -71,8 +73,6 @@ const variableOptions = [
   { key: 'data', label: 'Data' },
   { key: 'atendente', label: 'Atendente' },
 ];
-
-const quickEmojis = ['👋', '😊', '🎉', '✅', '📦', '💬', '☀️', '🔥', '👕', '📸'];
 
 // Helper to get icon for media type
 const getMediaIcon = (mediaType: string | null) => {
@@ -100,11 +100,14 @@ export default function QuickMessages() {
 
   // Form states
   const [templateTitle, setTemplateTitle] = useState('');
-  const [templateContent, setTemplateContent] = useState('');
   const [templateCategory, setTemplateCategory] = useState('messages');
   const [templateMediaUrl, setTemplateMediaUrl] = useState<string | null>(null);
   const [templateMediaType, setTemplateMediaType] = useState<string | null>(null);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  
+  // Multiple content blocks state
+  const [contentBlocks, setContentBlocks] = useState<ContentBlock[]>([{ type: 'text', content: '' }]);
+  const [activeBlockIndex, setActiveBlockIndex] = useState(0);
 
   // Calculate category counts dynamically
   const categoryCounts = useMemo(() => {
@@ -137,7 +140,8 @@ export default function QuickMessages() {
     setIsEditing(false);
     setSelectedTemplateId(null);
     setTemplateTitle('');
-    setTemplateContent('');
+    setContentBlocks([{ type: 'text', content: '' }]);
+    setActiveBlockIndex(0);
     setTemplateCategory(activeCategory);
     setTemplateMediaUrl(null);
     setTemplateMediaType(null);
@@ -151,10 +155,17 @@ export default function QuickMessages() {
     setIsEditing(true);
     setSelectedTemplateId(templateId);
     setTemplateTitle(template.title);
-    setTemplateContent(template.content);
     setTemplateCategory(template.category || 'messages');
     setTemplateMediaUrl(template.media_url || null);
     setTemplateMediaType(template.media_type || null);
+    
+    // Load content blocks or convert from legacy content
+    if (template.content_blocks && Array.isArray(template.content_blocks) && template.content_blocks.length > 0) {
+      setContentBlocks(template.content_blocks as ContentBlock[]);
+    } else {
+      setContentBlocks([{ type: 'text', content: template.content }]);
+    }
+    setActiveBlockIndex(0);
     setShowTemplateModal(true);
   };
 
@@ -169,7 +180,17 @@ export default function QuickMessages() {
       setVariableValues({});
       setShowUseTemplateModal(true);
     } else {
-      navigator.clipboard.writeText(template.content);
+      // Copy all blocks as separate lines or just content
+      const blocks = template.content_blocks as ContentBlock[] | null;
+      if (blocks && blocks.length > 0) {
+        const allContent = blocks
+          .filter(b => b.type === 'text' && b.content)
+          .map(b => b.content)
+          .join('\n---\n');
+        navigator.clipboard.writeText(allContent);
+      } else {
+        navigator.clipboard.writeText(template.content);
+      }
       toast({ title: 'Template copiado!', description: 'Cole no chat para enviar.' });
     }
   };
@@ -197,34 +218,46 @@ export default function QuickMessages() {
       return;
     }
     
-    if (!needsMedia && !templateContent) {
-      toast({ title: 'Preencha o conteúdo da mensagem', variant: 'destructive' });
+    // For messages, check if at least one block has content
+    const textBlocks = contentBlocks.filter(b => b.type === 'text' && b.content?.trim());
+    if (!needsMedia && textBlocks.length === 0) {
+      toast({ title: 'Preencha pelo menos uma mensagem', variant: 'destructive' });
       return;
     }
 
-    const variablesMatch = templateContent.match(/\{\{(\w+)\}\}/g) || [];
-    const variables = variablesMatch.map((v) => v.replace(/\{\{|\}\}/g, ''));
+    // Get first block content for legacy field + search
+    const firstContent = textBlocks[0]?.content || templateTitle;
+    
+    // Extract variables from all blocks
+    const allContent = contentBlocks
+      .filter(b => b.type === 'text')
+      .map(b => b.content || '')
+      .join(' ');
+    const variablesMatch = allContent.match(/\{\{(\w+)\}\}/g) || [];
+    const variables = [...new Set(variablesMatch.map((v) => v.replace(/\{\{|\}\}/g, '')))];
 
     try {
       if (isEditing && selectedTemplateId) {
         await updateTemplate.mutateAsync({
           id: selectedTemplateId,
           title: templateTitle,
-          content: templateContent || templateTitle,
+          content: firstContent,
           category: templateCategory,
           variables,
           media_url: templateMediaUrl,
           media_type: templateMediaType,
+          content_blocks: contentBlocks.filter(b => b.content?.trim() || b.media_url),
         });
         toast({ title: 'Template atualizado!' });
       } else {
         await createTemplate.mutateAsync({
           title: templateTitle,
-          content: templateContent || templateTitle,
+          content: firstContent,
           category: templateCategory,
           variables,
           media_url: templateMediaUrl,
           media_type: templateMediaType,
+          content_blocks: contentBlocks.filter(b => b.content?.trim() || b.media_url),
         });
         toast({ title: 'Template criado!' });
       }
@@ -244,17 +277,49 @@ export default function QuickMessages() {
     setTemplateMediaType(null);
   };
 
+  // Block management functions
+  const handleAddBlock = () => {
+    setContentBlocks(prev => [...prev, { type: 'text', content: '' }]);
+    setActiveBlockIndex(contentBlocks.length);
+  };
+
+  const handleRemoveBlock = (index: number) => {
+    if (contentBlocks.length <= 1) return;
+    setContentBlocks(prev => prev.filter((_, i) => i !== index));
+    if (activeBlockIndex >= index && activeBlockIndex > 0) {
+      setActiveBlockIndex(prev => prev - 1);
+    }
+  };
+
+  const handleBlockContentChange = (index: number, content: string) => {
+    setContentBlocks(prev => 
+      prev.map((block, i) => i === index ? { ...block, content } : block)
+    );
+  };
+
   const handleInsertVariable = (variable: string) => {
-    setTemplateContent((prev) => prev + `{{${variable}}}`);
+    handleBlockContentChange(
+      activeBlockIndex, 
+      (contentBlocks[activeBlockIndex]?.content || '') + `{{${variable}}}`
+    );
   };
 
   const handleInsertEmoji = (emoji: string) => {
-    setTemplateContent((prev) => prev + emoji);
+    handleBlockContentChange(
+      activeBlockIndex,
+      (contentBlocks[activeBlockIndex]?.content || '') + emoji
+    );
   };
 
   const getFilledContent = () => {
     if (!selectedTemplate) return '';
-    let content = selectedTemplate.content;
+    
+    const blocks = selectedTemplate.content_blocks as ContentBlock[] | null;
+    const baseContent = blocks && blocks.length > 0
+      ? blocks.filter(b => b.type === 'text').map(b => b.content || '').join('\n---\n')
+      : selectedTemplate.content;
+    
+    let content = baseContent;
     Object.entries(variableValues).forEach(([key, value]) => {
       content = content.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || `{{${key}}}`);
     });
@@ -381,72 +446,87 @@ export default function QuickMessages() {
                       <TableHead className="w-12 text-center">#</TableHead>
                       <TableHead className="w-48">Chave</TableHead>
                       <TableHead>Mensagem</TableHead>
+                      <TableHead className="w-20 text-center">Blocos</TableHead>
                       <TableHead className="w-20 text-center">Anexo</TableHead>
                       <TableHead className="w-32 text-center">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredTemplates.map((template, index) => (
-                      <TableRow key={template.id} className="group">
-                        <TableCell className="text-center text-muted-foreground font-mono text-sm">
-                          {index + 1}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-foreground">
-                              {template.title}
+                    {filteredTemplates.map((template, index) => {
+                      const blocks = template.content_blocks as ContentBlock[] | null;
+                      const blockCount = blocks?.length || 1;
+                      
+                      return (
+                        <TableRow key={template.id} className="group">
+                          <TableCell className="text-center text-muted-foreground font-mono text-sm">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-foreground">
+                                {template.title}
+                              </span>
+                              {template.is_favorite && (
+                                <Star size={12} className="text-yellow-500 fill-yellow-500" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-muted-foreground text-sm">
+                              {truncateMessage(template.content)}
                             </span>
-                            {template.is_favorite && (
-                              <Star size={12} className="text-yellow-500 fill-yellow-500" />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {blockCount > 1 ? (
+                              <Badge variant="secondary" className="text-xs">
+                                {blockCount}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">1</span>
                             )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-muted-foreground text-sm">
-                            {truncateMessage(template.content)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {template.media_url ? (
-                            getMediaIcon(template.media_type) || <Paperclip size={14} className="mx-auto text-primary" />
-                          ) : (
-                            <span className="text-muted-foreground text-sm">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => handleUseTemplate(template.id)}
-                              title="Usar"
-                            >
-                              <Send size={14} />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => handleEditTemplate(template.id)}
-                              title="Editar"
-                            >
-                              <Edit3 size={14} />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteTemplate(template.id)}
-                              disabled={deleteTemplate.isPending}
-                              title="Excluir"
-                            >
-                              <Trash2 size={14} />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {template.media_url ? (
+                              getMediaIcon(template.media_type) || <Paperclip size={14} className="mx-auto text-primary" />
+                            ) : (
+                              <span className="text-muted-foreground text-sm">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleUseTemplate(template.id)}
+                                title="Usar"
+                              >
+                                <Send size={14} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleEditTemplate(template.id)}
+                                title="Editar"
+                              >
+                                <Edit3 size={14} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteTemplate(template.id)}
+                                disabled={deleteTemplate.isPending}
+                                title="Excluir"
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
@@ -528,8 +608,8 @@ export default function QuickMessages() {
                       <input
                         type="text"
                         placeholder="Legenda do áudio..."
-                        value={templateContent}
-                        onChange={(e) => setTemplateContent(e.target.value)}
+                        value={contentBlocks[0]?.content || ''}
+                        onChange={(e) => handleBlockContentChange(0, e.target.value)}
                         className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                       />
                     </div>
@@ -555,8 +635,8 @@ export default function QuickMessages() {
                       <input
                         type="text"
                         placeholder="Legenda da mídia..."
-                        value={templateContent}
-                        onChange={(e) => setTemplateContent(e.target.value)}
+                        value={contentBlocks[0]?.content || ''}
+                        onChange={(e) => handleBlockContentChange(0, e.target.value)}
                         className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                       />
                     </div>
@@ -582,8 +662,8 @@ export default function QuickMessages() {
                       <input
                         type="text"
                         placeholder="Legenda do documento..."
-                        value={templateContent}
-                        onChange={(e) => setTemplateContent(e.target.value)}
+                        value={contentBlocks[0]?.content || ''}
+                        onChange={(e) => handleBlockContentChange(0, e.target.value)}
                         className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
                       />
                     </div>
@@ -592,22 +672,59 @@ export default function QuickMessages() {
 
                 {templateCategory === 'messages' && (
                   <>
-                    {/* Content */}
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-2">
-                        Conteúdo da mensagem <span className="text-destructive">*</span>
+                    {/* Multiple Content Blocks */}
+                    <div className="space-y-3">
+                      <label className="block text-sm font-medium text-foreground">
+                        Mensagens <span className="text-destructive">*</span>
                       </label>
-                      <textarea
-                        rows={6}
-                        placeholder={`Digite sua mensagem aqui...
-
-Use *texto* para negrito
-Use _texto_ para itálico
-Use {{variavel}} para campos dinâmicos`}
-                        value={templateContent}
-                        onChange={(e) => setTemplateContent(e.target.value)}
-                        className="w-full px-4 py-3 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none font-mono text-sm bg-background"
-                      />
+                      
+                      {contentBlocks.map((block, index) => (
+                        <div 
+                          key={index} 
+                          className={`relative border rounded-xl transition-all ${
+                            activeBlockIndex === index 
+                              ? 'border-primary ring-2 ring-primary/20' 
+                              : 'border-border'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between px-3 py-2 bg-muted/50 rounded-t-xl border-b border-border">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              Mensagem {index + 1}
+                            </span>
+                            {contentBlocks.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveBlock(index)}
+                                className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+                          <textarea
+                            rows={4}
+                            placeholder={index === 0 
+                              ? `Digite sua mensagem aqui...\n\nUse *texto* para negrito\nUse _texto_ para itálico\nUse {{variavel}} para campos dinâmicos`
+                              : 'Digite o conteúdo desta mensagem...'
+                            }
+                            value={block.content || ''}
+                            onChange={(e) => handleBlockContentChange(index, e.target.value)}
+                            onFocus={() => setActiveBlockIndex(index)}
+                            className="w-full px-4 py-3 border-0 rounded-b-xl focus:ring-0 resize-none font-mono text-sm bg-background"
+                          />
+                        </div>
+                      ))}
+                      
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAddBlock}
+                        className="w-full border-dashed"
+                      >
+                        <Plus size={14} className="mr-2" />
+                        Adicionar mensagem
+                      </Button>
                     </div>
 
                     {/* Compact File Uploader */}
@@ -628,7 +745,7 @@ Use {{variavel}} para campos dinâmicos`}
                     {/* Quick Insert Variables */}
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-2">
-                        Inserir variável
+                        Inserir variável (na mensagem {activeBlockIndex + 1})
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {variableOptions.map((variable) => (
@@ -671,69 +788,94 @@ Use {{variavel}} para campos dinâmicos`}
                       </div>
 
                       {/* Chat Area */}
-                      <div className="p-4 min-h-[300px]">
-                        {(templateContent || templateMediaUrl) ? (
-                          <div className="max-w-[85%] ml-auto">
-                            <div className="bg-[#DCF8C6] rounded-lg rounded-tr-none p-3 shadow-sm">
-                              {/* Media Preview */}
-                              {templateMediaUrl && templateMediaType === 'audio' && (
-                                <div className="flex items-center gap-2 mb-2 p-2 bg-white/50 rounded">
-                                  <Music size={20} className="text-green-600" />
-                                  <div className="h-1 flex-1 bg-gray-300 rounded" />
-                                  <span className="text-xs text-gray-500">0:15</span>
-                                </div>
-                              )}
-                              {templateMediaUrl && templateMediaType === 'image' && (
-                                <img 
-                                  src={templateMediaUrl} 
-                                  alt="Preview" 
-                                  className="rounded mb-2 max-h-32 object-cover"
-                                />
-                              )}
-                              {templateMediaUrl && templateMediaType === 'video' && (
-                                <div className="relative mb-2 bg-black rounded overflow-hidden aspect-video">
-                                  <video src={templateMediaUrl} className="w-full h-full object-cover" />
-                                  <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
-                                      <div className="w-0 h-0 border-l-[16px] border-l-gray-800 border-y-[10px] border-y-transparent ml-1" />
+                      <ScrollArea className="h-[320px]">
+                        <div className="p-4 space-y-2">
+                          {/* Show each block as separate message bubble */}
+                          {contentBlocks.filter(b => b.content?.trim()).length > 0 || templateMediaUrl ? (
+                            <>
+                              {contentBlocks.map((block, index) => (
+                                block.content?.trim() && (
+                                  <div key={index} className="max-w-[85%] ml-auto">
+                                    <div className="bg-[#DCF8C6] rounded-lg rounded-tr-none p-3 shadow-sm">
+                                      <p className="text-sm text-gray-900 whitespace-pre-line">
+                                        {block.content}
+                                      </p>
+                                      <div className="flex items-center justify-end gap-1 mt-1">
+                                        <span className="text-xs text-gray-500">15:30</span>
+                                        <CheckCheck size={14} className="text-blue-500" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              ))}
+                              
+                              {/* Media Preview (if any) */}
+                              {templateMediaUrl && (
+                                <div className="max-w-[85%] ml-auto">
+                                  <div className="bg-[#DCF8C6] rounded-lg rounded-tr-none p-3 shadow-sm">
+                                    {templateMediaType === 'audio' && (
+                                      <div className="flex items-center gap-2 p-2 bg-white/50 rounded">
+                                        <Music size={20} className="text-green-600" />
+                                        <div className="h-1 flex-1 bg-gray-300 rounded" />
+                                        <span className="text-xs text-gray-500">0:15</span>
+                                      </div>
+                                    )}
+                                    {templateMediaType === 'image' && (
+                                      <img 
+                                        src={templateMediaUrl} 
+                                        alt="Preview" 
+                                        className="rounded max-h-32 object-cover"
+                                      />
+                                    )}
+                                    {templateMediaType === 'video' && (
+                                      <div className="relative bg-black rounded overflow-hidden aspect-video">
+                                        <video src={templateMediaUrl} className="w-full h-full object-cover" />
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                          <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
+                                            <div className="w-0 h-0 border-l-[16px] border-l-gray-800 border-y-[10px] border-y-transparent ml-1" />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {templateMediaType === 'document' && (
+                                      <div className="flex items-center gap-2 p-3 bg-white/70 rounded">
+                                        <FileText size={24} className="text-red-500" />
+                                        <span className="text-xs font-medium text-gray-700 truncate">
+                                          Documento
+                                        </span>
+                                      </div>
+                                    )}
+                                    <div className="flex items-center justify-end gap-1 mt-1">
+                                      <span className="text-xs text-gray-500">15:30</span>
+                                      <CheckCheck size={14} className="text-blue-500" />
                                     </div>
                                   </div>
                                 </div>
                               )}
-                              {templateMediaUrl && templateMediaType === 'document' && (
-                                <div className="flex items-center gap-2 mb-2 p-3 bg-white/70 rounded">
-                                  <FileText size={24} className="text-red-500" />
-                                  <span className="text-xs font-medium text-gray-700 truncate">
-                                    Documento
-                                  </span>
-                                </div>
-                              )}
-                              
-                              {/* Text Content */}
-                              {templateContent && (
-                                <p className="text-sm text-gray-900 whitespace-pre-line">
-                                  {templateContent}
-                                </p>
-                              )}
-                              
-                              <div className="flex items-center justify-end gap-1 mt-1">
-                                <span className="text-xs text-gray-500">15:30</span>
-                                <CheckCheck size={14} className="text-blue-500" />
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-center text-gray-500 text-sm pt-20">
-                            {templateCategory === 'messages' 
-                              ? 'Digite sua mensagem para ver o preview...'
-                              : 'Faça upload de um arquivo para ver o preview...'
-                            }
-                          </p>
-                        )}
-                      </div>
+                            </>
+                          ) : (
+                            <p className="text-center text-gray-500 text-sm pt-20">
+                              {templateCategory === 'messages' 
+                                ? 'Digite sua mensagem para ver o preview...'
+                                : 'Faça upload de um arquivo para ver o preview...'
+                              }
+                            </p>
+                          )}
+                        </div>
+                      </ScrollArea>
                     </div>
                   </div>
                 </div>
+
+                {/* Info about multiple messages */}
+                {contentBlocks.filter(b => b.content?.trim()).length > 1 && (
+                  <div className="bg-primary/10 border border-primary/20 rounded-xl p-4">
+                    <p className="text-sm text-primary font-medium flex items-center gap-2">
+                      <MessageSquare size={16} />
+                      {contentBlocks.filter(b => b.content?.trim()).length} mensagens serão enviadas separadamente
+                    </p>
+                  </div>
+                )}
 
                 {/* Formatting Tips */}
                 <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-xl p-4">

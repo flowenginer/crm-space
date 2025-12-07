@@ -1,5 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { Json } from '@/integrations/supabase/types';
+
+export interface ContentBlock {
+  type: 'text' | 'media';
+  content?: string;
+  media_url?: string;
+  media_type?: string;
+}
 
 export interface MessageTemplate {
   id: string;
@@ -15,6 +23,7 @@ export interface MessageTemplate {
   updated_at: string;
   media_url: string | null;
   media_type: string | null;
+  content_blocks: ContentBlock[] | null;
   folder?: { id: string; name: string } | null;
 }
 
@@ -45,7 +54,12 @@ export function useTemplates(category?: string) {
       const { data, error } = await query;
 
       if (error) throw error;
-      return data as MessageTemplate[];
+      
+      // Transform the data to properly type content_blocks
+      return (data || []).map(item => ({
+        ...item,
+        content_blocks: item.content_blocks as unknown as ContentBlock[] | null,
+      })) as MessageTemplate[];
     },
   });
 }
@@ -77,6 +91,7 @@ export function useCreateTemplate() {
       variables?: string[] | null;
       media_url?: string | null;
       media_type?: string | null;
+      content_blocks?: ContentBlock[] | null;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -90,6 +105,7 @@ export function useCreateTemplate() {
           variables: template.variables || [],
           media_url: template.media_url || null,
           media_type: template.media_type || null,
+          content_blocks: template.content_blocks as unknown as Json || null,
           created_by: user?.id,
         })
         .select()
@@ -109,9 +125,15 @@ export function useUpdateTemplate() {
 
   return useMutation({
     mutationFn: async ({ id, ...template }: Partial<MessageTemplate> & { id: string }) => {
+      // Cast content_blocks to Json for Supabase compatibility
+      const updateData = {
+        ...template,
+        content_blocks: template.content_blocks as unknown as Json,
+      };
+      
       const { error } = await supabase
         .from('message_templates')
-        .update(template)
+        .update(updateData)
         .eq('id', id);
 
       if (error) throw error;

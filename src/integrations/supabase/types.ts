@@ -1222,6 +1222,7 @@ export type Database = {
         Row: {
           category: string | null
           content: string
+          content_blocks: Json | null
           created_at: string
           created_by: string | null
           department_id: string | null
@@ -1240,6 +1241,7 @@ export type Database = {
         Insert: {
           category?: string | null
           content: string
+          content_blocks?: Json | null
           created_at?: string
           created_by?: string | null
           department_id?: string | null
@@ -1258,6 +1260,7 @@ export type Database = {
         Update: {
           category?: string | null
           content?: string
+          content_blocks?: Json | null
           created_at?: string
           created_by?: string | null
           department_id?: string | null
