@@ -681,10 +681,10 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                 
                 {/* Text content */}
                 {message.content && message.message_type === 'text' && (
-                  <p className="text-sm leading-relaxed">{linkifyText(message.content)}</p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{linkifyText(message.content)}</p>
                 )}
                 {message.content && message.message_type !== 'text' && message.message_type !== 'document' && message.message_type !== 'audio' && message.message_type !== 'video' && message.message_type !== 'image' && (
-                  <p className="text-sm leading-relaxed mt-1">{linkifyText(message.content)}</p>
+                  <p className="text-sm leading-relaxed mt-1 whitespace-pre-wrap">{linkifyText(message.content)}</p>
                 )}
               </>
             )}
