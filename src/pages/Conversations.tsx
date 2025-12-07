@@ -39,6 +39,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { AnimatedCounter } from '@/components/ui/animated-counter';
 import {
   Select,
@@ -3491,21 +3492,24 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                 />
               </div>
               
-              {/* Container com scroll */}
-              <div className="h-[200px] overflow-y-auto rounded-lg border border-border p-2">
-                <div className="flex flex-wrap gap-2">
-                  {(() => {
-                    const filteredTags = filterTagSearchQuery.trim()
-                      ? tags.filter(tag => tag.name.toLowerCase().includes(filterTagSearchQuery.toLowerCase()))
-                      : tags;
-                    
-                    return filteredTags.length > 0 ? filteredTags.map((tag) => {
-                      const count = tagCountMap.get(tag.id) || 0;
-                      const isSelected = advancedFilters.tagIds.includes(tag.id);
-                      return (
-                        <button
-                          key={tag.id}
-                          onClick={() => {
+              {/* Container com scroll - Lista vertical com checkboxes */}
+              <div className="max-h-[200px] overflow-y-auto space-y-1">
+                {(() => {
+                  const filteredTags = filterTagSearchQuery.trim()
+                    ? tags.filter(tag => tag.name.toLowerCase().includes(filterTagSearchQuery.toLowerCase()))
+                    : tags;
+                  
+                  return filteredTags.length > 0 ? filteredTags.map((tag) => {
+                    const count = tagCountMap.get(tag.id) || 0;
+                    const isSelected = advancedFilters.tagIds.includes(tag.id);
+                    return (
+                      <label
+                        key={tag.id}
+                        className="flex items-center gap-2 p-2 hover:bg-muted rounded-lg cursor-pointer transition-colors"
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => {
                             setAdvancedFilters(prev => ({
                               ...prev,
                               tagIds: prev.tagIds.includes(tag.id)
@@ -3513,25 +3517,21 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                                 : [...prev.tagIds, tag.id]
                             }));
                           }}
-                          className={cn(
-                            'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                            isSelected ? 'text-white ring-2 ring-white/50' : 'text-white/90 hover:opacity-80'
-                          )}
-                          style={{ 
-                            backgroundColor: tag.color || '#8B5CF6',
-                            opacity: isSelected ? 1 : 0.7
-                          }}
-                        >
-                          {tag.name} ({count})
-                        </button>
-                      );
-                    }) : (
-                      <p className="text-sm text-muted-foreground py-4 text-center w-full">
-                        {filterTagSearchQuery ? 'Nenhuma etiqueta encontrada' : 'Nenhuma etiqueta cadastrada'}
-                      </p>
+                        />
+                        <span
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: tag.color || '#8B5CF6' }}
+                        />
+                        <span className="flex-1 text-sm text-foreground">{tag.name}</span>
+                        <span className="text-xs text-muted-foreground">{count}</span>
+                      </label>
                     );
-                  })()}
-                </div>
+                  }) : (
+                    <p className="text-sm text-muted-foreground py-4 text-center">
+                      {filterTagSearchQuery ? 'Nenhuma etiqueta encontrada' : 'Nenhuma etiqueta cadastrada'}
+                    </p>
+                  );
+                })()}
               </div>
             </div>
 
