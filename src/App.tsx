@@ -30,6 +30,7 @@ import MetaAdsManager from "@/pages/MetaAdsManager";
 import Automations from "@/pages/Automations";
 import FlowEditor from "@/pages/FlowEditor";
 import Webhooks from "@/pages/Webhooks";
+import ContactRequests from "@/pages/ContactRequests";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -56,6 +57,11 @@ const App = () => (
               <Route path="/conversations" element={
                 <ProtectedRoute permission="conversations.view">
                   <Conversations />
+                </ProtectedRoute>
+              } />
+              <Route path="/conversations/requests" element={
+                <ProtectedRoute roles={['admin', 'supervisor']}>
+                  <ContactRequests />
                 </ProtectedRoute>
               } />
               <Route path="/quick-messages" element={
