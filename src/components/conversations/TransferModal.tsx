@@ -80,23 +80,8 @@ export function TransferModal({
 
   // Check if user can transfer this conversation
   const canTransfer = (): boolean => {
-    // First check if user has transfer permission
-    if (!can.transferConversations()) {
-      return false;
-    }
-    
-    // Admin/supervisor can transfer any conversation
-    if (can.viewAllConversations()) {
-      return true;
-    }
-    
-    // Allow transferring orphan conversations (no owner)
-    if (currentAssignedTo === null || currentAssignedTo === undefined) {
-      return true;
-    }
-    
-    // User can only transfer their own conversations
-    return currentAssignedTo === user?.id;
+    // Any user with transfer permission can transfer any conversation
+    return can.transferConversations();
   };
 
   const handleTransfer = async () => {
