@@ -824,44 +824,55 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
 
         {/* Owner Agent (Atendente Responsável - do contato) */}
         <div className="p-3 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-            Atendente Responsável
-            <span className="text-[10px] font-normal text-muted-foreground/70">(dono do contato)</span>
-            {!isAdmin && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Lock className="h-3 w-3 text-muted-foreground/50" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    <p className="text-xs">Apenas administradores podem alterar</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </label>
-          <Select 
-            value={(contact as any)?.assigned_to || 'unassigned'}
-            onValueChange={(value) => updateOwnerAgent.mutate(value === 'unassigned' ? null : value)}
-            disabled={updateOwnerAgent.isPending || !isAdmin}
-          >
-            <SelectTrigger className={`w-full h-9 text-sm ${!isAdmin ? 'opacity-70 cursor-not-allowed' : ''}`}>
-              <SelectValue placeholder="Selecionar responsável" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="unassigned">Não atribuído</SelectItem>
-              {teamMembers.map((member) => (
-                <SelectItem key={member.id} value={member.id}>
-                  <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-white text-[10px]">
-                      {member.full_name?.charAt(0)?.toUpperCase() || '?'}
-                    </div>
-                    <span className="truncate">{member.full_name}</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {(() => {
+            const contactAssignedTo = (contact as any)?.assigned_to;
+            const hasNoOwner = !contactAssignedTo;
+            // Vendedores podem se atribuir se o contato não tem dono, admins podem sempre
+            const canEditOwner = isAdmin || hasNoOwner;
+            
+            return (
+              <>
+                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  Atendente Responsável
+                  <span className="text-[10px] font-normal text-muted-foreground/70">(dono do contato)</span>
+                  {!canEditOwner && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Lock className="h-3 w-3 text-muted-foreground/50" />
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <p className="text-xs">Este contato já tem um responsável atribuído</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </label>
+                <Select 
+                  value={contactAssignedTo || 'unassigned'}
+                  onValueChange={(value) => updateOwnerAgent.mutate(value === 'unassigned' ? null : value)}
+                  disabled={updateOwnerAgent.isPending || !canEditOwner}
+                >
+                  <SelectTrigger className={`w-full h-9 text-sm ${!canEditOwner ? 'opacity-70 cursor-not-allowed' : ''}`}>
+                    <SelectValue placeholder="Selecionar responsável" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Não atribuído</SelectItem>
+                    {teamMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-white text-[10px]">
+                            {member.full_name?.charAt(0)?.toUpperCase() || '?'}
+                          </div>
+                          <span className="truncate">{member.full_name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            );
+          })()}
         </div>
 
         {/* Department */}
