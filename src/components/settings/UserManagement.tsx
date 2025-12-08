@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { PermissionPreview } from './PermissionPreview';
 import {
   Shield,
   UserCog,
@@ -1054,7 +1055,6 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
 }) {
   const [role, setRole] = useState<string>('vendedor');
   const [isActive, setIsActive] = useState(true);
-  const [showPermissions, setShowPermissions] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingEmail, setLoadingEmail] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -1535,49 +1535,12 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
             />
           </div>
 
-          {/* Permissions Collapsible */}
-          <div className="border border-border rounded-xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowPermissions(!showPermissions)}
-              className="w-full flex items-center justify-between p-4 bg-muted hover:bg-muted/80 transition-colors"
-            >
-              <span className="font-medium text-foreground">
-                Permissões do Perfil
-              </span>
-              {showPermissions ? (
-                <ChevronUp size={18} className="text-muted-foreground" />
-              ) : (
-                <ChevronDown size={18} className="text-muted-foreground" />
-              )}
-            </button>
-            
-            {showPermissions && selectedRole?.permissions && (
-              <div className="p-4 space-y-2 bg-card">
-                {Object.entries(selectedRole.permissions as Record<string, Record<string, boolean>>).map(([category, actions]) => (
-                  <div key={category} className="space-y-1">
-                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{category}</div>
-                    {Object.entries(actions).map(([action, allowed]) => (
-                      <div key={`${category}-${action}`} className="flex items-center gap-3 py-1 pl-2">
-                        {allowed ? (
-                          <div className="w-5 h-5 rounded-full bg-success/10 flex items-center justify-center">
-                            <Check size={12} className="text-success" />
-                          </div>
-                        ) : (
-                          <div className="w-5 h-5 rounded-full bg-destructive/10 flex items-center justify-center">
-                            <X size={12} className="text-destructive" />
-                          </div>
-                        )}
-                        <span className={`text-sm ${allowed ? 'text-foreground' : 'text-muted-foreground'}`}>
-                          {action}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Permission Preview - Shows what pages/features this user can access */}
+          <PermissionPreview 
+            roleKey={role}
+            permissions={selectedRole?.permissions as Record<string, Record<string, boolean>> || null}
+            customPermissions={user.permissions}
+          />
         </div>
 
         <DialogFooter>
