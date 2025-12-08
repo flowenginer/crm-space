@@ -2243,11 +2243,11 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     if (files && files.length > 0) {
       const validFiles: File[] = [];
       const maxFiles = 10;
-      const maxSize = 10 * 1024 * 1024; // 10MB
+      const maxSize = 30 * 1024 * 1024; // 30MB
 
       Array.from(files).slice(0, maxFiles).forEach(file => {
         if (file.size > maxSize) {
-          toast.error(`"${file.name}" é muito grande. Máximo: 10MB`);
+          toast.error(`"${file.name}" é muito grande. Máximo: 30MB`);
         } else {
           validFiles.push(file);
         }
@@ -2309,11 +2309,11 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     if (files && files.length > 0) {
       const validFiles: File[] = [];
       const maxFiles = 10;
-      const maxSize = 10 * 1024 * 1024; // 10MB
+      const maxSize = 30 * 1024 * 1024; // 30MB
 
       Array.from(files).slice(0, maxFiles).forEach(file => {
         if (file.size > maxSize) {
-          toast.error(`"${file.name}" é muito grande. Máximo: 10MB`);
+          toast.error(`"${file.name}" é muito grande. Máximo: 30MB`);
         } else {
           validFiles.push(file);
         }
@@ -3198,7 +3198,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                     <Upload size={48} className="text-primary" />
                   </div>
                   <p className="text-lg font-semibold text-primary">Solte o arquivo aqui</p>
-                  <p className="text-sm text-muted-foreground mt-1">Máximo: 10MB</p>
+                  <p className="text-sm text-muted-foreground mt-1">Máximo: 30MB</p>
                 </div>
               )}
               {(messagesLoading || notesLoading) ? (
