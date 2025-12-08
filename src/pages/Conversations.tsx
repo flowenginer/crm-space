@@ -3295,11 +3295,11 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                               isReturning={returnConversation.isPending}
                               onReturn={() => {
                                 const eventData = (item as ConversationEvent).data;
-                                if (eventData.from_user_id && eventData.from_user_name && selectedConversationId) {
+                                if (eventData.from_user_id && selectedConversationId) {
                                   returnConversation.mutate({
                                     conversationId: selectedConversationId,
                                     toUserId: eventData.from_user_id,
-                                    toUserName: eventData.from_user_name,
+                                    toUserName: eventData.from_user_name || 'Usuário',
                                   }, {
                                     onSuccess: () => {
                                       toast.success('Conversa devolvida com sucesso');
