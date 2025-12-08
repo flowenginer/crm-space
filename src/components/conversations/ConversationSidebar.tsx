@@ -23,9 +23,10 @@ import { useLeadStatuses } from '@/hooks/useLeadKanban';
 interface ConversationSidebarProps {
   conversationId: string;
   onClose?: () => void;
+  onNavigateAway?: () => void;
 }
 
-export function ConversationSidebar({ conversationId, onClose }: ConversationSidebarProps) {
+export function ConversationSidebar({ conversationId, onClose, onNavigateAway }: ConversationSidebarProps) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -373,6 +374,13 @@ export function ConversationSidebar({ conversationId, onClose }: ConversationSid
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+      
+      // Navigate away from the closed conversation
+      if (onNavigateAway) {
+        onNavigateAway();
+      }
+      
       toast.success('Conversa fechada!');
       setShowCloseModal(false);
     },

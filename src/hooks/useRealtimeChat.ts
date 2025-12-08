@@ -116,8 +116,14 @@ export function useRealtimeConversations() {
           // Se assigned_to mudou (transferência), invalidar imediatamente
           const oldAssignedTo = (payload.old as any)?.assigned_to;
           const newAssignedTo = (payload.new as any)?.assigned_to;
+          const oldStatus = (payload.old as any)?.status;
+          const newStatus = (payload.new as any)?.status;
           
-          if (oldAssignedTo !== newAssignedTo) {
+          // Se a conversa foi fechada, invalidar IMEDIATAMENTE
+          if (newStatus === 'closed' && oldStatus !== 'closed') {
+            console.log('Conversation closed - immediate refresh');
+            invalidateImmediately();
+          } else if (oldAssignedTo !== newAssignedTo) {
             console.log('Conversation transferred - immediate refresh');
             invalidateImmediately();
           } else {

@@ -3744,7 +3744,13 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
       {/* Column 3: Contact Details (Desktop Only) */}
       {selectedConversation && (
         <div className="hidden lg:flex flex-shrink-0">
-          <ConversationSidebar conversationId={selectedConversation.id} />
+          <ConversationSidebar 
+            conversationId={selectedConversation.id} 
+            onNavigateAway={() => {
+              // Clear selection and URL when conversation is closed
+              navigate('/conversations', { replace: true });
+            }}
+          />
         </div>
       )}
 
