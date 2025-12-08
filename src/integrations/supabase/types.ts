@@ -2977,6 +2977,36 @@ export type Database = {
         }
         Returns: Json
       }
+      get_conversion_timeline: {
+        Args: {
+          p_agent_id?: string
+          p_conversion_status_names?: string[]
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          conversions: number
+          date_day: string
+          new_leads: number
+        }[]
+      }
+      get_lead_alerts: {
+        Args: {
+          p_agent_id?: string
+          p_department_id?: string
+          p_limit?: number
+        }
+        Returns: {
+          alert_type: string
+          contact_id: string
+          contact_name: string
+          contact_phone: string
+          conversation_id: string
+          lead_status: string
+          waiting_minutes: number
+        }[]
+      }
       get_lead_journey_metrics: {
         Args: {
           p_agent_id?: string
@@ -3004,6 +3034,20 @@ export type Database = {
           total_value: number
         }[]
       }
+      get_leads_by_origin: {
+        Args: {
+          p_agent_id?: string
+          p_conversion_status_names?: string[]
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          converted: number
+          origin: string
+          total: number
+        }[]
+      }
       get_origin_timeline: {
         Args: {
           p_agent_id?: string
@@ -3016,6 +3060,21 @@ export type Database = {
           meta_ads_count: number
           organic_count: number
           other_count: number
+        }[]
+      }
+      get_status_funnel: {
+        Args: {
+          p_agent_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          avg_duration: number
+          color: string
+          order_position: number
+          status_count: number
+          status_name: string
         }[]
       }
       get_user_department_ids: { Args: { _user_id: string }; Returns: string[] }
