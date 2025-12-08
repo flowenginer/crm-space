@@ -132,126 +132,23 @@ export function useTransferConversation() {
     mutationFn: async ({
       conversationId,
       toUserId,
-      toUserName,
       toDepartmentId,
-      toDepartmentName,
       note,
     }: TransferConversationParams) => {
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      // Usar a função RPC SECURITY DEFINER para transferência
+      const { data, error } = await supabase.rpc('transfer_conversation', {
+        p_conversation_id: conversationId,
+        p_to_user_id: toUserId || null,
+        p_to_department_id: toDepartmentId || null,
+        p_note: note || null,
+      });
 
-      console.log('[Transfer] Starting transfer for conversation:', conversationId);
-      console.log('[Transfer] Current user ID:', user.id);
-
-      // Get current user's profile for the event data
-      const { data: actorProfile } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .single();
-
-      console.log('[Transfer] Actor profile:', actorProfile?.full_name);
-
-      // Get current conversation to capture the "from" state
-      const { data: currentConversation, error: convError } = await supabase
-        .from('conversations')
-        .select(`
-          assigned_to,
-          department_id,
-          assigned_user:profiles!conversations_assigned_to_fkey(full_name),
-          department:departments!conversations_department_id_fkey(name)
-        `)
-        .eq('id', conversationId)
-        .single();
-
-      if (convError) {
-        console.error('[Transfer] Error fetching conversation:', convError);
-        throw convError;
+      if (error) {
+        console.error('[Transfer] RPC error:', error);
+        throw new Error(error.message || 'Falha ao transferir conversa');
       }
 
-      console.log('[Transfer] Current conversation assigned_to:', currentConversation?.assigned_to);
-      console.log('[Transfer] Is user the owner?:', currentConversation?.assigned_to === user.id);
-
-      const fromUserId = currentConversation?.assigned_to;
-      const fromUserName = (currentConversation?.assigned_user as any)?.full_name || null;
-
-      // Build the transfer event data BEFORE updating the conversation
-      const eventData: ConversationEvent['data'] = {
-        from_user_id: fromUserId || user.id,
-        from_user_name: fromUserName || actorProfile?.full_name || 'Usuário',
-        note,
-      };
-
-      if (toUserId) {
-        eventData.to_user_id = toUserId;
-        eventData.to_user_name = toUserName || 'Usuário';
-      }
-
-      if (toDepartmentId) {
-        eventData.to_department_id = toDepartmentId;
-        eventData.to_department_name = toDepartmentName || 'Departamento';
-      }
-
-      // IMPORTANT: Create the transfer event FIRST (before updating assigned_to)
-      // This is because the RLS policy on conversation_events checks if the current user
-      // is the assigned_to of the conversation. If we update first, the user is no longer
-      // the assigned_to and the INSERT will fail.
-      console.log('[Transfer] Creating transfer event...');
-      const { error: eventError } = await supabase
-        .from('conversation_events')
-        .insert({
-          conversation_id: conversationId,
-          event_type: 'transfer',
-          actor_id: user.id,
-          data: eventData,
-        });
-
-      if (eventError) {
-        console.error('[Transfer] Error creating event:', eventError);
-        throw eventError;
-      }
-      console.log('[Transfer] Event created successfully');
-
-      // Now update the conversation - the event is already recorded
-      const updateData: any = {
-        transferred_at: new Date().toISOString(),
-        transferred_from: fromUserId || user.id,
-        transfer_note: note || null,
-      };
-
-      // Always set the user if provided
-      if (toUserId) {
-        updateData.assigned_to = toUserId;
-        updateData.status = 'open'; // Muda para "open" ao atribuir a um atendente
-      }
-      
-      // Always set the department if provided
-      if (toDepartmentId) {
-        updateData.department_id = toDepartmentId;
-      }
-
-      console.log('[Transfer] Updating conversation with:', updateData);
-      const { data: updateResult, error: updateError } = await supabase
-        .from('conversations')
-        .update(updateData)
-        .eq('id', conversationId)
-        .select('id');
-
-      if (updateError) {
-        console.error('[Transfer] Error updating conversation:', updateError);
-        throw updateError;
-      }
-      
-      // Verify the update actually affected a row
-      if (!updateResult || updateResult.length === 0) {
-        console.error('[Transfer] No rows updated - RLS policy may have blocked the update');
-        throw new Error('Falha ao transferir conversa. Verifique suas permissões.');
-      }
-      
-      console.log('[Transfer] Conversation updated successfully:', updateResult);
-
-      return { success: true };
+      return { success: data };
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['conversation-events', variables.conversationId] });
