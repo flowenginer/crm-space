@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, ChevronRight, Users } from 'lucide-react';
+import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, ChevronRight, Users, Pin, PinOff } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -22,6 +23,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
 import { useAllUserDepartments } from '@/hooks/useUserDepartments';
 import { useTransferConversation } from '@/hooks/useConversationEvents';
+import { usePinnedConversations, useUnpinConversation } from '@/hooks/usePinnedConversations';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
@@ -48,13 +50,19 @@ export function TransferModal({
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [note, setNote] = useState('');
+  const [shouldUnpin, setShouldUnpin] = useState(true);
 
   const { data: departments = [], isLoading: isDepartmentsLoading } = useDepartments();
   const { data: team = [] } = useTeam();
   const { data: allUserDepartments = [] } = useAllUserDepartments();
+  const { data: pinnedConversations = [] } = usePinnedConversations();
+  const unpinConversation = useUnpinConversation();
   const transferConversation = useTransferConversation();
   const { can } = usePermissions();
   const { user } = useAuth();
+
+  // Check if this conversation is pinned by the current user
+  const isConversationPinned = pinnedConversations.some(p => p.conversation_id === conversationId);
 
   const activeDepartments = departments.filter(d => d.is_active);
 
@@ -113,6 +121,11 @@ export function TransferModal({
     const selectedUser = transferType === 'user' ? team.find(t => t.id === selectedUserId) : null;
 
     try {
+      // If conversation is pinned and user wants to unpin, do it first
+      if (isConversationPinned && shouldUnpin) {
+        await unpinConversation.mutateAsync(conversationId);
+      }
+
       await transferConversation.mutateAsync({
         conversationId,
         // For department transfer, toUserId is null (goes to pending queue)
@@ -140,6 +153,7 @@ export function TransferModal({
     setSelectedDepartmentId('');
     setSelectedUserId('');
     setNote('');
+    setShouldUnpin(true);
     onClose();
   };
 
@@ -317,6 +331,30 @@ export function TransferModal({
                     Não há atendentes cadastrados neste departamento.
                   </p>
                 )}
+              </div>
+            )}
+
+            {/* Unpin option - only show if conversation is pinned */}
+            {isConversationPinned && (
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <Checkbox
+                  id="unpin-conversation"
+                  checked={shouldUnpin}
+                  onCheckedChange={(checked) => setShouldUnpin(checked === true)}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <Label 
+                    htmlFor="unpin-conversation" 
+                    className="text-sm font-medium cursor-pointer flex items-center gap-2"
+                  >
+                    <PinOff size={14} className="text-amber-500" />
+                    Desafixar esta conversa
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    A conversa está fixada. Se marcado, ela será removida da sua aba "Fixadas" após a transferência.
+                  </p>
+                </div>
               </div>
             )}
 
