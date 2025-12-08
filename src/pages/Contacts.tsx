@@ -23,8 +23,8 @@ import {
   X,
   Users,
   Loader2,
-  ShieldAlert,
 } from 'lucide-react';
+import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
 import {
   Dialog,
   DialogContent,
@@ -73,9 +73,11 @@ export default function Contacts() {
   const queryClient = useQueryClient();
   const { isAdmin, profile } = usePermissions();
   
-  // Modal de bloqueio de acesso
-  const [showAccessDeniedModal, setShowAccessDeniedModal] = useState(false);
-  const [blockedByAgentName, setBlockedByAgentName] = useState<string | null>(null);
+  // Modal de solicitação de acesso
+  const [showContactRequestModal, setShowContactRequestModal] = useState(false);
+  const [blockedContact, setBlockedContact] = useState<Contact | null>(null);
+  const [blockedByAgent, setBlockedByAgent] = useState<{ id: string; full_name: string | null; avatar_url: string | null } | null>(null);
+  const [blockedConversationId, setBlockedConversationId] = useState<string | null>(null);
   
   // Estados de filtro
   const [searchQuery, setSearchQuery] = useState('');
@@ -337,18 +339,7 @@ export default function Contacts() {
         willBlockByContact: !isAdmin && contact.assigned_to && contact.assigned_to !== currentUserId
       });
 
-      // ============ VERIFICAÇÃO DE PERMISSÃO ============
-      // Se NÃO for admin, verificar se o contato está atribuído a outro vendedor
-      if (!isAdmin && contact.assigned_to && contact.assigned_to !== currentUserId) {
-        // Buscar nome do vendedor responsável
-        const assignedAgentName = team.find(t => t.id === contact.assigned_to)?.full_name || 'outro vendedor';
-        setBlockedByAgentName(assignedAgentName);
-        setShowAccessDeniedModal(true);
-        setIsOpeningChat(false);
-        return;
-      }
-
-      // Verificar também se existe conversa ativa atribuída a outro vendedor
+      // Verificar se existe conversa ativa
       const { data: existingConversation } = await supabase
         .from('conversations')
         .select('id, assigned_to')
@@ -356,12 +347,34 @@ export default function Contacts() {
         .in('status', ['open', 'pending'])
         .maybeSingle();
 
+      // ============ VERIFICAÇÃO DE PERMISSÃO ============
+      // Se NÃO for admin, verificar se o contato está atribuído a outro vendedor
+      if (!isAdmin && contact.assigned_to && contact.assigned_to !== currentUserId) {
+        const assignedAgent = team.find(t => t.id === contact.assigned_to);
+        setBlockedContact(contact);
+        setBlockedByAgent({
+          id: contact.assigned_to,
+          full_name: assignedAgent?.full_name || null,
+          avatar_url: assignedAgent?.avatar_url || null,
+        });
+        setBlockedConversationId(existingConversation?.id || null);
+        setShowContactRequestModal(true);
+        setIsOpeningChat(false);
+        return;
+      }
+
+      // Verificar também se a conversa está atribuída a outro vendedor
       if (existingConversation && !isAdmin) {
-        // Se a conversa está atribuída a outro vendedor, bloquear
         if (existingConversation.assigned_to && existingConversation.assigned_to !== currentUserId) {
-          const assignedAgentName = team.find(t => t.id === existingConversation.assigned_to)?.full_name || 'outro vendedor';
-          setBlockedByAgentName(assignedAgentName);
-          setShowAccessDeniedModal(true);
+          const assignedAgent = team.find(t => t.id === existingConversation.assigned_to);
+          setBlockedContact(contact);
+          setBlockedByAgent({
+            id: existingConversation.assigned_to,
+            full_name: assignedAgent?.full_name || null,
+            avatar_url: assignedAgent?.avatar_url || null,
+          });
+          setBlockedConversationId(existingConversation.id);
+          setShowContactRequestModal(true);
           setIsOpeningChat(false);
           return;
         }
@@ -446,31 +459,20 @@ export default function Contacts() {
 
   return (
     <div className="space-y-6">
-      {/* Modal de Acesso Negado */}
-      <Dialog open={showAccessDeniedModal} onOpenChange={setShowAccessDeniedModal}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-              <ShieldAlert className="w-6 h-6 text-destructive" />
-            </div>
-            <DialogTitle className="text-center">Acesso Restrito</DialogTitle>
-            <DialogDescription className="text-center">
-              Este cliente está atribuído ao vendedor{' '}
-              <span className="font-semibold text-foreground">{blockedByAgentName}</span>.
-              <br /><br />
-              Favor contactar o vendedor responsável para ter acesso a este cliente.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="sm:justify-center">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowAccessDeniedModal(false)}
-            >
-              Entendi
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Modal de Solicitação de Acesso */}
+      {blockedContact && blockedByAgent && (
+        <ContactRequestModal
+          open={showContactRequestModal}
+          onOpenChange={setShowContactRequestModal}
+          contact={{
+            id: blockedContact.id,
+            full_name: blockedContact.full_name,
+            phone: blockedContact.phone,
+          }}
+          currentOwner={blockedByAgent}
+          conversationId={blockedConversationId}
+        />
+      )}
 
       {/* Page Header */}
       <div className="flex items-center justify-between">
