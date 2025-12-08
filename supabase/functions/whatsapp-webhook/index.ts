@@ -988,16 +988,114 @@ serve(async (req) => {
     // =====================================================
     
     // =====================================================
+    // PHONE NORMALIZATION - Generate variations to find existing contacts
+    // =====================================================
+    function generatePhoneVariations(phone: string): string[] {
+      const variations: string[] = [phone];
+      const cleanPhone = phone.replace(/\D/g, '');
+      
+      if (!cleanPhone) return variations;
+      
+      // Add clean version
+      if (!variations.includes(cleanPhone)) {
+        variations.push(cleanPhone);
+      }
+      
+      // With and without country code 55
+      if (cleanPhone.startsWith('55')) {
+        const withoutCountry = cleanPhone.slice(2);
+        if (!variations.includes(withoutCountry)) {
+          variations.push(withoutCountry);
+        }
+      } else {
+        const withCountry = `55${cleanPhone}`;
+        if (!variations.includes(withCountry)) {
+          variations.push(withCountry);
+        }
+      }
+      
+      // Extract DDD and rest of number
+      const hasCountry = cleanPhone.startsWith('55');
+      const ddd = hasCountry ? cleanPhone.slice(2, 4) : cleanPhone.slice(0, 2);
+      const rest = hasCountry ? cleanPhone.slice(4) : cleanPhone.slice(2);
+      
+      // 9th digit variations (Brazilian mobile numbers)
+      // If has 9 digits after DDD and starts with 9, try without the 9
+      if (rest.length === 9 && rest.startsWith('9')) {
+        const without9 = rest.slice(1);
+        variations.push(`55${ddd}${without9}`);
+        variations.push(`${ddd}${without9}`);
+      }
+      
+      // If has 8 digits after DDD, try with 9 prefix
+      if (rest.length === 8) {
+        variations.push(`55${ddd}9${rest}`);
+        variations.push(`${ddd}9${rest}`);
+      }
+      
+      // Handle extra trailing zeros (sometimes added in calls)
+      if (cleanPhone.endsWith('0') && cleanPhone.length > 12) {
+        const withoutTrailingZero = cleanPhone.slice(0, -1);
+        if (!variations.includes(withoutTrailingZero)) {
+          variations.push(withoutTrailingZero);
+        }
+        if (withoutTrailingZero.startsWith('55')) {
+          variations.push(withoutTrailingZero.slice(2));
+        }
+      }
+      
+      // Remove duplicates
+      return [...new Set(variations)];
+    }
+    
+    // =====================================================
+    // VALIDATE CONTACT NAME - Filter invalid/generic names
+    // =====================================================
+    function isValidContactName(name: string | undefined): boolean {
+      if (!name || name.trim().length < 2) return false;
+      
+      const invalidNames = [
+        'você', 'voce', 'eu', 'me', 'user', 'usuario', 'usuário',
+        'undefined', 'null', 'unknown', 'desconhecido', 
+        'whatsapp', 'contato', 'contact'
+      ];
+      
+      const normalizedName = name.toLowerCase().trim();
+      
+      // Check if it's an invalid name
+      if (invalidNames.includes(normalizedName)) {
+        return false;
+      }
+      
+      // Check if it's just a phone number
+      if (/^\d+$/.test(normalizedName.replace(/[\s\-\(\)]/g, ''))) {
+        return false;
+      }
+      
+      return true;
+    }
+    
+    // =====================================================
     // FIND OR CREATE CONTACT (usando UPSERT para evitar race conditions)
     // =====================================================
-    const contactName = normalizedMessage.fromName || `WhatsApp ${normalizedMessage.from}`;
+    const validName = isValidContactName(normalizedMessage.fromName);
+    const contactName = validName 
+      ? normalizedMessage.fromName! 
+      : `WhatsApp ${normalizedMessage.from}`;
     
-    // Primeiro, tentar buscar o contato existente
+    console.log(`[Webhook] Contact name validation: fromName="${normalizedMessage.fromName}", isValid=${validName}, using="${contactName}"`);
+    
+    // Generate phone variations for search
+    const phoneVariations = generatePhoneVariations(normalizedMessage.from);
+    console.log(`[Webhook] Searching contact with phone variations: ${phoneVariations.join(', ')}`);
+    
+    // Primeiro, tentar buscar o contato existente por todas as variações
     let { data: contact } = await supabase
       .from("contacts")
       .select("id, full_name, phone")
-      .eq("phone", normalizedMessage.from)
-      .single();
+      .in("phone", phoneVariations)
+      .limit(1)
+      .maybeSingle();
 
     if (!contact) {
       // Preparar dados de origem baseado em referral (Meta Ads)
@@ -1015,11 +1113,16 @@ serve(async (req) => {
         console.log(`[Webhook] 📣 New contact from Meta Ads! Campaign: ${originCampaign}`);
       }
       
+      // Normalizar telefone para storage (formato padrão: 55 + DDD + número)
+      const normalizedPhone = normalizedMessage.from.replace(/\D/g, '').startsWith('55') 
+        ? normalizedMessage.from.replace(/\D/g, '')
+        : `55${normalizedMessage.from.replace(/\D/g, '')}`;
+      
       // Usar upsert para evitar duplicatas por race condition
       const { data: upsertedContact, error: contactError } = await supabase
         .from("contacts")
         .upsert({
-          phone: normalizedMessage.from,
+          phone: normalizedPhone,
           full_name: contactName,
           origin: origin,
           origin_campaign: originCampaign,
@@ -1039,8 +1142,9 @@ serve(async (req) => {
           const { data: existingContact } = await supabase
             .from("contacts")
             .select("id, full_name, phone")
-            .eq("phone", normalizedMessage.from)
-            .single();
+            .in("phone", phoneVariations)
+            .limit(1)
+            .maybeSingle();
           contact = existingContact;
           
           // Se o contato já existe mas tem dados de referral na mensagem atual, atualizar
@@ -1070,7 +1174,7 @@ serve(async (req) => {
     if (contact) {
       const currentName = contact.full_name || '';
       const hasGenericName = currentName.startsWith('WhatsApp ') || !currentName;
-      const hasBetterName = normalizedMessage.fromName && normalizedMessage.fromName.trim().length > 0;
+      const hasBetterName = isValidContactName(normalizedMessage.fromName);
       
       if (hasGenericName && hasBetterName) {
         console.log(`[Webhook] Updating contact name from "${currentName}" to "${normalizedMessage.fromName}"`);
@@ -1081,7 +1185,7 @@ serve(async (req) => {
             updated_at: new Date().toISOString()
           })
           .eq("id", contact.id);
-        contact.full_name = normalizedMessage.fromName;
+        contact.full_name = normalizedMessage.fromName!;
       }
     }
 
