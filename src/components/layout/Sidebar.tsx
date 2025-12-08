@@ -35,7 +35,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { usePendingRequestsCount } from '@/hooks/useContactRequests';
+import { usePendingRequestsCount, useContactRequestsRealtime } from '@/hooks/useContactRequests';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface NavItem {
@@ -85,6 +85,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { hasPermission, isAdmin, role: userRole, isFullyLoaded } = usePermissions();
   const { data: pendingRequestsCount = 0 } = usePendingRequestsCount();
   
+  // Ativar listener de realtime para requisições
+  useContactRequestsRealtime();
   // State for collapsible conversations submenu
   const isConversationsActive = location.pathname.startsWith('/conversations');
   const [conversationsOpen, setConversationsOpen] = useState(isConversationsActive);
