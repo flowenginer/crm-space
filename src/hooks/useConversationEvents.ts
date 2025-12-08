@@ -76,11 +76,12 @@ export function useReturnConversation() {
         .eq('id', user.id)
         .single();
 
-      // Update the conversation
+      // Update the conversation - set status to "open" when returning to an agent
       const { data: updateResult, error: updateError } = await supabase
         .from('conversations')
         .update({
           assigned_to: toUserId,
+          status: 'open', // Muda para "open" ao atribuir a um atendente
           transferred_at: new Date().toISOString(),
           transferred_from: user.id,
           transfer_note: 'Devolução de transferência',
@@ -222,6 +223,7 @@ export function useTransferConversation() {
       // Always set the user if provided
       if (toUserId) {
         updateData.assigned_to = toUserId;
+        updateData.status = 'open'; // Muda para "open" ao atribuir a um atendente
       }
       
       // Always set the department if provided

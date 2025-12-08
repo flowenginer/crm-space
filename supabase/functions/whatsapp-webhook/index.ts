@@ -1113,10 +1113,13 @@ serve(async (req) => {
           }
         }
 
+        // Se não tem atendente atribuído, reabre como "pending", senão como "open"
+        const reopenStatus = newAssignedTo ? "open" : "pending";
+        
         const { error: reopenError } = await supabase
           .from("conversations")
           .update({
-            status: "open",
+            status: reopenStatus,
             is_unread: true,
             unread_count: 1,
             last_message_at: new Date().toISOString(),
@@ -1160,13 +1163,16 @@ serve(async (req) => {
         // For new conversations, assign to owner agent if available
         const initialAssignedTo = ownerAgentEnabled && ownerAgentId ? ownerAgentId : null;
         
+        // Se tem atendente atribuído, cria como "open", senão como "pending"
+        const initialStatus = initialAssignedTo ? "open" : "pending";
+        
         const { data: newConversation, error: convError } = await supabase
           .from("conversations")
           .insert({
             contact_id: contact.id,
             channel_id: channel.id,
             department_id: channel.department_id || null,
-            status: "open",
+            status: initialStatus,
             is_unread: true,
             unread_count: 1,
             last_message_at: new Date().toISOString(),
