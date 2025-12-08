@@ -60,7 +60,7 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/conversations/requests" element={
-                <ProtectedRoute roles={['admin', 'supervisor']}>
+                <ProtectedRoute permission="conversations.requests">
                   <ContactRequests />
                 </ProtectedRoute>
               } />

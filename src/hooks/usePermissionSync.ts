@@ -3,9 +3,13 @@
  * 
  * Este hook é executado automaticamente para admins e garante que
  * todas as permissões definidas em SYSTEM_PERMISSIONS existam no banco.
+ * 
+ * IMPORTANTE: Toda vez que uma nova permissão for adicionada em permissions.ts,
+ * ela será automaticamente inserida no banco de dados na próxima vez que
+ * um admin acessar o sistema.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SYSTEM_PERMISSIONS, getAllPermissions } from '@/config/permissions';
@@ -24,7 +28,7 @@ export function usePermissionSync() {
   const queryClient = useQueryClient();
 
   // Fetch existing permissions from DB
-  const { data: dbPermissions = [] } = useQuery({
+  const { data: dbPermissions = [], isSuccess: dbLoaded } = useQuery({
     queryKey: ['permission-definitions-sync'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -38,45 +42,53 @@ export function usePermissionSync() {
     staleTime: 60000, // 1 minute
   });
 
+  // Find missing permissions
+  const findMissingPermissions = useCallback(() => {
+    if (!dbLoaded || dbPermissions.length === 0) return [];
+    
+    const dbPermissionKeys = new Set(dbPermissions.map(p => p.permission_key));
+    const toInsert: Array<{
+      category: string;
+      permission_key: string;
+      permission_name: string;
+      description: string;
+    }> = [];
+
+    for (const category of SYSTEM_PERMISSIONS) {
+      for (const perm of category.permissions) {
+        if (!dbPermissionKeys.has(perm.key)) {
+          toInsert.push({
+            category: category.key,
+            permission_key: perm.key,
+            permission_name: perm.name,
+            description: perm.description,
+          });
+        }
+      }
+    }
+
+    return toInsert;
+  }, [dbPermissions, dbLoaded]);
+
   // Mutation to sync permissions
   const syncMutation = useMutation({
     mutationFn: async () => {
-      const configPermissions = getAllPermissions();
-      const dbPermissionKeys = new Set(dbPermissions.map(p => p.permission_key));
-      
-      // Find permissions that need to be added
-      const toInsert: Array<{
-        category: string;
-        permission_key: string;
-        permission_name: string;
-        description: string;
-      }> = [];
+      const toInsert = findMissingPermissions();
 
-      for (const category of SYSTEM_PERMISSIONS) {
-        for (const perm of category.permissions) {
-          if (!dbPermissionKeys.has(perm.key)) {
-            toInsert.push({
-              category: category.key,
-              permission_key: perm.key,
-              permission_name: perm.name,
-              description: perm.description,
-            });
-          }
-        }
+      if (toInsert.length === 0) {
+        return { added: 0, permissions: [] };
       }
 
       // Insert new permissions
-      if (toInsert.length > 0) {
-        const { error } = await supabase
-          .from('permission_definitions')
-          .insert(toInsert);
-        
-        if (error) throw error;
-        
-        console.log(`[PermissionSync] Added ${toInsert.length} new permissions:`, toInsert.map(p => p.permission_key));
-      }
-
-      return { added: toInsert.length };
+      const { error } = await supabase
+        .from('permission_definitions')
+        .insert(toInsert);
+      
+      if (error) throw error;
+      
+      console.log(`[PermissionSync] ✅ Added ${toInsert.length} new permissions:`, toInsert.map(p => p.permission_key));
+      
+      return { added: toInsert.length, permissions: toInsert.map(p => p.permission_key) };
     },
     onSuccess: (result) => {
       if (result.added > 0) {
@@ -86,29 +98,29 @@ export function usePermissionSync() {
       }
     },
     onError: (error) => {
-      console.error('[PermissionSync] Error syncing permissions:', error);
+      console.error('[PermissionSync] ❌ Error syncing permissions:', error);
     },
   });
 
   // Auto-sync when admin loads the app
   useEffect(() => {
-    if (isFullyLoaded && isAdmin && dbPermissions.length > 0) {
-      const configPermissions = getAllPermissions();
-      const dbPermissionKeys = new Set(dbPermissions.map(p => p.permission_key));
+    if (isFullyLoaded && isAdmin && dbLoaded && dbPermissions.length > 0) {
+      const missingPermissions = findMissingPermissions();
       
-      // Check if there are missing permissions
-      const hasMissing = configPermissions.some(p => !dbPermissionKeys.has(p.key));
-      
-      if (hasMissing) {
+      if (missingPermissions.length > 0) {
+        console.log(`[PermissionSync] 🔄 Found ${missingPermissions.length} missing permissions, syncing...`);
         syncMutation.mutate();
+      } else {
+        console.log('[PermissionSync] ✓ All permissions are in sync');
       }
     }
-  }, [isFullyLoaded, isAdmin, dbPermissions]);
+  }, [isFullyLoaded, isAdmin, dbLoaded, dbPermissions.length, findMissingPermissions]);
 
   return {
     syncPermissions: syncMutation.mutate,
     isSyncing: syncMutation.isPending,
     syncResult: syncMutation.data,
     syncError: syncMutation.error,
+    missingCount: findMissingPermissions().length,
   };
 }
