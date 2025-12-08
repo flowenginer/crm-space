@@ -763,15 +763,57 @@ serve(async (req) => {
         let matchedMessage = null;
         
         for (const msg of pendingMessages) {
-          // Para texto, comparar conteúdo
-          if (normalizedMessage.type === 'text' && msg.content === normalizedMessage.content) {
-            matchedMessage = msg;
-            break;
-          }
           // Para mídia, qualquer mensagem pendente do mesmo tipo serve
           if (normalizedMessage.type !== 'text' && msg.message_type === normalizedMessage.type) {
             matchedMessage = msg;
+            console.log(`[Webhook] Matched media message by type: ${normalizedMessage.type}`);
             break;
+          }
+          
+          // Para texto, comparar conteúdo com múltiplas estratégias
+          if (normalizedMessage.type === 'text' && msg.content && normalizedMessage.content) {
+            const msgContent = msg.content.trim();
+            const webhookContent = normalizedMessage.content.trim();
+            
+            // 1. Correspondência exata
+            if (msgContent === webhookContent) {
+              matchedMessage = msg;
+              console.log(`[Webhook] Exact content match found`);
+              break;
+            }
+            
+            // 2. Webhook contém o conteúdo do frontend (assinatura "*Nome*:\n" foi adicionada)
+            if (webhookContent.includes(msgContent) && msgContent.length > 0) {
+              matchedMessage = msg;
+              console.log(`[Webhook] Webhook content contains frontend content (signature added)`);
+              break;
+            }
+            
+            // 3. Frontend contém conteúdo do webhook
+            if (msgContent.includes(webhookContent) && webhookContent.length > 0) {
+              matchedMessage = msg;
+              console.log(`[Webhook] Frontend content contains webhook content`);
+              break;
+            }
+            
+            // 4. Remover assinatura do padrão "*Nome*:\n" do webhook e comparar
+            const contentWithoutSignature = webhookContent.replace(/^\*[^*]+\*:\n/, '');
+            if (msgContent === contentWithoutSignature) {
+              matchedMessage = msg;
+              console.log(`[Webhook] Match after removing signature pattern`);
+              break;
+            }
+            
+            // 5. Comparar apenas a parte final do webhook (após última quebra de linha de assinatura)
+            const lastLineBreakIdx = webhookContent.lastIndexOf('\n');
+            if (lastLineBreakIdx > 0) {
+              const afterSignature = webhookContent.substring(lastLineBreakIdx + 1).trim();
+              if (msgContent === afterSignature || afterSignature.includes(msgContent)) {
+                matchedMessage = msg;
+                console.log(`[Webhook] Match after extracting content after signature`);
+                break;
+              }
+            }
           }
         }
 
