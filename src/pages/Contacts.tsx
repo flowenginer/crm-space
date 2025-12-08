@@ -71,7 +71,8 @@ const getTagColorClass = (color: string | null) => {
 export default function Contacts() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isAdmin, profile } = usePermissions();
+const { isAdmin, isSupervisor, profile } = usePermissions();
+  const canAccessAllContacts = isAdmin || isSupervisor;
   
   // Modal de solicitação de acesso
   const [showContactRequestModal, setShowContactRequestModal] = useState(false);
@@ -348,8 +349,8 @@ export default function Contacts() {
         .maybeSingle();
 
       // ============ VERIFICAÇÃO DE PERMISSÃO ============
-      // Se NÃO for admin, verificar se o contato está atribuído a outro vendedor
-      if (!isAdmin && contact.assigned_to && contact.assigned_to !== currentUserId) {
+      // Se NÃO for admin/supervisor, verificar se o contato está atribuído a outro vendedor
+      if (!canAccessAllContacts && contact.assigned_to && contact.assigned_to !== currentUserId) {
         const assignedAgent = team.find(t => t.id === contact.assigned_to);
         setBlockedContact(contact);
         setBlockedByAgent({
@@ -364,7 +365,7 @@ export default function Contacts() {
       }
 
       // Verificar também se a conversa está atribuída a outro vendedor
-      if (existingConversation && !isAdmin) {
+      if (existingConversation && !canAccessAllContacts) {
         if (existingConversation.assigned_to && existingConversation.assigned_to !== currentUserId) {
           const assignedAgent = team.find(t => t.id === existingConversation.assigned_to);
           setBlockedContact(contact);

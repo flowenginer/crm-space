@@ -1164,11 +1164,14 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
-  const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePermissions();
+const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePermissions();
   const { profile: authProfile } = useAuth();
   
+  // Supervisor e admin têm acesso total a todas as conversas e contatos
+  const canAccessAllConversations = isAdmin || isSupervisor;
+  
   // Permissão para ver conversas não atribuídas (admins, supervisores ou com permissão específica)
-  const canViewUnassigned = isAdmin || isSupervisor || hasPermission('conversations', 'view_unassigned');
+  const canViewUnassigned = canAccessAllConversations || hasPermission('conversations', 'view_unassigned');
   
   // Filtros disponíveis baseados na permissão
   const availableQuickFilters = useMemo(() => {
@@ -1525,8 +1528,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     // Aguardar permissões carregarem completamente
     if (!isFullyLoaded || !selectedConversationId || !selectedConversation) return;
     
-    // Admin pode ver tudo
-    if (isAdmin) return;
+    // Admin e supervisor podem ver tudo
+    if (canAccessAllConversations) return;
     
     // Verificar se a conversa está atribuída a outro usuário
     if (selectedConversation.assigned_to && selectedConversation.assigned_to !== profile?.id) {
@@ -1554,7 +1557,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
       // Limpar a URL para remover o ID da conversa bloqueada
       navigate('/conversations', { replace: true });
     }
-  }, [selectedConversationId, selectedConversation, isAdmin, profile?.id, isFullyLoaded, teamMembers, navigate]);
+  }, [selectedConversationId, selectedConversation, canAccessAllConversations, profile?.id, isFullyLoaded, teamMembers, navigate]);
 
   // Note: last_message_is_from_me is now included directly in conversation data from the server
   // No need to fetch last messages separately anymore
@@ -1928,8 +1931,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     });
     
     // ============ VERIFICAÇÃO DE PERMISSÃO ============
-    // Se NÃO for admin, verificar se a conversa está atribuída a outro vendedor
-    if (!isAdmin && conv.assigned_to && conv.assigned_to !== profile?.id) {
+    // Se NÃO for admin/supervisor, verificar se a conversa está atribuída a outro vendedor
+    if (!canAccessAllConversations && conv.assigned_to && conv.assigned_to !== profile?.id) {
       const assignedAgent = teamMembers.find(t => t.id === conv.assigned_to);
       setBlockedContact({
         id: conv.contact_id,
@@ -1972,7 +1975,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     if (isMobile) {
       setShowMobileChat(true);
     }
-  }, [searchParams, navigate, isMobile, isAdmin, profile?.id, teamMembers, queryClient]);
+  }, [searchParams, navigate, isMobile, canAccessAllConversations, profile?.id, teamMembers, queryClient]);
 
   const handleBackToList = () => {
     setShowMobileChat(false);
