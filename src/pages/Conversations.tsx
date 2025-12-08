@@ -98,6 +98,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
 import { usePermissions } from '@/hooks/usePermissions';
+import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
 
 // Helper function to linkify URLs in text
 const linkifyText = (text: string) => {
@@ -1053,9 +1054,11 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     return ['all', 'pinned', 'mine'] as const;
   }, [canViewUnassigned]);
 
-  // Modal de bloqueio de acesso
-  const [showAccessDeniedModal, setShowAccessDeniedModal] = useState(false);
-  const [blockedByAgentName, setBlockedByAgentName] = useState<string | null>(null);
+  // Modal de solicitação de acesso
+  const [showContactRequestModal, setShowContactRequestModal] = useState(false);
+  const [blockedContact, setBlockedContact] = useState<{ id: string; full_name: string; phone: string } | null>(null);
+  const [blockedByAgent, setBlockedByAgent] = useState<{ id: string; full_name: string | null; avatar_url: string | null } | null>(null);
+  const [blockedConversationId, setBlockedConversationId] = useState<string | null>(null);
 
   // Debounce search query for server-side search (300ms)
   useEffect(() => {
@@ -1393,19 +1396,26 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     
     // Verificar se a conversa está atribuída a outro usuário
     if (selectedConversation.assigned_to && selectedConversation.assigned_to !== profile?.id) {
-      const assignedAgentName = selectedConversation.assignee?.full_name || 
-        teamMembers.find(t => t.id === selectedConversation.assigned_to)?.full_name || 
-        'outro vendedor';
+      const assignedAgent = teamMembers.find(t => t.id === selectedConversation.assigned_to);
       
       console.log('[Conversations] Bloqueando acesso via URL:', {
         conversationId: selectedConversationId,
         assignedTo: selectedConversation.assigned_to,
         currentUserId: profile?.id,
-        assignedAgentName
       });
       
-      setBlockedByAgentName(assignedAgentName);
-      setShowAccessDeniedModal(true);
+      setBlockedContact({
+        id: selectedConversation.contact_id,
+        full_name: selectedConversation.contact?.full_name || 'Contato',
+        phone: selectedConversation.contact?.phone || '',
+      });
+      setBlockedByAgent({
+        id: selectedConversation.assigned_to,
+        full_name: assignedAgent?.full_name || selectedConversation.assignee?.full_name || null,
+        avatar_url: assignedAgent?.avatar_url || null,
+      });
+      setBlockedConversationId(selectedConversationId);
+      setShowContactRequestModal(true);
       
       // Limpar a URL para remover o ID da conversa bloqueada
       navigate('/conversations', { replace: true });
@@ -1842,10 +1852,19 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     // ============ VERIFICAÇÃO DE PERMISSÃO ============
     // Se NÃO for admin, verificar se a conversa está atribuída a outro vendedor
     if (!isAdmin && conv.assigned_to && conv.assigned_to !== profile?.id) {
-      // Buscar nome do vendedor responsável
-      const assignedAgentName = conv.assignee?.full_name || teamMembers.find(t => t.id === conv.assigned_to)?.full_name || 'outro vendedor';
-      setBlockedByAgentName(assignedAgentName);
-      setShowAccessDeniedModal(true);
+      const assignedAgent = teamMembers.find(t => t.id === conv.assigned_to);
+      setBlockedContact({
+        id: conv.contact_id,
+        full_name: conv.contact?.full_name || 'Contato',
+        phone: conv.contact?.phone || '',
+      });
+      setBlockedByAgent({
+        id: conv.assigned_to,
+        full_name: assignedAgent?.full_name || conv.assignee?.full_name || null,
+        avatar_url: assignedAgent?.avatar_url || null,
+      });
+      setBlockedConversationId(conv.id);
+      setShowContactRequestModal(true);
       return;
     }
     // ============ FIM DA VERIFICAÇÃO ============
@@ -2332,31 +2351,16 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
 
   return (
     <div className="flex h-full w-full bg-background overflow-hidden">
-      {/* Modal de Acesso Negado */}
-      <Dialog open={showAccessDeniedModal} onOpenChange={setShowAccessDeniedModal}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-              <Lock className="w-6 h-6 text-destructive" />
-            </div>
-            <DialogTitle className="text-center">Acesso Restrito</DialogTitle>
-            <DialogDescription className="text-center">
-              Este cliente está atribuído ao vendedor{' '}
-              <span className="font-semibold text-foreground">{blockedByAgentName}</span>.
-              <br /><br />
-              Favor contactar o vendedor responsável para ter acesso a este cliente.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="sm:justify-center">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowAccessDeniedModal(false)}
-            >
-              Entendi
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Modal de Solicitação de Acesso */}
+      {blockedContact && blockedByAgent && (
+        <ContactRequestModal
+          open={showContactRequestModal}
+          onOpenChange={setShowContactRequestModal}
+          contact={blockedContact}
+          currentOwner={blockedByAgent}
+          conversationId={blockedConversationId}
+        />
+      )}
 
       {/* Column 1: Conversations List */}
       <div className={cn(
