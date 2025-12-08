@@ -38,6 +38,21 @@ export interface Deal {
   assignee?: { id: string; full_name: string | null } | null;
 }
 
+// Helper to check if user can view all data (admin/supervisor)
+async function canViewAllData(): Promise<{ canViewAll: boolean; userId: string | null }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { canViewAll: false, userId: null };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  const canViewAll = profile?.role === 'admin' || profile?.role === 'supervisor';
+  return { canViewAll, userId: user.id };
+}
+
 export function usePipelines() {
   return useQuery({
     queryKey: ['pipelines'],
@@ -79,7 +94,10 @@ export function useDeals(pipelineId: string | null) {
     queryFn: async () => {
       if (!pipelineId) return [];
       
-      const { data, error } = await supabase
+      // Check user permissions
+      const { canViewAll, userId } = await canViewAllData();
+
+      let query = supabase
         .from('deals')
         .select(`
           *,
@@ -90,6 +108,12 @@ export function useDeals(pipelineId: string | null) {
         .neq('status', 'archived')
         .order('order_position');
 
+      // Filter by assigned_to for non-admin users
+      if (!canViewAll && userId) {
+        query = query.eq('assigned_to', userId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data as Deal[];
     },

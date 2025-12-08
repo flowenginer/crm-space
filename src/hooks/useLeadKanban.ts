@@ -51,12 +51,19 @@ export function useLeadStatuses() {
   });
 }
 
-// Fetch aggregated counts and values per lead status (real database counts)
+// Fetch aggregated counts and values per lead status (filtered by user permission)
 export function useLeadStatusSummary() {
   return useQuery({
     queryKey: ['lead-status-summary'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_lead_status_summary');
+      // Get current user ID
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id;
+
+      // Call RPC with user_id - the function handles permission check
+      const { data, error } = await supabase.rpc('get_lead_status_summary', {
+        _user_id: userId
+      });
       if (error) throw error;
       
       // Transform to a map for easy lookup
@@ -137,11 +144,28 @@ export function useDeleteLeadStatus() {
   });
 }
 
-// Fetch contacts for a specific lead status with limit (optimized - not all contacts)
+// Helper to check if user can view all data (admin/supervisor)
+async function canViewAllData(): Promise<{ canViewAll: boolean; userId: string | null }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { canViewAll: false, userId: null };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  const canViewAll = profile?.role === 'admin' || profile?.role === 'supervisor';
+  return { canViewAll, userId: user.id };
+}
+
+// Fetch contacts for a specific lead status with limit (filtered by user permission)
 export function useContactsByLeadStatus(statusName?: string | null, limit = 20) {
   return useQuery({
     queryKey: ['contacts-for-kanban', statusName, limit],
     queryFn: async () => {
+      const { canViewAll, userId } = await canViewAllData();
+
       let query = supabase
         .from('contacts')
         .select(`
@@ -162,6 +186,11 @@ export function useContactsByLeadStatus(statusName?: string | null, limit = 20) 
         `)
         .order('updated_at', { ascending: false })
         .limit(limit);
+
+      // Filter by assigned_to for non-admin users
+      if (!canViewAll && userId) {
+        query = query.eq('assigned_to', userId);
+      }
 
       // Handle the special "__no_status__" case
       if (statusName === '__no_status__') {

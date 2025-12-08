@@ -2921,6 +2921,7 @@ export type Database = {
         Args: { p_contact_id: string; p_user_id: string }
         Returns: boolean
       }
+      can_view_all_data: { Args: { _user_id: string }; Returns: boolean }
       check_user_permission: {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
@@ -2956,7 +2957,7 @@ export type Database = {
         Returns: Json
       }
       get_lead_status_summary: {
-        Args: never
+        Args: { _user_id?: string }
         Returns: {
           contact_count: number
           lead_status: string
