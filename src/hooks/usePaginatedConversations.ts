@@ -32,6 +32,8 @@ export type ServerSortFilter = 'newest' | 'oldest' | 'unread';
 // All sort filter options (some are local-only)
 export type SortFilter = ServerSortFilter | 'not_replied' | 'client_not_replied';
 
+export type StatusFilter = 'active' | 'open' | 'pending' | 'closed' | 'all';
+
 export interface ConversationFilters {
   assignment?: AssignmentFilter;
   sortBy?: ServerSortFilter;
@@ -47,6 +49,8 @@ export interface ConversationFilters {
   tagIds?: string[];
   // Busca por telefone ou nome - direto no banco
   searchQuery?: string;
+  // Filtro de status da conversa
+  statusFilter?: StatusFilter;
 }
 
 // Helper para obter início/fim do dia no timezone local convertido para UTC
@@ -151,10 +155,11 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
     customDateTo,
     tagIds,
     searchQuery,
+    statusFilter = 'active',
   } = filters || {};
   
   return useInfiniteQuery({
-    queryKey: ['conversations-paginated', assignment, sortBy, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery],
+    queryKey: ['conversations-paginated', assignment, sortBy, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery, statusFilter],
     queryFn: async ({ pageParam = 0 }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -189,8 +194,28 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
       
       let query = supabase
         .from('conversations')
-        .select(CONVERSATION_FIELDS_DYNAMIC)
-        .eq('status', 'open');
+        .select(CONVERSATION_FIELDS_DYNAMIC);
+
+      // Apply status filter
+      switch (statusFilter) {
+        case 'open':
+          query = query.eq('status', 'open');
+          break;
+        case 'pending':
+          query = query.eq('status', 'pending');
+          break;
+        case 'closed':
+          query = query.eq('status', 'closed');
+          break;
+        case 'all':
+          // No filter - show all statuses
+          break;
+        case 'active':
+        default:
+          // Active = open + pending (exclude closed)
+          query = query.in('status', ['open', 'pending']);
+          break;
+      }
 
       // Apply assignment filter
       if (assignment === 'mine' && user) {
@@ -327,16 +352,39 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
 
 // Hook para buscar todas as conversas (para contagem de filtros)
 // Usa cache mais longo e campos mínimos
-export function useConversationCounts() {
+export function useConversationCounts(statusFilter: StatusFilter = 'active') {
   return useInfiniteQuery({
-    queryKey: ['conversations-counts'],
+    queryKey: ['conversations-counts', statusFilter],
     queryFn: async ({ pageParam = 0 }) => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('conversations')
-        .select('id, assigned_to, is_unread, channel_id, department_id, status, contact:contacts(first_contact_at)')
-        .eq('status', 'open')
+        .select('id, assigned_to, is_unread, channel_id, department_id, status, contact:contacts(first_contact_at)');
+      
+      // Apply status filter
+      switch (statusFilter) {
+        case 'open':
+          query = query.eq('status', 'open');
+          break;
+        case 'pending':
+          query = query.eq('status', 'pending');
+          break;
+        case 'closed':
+          query = query.eq('status', 'closed');
+          break;
+        case 'all':
+          // No filter
+          break;
+        case 'active':
+        default:
+          query = query.in('status', ['open', 'pending']);
+          break;
+      }
+      
+      query = query
         .order('last_message_at', { ascending: false })
         .range(pageParam * 200, (pageParam + 1) * 200 - 1);
+
+      const { data, error } = await query;
 
       if (error) throw error;
       

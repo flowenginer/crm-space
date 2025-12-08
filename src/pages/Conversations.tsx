@@ -77,7 +77,7 @@ import { ConversationSidebar } from '@/components/conversations/ConversationSide
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { QuickTemplatesPopover } from '@/components/conversations/QuickTemplatesPopover';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
-import { usePaginatedConversations, type SortFilter, type ConversationFilters } from '@/hooks/usePaginatedConversations';
+import { usePaginatedConversations, type SortFilter, type ConversationFilters, type StatusFilter } from '@/hooks/usePaginatedConversations';
 import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, type CountFilters } from '@/hooks/useConversationCounts';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
@@ -998,6 +998,7 @@ export default function Conversations() {
   const [customDateRange, setCustomDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
   const [sortFilter, setSortFilter] = useState<SortFilter>('newest');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
@@ -1085,7 +1086,9 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     tagIds: advancedFilters.tagIds.length > 0 ? advancedFilters.tagIds : undefined,
     // Busca por telefone ou nome - direto no banco
     searchQuery: debouncedSearchQuery || undefined,
-  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery]);
+    // Filtro de status da conversa
+    statusFilter: statusFilter,
+  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter]);
 
   // Fetch real conversations from database with filter (PAGINATED + SERVER SORTED)
   const { 
@@ -2491,6 +2494,20 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
           )}
 
           <div className="flex items-center gap-2">
+            {/* Status Filter */}
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+              <SelectTrigger className="flex-1 h-10 rounded-lg">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Ativos</SelectItem>
+                <SelectItem value="open">Abertos</SelectItem>
+                <SelectItem value="pending">Pendentes</SelectItem>
+                <SelectItem value="closed">Fechados</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Select value={channelFilter} onValueChange={setChannelFilter}>
               <SelectTrigger className="flex-1 h-10 rounded-lg">
                 <SelectValue placeholder="Todos os canais" />
