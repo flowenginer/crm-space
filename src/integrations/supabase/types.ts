@@ -2926,6 +2926,27 @@ export type Database = {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
       }
+      get_agent_distribution_advanced: {
+        Args: {
+          p_conversion_status_names?: string[]
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          agent_id: string
+          agent_name: string
+          avatar_url: string
+          avg_response_time: number
+          conversion_rate: number
+          conversions: number
+          leads_received: number
+          leads_responded: number
+          meta_ads_count: number
+          organic_count: number
+          other_count: number
+        }[]
+      }
       get_contact_filter_counts: { Args: never; Returns: Json }
       get_contacts_by_tag_filter: {
         Args: {
@@ -2956,12 +2977,45 @@ export type Database = {
         }
         Returns: Json
       }
+      get_lead_journey_metrics: {
+        Args: {
+          p_agent_id?: string
+          p_conversion_status_names?: string[]
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          assignment_rate: number
+          avg_time_to_assignment: number
+          avg_time_to_first_response: number
+          conversion_rate: number
+          conversions: number
+          lead_response_rate: number
+          total_assigned: number
+          total_unassigned: number
+        }[]
+      }
       get_lead_status_summary: {
         Args: { _user_id?: string }
         Returns: {
           contact_count: number
           lead_status: string
           total_value: number
+        }[]
+      }
+      get_origin_timeline: {
+        Args: {
+          p_agent_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          date_day: string
+          meta_ads_count: number
+          organic_count: number
+          other_count: number
         }[]
       }
       get_user_department_ids: { Args: { _user_id: string }; Returns: string[] }
