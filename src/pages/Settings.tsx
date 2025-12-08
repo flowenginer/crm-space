@@ -26,6 +26,7 @@ import {
   Eye,
   EyeOff,
   Plug,
+  Target,
   Wrench,
 } from 'lucide-react';
 import { UserManagement } from '@/components/settings/UserManagement';
@@ -37,6 +38,7 @@ import { MetaAdsSettings } from '@/components/settings/MetaAdsSettings';
 import { ToolsSettings } from '@/components/settings/ToolsSettings';
 import { OwnerAgentSettings } from '@/components/settings/OwnerAgentSettings';
 import { CloseReasonManagement } from '@/components/settings/CloseReasonManagement';
+import { MetricsSettings } from '@/components/settings/MetricsSettings';
 import { ActiveSessions } from '@/components/settings/ActiveSessions';
 import { Facebook, UserCheck } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -520,6 +522,13 @@ export default function Settings() {
             <Wrench size={16} />
             Ferramentas
           </TabsTrigger>
+          <TabsTrigger
+            value="metrics"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
+          >
+            <Target size={16} />
+            Métricas
+          </TabsTrigger>
         </TabsList>
 
         {/* TAB 1: Team Management */}
@@ -553,6 +562,13 @@ export default function Settings() {
         <TabsContent value="close-reasons" className="space-y-6">
           <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
             <CloseReasonManagement />
+          </div>
+        </TabsContent>
+
+        {/* TAB: Metrics Settings */}
+        <TabsContent value="metrics" className="space-y-6">
+          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+            <MetricsSettings />
           </div>
         </TabsContent>
 
