@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Conversation, AssignmentFilter } from './useConversations';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths, subDays } from 'date-fns';
@@ -17,6 +17,7 @@ const CONVERSATION_FIELDS = `
   unread_count,
   last_message_at,
   last_message_preview,
+  last_message_is_from_me,
   lead_status,
   created_at,
   referral_source,
@@ -29,11 +30,11 @@ const CONVERSATION_FIELDS = `
   channel:whatsapp_channels(id, name)
 `;
 
-// Server-side sorting options
-export type ServerSortFilter = 'newest' | 'oldest' | 'unread';
+// Server-side sorting options - now includes not_replied and client_not_replied
+export type ServerSortFilter = 'newest' | 'oldest' | 'unread' | 'not_replied' | 'client_not_replied';
 
-// All sort filter options (some are local-only)
-export type SortFilter = ServerSortFilter | 'not_replied' | 'client_not_replied';
+// All sort filter options (all are now server-side)
+export type SortFilter = ServerSortFilter;
 
 export type StatusFilter = 'active' | 'open' | 'pending' | 'closed' | 'all';
 
@@ -41,7 +42,7 @@ export type AssignmentFilterExtended = 'all' | 'mine' | 'unassigned' | 'pending'
 
 export interface ConversationFilters {
   assignment?: AssignmentFilterExtended;
-  sortBy?: ServerSortFilter;
+  sortBy?: SortFilter;
   channelId?: string;
   isUnread?: boolean;
   // Filtros avançados - aplicados no servidor
@@ -188,6 +189,7 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         unread_count,
         last_message_at,
         last_message_preview,
+        last_message_is_from_me,
         lead_status,
         created_at,
         referral_source,
@@ -374,6 +376,18 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
             .order('is_unread', { ascending: false })
             .order('last_message_at', { ascending: false, nullsFirst: false });
           break;
+        case 'not_replied':
+          // Filter: last message is from client (not from me) - agent hasn't replied
+          query = query
+            .eq('last_message_is_from_me', false)
+            .order('last_message_at', { ascending: false, nullsFirst: false });
+          break;
+        case 'client_not_replied':
+          // Filter: last message is from agent (from me) - client hasn't replied
+          query = query
+            .eq('last_message_is_from_me', true)
+            .order('last_message_at', { ascending: false, nullsFirst: false });
+          break;
         case 'newest':
         default:
           query = query.order('last_message_at', { ascending: false, nullsFirst: false });
@@ -407,7 +421,7 @@ export function useConversationCounts(statusFilter: StatusFilter = 'active') {
     queryFn: async ({ pageParam = 0 }) => {
       let query = supabase
         .from('conversations')
-        .select('id, assigned_to, is_unread, channel_id, department_id, status, contact:contacts(first_contact_at)');
+        .select('id, assigned_to, is_unread, channel_id, department_id, status, last_message_is_from_me, contact:contacts(first_contact_at)');
       
       // Apply status filter
       switch (statusFilter) {
@@ -445,5 +459,42 @@ export function useConversationCounts(statusFilter: StatusFilter = 'active') {
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextPage,
     staleTime: 60000, // 1 minute cache
+  });
+}
+
+// Hook to get real counts for sort filters from database
+export function useSortFilterCounts(statusFilter: StatusFilter = 'active') {
+  return useQuery({
+    queryKey: ['sort-filter-counts', statusFilter],
+    queryFn: async () => {
+      // Build status condition
+      const statusCondition = statusFilter === 'active' 
+        ? 'status.in.(open,pending)' 
+        : statusFilter === 'all' 
+          ? undefined 
+          : `status.eq.${statusFilter}`;
+      
+      // Fetch counts in parallel
+      const [notRepliedResult, clientNotRepliedResult] = await Promise.all([
+        // Not replied: last_message_is_from_me = false
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('last_message_is_from_me', false)
+          .or(statusCondition || 'status.in.(open,pending,closed)'),
+        // Client not replied: last_message_is_from_me = true
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('last_message_is_from_me', true)
+          .or(statusCondition || 'status.in.(open,pending,closed)'),
+      ]);
+
+      return {
+        not_replied: notRepliedResult.count || 0,
+        client_not_replied: clientNotRepliedResult.count || 0,
+      };
+    },
+    staleTime: 30000, // 30 seconds cache
   });
 }
