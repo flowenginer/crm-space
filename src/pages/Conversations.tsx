@@ -999,7 +999,7 @@ export default function Conversations() {
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
   const [sortFilter, setSortFilter] = useState<SortFilter>('newest');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
-  const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned'>('all');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned' | 'pending'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1050,9 +1050,9 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   // Filtros disponíveis baseados na permissão
   const availableQuickFilters = useMemo(() => {
     if (canViewUnassigned) {
-      return ['all', 'pinned', 'mine', 'unassigned'] as const;
+      return ['all', 'pinned', 'mine', 'pending', 'unassigned'] as const;
     }
-    return ['all', 'pinned', 'mine'] as const;
+    return ['all', 'pinned', 'mine', 'pending'] as const;
   }, [canViewUnassigned]);
 
   // Modal de solicitação de acesso
@@ -1071,7 +1071,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
 
   // Build filters for server-side filtering and sorting
   const conversationFilters: ConversationFilters = useMemo(() => ({
-    assignment: quickFilter === 'pinned' ? 'all' : quickFilter,
+    assignment: quickFilter === 'pinned' ? 'all' : quickFilter === 'pending' ? 'pending' : quickFilter,
     sortBy: (sortFilter === 'newest' || sortFilter === 'oldest' || sortFilter === 'unread') ? sortFilter : 'newest',
     channelId: channelFilter !== 'all' ? channelFilter : undefined,
     isUnread: sortFilter === 'unread' ? true : undefined,
@@ -1723,12 +1723,16 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const filterCounts = useMemo(() => {
     const pinnedCount = pinnedConversations.length;
     
+    // Count pending conversations (assigned_to = null AND department_id is not null for user's departments)
+    const pendingCount = totalCounts?.pending ?? 0;
+    
     // Se não pode ver não atribuídas, "Todas" exclui as não atribuídas
     if (!canViewUnassigned) {
       return { 
         all: (totalCounts?.mine ?? 0) + pinnedCount, // Todas = minhas + fixadas
         pinned: pinnedCount, 
         mine: totalCounts?.mine ?? 0,
+        pending: pendingCount,
         unassigned: 0 // Não mostrado, mas evita erro de tipo
       };
     }
@@ -1738,6 +1742,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
       all: totalCounts?.all ?? conversations.length, 
       pinned: pinnedCount, 
       mine: totalCounts?.mine ?? 0, 
+      pending: pendingCount,
       unassigned: totalCounts?.unassigned ?? 0 
     };
   }, [totalCounts, conversations.length, pinnedConversations, canViewUnassigned]);
@@ -2663,7 +2668,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                     : 'text-muted-foreground hover:bg-muted'
                 )}
               >
-                <span className="text-xs whitespace-nowrap">{filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : 'Não atribuídas'}</span>
+                <span className="text-xs whitespace-nowrap">{filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : filter === 'pending' ? 'Pendentes' : 'Não atribuídas'}</span>
                 <AnimatedCounter value={filterCounts[filter]} className="text-xs opacity-70" />
                 {/* Red notification badge for pinned conversations with unread messages */}
                 {filter === 'pinned' && quickFilter !== 'pinned' && pinnedUnreadCount > 0 && (

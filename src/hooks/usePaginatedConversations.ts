@@ -34,8 +34,10 @@ export type SortFilter = ServerSortFilter | 'not_replied' | 'client_not_replied'
 
 export type StatusFilter = 'active' | 'open' | 'pending' | 'closed' | 'all';
 
+export type AssignmentFilterExtended = 'all' | 'mine' | 'unassigned' | 'pending';
+
 export interface ConversationFilters {
-  assignment?: AssignmentFilter;
+  assignment?: AssignmentFilterExtended;
   sortBy?: ServerSortFilter;
   channelId?: string;
   isUnread?: boolean;
@@ -222,6 +224,38 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         query = query.eq('assigned_to', user.id);
       } else if (assignment === 'unassigned') {
         query = query.is('assigned_to', null);
+      } else if (assignment === 'pending' && user) {
+        // Pending = conversations with no assigned user but with a department
+        // Filter by user's departments
+        const { data: userDepts } = await supabase
+          .from('user_departments')
+          .select('department_id')
+          .eq('user_id', user.id);
+        
+        const { data: userProfile } = await supabase
+          .from('profiles')
+          .select('department_id')
+          .eq('id', user.id)
+          .single();
+        
+        // Get all department IDs the user belongs to
+        const departmentIds = [
+          ...(userDepts?.map(ud => ud.department_id) || []),
+          userProfile?.department_id
+        ].filter(Boolean) as string[];
+        
+        if (departmentIds.length > 0) {
+          query = query
+            .is('assigned_to', null)
+            .in('department_id', departmentIds);
+        } else {
+          // User has no departments, return empty
+          return {
+            conversations: [] as Conversation[],
+            nextPage: undefined,
+            pageParam: 0,
+          };
+        }
       }
 
       // Apply channel filter
