@@ -54,6 +54,26 @@ interface NormalizedMessage {
 // =====================================================
 
 /**
+ * Cleans WhatsApp JID removing session suffixes like :0, :1 etc
+ * that Evolution API sometimes appends to phone numbers.
+ * 
+ * Example: 559591111981:0@s.whatsapp.net -> 559591111981
+ * 
+ * CRITICAL: This must be called BEFORE replace(/\D/g, '') otherwise
+ * the :0 becomes just 0 and gets appended to the phone number,
+ * causing contact duplication (e.g., 5595911119810 instead of 559591111981)
+ */
+function cleanWhatsAppJid(rawJid: string): string {
+  return rawJid
+    // Remove session suffix (:0, :1, :2, etc) - MUST be first!
+    .replace(/:\d+(@s\.whatsapp\.net|@c\.us)?$/, '')
+    // Remove WhatsApp domains
+    .replace("@s.whatsapp.net", "")
+    .replace("@c.us", "")
+    .replace("@lid", "");
+}
+
+/**
  * Validates if a phone number is a valid Brazilian phone
  * Brazilian phones: start with 55, have 12-13 digits total
  * This filters out LID (Linked IDs) from Evolution API
@@ -77,14 +97,15 @@ function isValidBrazilianPhone(phone: string): boolean {
 /**
  * Attempts to extract a valid Brazilian phone from various payload locations
  * Returns the phone number or null if no valid phone found
+ * 
+ * IMPORTANT: Uses cleanWhatsAppJid to remove session suffixes (:0, :1)
+ * BEFORE extracting digits, preventing phone duplication issues
  */
 function extractValidPhoneFromPayload(msg: any, rawRemoteJid: string): string | null {
   // Priority 1: remoteJidAlt (real number when LID is used)
   if (msg.key?.remoteJidAlt) {
-    const altPhone = msg.key.remoteJidAlt
-      .replace("@s.whatsapp.net", "")
-      .replace("@c.us", "")
-      .replace(/\D/g, "");
+    // Clean JID first to remove :0 suffix, then extract digits
+    const altPhone = cleanWhatsAppJid(msg.key.remoteJidAlt).replace(/\D/g, "");
     
     if (isValidBrazilianPhone(altPhone)) {
       console.log(`[Webhook] Found valid phone in remoteJidAlt: ${altPhone}`);
@@ -93,11 +114,8 @@ function extractValidPhoneFromPayload(msg: any, rawRemoteJid: string): string | 
   }
   
   // Priority 2: Main remoteJid
-  const mainPhone = rawRemoteJid
-    .replace("@s.whatsapp.net", "")
-    .replace("@c.us", "")
-    .replace("@lid", "")
-    .replace(/\D/g, "");
+  // CRITICAL: Use cleanWhatsAppJid to remove :0 suffix before extracting digits
+  const mainPhone = cleanWhatsAppJid(rawRemoteJid).replace(/\D/g, "");
   
   if (isValidBrazilianPhone(mainPhone)) {
     return mainPhone;
@@ -1001,7 +1019,16 @@ serve(async (req) => {
     // =====================================================
     function generatePhoneVariations(phone: string): string[] {
       const variations: string[] = [phone];
-      const cleanPhone = phone.replace(/\D/g, '');
+      
+      // CRITICAL: First remove any WhatsApp session suffix (:0, :1, etc)
+      // This prevents the 0 from being included in the phone number
+      const jidCleaned = phone
+        .replace(/:\d+(@s\.whatsapp\.net|@c\.us)?$/, '')
+        .replace("@s.whatsapp.net", "")
+        .replace("@c.us", "")
+        .replace("@lid", "");
+      
+      const cleanPhone = jidCleaned.replace(/\D/g, '');
       
       if (!cleanPhone) return variations;
       
@@ -2303,12 +2330,8 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
   const validPhone = extractValidPhoneFromPayload(msg, rawRemoteJid);
   
   if (!validPhone) {
-    // Log the invalid phone for debugging
-    const extractedPhone = rawRemoteJid
-      .replace("@s.whatsapp.net", "")
-      .replace("@c.us", "")
-      .replace("@lid", "")
-      .replace(/\D/g, "");
+    // Log the invalid phone for debugging - use cleanWhatsAppJid for accurate logging
+    const extractedPhone = cleanWhatsAppJid(rawRemoteJid).replace(/\D/g, "");
     
     console.log(`[Webhook Evolution] ⚠️ REJECTING message - Invalid phone (LID?): ${extractedPhone}, rawJid: ${rawRemoteJid}, remoteJidAlt: ${msg.key.remoteJidAlt || 'none'}`);
     return null;
