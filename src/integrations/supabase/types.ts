@@ -234,6 +234,90 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_requests: {
+        Row: {
+          contact_id: string
+          conversation_id: string | null
+          created_at: string | null
+          current_owner_id: string | null
+          id: string
+          reason: string | null
+          request_type: string
+          requester_id: string
+          responded_at: string | null
+          responded_by: string | null
+          response_note: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          contact_id: string
+          conversation_id?: string | null
+          created_at?: string | null
+          current_owner_id?: string | null
+          id?: string
+          reason?: string | null
+          request_type: string
+          requester_id: string
+          responded_at?: string | null
+          responded_by?: string | null
+          response_note?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          contact_id?: string
+          conversation_id?: string | null
+          created_at?: string | null
+          current_owner_id?: string | null
+          id?: string
+          reason?: string | null
+          request_type?: string
+          requester_id?: string
+          responded_at?: string | null
+          responded_by?: string | null
+          response_note?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_requests_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_requests_current_owner_id_fkey"
+            columns: ["current_owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_requests_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_requests_responded_by_fkey"
+            columns: ["responded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_tags: {
         Row: {
           contact_id: string
@@ -2353,6 +2437,45 @@ export type Database = {
           },
         ]
       }
+      user_departments: {
+        Row: {
+          created_at: string | null
+          department_id: string
+          id: string
+          is_primary: boolean | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          department_id: string
+          id?: string
+          is_primary?: boolean | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          department_id?: string
+          id?: string
+          is_primary?: boolean | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_departments_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_departments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_invites: {
         Row: {
           accepted_at: string | null
@@ -2836,6 +2959,7 @@ export type Database = {
           total_value: number
         }[]
       }
+      get_user_department_ids: { Args: { _user_id: string }; Returns: string[] }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -2908,6 +3032,10 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      user_has_department: {
+        Args: { _department_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "user" | "manager" | "supervisor" | "seller"
