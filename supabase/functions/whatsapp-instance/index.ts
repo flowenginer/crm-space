@@ -10,7 +10,7 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage' | 'sendReaction';
   providerCode?: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -28,6 +28,8 @@ interface CreateInstanceRequest {
   whatsappMessageId?: string;
   remoteJid?: string;
   newText?: string;
+  // For sendReaction action
+  emoji?: string;
 }
 
 interface ProviderConfig {
@@ -541,6 +543,143 @@ async function editUAZAPIMessage(
   }
   
   const data = await safeJsonParse(response, 'UAZAPI Edit');
+  
+  return {
+    success: true,
+    data,
+  };
+}
+
+// =====================================================
+// SEND REACTION FUNCTIONS
+// =====================================================
+async function sendEvolutionReaction(
+  baseUrl: string,
+  instanceName: string,
+  apiKey: string,
+  messageId: string,
+  remoteJid: string,
+  emoji: string
+) {
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  
+  console.log('[Evolution] Sending reaction:', { instanceName, messageId, remoteJid, emoji });
+  
+  const endpoint = `${normalizedUrl}/message/sendReaction/${instanceName}`;
+  const body = {
+    key: {
+      remoteJid: remoteJid,
+      fromMe: false, // We're reacting to a message from the contact
+      id: messageId,
+    },
+    reaction: emoji || "" // Empty string to remove reaction
+  };
+  
+  console.log('[Evolution] Reaction Request:', { endpoint, body });
+  
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': apiKey,
+    },
+    body: JSON.stringify(body),
+  });
+  
+  const data = await safeJsonParse(response, 'Evolution Reaction');
+  
+  return {
+    success: true,
+    data,
+  };
+}
+
+async function sendUAZAPIReaction(
+  baseUrl: string,
+  instanceName: string,
+  adminToken: string,
+  messageId: string,
+  remoteJid: string,
+  emoji: string
+) {
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  
+  console.log('[UAZAPI] Sending reaction:', { instanceName, messageId, remoteJid, emoji });
+  
+  const endpoint = `${normalizedUrl}/message/sendReaction/${instanceName}`;
+  const body = {
+    key: {
+      remoteJid: remoteJid,
+      fromMe: false,
+      id: messageId,
+    },
+    reaction: emoji || ""
+  };
+  
+  console.log('[UAZAPI] Reaction Request:', { endpoint, body });
+  
+  let response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'admintoken': adminToken,
+    },
+    body: JSON.stringify(body),
+  });
+  
+  if (response.status === 401) {
+    console.log('[UAZAPI] 401 with admintoken, trying apikey...');
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': adminToken,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+  
+  const data = await safeJsonParse(response, 'UAZAPI Reaction');
+  
+  return {
+    success: true,
+    data,
+  };
+}
+
+async function sendZAPIReaction(
+  instanceId: string,
+  token: string,
+  clientToken: string,
+  messageId: string,
+  phone: string,
+  emoji: string
+) {
+  const formattedPhone = phone.replace(/\D/g, '').replace('@s.whatsapp.net', '');
+  
+  console.log('[Z-API] Sending reaction:', { instanceId, messageId, phone: formattedPhone, emoji });
+  
+  const baseUrl = `https://api.z-api.io/instances/${instanceId}/token/${token}`;
+  const endpoint = `${baseUrl}/send-reaction`;
+  
+  const body = {
+    phone: formattedPhone,
+    messageId: messageId,
+    reaction: emoji || "",
+  };
+  
+  console.log('[Z-API] Reaction Request:', { endpoint, body });
+  
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Client-Token': clientToken || '',
+    },
+    body: JSON.stringify(body),
+  });
+  
+  const data = await safeJsonParse(response, 'Z-API Reaction');
   
   return {
     success: true,
@@ -1720,6 +1859,103 @@ serve(async (req) => {
       } catch (editError: any) {
         console.error('[WhatsApp Edit] Error:', editError);
         result = { success: false, error: editError.message };
+      }
+
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // =====================================================
+    // SEND REACTION ACTION - Reagir a mensagem no WhatsApp
+    // =====================================================
+    if (action === 'sendReaction') {
+      const { channelId, whatsappMessageId, remoteJid, phone, emoji } = body as CreateInstanceRequest & { phone?: string; emoji?: string };
+      
+      if (!channelId || !whatsappMessageId) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'channelId e whatsappMessageId são obrigatórios' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      
+      console.log('[WhatsApp Instance] Send reaction request:', { channelId, whatsappMessageId, remoteJid, emoji });
+      
+      // Get channel data with provider
+      const { data: channel, error: channelError } = await supabase
+        .from('whatsapp_channels')
+        .select('*, provider:whatsapp_providers(*)')
+        .eq('id', channelId)
+        .single();
+      
+      if (channelError || !channel) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+      
+      const channelProvider = channel.provider as any;
+      if (!channelProvider) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Provedor do canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      
+      console.log('[WhatsApp Reaction] Channel:', { instanceId: channel.instance_id, provider: channelProvider.code });
+      
+      let result;
+      
+      try {
+        switch (channelProvider.code) {
+          case 'evolution':
+            if (!remoteJid && !phone) {
+              result = { success: false, error: 'remoteJid ou phone é obrigatório para Evolution API' };
+            } else {
+              const jid = remoteJid || (phone?.replace(/\D/g, '') + '@s.whatsapp.net');
+              result = await sendEvolutionReaction(
+                channelProvider.base_url,
+                channel.instance_id!,
+                channelProvider.admin_token,
+                whatsappMessageId,
+                jid,
+                emoji || ""
+              );
+            }
+            break;
+          case 'uazapi':
+            if (!remoteJid && !phone) {
+              result = { success: false, error: 'remoteJid ou phone é obrigatório para UAZAPI' };
+            } else {
+              const jid = remoteJid || (phone?.replace(/\D/g, '') + '@s.whatsapp.net');
+              result = await sendUAZAPIReaction(
+                channelProvider.base_url,
+                channel.instance_id!,
+                channelProvider.admin_token,
+                whatsappMessageId,
+                jid,
+                emoji || ""
+              );
+            }
+            break;
+          case 'zapi':
+            result = await sendZAPIReaction(
+              channel.instance_id!,
+              channel.instance_token!,
+              channelProvider.client_token,
+              whatsappMessageId,
+              phone || remoteJid || '',
+              emoji || ""
+            );
+            break;
+          default:
+            result = { success: false, error: 'Provedor desconhecido' };
+        }
+      } catch (reactionError: any) {
+        console.error('[WhatsApp Reaction] Error:', reactionError);
+        result = { success: false, error: reactionError.message };
       }
 
       return new Response(

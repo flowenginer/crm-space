@@ -54,6 +54,7 @@ export interface Conversation {
 export interface MessageReaction {
   emoji: string;
   user_id: string;
+  from_contact?: boolean;
 }
 
 export interface Message {
@@ -443,12 +444,18 @@ export function useReactToMessage() {
       messageId, 
       conversationId, 
       emoji, 
-      userId 
+      userId,
+      whatsappMessageId,
+      channelId,
+      contactPhone
     }: { 
       messageId: string; 
       conversationId: string; 
       emoji: string; 
       userId: string;
+      whatsappMessageId?: string | null;
+      channelId?: string | null;
+      contactPhone?: string | null;
     }) => {
       // First get current reactions
       const { data: message, error: fetchError } = await supabase
@@ -459,20 +466,23 @@ export function useReactToMessage() {
 
       if (fetchError) throw fetchError;
 
-      const currentReactions = (message?.reactions as { emoji: string; user_id: string }[]) || [];
+      const currentReactions = (message?.reactions as { emoji: string; user_id: string; from_contact?: boolean }[]) || [];
       
       // Check if user already reacted with this emoji
       const existingIndex = currentReactions.findIndex(
-        r => r.emoji === emoji && r.user_id === userId
+        r => r.emoji === emoji && r.user_id === userId && !r.from_contact
       );
 
       let newReactions;
+      let isRemoving = false;
       if (existingIndex >= 0) {
         // Remove reaction
         newReactions = currentReactions.filter((_, i) => i !== existingIndex);
+        isRemoving = true;
       } else {
-        // Add reaction
-        newReactions = [...currentReactions, { emoji, user_id: userId }];
+        // Add reaction (remove any existing reaction from this user first)
+        newReactions = currentReactions.filter(r => r.user_id !== userId || r.from_contact);
+        newReactions.push({ emoji, user_id: userId });
       }
 
       const { error } = await supabase
@@ -481,6 +491,38 @@ export function useReactToMessage() {
         .eq('id', messageId);
 
       if (error) throw error;
+
+      // Try to send reaction to WhatsApp if we have the necessary info
+      if (whatsappMessageId && channelId && contactPhone) {
+        try {
+          const remoteJid = contactPhone.replace(/\D/g, '') + '@s.whatsapp.net';
+          
+          console.log('[ReactToMessage] Sending reaction to WhatsApp:', { whatsappMessageId, emoji, isRemoving });
+          
+          const { data, error: reactionError } = await supabase.functions.invoke('whatsapp-instance', {
+            body: {
+              action: 'sendReaction',
+              channelId,
+              whatsappMessageId,
+              remoteJid,
+              phone: contactPhone,
+              emoji: isRemoving ? '' : emoji, // Empty string removes reaction
+            }
+          });
+          
+          if (reactionError) {
+            console.error('[ReactToMessage] WhatsApp reaction error:', reactionError);
+          } else if (!data?.success) {
+            console.warn('[ReactToMessage] WhatsApp reaction failed:', data?.error);
+          } else {
+            console.log('[ReactToMessage] WhatsApp reaction sent successfully');
+          }
+        } catch (e) {
+          console.error('[ReactToMessage] Error sending WhatsApp reaction:', e);
+          // Don't throw - local reaction was saved successfully
+        }
+      }
+
       return { messageId, conversationId };
     },
     onSuccess: (variables) => {
