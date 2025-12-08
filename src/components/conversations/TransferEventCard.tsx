@@ -10,6 +10,7 @@ interface TransferEventCardProps {
   isLatestTransfer?: boolean;
   onReturn?: () => void;
   isReturning?: boolean;
+  isAdmin?: boolean;
 }
 
 export function TransferEventCard({ 
@@ -17,7 +18,8 @@ export function TransferEventCard({
   currentUserId, 
   isLatestTransfer, 
   onReturn,
-  isReturning 
+  isReturning,
+  isAdmin 
 }: TransferEventCardProps) {
   const { data, created_at } = event;
   
@@ -28,13 +30,13 @@ export function TransferEventCard({
 
   // Show return button only if:
   // 1. It's the latest transfer event
-  // 2. Current user is the recipient (to_user_id matches currentUserId)
+  // 2. Current user is the recipient (to_user_id matches currentUserId) OR is admin
   // 3. There's a from_user_id to return to
   // 4. It's not already a return (to avoid return of return)
   const canReturn = 
     isLatestTransfer && 
     currentUserId && 
-    data.to_user_id === currentUserId && 
+    (data.to_user_id === currentUserId || isAdmin) && 
     data.from_user_id && 
     !isReturn &&
     onReturn;

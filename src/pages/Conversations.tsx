@@ -3291,6 +3291,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                               key={`event-${item.id}`} 
                               event={item as ConversationEvent}
                               currentUserId={currentUser?.id}
+                              isAdmin={isAdmin}
                               isLatestTransfer={latestTransferEvent?.id === item.id}
                               isReturning={returnConversation.isPending}
                               onReturn={() => {
