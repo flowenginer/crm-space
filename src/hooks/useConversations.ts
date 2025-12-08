@@ -23,6 +23,9 @@ export interface Conversation {
   reopened_at?: string | null;
   total_active_time_seconds?: number | null;
   previous_close_reason?: string | null;
+  // Transfer tracking fields
+  is_new_transfer?: boolean | null;
+  transferred_at?: string | null;
   referral_data: {
     ctwaClid?: string;
     sourceId?: string;

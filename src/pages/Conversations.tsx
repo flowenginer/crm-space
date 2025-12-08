@@ -38,6 +38,7 @@ import {
   Lock,
   Building2,
   RefreshCw,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -277,11 +278,12 @@ interface ConversationItemProps {
   conversation: Conversation;
   isSelected: boolean;
   isPinned: boolean;
+  isNewTransfer: boolean;
   onClick: () => void;
   onTogglePin: () => void;
 }
 
-function ConversationItem({ conversation, isSelected, isPinned, onClick, onTogglePin }: ConversationItemProps) {
+function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, onClick, onTogglePin }: ConversationItemProps) {
   const contactName = conversation.contact?.full_name || 'Contato';
   const isOnline = conversation.contact?.is_online || false;
   const isUnread = conversation.is_unread || false;
@@ -315,9 +317,11 @@ function ConversationItem({ conversation, isSelected, isPinned, onClick, onToggl
         'p-4 border-b border-border/50 cursor-pointer transition-all duration-200 group',
         isSelected 
           ? 'bg-accent border-l-4 border-l-primary' 
-          : isUnread 
-            ? 'bg-[hsl(var(--unread-bg))] border-l-3 border-l-purple-400/60' 
-            : 'hover:bg-muted/50'
+          : isNewTransfer
+            ? 'bg-blue-500/10 border-l-4 border-l-blue-500 animate-pulse'
+            : isUnread 
+              ? 'bg-[hsl(var(--unread-bg))] border-l-3 border-l-purple-400/60' 
+              : 'hover:bg-muted/50'
       )}
     >
       <div className="flex items-start gap-3">
@@ -418,6 +422,14 @@ function ConversationItem({ conversation, isSelected, isPinned, onClick, onToggl
                   <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
                     {reopenCount}x
                   </span>
+                </div>
+              )}
+              
+              {/* Transfer Badge */}
+              {isNewTransfer && (
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/20 rounded-full">
+                  <ArrowRightLeft size={10} className="text-blue-500" />
+                  <span className="text-xs text-blue-500 font-medium">Transferida</span>
                 </div>
               )}
               
@@ -1026,7 +1038,7 @@ export default function Conversations() {
   const [customDateRange, setCustomDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
   const [sortFilter, setSortFilter] = useState<SortFilter>('newest');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned' | 'pending'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
@@ -1071,6 +1083,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
   const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePermissions();
   
   // Permissão para ver conversas não atribuídas (admins, supervisores ou com permissão específica)
@@ -1698,6 +1711,12 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
         return true;
       })
       .sort((a, b) => {
+        // NEW TRANSFERS FIRST - conversations transferred to current user
+        const aIsNewTransfer = !!(a as any).is_new_transfer && a.assigned_to === profile?.id;
+        const bIsNewTransfer = !!(b as any).is_new_transfer && b.assigned_to === profile?.id;
+        if (aIsNewTransfer && !bIsNewTransfer) return -1;
+        if (!aIsNewTransfer && bIsNewTransfer) return 1;
+        
         // Keep selected conversation at top if it wouldn't normally appear
         if (selectedConversationId) {
           if (a.id === selectedConversationId) return -1;
@@ -1736,7 +1755,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
       });
     
     return filtered;
-  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, lastMessageMap, selectedConversationId]);
+  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, lastMessageMap, selectedConversationId, profile?.id, debouncedSearchQuery]);
 
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
@@ -1881,7 +1900,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     toast.success('Filtros aplicados');
   };
 
-  const handleSelectConversation = useCallback((conv: Conversation) => {
+  const handleSelectConversation = useCallback(async (conv: Conversation) => {
     console.log('[DEBUG] 👆 handleSelectConversation CALLED', {
       convId: conv.id,
       currentId: searchParams.get('id'),
@@ -1908,6 +1927,17 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     }
     // ============ FIM DA VERIFICAÇÃO ============
     
+    // Clear is_new_transfer flag when selecting a transferred conversation
+    if ((conv as any).is_new_transfer && conv.assigned_to === profile?.id) {
+      supabase
+        .from('conversations')
+        .update({ is_new_transfer: false })
+        .eq('id', conv.id)
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+        });
+    }
+    
     const currentId = searchParams.get('id');
     if (currentId !== conv.id) {
       console.log('[DEBUG] 🚀 Navigating with object format');
@@ -1922,7 +1952,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     if (isMobile) {
       setShowMobileChat(true);
     }
-  }, [searchParams, navigate, isMobile, isAdmin, profile?.id, teamMembers]);
+  }, [searchParams, navigate, isMobile, isAdmin, profile?.id, teamMembers, queryClient]);
 
   const handleBackToList = () => {
     setShowMobileChat(false);
@@ -2761,6 +2791,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                   conversation={conv}
                   isSelected={selectedConversationId === conv.id}
                   isPinned={isPinned(conv.id)}
+                  isNewTransfer={!!(conv as any).is_new_transfer && conv.assigned_to === profile?.id}
                   onClick={() => handleSelectConversation(conv)}
                   onTogglePin={() => {
                     togglePin(conv.id);

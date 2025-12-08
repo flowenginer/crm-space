@@ -1172,6 +1172,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
       <TransferModal
         open={showTransferModal}
         onClose={() => setShowTransferModal(false)}
+        onTransferSuccess={onNavigateAway}
         conversationId={conversationId}
         currentAssignedTo={conversation?.assigned_to}
         currentDepartmentId={conversation?.department_id}

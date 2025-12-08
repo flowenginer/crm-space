@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 interface TransferModalProps {
   open: boolean;
   onClose: () => void;
+  onTransferSuccess?: () => void;
   conversationId: string;
   currentAssignedTo?: string | null;
   currentDepartmentId?: string | null;
@@ -42,6 +43,7 @@ type TransferType = 'user' | 'department';
 export function TransferModal({
   open,
   onClose,
+  onTransferSuccess,
   conversationId,
   currentAssignedTo,
   currentDepartmentId,
@@ -141,6 +143,12 @@ export function TransferModal({
         : 'Conversa transferida com sucesso';
       
       toast.success(successMessage);
+      
+      // Navigate away BEFORE closing the modal
+      if (onTransferSuccess) {
+        onTransferSuccess();
+      }
+      
       handleClose();
     } catch (error) {
       console.error('Error transferring conversation:', error);

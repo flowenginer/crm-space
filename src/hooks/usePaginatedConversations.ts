@@ -21,6 +21,9 @@ const CONVERSATION_FIELDS = `
   created_at,
   referral_source,
   referral_data,
+  is_new_transfer,
+  transferred_at,
+  reopen_count,
   contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data),
   assignee:profiles!conversations_assigned_to_fkey(id, full_name),
   channel:whatsapp_channels(id, name)
@@ -189,6 +192,9 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         created_at,
         referral_source,
         referral_data,
+        is_new_transfer,
+        transferred_at,
+        reopen_count,
         ${contactJoin},
         assignee:profiles!conversations_assigned_to_fkey(id, full_name),
         channel:whatsapp_channels(id, name)
