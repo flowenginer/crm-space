@@ -2382,6 +2382,24 @@ export type Database = {
           },
         ]
       }
+      space_memory: {
+        Row: {
+          id: number
+          message: Json
+          session_id: string
+        }
+        Insert: {
+          id?: number
+          message: Json
+          session_id: string
+        }
+        Update: {
+          id?: number
+          message?: Json
+          session_id?: string
+        }
+        Relationships: []
+      }
       tags: {
         Row: {
           color: string | null
