@@ -74,25 +74,24 @@ export function useRealtimeConversations() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    // Invalidação imediata para mudanças críticas (transferências)
+    // Invalidação imediata para mudanças críticas (transferências, fechamentos)
     const invalidateImmediately = () => {
+      console.log('🔄 [Realtime] Invalidating ALL conversation queries immediately');
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
       queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['channel-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
     };
 
     // Debounced invalidation para outras mudanças (150ms - mais responsivo)
     const invalidateConversations = debounce(() => {
-      // Invalidate paginated queries (primary)
+      console.log('📨 [Realtime] Debounced invalidation triggered');
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
-      // Also invalidate legacy query key for compatibility
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      // Invalidate last-messages for filter updates
       queryClient.invalidateQueries({ queryKey: ['last-messages'] });
-      
-      // REALTIME: Invalidate ALL count hooks for real-time updates
       queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
       queryClient.invalidateQueries({ queryKey: ['channel-counts'] });
       queryClient.invalidateQueries({ queryKey: ['date-filter-counts'] });
@@ -102,8 +101,10 @@ export function useRealtimeConversations() {
       queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
     }, 150);
 
-    // Subscribe to conversation updates
-    const channel = supabase
+    console.log('📡 [Realtime] Setting up conversation channels...');
+
+    // Channel 1: Subscribe to conversation updates
+    const conversationsChannel = supabase
       .channel('conversations-updates')
       .on(
         'postgres_changes',
@@ -113,18 +114,25 @@ export function useRealtimeConversations() {
           table: 'conversations',
         },
         (payload) => {
-          // Se assigned_to mudou (transferência), invalidar imediatamente
+          console.log('🔔 [Realtime] Conversation UPDATE received:', {
+            id: (payload.new as any)?.id,
+            oldAssignedTo: (payload.old as any)?.assigned_to,
+            newAssignedTo: (payload.new as any)?.assigned_to,
+            oldStatus: (payload.old as any)?.status,
+            newStatus: (payload.new as any)?.status,
+          });
+
           const oldAssignedTo = (payload.old as any)?.assigned_to;
           const newAssignedTo = (payload.new as any)?.assigned_to;
           const oldStatus = (payload.old as any)?.status;
           const newStatus = (payload.new as any)?.status;
           
-          // Se a conversa foi fechada, invalidar IMEDIATAMENTE
+          // Transferência ou fechamento = invalidação imediata
           if (newStatus === 'closed' && oldStatus !== 'closed') {
-            console.log('Conversation closed - immediate refresh');
+            console.log('✅ [Realtime] Conversation CLOSED - immediate refresh');
             invalidateImmediately();
           } else if (oldAssignedTo !== newAssignedTo) {
-            console.log('Conversation transferred - immediate refresh');
+            console.log('✅ [Realtime] Conversation TRANSFERRED - immediate refresh');
             invalidateImmediately();
           } else {
             invalidateConversations();
@@ -138,14 +146,48 @@ export function useRealtimeConversations() {
           schema: 'public',
           table: 'conversations',
         },
-        () => {
+        (payload) => {
+          console.log('🔔 [Realtime] New conversation INSERT:', (payload.new as any)?.id);
           invalidateConversations();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 [Realtime] conversations-updates channel status:', status);
+      });
+
+    // Channel 2: Subscribe to conversation_events for transfer/close events
+    // This is a backup mechanism - when a transfer happens, an event is inserted
+    // Even if the UPDATE event is missed, we catch the INSERT in conversation_events
+    const eventsChannel = supabase
+      .channel('global-conversation-events')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'conversation_events',
+        },
+        (payload) => {
+          const eventType = (payload.new as any)?.event_type;
+          const conversationId = (payload.new as any)?.conversation_id;
+          
+          console.log('🔔 [Realtime] Conversation EVENT received:', { eventType, conversationId });
+          
+          // Para eventos de transferência, fechamento ou reabertura, invalidar imediatamente
+          if (['transfer', 'close', 'reopen'].includes(eventType)) {
+            console.log(`✅ [Realtime] Critical event "${eventType}" - immediate refresh for ALL users`);
+            invalidateImmediately();
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 [Realtime] global-conversation-events channel status:', status);
+      });
 
     return () => {
-      supabase.removeChannel(channel);
+      console.log('🔌 [Realtime] Cleaning up conversation channels');
+      supabase.removeChannel(conversationsChannel);
+      supabase.removeChannel(eventsChannel);
     };
   }, [queryClient]);
 }
