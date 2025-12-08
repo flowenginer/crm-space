@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, ChevronRight } from 'lucide-react';
+import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, ChevronRight, Users } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,7 @@ import { useTransferConversation } from '@/hooks/useConversationEvents';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface TransferModalProps {
   open: boolean;
@@ -34,6 +35,8 @@ interface TransferModalProps {
   currentDepartmentId?: string | null;
 }
 
+type TransferType = 'user' | 'department';
+
 export function TransferModal({
   open,
   onClose,
@@ -41,6 +44,7 @@ export function TransferModal({
   currentAssignedTo,
   currentDepartmentId,
 }: TransferModalProps) {
+  const [transferType, setTransferType] = useState<TransferType>('user');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [note, setNote] = useState('');
@@ -54,10 +58,10 @@ export function TransferModal({
 
   const activeDepartments = departments.filter(d => d.is_active);
 
-  // Reset userId when department changes
+  // Reset userId when department changes or transfer type changes
   useEffect(() => {
     setSelectedUserId('');
-  }, [selectedDepartmentId]);
+  }, [selectedDepartmentId, transferType]);
 
   // Filter team members that belong to the selected department
   const teamInDepartment = useMemo(() => {
@@ -99,25 +103,31 @@ export function TransferModal({
       return;
     }
 
-    if (!selectedUserId) {
+    // For user transfer, require user selection
+    if (transferType === 'user' && !selectedUserId) {
       toast.error('Selecione um atendente');
       return;
     }
 
     const selectedDepartment = departments.find(d => d.id === selectedDepartmentId);
-    const selectedUser = team.find(t => t.id === selectedUserId);
+    const selectedUser = transferType === 'user' ? team.find(t => t.id === selectedUserId) : null;
 
     try {
       await transferConversation.mutateAsync({
         conversationId,
-        toUserId: selectedUserId,
+        // For department transfer, toUserId is null (goes to pending queue)
+        toUserId: transferType === 'user' ? selectedUserId : null,
         toUserName: selectedUser?.full_name || null,
         toDepartmentId: selectedDepartmentId,
         toDepartmentName: selectedDepartment?.name || null,
         note: note.trim() || undefined,
       });
 
-      toast.success('Conversa transferida com sucesso');
+      const successMessage = transferType === 'department' 
+        ? `Conversa enviada para a fila de ${selectedDepartment?.name || 'departamento'}`
+        : 'Conversa transferida com sucesso';
+      
+      toast.success(successMessage);
       handleClose();
     } catch (error) {
       console.error('Error transferring conversation:', error);
@@ -126,6 +136,7 @@ export function TransferModal({
   };
 
   const handleClose = () => {
+    setTransferType('user');
     setSelectedDepartmentId('');
     setSelectedUserId('');
     setNote('');
@@ -163,6 +174,47 @@ export function TransferModal({
           </div>
         ) : (
           <div className="space-y-4 py-4">
+            {/* Transfer Type Selection */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Tipo de transferência</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setTransferType('user')}
+                  className={cn(
+                    'flex items-center gap-2 p-3 rounded-lg border-2 transition-all',
+                    transferType === 'user' 
+                      ? 'border-primary bg-primary/10' 
+                      : 'border-border hover:border-muted-foreground/50'
+                  )}
+                >
+                  <User size={18} className={transferType === 'user' ? 'text-primary' : 'text-muted-foreground'} />
+                  <div className="text-left">
+                    <p className={cn('text-sm font-medium', transferType === 'user' ? 'text-primary' : 'text-foreground')}>
+                      Para atendente
+                    </p>
+                    <p className="text-xs text-muted-foreground">Atribuição direta</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setTransferType('department')}
+                  className={cn(
+                    'flex items-center gap-2 p-3 rounded-lg border-2 transition-all',
+                    transferType === 'department' 
+                      ? 'border-primary bg-primary/10' 
+                      : 'border-border hover:border-muted-foreground/50'
+                  )}
+                >
+                  <Users size={18} className={transferType === 'department' ? 'text-primary' : 'text-muted-foreground'} />
+                  <div className="text-left">
+                    <p className={cn('text-sm font-medium', transferType === 'department' ? 'text-primary' : 'text-foreground')}>
+                      Para fila
+                    </p>
+                    <p className="text-xs text-muted-foreground">Aba "Pendentes"</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {/* Step indicator */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
               <div className={`flex items-center gap-1.5 ${selectedDepartmentId ? 'text-primary' : ''}`}>
@@ -171,13 +223,17 @@ export function TransferModal({
                 </div>
                 <span>Departamento</span>
               </div>
-              <ChevronRight size={16} />
-              <div className={`flex items-center gap-1.5 ${selectedUserId ? 'text-primary' : ''}`}>
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${selectedUserId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                  2
-                </div>
-                <span>Atendente</span>
-              </div>
+              {transferType === 'user' && (
+                <>
+                  <ChevronRight size={16} />
+                  <div className={`flex items-center gap-1.5 ${selectedUserId ? 'text-primary' : ''}`}>
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${selectedUserId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                      2
+                    </div>
+                    <span>Atendente</span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Step 1: Department Selection (Required) */}
@@ -210,10 +266,16 @@ export function TransferModal({
                   )}
                 </SelectContent>
               </Select>
+              {transferType === 'department' && selectedDepartmentId && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Users size={12} />
+                  A conversa irá para a aba "Pendentes" do departamento selecionado
+                </p>
+              )}
             </div>
 
-            {/* Step 2: User Selection (Required, only appears after department is selected) */}
-            {selectedDepartmentId && (
+            {/* Step 2: User Selection (Only for user transfer type) */}
+            {transferType === 'user' && selectedDepartmentId && (
               <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
                 <Label className="text-sm font-medium flex items-center gap-2">
                   <User size={14} />
@@ -274,7 +336,11 @@ export function TransferModal({
           {userCanTransfer && (
             <Button
               onClick={handleTransfer}
-              disabled={transferConversation.isPending || !selectedDepartmentId || !selectedUserId}
+              disabled={
+                transferConversation.isPending || 
+                !selectedDepartmentId || 
+                (transferType === 'user' && !selectedUserId)
+              }
               className="gap-2"
             >
               {transferConversation.isPending ? (
@@ -284,8 +350,8 @@ export function TransferModal({
                 </>
               ) : (
                 <>
-                  <ArrowRightLeft size={14} />
-                  Transferir
+                  {transferType === 'department' ? <Users size={14} /> : <ArrowRightLeft size={14} />}
+                  {transferType === 'department' ? 'Enviar para fila' : 'Transferir'}
                 </>
               )}
             </Button>

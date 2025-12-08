@@ -20,6 +20,7 @@ interface ConversationCounts {
   mine: number;
   unassigned: number;
   unread: number;
+  pending: number;
 }
 
 interface ChannelCounts {
@@ -141,6 +142,26 @@ export function useConversationTotalCounts(filters?: CountFilters) {
     queryFn: async (): Promise<ConversationCounts> => {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Get user's departments for pending count
+      let userDepartmentIds: string[] = [];
+      if (user) {
+        const { data: userDepts } = await supabase
+          .from('user_departments')
+          .select('department_id')
+          .eq('user_id', user.id);
+        
+        const { data: userProfile } = await supabase
+          .from('profiles')
+          .select('department_id')
+          .eq('id', user.id)
+          .single();
+        
+        userDepartmentIds = [
+          ...(userDepts?.map(ud => ud.department_id) || []),
+          userProfile?.department_id
+        ].filter(Boolean) as string[];
+      }
+      
       // Se não tem filtros complexos, usar a função RPC otimizada
       if (!hasComplexFilters) {
         const { data: settings } = await supabase
@@ -159,11 +180,25 @@ export function useConversationTotalCounts(filters?: CountFilters) {
         if (error) throw error;
         
         const result = data as any;
+        
+        // Calculate pending count (assigned_to = null AND department_id in user's departments)
+        let pendingCount = 0;
+        if (userDepartmentIds.length > 0) {
+          const { count } = await supabase
+            .from('conversations')
+            .select('*', { count: 'exact', head: true })
+            .in('status', ['open', 'pending'])
+            .is('assigned_to', null)
+            .in('department_id', userDepartmentIds);
+          pendingCount = count || 0;
+        }
+        
         return {
           all: result?.total || 0,
           mine: result?.mine || 0,
           unassigned: result?.unassigned || 0,
           unread: result?.unread || 0,
+          pending: pendingCount,
         };
       }
       
@@ -186,6 +221,11 @@ export function useConversationTotalCounts(filters?: CountFilters) {
       let unassignedQuery = buildBaseQuery().is('assigned_to', null);
       let unreadQuery = buildBaseQuery().eq('is_unread', true);
       
+      // Pending query - conversations without assignee but with department in user's departments
+      let pendingQuery = userDepartmentIds.length > 0 
+        ? buildBaseQuery().is('assigned_to', null).in('department_id', userDepartmentIds)
+        : null;
+      
       // Apply filters
       if (filters) {
         if (filters.departmentId) {
@@ -193,23 +233,27 @@ export function useConversationTotalCounts(filters?: CountFilters) {
           if (mineQuery) mineQuery = mineQuery.eq('department_id', filters.departmentId);
           unassignedQuery = unassignedQuery.eq('department_id', filters.departmentId);
           unreadQuery = unreadQuery.eq('department_id', filters.departmentId);
+          if (pendingQuery) pendingQuery = pendingQuery.eq('department_id', filters.departmentId);
         }
         if (filters.agentId) {
           allQuery = allQuery.eq('assigned_to', filters.agentId);
           if (mineQuery) mineQuery = mineQuery.eq('assigned_to', filters.agentId);
           unassignedQuery = unassignedQuery.eq('assigned_to', filters.agentId);
           unreadQuery = unreadQuery.eq('assigned_to', filters.agentId);
+          // Don't filter pending by agent as pending has no agent
         }
         if (filters.channelId && filters.channelId !== 'no_channel') {
           allQuery = allQuery.eq('channel_id', filters.channelId);
           if (mineQuery) mineQuery = mineQuery.eq('channel_id', filters.channelId);
           unassignedQuery = unassignedQuery.eq('channel_id', filters.channelId);
           unreadQuery = unreadQuery.eq('channel_id', filters.channelId);
+          if (pendingQuery) pendingQuery = pendingQuery.eq('channel_id', filters.channelId);
         } else if (filters.channelId === 'no_channel') {
           allQuery = allQuery.is('channel_id', null);
           if (mineQuery) mineQuery = mineQuery.is('channel_id', null);
           unassignedQuery = unassignedQuery.is('channel_id', null);
           unreadQuery = unreadQuery.is('channel_id', null);
+          if (pendingQuery) pendingQuery = pendingQuery.is('channel_id', null);
         }
         
         if (filters.origin === 'meta_ads') {
@@ -217,11 +261,13 @@ export function useConversationTotalCounts(filters?: CountFilters) {
           if (mineQuery) mineQuery = mineQuery.eq('referral_source', 'meta_ads');
           unassignedQuery = unassignedQuery.eq('referral_source', 'meta_ads');
           unreadQuery = unreadQuery.eq('referral_source', 'meta_ads');
+          if (pendingQuery) pendingQuery = pendingQuery.eq('referral_source', 'meta_ads');
         } else if (filters.origin === 'organic') {
           allQuery = allQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
           if (mineQuery) mineQuery = mineQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
           unassignedQuery = unassignedQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
           unreadQuery = unreadQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
+          if (pendingQuery) pendingQuery = pendingQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
         }
         
         if (filters.sortFilter === 'unread') {
@@ -231,11 +277,12 @@ export function useConversationTotalCounts(filters?: CountFilters) {
         }
       }
       
-      const [allResult, mineResult, unassignedResult, unreadResult] = await Promise.all([
+      const [allResult, mineResult, unassignedResult, unreadResult, pendingResult] = await Promise.all([
         allQuery,
         mineQuery ? mineQuery : Promise.resolve({ count: 0 }),
         unassignedQuery,
         unreadQuery,
+        pendingQuery ? pendingQuery : Promise.resolve({ count: 0 }),
       ]);
 
       return {
@@ -243,6 +290,7 @@ export function useConversationTotalCounts(filters?: CountFilters) {
         mine: (mineResult as any).count || 0,
         unassigned: unassignedResult.count || 0,
         unread: unreadResult.count || 0,
+        pending: (pendingResult as any).count || 0,
       };
     },
     staleTime: 60000, // 60 seconds (antes 10s)
