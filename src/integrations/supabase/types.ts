@@ -2917,6 +2917,10 @@ export type Database = {
         Args: { conv_id: string; user_id: string }
         Returns: boolean
       }
+      can_create_conversation_for_contact: {
+        Args: { p_contact_id: string; p_user_id: string }
+        Returns: boolean
+      }
       check_user_permission: {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
