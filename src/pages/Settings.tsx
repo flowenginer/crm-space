@@ -99,17 +99,17 @@ interface SettingsTab {
 }
 
 const SETTINGS_TABS: SettingsTab[] = [
-  { value: 'team', label: 'Equipe', icon: Users, permission: ['users', 'read'] },
-  { value: 'roles', label: 'Perfis', icon: Shield, permission: ['users', 'manage_roles'], adminOnly: true },
-  { value: 'departments', label: 'Departamentos', icon: Building2, permission: ['settings', 'update'] },
-  { value: 'channels', label: 'Canais', icon: MessageSquare, permission: ['channels', 'read'] },
-  { value: 'fields', label: 'Campos', icon: Database, permission: ['settings', 'update'] },
-  { value: 'tags', label: 'Etiquetas', icon: Tag, permission: ['tags', 'read'] },
+  { value: 'team', label: 'Equipe', icon: Users, permission: ['settings', 'users'] },
+  { value: 'roles', label: 'Perfis', icon: Shield, permission: null, adminOnly: true },
+  { value: 'departments', label: 'Departamentos', icon: Building2, permission: ['settings', 'departments'] },
+  { value: 'channels', label: 'Canais', icon: MessageSquare, permission: ['settings', 'channels'] },
+  { value: 'fields', label: 'Campos', icon: Database, permission: ['settings', 'fields'] },
+  { value: 'tags', label: 'Etiquetas', icon: Tag, permission: ['settings', 'tags'] },
   { value: 'owner-agent', label: 'Responsável', icon: UserCheck, permission: ['settings', 'update'] },
-  { value: 'close-reasons', label: 'Fechamento', icon: X, permission: ['settings', 'update'] },
+  { value: 'close-reasons', label: 'Fechamento', icon: X, permission: ['settings', 'close_reasons'] },
   { value: 'notifications', label: 'Notificações', icon: Bell, permission: null }, // Todos podem configurar suas notificações
   { value: 'security', label: 'Segurança', icon: Key, permission: null }, // Todos podem trocar sua senha
-  { value: 'integrations', label: 'Integrações', icon: Plug, permission: ['settings', 'update'] },
+  { value: 'integrations', label: 'Integrações', icon: Plug, permission: ['settings', 'integrations'] },
   { value: 'meta-ads', label: 'Meta Ads', icon: Facebook, permission: ['marketing', 'manage'] },
   { value: 'general', label: 'Geral', icon: Palette, permission: ['settings', 'update'] },
   { value: 'tools', label: 'Ferramentas', icon: Wrench, permission: ['settings', 'update'] },

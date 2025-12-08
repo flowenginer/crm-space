@@ -223,7 +223,14 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     order: 14,
     permissions: [
       { key: 'settings.view', name: 'Ver Configurações', description: 'Acessar configurações do sistema' },
-      { key: 'settings.update', name: 'Editar Configurações', description: 'Modificar configurações gerais' },
+      { key: 'settings.update', name: 'Editar Configurações Gerais', description: 'Modificar configurações gerais da empresa' },
+      { key: 'settings.users', name: 'Gerenciar Equipe', description: 'Visualizar e gerenciar membros da equipe' },
+      { key: 'settings.departments', name: 'Gerenciar Departamentos', description: 'Criar e editar departamentos' },
+      { key: 'settings.channels', name: 'Gerenciar Canais', description: 'Configurar canais de atendimento' },
+      { key: 'settings.fields', name: 'Gerenciar Campos', description: 'Criar campos personalizados' },
+      { key: 'settings.tags', name: 'Gerenciar Etiquetas', description: 'Criar e editar tags do sistema' },
+      { key: 'settings.close_reasons', name: 'Motivos de Fechamento', description: 'Configurar motivos de encerramento' },
+      { key: 'settings.integrations', name: 'Integrações', description: 'Configurar integrações externas' },
     ],
   },
   {
