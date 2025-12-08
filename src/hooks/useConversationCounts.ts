@@ -142,24 +142,30 @@ export function useConversationTotalCounts(filters?: CountFilters) {
     queryFn: async (): Promise<ConversationCounts> => {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Get user's departments for pending count
+      // Get user's profile and departments for pending count
       let userDepartmentIds: string[] = [];
+      let isAdminOrSupervisor = false;
+      
       if (user) {
-        const { data: userDepts } = await supabase
-          .from('user_departments')
-          .select('department_id')
-          .eq('user_id', user.id);
-        
         const { data: userProfile } = await supabase
           .from('profiles')
-          .select('department_id')
+          .select('department_id, role')
           .eq('id', user.id)
           .single();
         
-        userDepartmentIds = [
-          ...(userDepts?.map(ud => ud.department_id) || []),
-          userProfile?.department_id
-        ].filter(Boolean) as string[];
+        isAdminOrSupervisor = userProfile?.role === 'admin' || userProfile?.role === 'supervisor';
+        
+        if (!isAdminOrSupervisor) {
+          const { data: userDepts } = await supabase
+            .from('user_departments')
+            .select('department_id')
+            .eq('user_id', user.id);
+          
+          userDepartmentIds = [
+            ...(userDepts?.map(ud => ud.department_id) || []),
+            userProfile?.department_id
+          ].filter(Boolean) as string[];
+        }
       }
       
       // Se não tem filtros complexos, usar a função RPC otimizada
@@ -181,9 +187,19 @@ export function useConversationTotalCounts(filters?: CountFilters) {
         
         const result = data as any;
         
-        // Calculate pending count (assigned_to = null AND department_id in user's departments)
+        // Calculate pending count
         let pendingCount = 0;
-        if (userDepartmentIds.length > 0) {
+        if (isAdminOrSupervisor) {
+          // Admin/Supervisor sees ALL pending conversations
+          const { count } = await supabase
+            .from('conversations')
+            .select('*', { count: 'exact', head: true })
+            .in('status', ['open', 'pending'])
+            .is('assigned_to', null)
+            .not('department_id', 'is', null);
+          pendingCount = count || 0;
+        } else if (userDepartmentIds.length > 0) {
+          // Regular users see only their departments
           const { count } = await supabase
             .from('conversations')
             .select('*', { count: 'exact', head: true })
@@ -221,10 +237,12 @@ export function useConversationTotalCounts(filters?: CountFilters) {
       let unassignedQuery = buildBaseQuery().is('assigned_to', null);
       let unreadQuery = buildBaseQuery().eq('is_unread', true);
       
-      // Pending query - conversations without assignee but with department in user's departments
-      let pendingQuery = userDepartmentIds.length > 0 
-        ? buildBaseQuery().is('assigned_to', null).in('department_id', userDepartmentIds)
-        : null;
+      // Pending query - Admin/Supervisor sees all pending, regular users only their departments
+      let pendingQuery = isAdminOrSupervisor
+        ? buildBaseQuery().is('assigned_to', null).not('department_id', 'is', null)
+        : userDepartmentIds.length > 0 
+          ? buildBaseQuery().is('assigned_to', null).in('department_id', userDepartmentIds)
+          : null;
       
       // Apply filters
       if (filters) {
