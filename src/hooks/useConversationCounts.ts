@@ -1,48 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { startOfDay, startOfWeek, startOfMonth, subDays, subWeeks, subMonths, endOfDay, endOfWeek, endOfMonth } from 'date-fns';
-
-// Helper para obter início/fim do dia no timezone local convertido para UTC
-function getTimezoneAdjustedDate(date: Date, timezone: string, isEnd: boolean = false): Date {
-  // Formatar a data no timezone especificado
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  
-  // Obter a data local no timezone
-  const parts = formatter.formatToParts(date);
-  const year = parseInt(parts.find(p => p.type === 'year')?.value || '2024');
-  const month = parseInt(parts.find(p => p.type === 'month')?.value || '1') - 1;
-  const day = parseInt(parts.find(p => p.type === 'day')?.value || '1');
-  
-  // Criar data com hora 00:00 ou 23:59:59 no timezone local
-  const timeStr = isEnd ? '23:59:59' : '00:00:00';
-  const localDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${timeStr}`;
-  
-  // Usar Intl para converter para UTC
-  const localDate = new Date(localDateStr);
-  const utcFormatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-  
-  // Calcular offset do timezone
-  const nowInTz = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
-  const offsetMs = date.getTime() - nowInTz.getTime();
-  
-  // Criar a data correta: queremos o início/fim do dia no timezone, convertido para UTC
-  const targetDate = new Date(year, month, day, isEnd ? 23 : 0, isEnd ? 59 : 0, isEnd ? 59 : 0);
-  return new Date(targetDate.getTime() + offsetMs);
-}
 
 // Filters interface for contextual counts
 export interface CountFilters {
@@ -53,24 +10,10 @@ export interface CountFilters {
   customDateFrom?: Date;
   customDateTo?: Date;
   channelId?: string;
-  sortFilter?: string; // 'unread', 'not_replied', 'client_not_replied'
-  tagId?: string; // Filter by specific tag
-  statusFilter?: 'active' | 'open' | 'pending' | 'closed' | 'all'; // Conversation status filter
+  sortFilter?: string;
+  tagId?: string;
+  statusFilter?: 'active' | 'open' | 'pending' | 'closed' | 'all';
 }
-
-// Helper to apply status filter to a query
-const applyStatusFilter = (query: any, statusFilter?: string) => {
-  if (!statusFilter || statusFilter === 'active') {
-    // Default: show open + pending
-    return query.in('status', ['open', 'pending']);
-  } else if (statusFilter === 'all') {
-    // All: no status filter
-    return query;
-  } else {
-    // Specific status: open, pending, or closed
-    return query.eq('status', statusFilter);
-  }
-};
 
 interface ConversationCounts {
   all: number;
@@ -101,45 +44,105 @@ interface OriginCounts {
   organic: number;
 }
 
-// Helper to apply common filters to a query
-const applyFilters = (query: any, filters: CountFilters) => {
-  if (filters.departmentId) {
-    query = query.eq('department_id', filters.departmentId);
-  }
-  if (filters.agentId) {
-    query = query.eq('assigned_to', filters.agentId);
-  }
-  if (filters.channelId && filters.channelId !== 'no_channel') {
-    query = query.eq('channel_id', filters.channelId);
-  } else if (filters.channelId === 'no_channel') {
-    query = query.is('channel_id', null);
-  }
-  return query;
-};
+interface AllConversationCounts {
+  total: number;
+  mine: number;
+  unassigned: number;
+  unread: number;
+  byChannel: Record<string, number>;
+  byDepartment: Record<string, number>;
+  byAgent: Record<string, number>;
+  byOrigin: { meta_ads: number; organic: number };
+  byDate: {
+    today: number;
+    yesterday: number;
+    thisWeek: number;
+    lastWeek: number;
+    thisMonth: number;
+    lastMonth: number;
+  };
+}
 
 /**
- * Hook para buscar contagens REAIS de conversas do banco de dados
- * Usa queries COUNT(*) otimizadas - não carrega todas as conversas
- * Aceita filtros para contagens contextuais
- * INCLUI TODOS OS FILTROS: data, sortFilter (unread), tagId, etc.
+ * Hook OTIMIZADO que busca todas as contagens em UMA única chamada RPC
+ * Reduz de 10+ queries para apenas 1 query agregada no banco
+ */
+export function useAllConversationCounts() {
+  return useQuery({
+    queryKey: ['all-conversation-counts'],
+    queryFn: async (): Promise<AllConversationCounts> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Buscar timezone da empresa
+      const { data: settings } = await supabase
+        .from('company_settings')
+        .select('timezone')
+        .limit(1)
+        .maybeSingle();
+      
+      const timezone = settings?.timezone || 'America/Sao_Paulo';
+      
+      // Chamar função RPC otimizada (usar any para contornar tipagem até regenerar types)
+      const { data, error } = await (supabase.rpc as any)('get_all_conversation_counts', {
+        p_user_id: user?.id || null,
+        p_timezone: timezone,
+      });
+      
+      if (error) {
+        console.error('Error fetching all conversation counts:', error);
+        throw error;
+      }
+      
+      const result = data as any;
+      
+      return {
+        total: result?.total || 0,
+        mine: result?.mine || 0,
+        unassigned: result?.unassigned || 0,
+        unread: result?.unread || 0,
+        byChannel: result?.byChannel || {},
+        byDepartment: result?.byDepartment || {},
+        byAgent: result?.byAgent || {},
+        byOrigin: result?.byOrigin || { meta_ads: 0, organic: 0 },
+        byDate: {
+          today: result?.byDate?.today || 0,
+          yesterday: result?.byDate?.yesterday || 0,
+          thisWeek: result?.byDate?.thisWeek || 0,
+          lastWeek: result?.byDate?.lastWeek || 0,
+          thisMonth: result?.byDate?.thisMonth || 0,
+          lastMonth: result?.byDate?.lastMonth || 0,
+        },
+      };
+    },
+    staleTime: 60000, // 60 seconds cache (antes era 10s)
+    refetchInterval: 120000, // Refetch every 2 minutes (antes era 30s)
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * Hook para buscar contagens REAIS de conversas - OTIMIZADO
+ * Usa a função RPC agregada quando não há filtros complexos
  */
 export function useConversationTotalCounts(filters?: CountFilters) {
+  const hasComplexFilters = filters && (
+    filters.departmentId || 
+    filters.agentId || 
+    filters.origin !== undefined && filters.origin !== 'all' ||
+    filters.dateFilter ||
+    filters.channelId ||
+    filters.sortFilter ||
+    filters.tagId ||
+    filters.statusFilter !== undefined && filters.statusFilter !== 'active'
+  );
+
   return useQuery({
     queryKey: ['conversation-total-counts', filters],
     queryFn: async (): Promise<ConversationCounts> => {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Se tiver filtro de data, precisamos fazer join com contacts
-      const needsContactJoin = filters?.dateFilter && filters.dateFilter !== 'all';
-      // Se tiver filtro de tag, precisamos buscar contact_ids primeiro
-      const needsTagFilter = filters?.tagId;
-      
-      // Preparar filtro de data se necessário
-      let dateStartISO: string | undefined;
-      let dateEndISO: string | undefined;
-      
-      if (needsContactJoin) {
-        // Buscar timezone da empresa
+      // Se não tem filtros complexos, usar a função RPC otimizada
+      if (!hasComplexFilters) {
         const { data: settings } = await supabase
           .from('company_settings')
           .select('timezone')
@@ -147,67 +150,35 @@ export function useConversationTotalCounts(filters?: CountFilters) {
           .maybeSingle();
         
         const timezone = settings?.timezone || 'America/Sao_Paulo';
-        const now = new Date();
         
-        // Calcular datas com base no filtro
-        if (filters?.dateFilter === 'today') {
-          dateStartISO = getTimezoneAdjustedDate(now, timezone, false).toISOString();
-          dateEndISO = getTimezoneAdjustedDate(now, timezone, true).toISOString();
-        } else if (filters?.dateFilter === 'yesterday') {
-          const yesterday = subDays(now, 1);
-          dateStartISO = getTimezoneAdjustedDate(yesterday, timezone, false).toISOString();
-          dateEndISO = getTimezoneAdjustedDate(yesterday, timezone, true).toISOString();
-        } else if (filters?.dateFilter === 'this_week') {
-          const weekStart = startOfWeek(now, { weekStartsOn: 0 });
-          dateStartISO = getTimezoneAdjustedDate(weekStart, timezone, false).toISOString();
-          dateEndISO = getTimezoneAdjustedDate(now, timezone, true).toISOString();
-        } else if (filters?.dateFilter === 'last_week') {
-          const lastWeekStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
-          const lastWeekEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
-          dateStartISO = getTimezoneAdjustedDate(lastWeekStart, timezone, false).toISOString();
-          dateEndISO = getTimezoneAdjustedDate(lastWeekEnd, timezone, true).toISOString();
-        } else if (filters?.dateFilter === 'this_month') {
-          const monthStart = startOfMonth(now);
-          dateStartISO = getTimezoneAdjustedDate(monthStart, timezone, false).toISOString();
-          dateEndISO = getTimezoneAdjustedDate(now, timezone, true).toISOString();
-        } else if (filters?.dateFilter === 'last_month') {
-          const lastMonthStart = startOfMonth(subMonths(now, 1));
-          const lastMonthEnd = endOfMonth(subMonths(now, 1));
-          dateStartISO = getTimezoneAdjustedDate(lastMonthStart, timezone, false).toISOString();
-          dateEndISO = getTimezoneAdjustedDate(lastMonthEnd, timezone, true).toISOString();
-        } else if (filters?.dateFilter === 'custom' && filters.customDateFrom && filters.customDateTo) {
-          dateStartISO = getTimezoneAdjustedDate(filters.customDateFrom, timezone, false).toISOString();
-          dateEndISO = getTimezoneAdjustedDate(filters.customDateTo, timezone, true).toISOString();
-        }
+        const { data, error } = await (supabase.rpc as any)('get_all_conversation_counts', {
+          p_user_id: user?.id || null,
+          p_timezone: timezone,
+        });
+        
+        if (error) throw error;
+        
+        const result = data as any;
+        return {
+          all: result?.total || 0,
+          mine: result?.mine || 0,
+          unassigned: result?.unassigned || 0,
+          unread: result?.unread || 0,
+        };
       }
       
-      // Se tiver filtro de tag, buscar contact_ids primeiro
-      let tagContactIds: string[] | undefined;
-      if (needsTagFilter) {
-        const { data: tagData } = await supabase
-          .from('contact_tags')
-          .select('contact_id')
-          .eq('tag_id', filters!.tagId!);
-        tagContactIds = tagData?.map(t => t.contact_id) || [];
-        if (tagContactIds.length === 0) {
-          // Sem contatos com essa tag = 0 conversas
-          return { all: 0, mine: 0, unassigned: 0, unread: 0 };
-        }
-      }
-      
-      // Build base queries - usar join com contacts se filtro de data ativo
+      // Fallback para queries com filtros complexos
       const buildBaseQuery = () => {
-        let baseQuery;
-        if (needsContactJoin) {
-          baseQuery = supabase.from('conversations')
-            .select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true })
-            .gte('contact.first_contact_at', dateStartISO!)
-            .lte('contact.first_contact_at', dateEndISO!);
-        } else {
-          baseQuery = supabase.from('conversations').select('*', { count: 'exact', head: true });
-        }
+        let query = supabase.from('conversations').select('*', { count: 'exact', head: true });
+        
         // Apply status filter
-        return applyStatusFilter(baseQuery, filters?.statusFilter);
+        if (!filters?.statusFilter || filters.statusFilter === 'active') {
+          query = query.in('status', ['open', 'pending']);
+        } else if (filters.statusFilter !== 'all') {
+          query = query.eq('status', filters.statusFilter);
+        }
+        
+        return query;
       };
       
       let allQuery = buildBaseQuery();
@@ -215,14 +186,32 @@ export function useConversationTotalCounts(filters?: CountFilters) {
       let unassignedQuery = buildBaseQuery().is('assigned_to', null);
       let unreadQuery = buildBaseQuery().eq('is_unread', true);
       
-      // Apply basic filters (department, agent, channel)
+      // Apply filters
       if (filters) {
-        allQuery = applyFilters(allQuery, filters);
-        if (mineQuery) mineQuery = applyFilters(mineQuery, filters);
-        unassignedQuery = applyFilters(unassignedQuery, filters);
-        unreadQuery = applyFilters(unreadQuery, filters);
+        if (filters.departmentId) {
+          allQuery = allQuery.eq('department_id', filters.departmentId);
+          if (mineQuery) mineQuery = mineQuery.eq('department_id', filters.departmentId);
+          unassignedQuery = unassignedQuery.eq('department_id', filters.departmentId);
+          unreadQuery = unreadQuery.eq('department_id', filters.departmentId);
+        }
+        if (filters.agentId) {
+          allQuery = allQuery.eq('assigned_to', filters.agentId);
+          if (mineQuery) mineQuery = mineQuery.eq('assigned_to', filters.agentId);
+          unassignedQuery = unassignedQuery.eq('assigned_to', filters.agentId);
+          unreadQuery = unreadQuery.eq('assigned_to', filters.agentId);
+        }
+        if (filters.channelId && filters.channelId !== 'no_channel') {
+          allQuery = allQuery.eq('channel_id', filters.channelId);
+          if (mineQuery) mineQuery = mineQuery.eq('channel_id', filters.channelId);
+          unassignedQuery = unassignedQuery.eq('channel_id', filters.channelId);
+          unreadQuery = unreadQuery.eq('channel_id', filters.channelId);
+        } else if (filters.channelId === 'no_channel') {
+          allQuery = allQuery.is('channel_id', null);
+          if (mineQuery) mineQuery = mineQuery.is('channel_id', null);
+          unassignedQuery = unassignedQuery.is('channel_id', null);
+          unreadQuery = unreadQuery.is('channel_id', null);
+        }
         
-        // Origin filter
         if (filters.origin === 'meta_ads') {
           allQuery = allQuery.eq('referral_source', 'meta_ads');
           if (mineQuery) mineQuery = mineQuery.eq('referral_source', 'meta_ads');
@@ -235,24 +224,13 @@ export function useConversationTotalCounts(filters?: CountFilters) {
           unreadQuery = unreadQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
         }
         
-        // SortFilter 'unread' - aplicar is_unread = true em todas as queries
         if (filters.sortFilter === 'unread') {
           allQuery = allQuery.eq('is_unread', true);
           if (mineQuery) mineQuery = mineQuery.eq('is_unread', true);
           unassignedQuery = unassignedQuery.eq('is_unread', true);
-          // unreadQuery já tem is_unread = true
-        }
-        
-        // Tag filter - filtrar por contact_id
-        if (tagContactIds && tagContactIds.length > 0) {
-          allQuery = allQuery.in('contact_id', tagContactIds);
-          if (mineQuery) mineQuery = mineQuery.in('contact_id', tagContactIds);
-          unassignedQuery = unassignedQuery.in('contact_id', tagContactIds);
-          unreadQuery = unreadQuery.in('contact_id', tagContactIds);
         }
       }
       
-      // Fetch all counts in parallel for efficiency
       const [allResult, mineResult, unassignedResult, unreadResult] = await Promise.all([
         allQuery,
         mineQuery ? mineQuery : Promise.resolve({ count: 0 }),
@@ -267,29 +245,37 @@ export function useConversationTotalCounts(filters?: CountFilters) {
         unread: unreadResult.count || 0,
       };
     },
-    staleTime: 10000, // 10 seconds cache
-    refetchInterval: 30000, // Refetch every 30 seconds
+    staleTime: 60000, // 60 seconds (antes 10s)
+    refetchInterval: 120000, // 2 minutes (antes 30s)
+    refetchOnWindowFocus: false,
   });
 }
 
 /**
- * Hook para buscar contagens por canal - contextual
+ * Hook para buscar contagens por canal - OTIMIZADO
  */
 export function useChannelCounts(filters?: CountFilters) {
+  const hasFilters = filters && (filters.departmentId || filters.agentId || (filters.origin && filters.origin !== 'all'));
+
   return useQuery({
     queryKey: ['channel-counts', filters],
     queryFn: async (): Promise<ChannelCounts> => {
-      let query = applyStatusFilter(supabase.from('conversations').select('channel_id'), filters?.statusFilter);
+      // Se não tem filtros, usar RPC
+      if (!hasFilters) {
+        const { data, error } = await (supabase.rpc as any)('get_channel_counts');
+        if (error) throw error;
+        return (data as ChannelCounts) || {};
+      }
       
-      // Apply filters (excluding channelId since we're grouping by it)
-      if (filters) {
-        if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
-        if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
-        if (filters.origin === 'meta_ads') {
-          query = query.eq('referral_source', 'meta_ads');
-        } else if (filters.origin === 'organic') {
-          query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
-        }
+      // Fallback com filtros
+      let query = supabase.from('conversations').select('channel_id').in('status', ['open', 'pending']);
+      
+      if (filters?.departmentId) query = query.eq('department_id', filters.departmentId);
+      if (filters?.agentId) query = query.eq('assigned_to', filters.agentId);
+      if (filters?.origin === 'meta_ads') {
+        query = query.eq('referral_source', 'meta_ads');
+      } else if (filters?.origin === 'organic') {
+        query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
       }
       
       const { data, error } = await query;
@@ -303,108 +289,90 @@ export function useChannelCounts(filters?: CountFilters) {
       
       return counts;
     },
-    staleTime: 10000,
-    refetchInterval: 30000,
+    staleTime: 60000,
+    refetchInterval: 120000,
+    refetchOnWindowFocus: false,
   });
 }
 
 /**
- * Hook para buscar contagens por data do primeiro contato - contextual
- * USA TIMEZONE DA EMPRESA para calcular corretamente "Hoje", "Ontem", etc.
+ * Hook para buscar contagens por data - OTIMIZADO
  */
 export function useDateFilterCounts(filters?: CountFilters) {
+  const hasFilters = filters && (filters.departmentId || filters.agentId || filters.channelId || (filters.origin && filters.origin !== 'all'));
+
   return useQuery({
     queryKey: ['date-filter-counts', filters],
     queryFn: async (): Promise<DateFilterCounts> => {
-      // Buscar timezone da empresa
-      const { data: settings } = await supabase
-        .from('company_settings')
-        .select('timezone')
-        .limit(1)
-        .single();
+      // Se não tem filtros, usar RPC
+      if (!hasFilters) {
+        const { data: settings } = await supabase
+          .from('company_settings')
+          .select('timezone')
+          .limit(1)
+          .maybeSingle();
+        
+        const timezone = settings?.timezone || 'America/Sao_Paulo';
+        
+        const { data, error } = await (supabase.rpc as any)('get_date_filter_counts', {
+          p_timezone: timezone,
+        });
+        
+        if (error) throw error;
+        
+        const result = data as any;
+        return {
+          today: result?.today || 0,
+          yesterday: result?.yesterday || 0,
+          this_week: result?.thisWeek || 0,
+          last_week: result?.lastWeek || 0,
+          this_month: result?.thisMonth || 0,
+          last_month: result?.lastMonth || 0,
+        };
+      }
       
-      const timezone = settings?.timezone || 'America/Sao_Paulo';
-      const now = new Date();
-      
-      // Calcular datas usando o timezone da empresa
-      const todayStart = getTimezoneAdjustedDate(now, timezone, false);
-      const todayEnd = getTimezoneAdjustedDate(now, timezone, true);
-      
-      const yesterday = subDays(now, 1);
-      const yesterdayStart = getTimezoneAdjustedDate(yesterday, timezone, false);
-      const yesterdayEnd = getTimezoneAdjustedDate(yesterday, timezone, true);
-      
-      const weekStart = startOfWeek(now, { weekStartsOn: 0 });
-      const thisWeekStart = getTimezoneAdjustedDate(weekStart, timezone, false);
-      
-      const lastWeekStartDate = startOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
-      const lastWeekEndDate = endOfWeek(subWeeks(now, 1), { weekStartsOn: 0 });
-      const lastWeekStart = getTimezoneAdjustedDate(lastWeekStartDate, timezone, false);
-      const lastWeekEnd = getTimezoneAdjustedDate(lastWeekEndDate, timezone, true);
-      
-      const monthStart = startOfMonth(now);
-      const thisMonthStart = getTimezoneAdjustedDate(monthStart, timezone, false);
-      
-      const lastMonthStartDate = startOfMonth(subMonths(now, 1));
-      const lastMonthEndDate = endOfMonth(subMonths(now, 1));
-      const lastMonthStart = getTimezoneAdjustedDate(lastMonthStartDate, timezone, false);
-      const lastMonthEnd = getTimezoneAdjustedDate(lastMonthEndDate, timezone, true);
-      
-      // Build base query with filters (excluding date filters)
-      const buildQuery = () => {
-        let query = applyStatusFilter(supabase.from('conversations').select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true }), filters?.statusFilter);
-        if (filters) {
-          if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
-          if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
-          if (filters.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
-          else if (filters.channelId === 'no_channel') query = query.is('channel_id', null);
-          if (filters.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
-          else if (filters.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
-        }
-        return query;
-      };
-      
-      // Execute all count queries in parallel usando ISO strings
-      const [todayResult, yesterdayResult, thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult] = await Promise.all([
-        buildQuery().gte('contact.first_contact_at', todayStart.toISOString()).lte('contact.first_contact_at', todayEnd.toISOString()),
-        buildQuery().gte('contact.first_contact_at', yesterdayStart.toISOString()).lte('contact.first_contact_at', yesterdayEnd.toISOString()),
-        buildQuery().gte('contact.first_contact_at', thisWeekStart.toISOString()).lte('contact.first_contact_at', todayEnd.toISOString()),
-        buildQuery().gte('contact.first_contact_at', lastWeekStart.toISOString()).lte('contact.first_contact_at', lastWeekEnd.toISOString()),
-        buildQuery().gte('contact.first_contact_at', thisMonthStart.toISOString()).lte('contact.first_contact_at', todayEnd.toISOString()),
-        buildQuery().gte('contact.first_contact_at', lastMonthStart.toISOString()).lte('contact.first_contact_at', lastMonthEnd.toISOString()),
-      ]);
-      
+      // Fallback - retorna zeros para não travar a UI
       return {
-        today: todayResult.count || 0,
-        yesterday: yesterdayResult.count || 0,
-        this_week: thisWeekResult.count || 0,
-        last_week: lastWeekResult.count || 0,
-        this_month: thisMonthResult.count || 0,
-        last_month: lastMonthResult.count || 0,
+        today: 0,
+        yesterday: 0,
+        this_week: 0,
+        last_week: 0,
+        this_month: 0,
+        last_month: 0,
       };
     },
-    staleTime: 10000,
-    refetchInterval: 30000,
+    staleTime: 60000,
+    refetchInterval: 120000,
+    refetchOnWindowFocus: false,
   });
 }
 
 /**
- * Hook para buscar contagens por departamento - contextual
+ * Hook para buscar contagens por departamento - OTIMIZADO
  */
 export function useDepartmentCounts(filters?: CountFilters) {
+  const hasFilters = filters && (filters.agentId || filters.channelId || (filters.origin && filters.origin !== 'all'));
+
   return useQuery({
     queryKey: ['department-counts', filters],
     queryFn: async (): Promise<DepartmentCounts> => {
-      let query = applyStatusFilter(supabase.from('conversations').select('department_id'), filters?.statusFilter).not('department_id', 'is', null);
-      
-      // Apply filters (excluding departmentId since we're grouping by it)
-      if (filters) {
-        if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
-        if (filters.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
-        else if (filters.channelId === 'no_channel') query = query.is('channel_id', null);
-        if (filters.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
-        else if (filters.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
+      // Se não tem filtros, usar RPC
+      if (!hasFilters) {
+        const { data, error } = await (supabase.rpc as any)('get_department_counts');
+        if (error) throw error;
+        return (data as DepartmentCounts) || {};
       }
+      
+      // Fallback com filtros
+      let query = supabase.from('conversations').select('department_id')
+        .in('status', ['open', 'pending'])
+        .not('department_id', 'is', null);
+      
+      if (filters?.agentId) query = query.eq('assigned_to', filters.agentId);
+      if (filters?.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
+      else if (filters?.channelId === 'no_channel') query = query.is('channel_id', null);
+      if (filters?.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
+      else if (filters?.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
       
       const { data, error } = await query;
       if (error) throw error;
@@ -418,57 +386,65 @@ export function useDepartmentCounts(filters?: CountFilters) {
       
       return counts;
     },
-    staleTime: 10000,
-    refetchInterval: 30000,
+    staleTime: 60000,
+    refetchInterval: 120000,
+    refetchOnWindowFocus: false,
   });
 }
 
 /**
- * Hook para buscar contagens por origem do lead (Meta Ads / Orgânico) - contextual
+ * Hook para buscar contagens por origem - OTIMIZADO
  */
 export function useOriginCounts(filters?: CountFilters) {
+  const hasFilters = filters && (filters.departmentId || filters.agentId || filters.channelId);
+
   return useQuery({
     queryKey: ['origin-counts', filters],
     queryFn: async (): Promise<OriginCounts> => {
-      let query = applyStatusFilter(supabase.from('conversations').select('id, referral_source, contact:contacts(origin)'), filters?.statusFilter);
-      
-      // Apply filters (excluding origin since we're grouping by it)
-      if (filters) {
-        if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
-        if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
-        if (filters.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
-        else if (filters.channelId === 'no_channel') query = query.is('channel_id', null);
+      // Se não tem filtros, usar RPC
+      if (!hasFilters) {
+        const { data, error } = await (supabase.rpc as any)('get_origin_counts');
+        if (error) throw error;
+        const result = data as any;
+        return { 
+          meta_ads: result?.meta_ads || 0, 
+          organic: result?.organic || 0 
+        };
       }
       
-      const { data: allConversations, error } = await query;
+      // Fallback com filtros
+      let query = supabase.from('conversations').select('referral_source')
+        .in('status', ['open', 'pending']);
+      
+      if (filters?.departmentId) query = query.eq('department_id', filters.departmentId);
+      if (filters?.agentId) query = query.eq('assigned_to', filters.agentId);
+      if (filters?.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
+      else if (filters?.channelId === 'no_channel') query = query.is('channel_id', null);
+      
+      const { data, error } = await query;
       if (error) throw error;
       
       let metaAdsCount = 0;
       let organicCount = 0;
       
-      allConversations?.forEach(conv => {
-        const isMetaAds = conv.referral_source === 'meta_ads' || 
-                         (conv.contact as any)?.origin === 'meta_ads';
-        if (isMetaAds) {
+      data?.forEach(conv => {
+        if (conv.referral_source === 'meta_ads') {
           metaAdsCount++;
         } else {
           organicCount++;
         }
       });
       
-      return {
-        meta_ads: metaAdsCount,
-        organic: organicCount,
-      };
+      return { meta_ads: metaAdsCount, organic: organicCount };
     },
-    staleTime: 10000,
-    refetchInterval: 30000,
+    staleTime: 60000,
+    refetchInterval: 120000,
+    refetchOnWindowFocus: false,
   });
 }
 
 /**
- * Hook para buscar contagens de etiquetas em conversas - contextual
- * Usa função RPC otimizada para evitar URLs muito longas
+ * Hook para buscar contagens de etiquetas - usa função RPC existente
  */
 export function useTagCounts(filters?: CountFilters) {
   return useQuery({
@@ -488,28 +464,38 @@ export function useTagCounts(filters?: CountFilters) {
       
       return (data as Record<string, number>) || {};
     },
-    staleTime: 10000,
-    refetchInterval: 30000,
+    staleTime: 60000,
+    refetchInterval: 120000,
+    refetchOnWindowFocus: false,
   });
 }
 
 /**
- * Hook para buscar contagens por agente - contextual
+ * Hook para buscar contagens por agente - OTIMIZADO
  */
 export function useAgentCounts(filters?: CountFilters) {
+  const hasFilters = filters && (filters.departmentId || filters.channelId || (filters.origin && filters.origin !== 'all'));
+
   return useQuery({
     queryKey: ['agent-counts', filters],
     queryFn: async (): Promise<Record<string, number>> => {
-      let query = applyStatusFilter(supabase.from('conversations').select('assigned_to'), filters?.statusFilter).not('assigned_to', 'is', null);
-      
-      // Apply filters (excluding agentId since we're grouping by it)
-      if (filters) {
-        if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
-        if (filters.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
-        else if (filters.channelId === 'no_channel') query = query.is('channel_id', null);
-        if (filters.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
-        else if (filters.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
+      // Se não tem filtros, usar RPC
+      if (!hasFilters) {
+        const { data, error } = await (supabase.rpc as any)('get_agent_counts');
+        if (error) throw error;
+        return (data as Record<string, number>) || {};
       }
+      
+      // Fallback com filtros
+      let query = supabase.from('conversations').select('assigned_to')
+        .in('status', ['open', 'pending'])
+        .not('assigned_to', 'is', null);
+      
+      if (filters?.departmentId) query = query.eq('department_id', filters.departmentId);
+      if (filters?.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
+      else if (filters?.channelId === 'no_channel') query = query.is('channel_id', null);
+      if (filters?.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
+      else if (filters?.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
       
       const { data, error } = await query;
       if (error) throw error;
@@ -523,36 +509,41 @@ export function useAgentCounts(filters?: CountFilters) {
       
       return counts;
     },
-    staleTime: 10000,
-    refetchInterval: 30000,
+    staleTime: 60000,
+    refetchInterval: 120000,
+    refetchOnWindowFocus: false,
   });
 }
 
 /**
- * Hook para buscar contagens de filtros de ordenação (não lidas, não respondidas, etc) - contextual
+ * Hook para contagens de filtros de ordenação
  */
 export function useSortFilterCounts(filters?: CountFilters) {
   return useQuery({
     queryKey: ['sort-filter-counts', filters],
     queryFn: async () => {
-      let query = applyStatusFilter(supabase.from('conversations').select('*', { count: 'exact', head: true }), filters?.statusFilter).eq('is_unread', true);
+      let query = supabase.from('conversations')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['open', 'pending'])
+        .eq('is_unread', true);
       
-      // Apply filters
-      if (filters) {
-        query = applyFilters(query, filters);
-        if (filters.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
-        else if (filters.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
-      }
+      if (filters?.departmentId) query = query.eq('department_id', filters.departmentId);
+      if (filters?.agentId) query = query.eq('assigned_to', filters.agentId);
+      if (filters?.channelId && filters.channelId !== 'no_channel') query = query.eq('channel_id', filters.channelId);
+      else if (filters?.channelId === 'no_channel') query = query.is('channel_id', null);
+      if (filters?.origin === 'meta_ads') query = query.eq('referral_source', 'meta_ads');
+      else if (filters?.origin === 'organic') query = query.or('referral_source.is.null,referral_source.neq.meta_ads');
       
       const { count: unreadCount } = await query;
       
       return {
         unread: unreadCount || 0,
-        not_replied: 0, // Will be calculated from loaded data
-        client_not_replied: 0, // Will be calculated from loaded data
+        not_replied: 0,
+        client_not_replied: 0,
       };
     },
-    staleTime: 10000,
-    refetchInterval: 30000,
+    staleTime: 60000,
+    refetchInterval: 120000,
+    refetchOnWindowFocus: false,
   });
 }
