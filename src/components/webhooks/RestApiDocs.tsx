@@ -4,10 +4,11 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Copy, Check, Database, MessageSquare, Users, Tag, Briefcase, Building, Phone, Shield, Zap, Search, Send, Settings, AlertTriangle } from "lucide-react";
+import { Copy, Check, Database, MessageSquare, Users, Tag, Briefcase, Phone, Shield, Zap, Search, Settings, AlertTriangle, Info } from "lucide-react";
 import { toast } from "sonner";
 
 const SUPABASE_URL = "https://lkxrmjqrzhaivviuuamp.supabase.co";
+const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxreHJtanFyemhhaXZ2aXV1YW1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4MDA0NTksImV4cCI6MjA4MDM3NjQ1OX0.h5Z0o7OwO_P-IzC29MA20VJ9W6Ch0tyecrzobXbjju8";
 
 const CodeBlock = ({ code, language = "bash" }: { code: string; language?: string }) => {
   const [copied, setCopied] = useState(false);
@@ -119,7 +120,7 @@ export function RestApiDocs() {
             Quick Start - N8N / Make / Zapier
           </CardTitle>
           <CardDescription>
-            Configure sua integração em 2 minutos usando apenas 1 chave de autenticação.
+            Configure sua integração em 2 minutos.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -139,7 +140,7 @@ export function RestApiDocs() {
                 Configure no N8N
               </h4>
               <p className="text-sm text-muted-foreground">
-                Use um nó <strong>HTTP Request</strong> com apenas 1 header de autenticação.
+                Use um nó <strong>HTTP Request</strong> com os 2 headers obrigatórios.
               </p>
             </div>
           </div>
@@ -148,9 +149,19 @@ export function RestApiDocs() {
             <p className="text-sm font-medium mb-3">Configuração do HTTP Request no N8N:</p>
             <CodeBlock code={`URL: ${SUPABASE_URL}/rest/v1/contacts?select=*&limit=10
 
-Headers:
+Headers (ambos obrigatórios):
+  apikey: SUA_SERVICE_ROLE_KEY
   Authorization: Bearer SUA_SERVICE_ROLE_KEY
   Content-Type: application/json`} />
+          </div>
+
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+            <p className="text-sm text-blue-700 dark:text-blue-400 flex items-start gap-2">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                <strong>Dica:</strong> Use a mesma Service Role Key nos dois headers (<code>apikey</code> e <code>Authorization</code>).
+              </span>
+            </p>
           </div>
 
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
@@ -185,14 +196,16 @@ Headers:
                 Ela bypassa as políticas de segurança (RLS) e dá acesso completo aos dados.
               </p>
               
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Apenas 1 header necessário:</p>
-                <CodeBlock code={`Authorization: Bearer SUA_SERVICE_ROLE_KEY`} />
+              <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
+                <p className="text-sm font-medium mb-2">2 Headers obrigatórios:</p>
+                <CodeBlock code={`apikey: SUA_SERVICE_ROLE_KEY
+Authorization: Bearer SUA_SERVICE_ROLE_KEY`} />
               </div>
 
               <div className="space-y-2">
                 <p className="text-sm font-medium">Exemplo completo:</p>
                 <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/contacts?select=*&limit=10" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json"`} />
               </div>
@@ -210,7 +223,7 @@ Headers:
               <div className="space-y-2">
                 <p className="text-sm font-medium">1. Fazer login para obter o JWT:</p>
                 <CodeBlock code={`curl -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \\
-  -H "apikey: ANON_KEY" \\
+  -H "apikey: ${ANON_KEY}" \\
   -H "Content-Type: application/json" \\
   -d '{"email": "usuario@email.com", "password": "senha123"}'`} />
               </div>
@@ -218,7 +231,7 @@ Headers:
               <div className="space-y-2">
                 <p className="text-sm font-medium">2. Usar o access_token nas requisições:</p>
                 <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/contacts" \\
-  -H "apikey: ANON_KEY" \\
+  -H "apikey: ${ANON_KEY}" \\
   -H "Authorization: Bearer ACCESS_TOKEN_DO_LOGIN" \\
   -H "Content-Type: application/json"`} />
               </div>
@@ -252,6 +265,7 @@ Headers:
                 endpoint="/contacts?select=*&limit=50"
                 description="Listar todos os contatos"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/contacts?select=id,full_name,phone,email,lead_status&limit=50" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
                 response={`[
   {
@@ -269,6 +283,7 @@ Headers:
                 endpoint="/contacts?phone=eq.{telefone}"
                 description="Buscar contato por telefone (exato)"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/contacts?phone=eq.5521999999999&select=*" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
                 response={`[
   {
@@ -286,6 +301,7 @@ Headers:
                 endpoint="/contacts?phone=like.*{parcial}*"
                 description="Buscar contato por telefone (parcial)"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/contacts?phone=like.*999999999*&select=*" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
               />
 
@@ -294,6 +310,7 @@ Headers:
                 endpoint="/contacts?id=eq.{uuid}"
                 description="Buscar contato por ID"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/contacts?id=eq.UUID_DO_CONTATO&select=*" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
               />
             </div>
@@ -309,6 +326,7 @@ Headers:
                 endpoint="/conversations?status=eq.open"
                 description="Listar conversas abertas"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/conversations?status=eq.open&select=id,contact_id,assigned_to,last_message_at&order=last_message_at.desc" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
                 response={`[
   {
@@ -325,6 +343,7 @@ Headers:
                 endpoint="/conversations?contact_id=eq.{uuid}"
                 description="Buscar conversas de um contato"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/conversations?contact_id=eq.UUID_DO_CONTATO&select=*" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
               />
             </div>
@@ -340,6 +359,7 @@ Headers:
                 endpoint="/messages?conversation_id=eq.{uuid}"
                 description="Listar mensagens de uma conversa"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/messages?conversation_id=eq.UUID_DA_CONVERSA&select=id,content,is_from_me,created_at&order=created_at.desc&limit=50" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
                 response={`[
   {
@@ -363,6 +383,7 @@ Headers:
                 endpoint="/tags?select=*"
                 description="Listar todas as tags"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/tags?select=id,name,color" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
               />
 
@@ -371,6 +392,7 @@ Headers:
                 endpoint="/departments?select=*"
                 description="Listar departamentos"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/departments?select=id,name,color" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
               />
 
@@ -379,6 +401,7 @@ Headers:
                 endpoint="/whatsapp_channels?select=*"
                 description="Listar canais WhatsApp"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/whatsapp_channels?is_deleted=eq.false&select=id,name,phone_number,status" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
               />
 
@@ -387,6 +410,7 @@ Headers:
                 endpoint="/profiles?select=*"
                 description="Listar usuários/agentes"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/profiles?is_active=eq.true&select=id,full_name,role" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
               />
             </div>
@@ -416,6 +440,7 @@ Headers:
                 endpoint="/contacts"
                 description="Criar novo contato"
                 curl={`curl -X POST "${SUPABASE_URL}/rest/v1/contacts" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -H "Prefer: return=representation" \\
@@ -441,6 +466,7 @@ Headers:
                 endpoint="/contacts?id=eq.{uuid}"
                 description="Atualizar contato"
                 curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/contacts?id=eq.UUID_DO_CONTATO" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -461,6 +487,7 @@ Headers:
                 endpoint="/conversations?id=eq.{uuid}"
                 description="Atribuir conversa a um agente"
                 curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/conversations?id=eq.UUID_DA_CONVERSA" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -474,6 +501,7 @@ Headers:
                 endpoint="/conversations?id=eq.{uuid}"
                 description="Fechar conversa"
                 curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/conversations?id=eq.UUID_DA_CONVERSA" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -495,6 +523,7 @@ Headers:
                 endpoint="/contact_tags"
                 description="Adicionar tag ao contato"
                 curl={`curl -X POST "${SUPABASE_URL}/rest/v1/contact_tags" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -508,6 +537,7 @@ Headers:
                 endpoint="/contact_tags?contact_id=eq.{uuid}&tag_id=eq.{uuid}"
                 description="Remover tag do contato"
                 curl={`curl -X DELETE "${SUPABASE_URL}/rest/v1/contact_tags?contact_id=eq.UUID_DO_CONTATO&tag_id=eq.UUID_DA_TAG" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
               />
             </div>
@@ -537,6 +567,7 @@ Headers:
               endpoint="/functions/v1/whatsapp-instance"
               description="Enviar mensagem de texto"
               curl={`curl -X POST "${SUPABASE_URL}/functions/v1/whatsapp-instance" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -557,6 +588,7 @@ Headers:
               endpoint="/functions/v1/whatsapp-instance"
               description="Enviar imagem"
               curl={`curl -X POST "${SUPABASE_URL}/functions/v1/whatsapp-instance" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -574,6 +606,7 @@ Headers:
               endpoint="/functions/v1/whatsapp-instance"
               description="Enviar documento/PDF"
               curl={`curl -X POST "${SUPABASE_URL}/functions/v1/whatsapp-instance" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -604,6 +637,7 @@ Headers:
               endpoint="/deals?select=*"
               description="Listar todos os negócios"
               curl={`curl -X GET "${SUPABASE_URL}/rest/v1/deals?select=id,title,value,status,stage_id,contact_id&order=created_at.desc" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
             />
 
@@ -612,6 +646,7 @@ Headers:
               endpoint="/deals"
               description="Criar novo negócio"
               curl={`curl -X POST "${SUPABASE_URL}/rest/v1/deals" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -H "Prefer: return=representation" \\
@@ -630,6 +665,7 @@ Headers:
               endpoint="/deals?id=eq.{uuid}"
               description="Mover para outra etapa"
               curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/deals?id=eq.UUID_DO_DEAL" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -642,6 +678,7 @@ Headers:
               endpoint="/deals?id=eq.{uuid}"
               description="Marcar como ganho"
               curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/deals?id=eq.UUID_DO_DEAL" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -655,6 +692,7 @@ Headers:
               endpoint="/deals?id=eq.{uuid}"
               description="Marcar como perdido"
               curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/deals?id=eq.UUID_DO_DEAL" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
