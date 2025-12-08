@@ -3,10 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Key, Database, MessageSquare, Users, Tag, Briefcase, Building, Phone, FileText } from "lucide-react";
+import { Copy, Check, Key, Database, MessageSquare, Users, Tag, Briefcase, Building, Phone, FileText, Shield, Terminal, Lightbulb, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 const SUPABASE_URL = "https://lkxrmjqrzhaivviuuamp.supabase.co";
+const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxreHJtanFyemhhaXZ2aXV1YW1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4MDA0NTksImV4cCI6MjA4MDM3NjQ1OX0.h5Z0o7OwO_P-IzC29MA20VJ9W6Ch0tyecrzobXbjju8";
 
 const CodeBlock = ({ code, language = "bash" }: { code: string; language?: string }) => {
   const [copied, setCopied] = useState(false);
@@ -21,7 +22,7 @@ const CodeBlock = ({ code, language = "bash" }: { code: string; language?: strin
   return (
     <div className="relative group">
       <pre className="bg-muted/50 border rounded-lg p-4 overflow-x-auto text-sm">
-        <code className="text-foreground/90">{code}</code>
+        <code className="text-foreground/90 whitespace-pre-wrap break-all">{code}</code>
       </pre>
       <Button
         size="sm"
@@ -60,12 +61,59 @@ const MethodBadge = ({ method }: { method: string }) => {
   );
 };
 
-const EndpointRow = ({ method, endpoint, description }: { method: string; endpoint: string; description: string }) => (
-  <div className="flex items-start gap-3 py-3 border-b last:border-0">
-    <MethodBadge method={method} />
-    <div className="flex-1 min-w-0">
-      <code className="text-sm font-mono text-primary break-all">{endpoint}</code>
-      <p className="text-sm text-muted-foreground mt-1">{description}</p>
+interface UseCaseProps {
+  cases: string[];
+}
+
+const UseCaseBlock = ({ cases }: UseCaseProps) => (
+  <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 my-3">
+    <div className="flex items-start gap-2">
+      <Lightbulb className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+      <div>
+        <p className="text-sm font-medium text-primary mb-2">Quando usar:</p>
+        <ul className="text-sm text-muted-foreground space-y-1">
+          {cases.map((useCase, i) => (
+            <li key={i}>• {useCase}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  </div>
+);
+
+interface EndpointCardProps {
+  method: string;
+  endpoint: string;
+  description: string;
+  useCases: string[];
+  curl: string;
+  note?: string;
+}
+
+const EndpointCard = ({ method, endpoint, description, useCases, curl, note }: EndpointCardProps) => (
+  <div className="border rounded-lg p-4 mb-4 bg-card">
+    <div className="flex items-start gap-3 mb-3">
+      <MethodBadge method={method} />
+      <div className="flex-1 min-w-0">
+        <code className="text-sm font-mono text-primary break-all">{endpoint}</code>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
+      </div>
+    </div>
+    
+    <UseCaseBlock cases={useCases} />
+    
+    {note && (
+      <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-3">
+        <p className="text-sm text-amber-700 dark:text-amber-400 flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          {note}
+        </p>
+      </div>
+    )}
+    
+    <div>
+      <p className="text-xs text-muted-foreground mb-2 font-medium">cURL completo (pronto para copiar):</p>
+      <CodeBlock code={curl} />
     </div>
   </div>
 );
@@ -87,37 +135,104 @@ export function RestApiDocs() {
         </CardHeader>
       </Card>
 
-      {/* Authentication */}
-      <Card>
+      {/* Credentials Guide */}
+      <Card className="border-primary/30">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Key className="h-5 w-5" />
-            Autenticação
+            <Shield className="h-5 w-5 text-primary" />
+            Como Obter Suas Credenciais
           </CardTitle>
           <CardDescription>
-            Todas as requisições devem incluir os headers de autenticação abaixo.
+            Siga os passos abaixo para obter as credenciais necessárias para usar a API.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4">
-            <div>
-              <h4 className="font-medium mb-2">Base URL</h4>
-              <CodeBlock code={`${SUPABASE_URL}/rest/v1`} />
+        <CardContent className="space-y-6">
+          {/* Step 1: ANON KEY */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="default" className="rounded-full h-6 w-6 p-0 flex items-center justify-center">1</Badge>
+              <h4 className="font-semibold">Obter a ANON KEY (apikey)</h4>
             </div>
-            
-            <div>
-              <h4 className="font-medium mb-2">Headers Obrigatórios</h4>
-              <CodeBlock code={`apikey: SUA_SUPABASE_ANON_KEY
-Authorization: Bearer SEU_JWT_TOKEN
+            <p className="text-sm text-muted-foreground ml-8">
+              A ANON KEY é uma chave pública usada para identificar seu projeto. Ela é segura para usar no frontend 
+              pois as políticas de segurança (RLS) controlam o acesso aos dados.
+            </p>
+            <div className="ml-8 bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
+              <p className="text-sm text-emerald-700 dark:text-emerald-400 mb-2 font-medium">
+                ✓ ANON KEY deste projeto (já configurada):
+              </p>
+              <CodeBlock code={ANON_KEY} />
+            </div>
+            <p className="text-xs text-muted-foreground ml-8">
+              Você também pode encontrar esta chave em: Supabase Dashboard → Settings → API → anon public
+            </p>
+          </div>
+
+          {/* Step 2: JWT Token */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="default" className="rounded-full h-6 w-6 p-0 flex items-center justify-center">2</Badge>
+              <h4 className="font-semibold">Obter o JWT Token (Authorization)</h4>
+            </div>
+            <p className="text-sm text-muted-foreground ml-8">
+              O JWT Token identifica o usuário autenticado. Você obtém este token fazendo login com email e senha.
+              O token expira após um período, então você precisa renová-lo periodicamente.
+            </p>
+            <div className="ml-8">
+              <p className="text-xs text-muted-foreground mb-2 font-medium flex items-center gap-2">
+                <Terminal className="h-3.5 w-3.5" />
+                cURL para fazer login e obter o JWT Token:
+              </p>
+              <CodeBlock code={`curl -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "email": "seu_email@exemplo.com",
+    "password": "sua_senha"
+  }'`} />
+            </div>
+            <div className="ml-8">
+              <p className="text-xs text-muted-foreground mb-2">Resposta (o access_token é seu JWT):</p>
+              <CodeBlock language="json" code={`{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 3600,
+  "refresh_token": "xxx-refresh-token-xxx",
+  "user": {
+    "id": "uuid-do-usuario",
+    "email": "seu_email@exemplo.com"
+  }
+}`} />
+            </div>
+          </div>
+
+          {/* Step 3: How to use */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="default" className="rounded-full h-6 w-6 p-0 flex items-center justify-center">3</Badge>
+              <h4 className="font-semibold">Como Usar nas Requisições</h4>
+            </div>
+            <p className="text-sm text-muted-foreground ml-8">
+              Todas as requisições à API devem incluir estes dois headers:
+            </p>
+            <div className="ml-8">
+              <CodeBlock code={`# Headers obrigatórios em todas as requisições:
+apikey: ${ANON_KEY}
+Authorization: Bearer SEU_JWT_TOKEN_AQUI
 Content-Type: application/json`} />
             </div>
+          </div>
 
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
-              <p className="text-sm text-amber-700 dark:text-amber-400">
-                <strong>Importante:</strong> O JWT Token é obtido após login do usuário via Supabase Auth. 
-                Para integrações server-to-server, use a Service Role Key (com cuidado, ela bypassa RLS).
-              </p>
-            </div>
+          {/* Warning about Service Role */}
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
+            <p className="text-sm text-amber-700 dark:text-amber-400 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                <strong>Importante:</strong> Para integrações server-to-server (N8N, Make, Zapier), você pode usar a 
+                <strong> Service Role Key</strong> que bypassa as políticas de segurança. Esta chave deve ser mantida 
+                em segredo e NUNCA exposta no frontend. Encontre-a em: Supabase Dashboard → Settings → API → service_role
+              </span>
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -133,38 +248,50 @@ Content-Type: application/json`} />
               <Badge variant="secondary">6 endpoints</Badge>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="pt-4 space-y-6">
-            <div className="space-y-2">
-              <EndpointRow method="GET" endpoint="/contacts" description="Listar todos os contatos" />
-              <EndpointRow method="GET" endpoint="/contacts?id=eq.{uuid}" description="Buscar contato por ID" />
-              <EndpointRow method="GET" endpoint="/contacts?phone=ilike.*{telefone}*" description="Buscar contato por telefone" />
-              <EndpointRow method="POST" endpoint="/contacts" description="Criar novo contato" />
-              <EndpointRow method="PATCH" endpoint="/contacts?id=eq.{uuid}" description="Atualizar contato" />
-              <EndpointRow method="DELETE" endpoint="/contacts?id=eq.{uuid}" description="Deletar contato" />
-            </div>
+          <AccordionContent className="pt-4 space-y-4">
+            <EndpointCard
+              method="GET"
+              endpoint="/contacts"
+              description="Listar todos os contatos com paginação"
+              useCases={[
+                "Sincronizar base de leads com seu sistema ERP/CRM externo",
+                "Exportar dados para ferramentas de BI (Power BI, Metabase)",
+                "Criar dashboards personalizados com métricas de leads",
+                "Integrar com planilhas do Google Sheets via N8N/Make"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/contacts?select=id,full_name,phone,email,lead_status,created_at&limit=50&offset=0&order=created_at.desc" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-            <div className="space-y-4">
-              <h4 className="font-medium">Exemplos</h4>
-              
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Listar contatos com paginação:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/contacts?select=id,full_name,phone,email,lead_status&limit=50&offset=0" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
+            <EndpointCard
+              method="GET"
+              endpoint="/contacts?phone=ilike.*{telefone}*"
+              description="Buscar contato por telefone"
+              useCases={[
+                "Verificar se um lead já existe antes de criar duplicata",
+                "Buscar dados do cliente quando ele liga para o call center",
+                "Validar número antes de enviar mensagem em massa"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/contacts?phone=ilike.*5521999999999*&select=id,full_name,phone,email,lead_status" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Buscar por telefone:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/contacts?phone=ilike.*5521999999999*" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Criar contato:</p>
-                <CodeBlock code={`curl -X POST "${SUPABASE_URL}/rest/v1/contacts" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="POST"
+              endpoint="/contacts"
+              description="Criar novo contato"
+              useCases={[
+                "Importar leads capturados em landing pages do seu site",
+                "Integrar formulários de contato (Typeform, Google Forms)",
+                "Migrar dados de outro CRM para este sistema",
+                "Cadastrar leads automaticamente quando preenchem formulário"
+              ]}
+              note="Use o header 'Prefer: return=representation' para receber o contato criado na resposta."
+              curl={`curl -X POST "${SUPABASE_URL}/rest/v1/contacts" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -H "Prefer: return=representation" \\
   -d '{
@@ -172,38 +299,47 @@ Content-Type: application/json`} />
     "phone": "5521999999999",
     "email": "joao@email.com",
     "lead_status": "new",
+    "origin": "landing_page",
     "state": "RJ",
     "city": "Rio de Janeiro"
-  }'`} />
-              </div>
+  }'`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Atualizar contato:</p>
-                <CodeBlock code={`curl -X PATCH "${SUPABASE_URL}/rest/v1/contacts?id=eq.UUID_DO_CONTATO" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="PATCH"
+              endpoint="/contacts?id=eq.{uuid}"
+              description="Atualizar dados do contato"
+              useCases={[
+                "Atualizar status do lead via automação quando ele avança no funil",
+                "Sincronizar campos com sistema ERP (ex: valor negociado, CPF)",
+                "Marcar lead como qualificado após análise automática",
+                "Atualizar dados do cliente após confirmação de compra"
+              ]}
+              curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/contacts?id=eq.UUID_DO_CONTATO" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
     "lead_status": "qualified",
-    "negotiated_value": 5000
-  }'`} />
-              </div>
+    "negotiated_value": 5000,
+    "notes": "Cliente interessado em plano premium"
+  }'`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Resposta de exemplo:</p>
-                <CodeBlock language="json" code={`{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "full_name": "João Silva",
-  "phone": "5521999999999",
-  "email": "joao@email.com",
-  "lead_status": "new",
-  "state": "RJ",
-  "city": "Rio de Janeiro",
-  "created_at": "2024-12-07T10:00:00Z",
-  "updated_at": "2024-12-07T10:00:00Z"
-}`} />
-              </div>
-            </div>
+            <EndpointCard
+              method="DELETE"
+              endpoint="/contacts?id=eq.{uuid}"
+              description="Deletar contato"
+              useCases={[
+                "Remover leads inválidos ou spam após validação",
+                "Limpar base de testes",
+                "Atender solicitações de exclusão de dados (LGPD)"
+              ]}
+              note="Cuidado: Esta ação é irreversível e pode afetar conversas e negócios vinculados."
+              curl={`curl -X DELETE "${SUPABASE_URL}/rest/v1/contacts?id=eq.UUID_DO_CONTATO" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
           </AccordionContent>
         </AccordionItem>
 
@@ -216,67 +352,86 @@ Content-Type: application/json`} />
               <Badge variant="secondary">5 endpoints</Badge>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="pt-4 space-y-6">
-            <div className="space-y-2">
-              <EndpointRow method="GET" endpoint="/conversations?status=eq.open" description="Listar conversas abertas" />
-              <EndpointRow method="GET" endpoint="/conversations?id=eq.{uuid}" description="Buscar conversa por ID" />
-              <EndpointRow method="GET" endpoint="/conversations?contact_id=eq.{uuid}" description="Buscar conversas de um contato" />
-              <EndpointRow method="PATCH" endpoint="/conversations?id=eq.{uuid}" description="Atualizar conversa (atribuir, fechar)" />
-              <EndpointRow method="POST" endpoint="/conversations" description="Criar nova conversa" />
-            </div>
+          <AccordionContent className="pt-4 space-y-4">
+            <EndpointCard
+              method="GET"
+              endpoint="/conversations?status=eq.open"
+              description="Listar conversas abertas"
+              useCases={[
+                "Monitorar fila de atendimentos pendentes em dashboard externo",
+                "Criar alertas quando há muitas conversas sem resposta",
+                "Integrar com sistema de distribuição automática de leads",
+                "Gerar relatórios de tempo de espera dos clientes"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/conversations?status=eq.open&select=id,contact_id,assigned_to,department_id,last_message_at,unread_count&order=last_message_at.desc&limit=50" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-            <div className="space-y-4">
-              <h4 className="font-medium">Exemplos</h4>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Listar conversas abertas:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/conversations?status=eq.open&select=id,contact_id,assigned_to,status,last_message_at&order=last_message_at.desc" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Atribuir conversa a atendente:</p>
-                <CodeBlock code={`curl -X PATCH "${SUPABASE_URL}/rest/v1/conversations?id=eq.UUID_DA_CONVERSA" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="PATCH"
+              endpoint="/conversations?id=eq.{uuid}"
+              description="Atribuir conversa a atendente ou departamento"
+              useCases={[
+                "Distribuir leads automaticamente baseado em regras de negócio",
+                "Redirecionar conversa quando detectar palavra-chave específica",
+                "Integrar com chatbot para encaminhar ao setor correto",
+                "Balancear carga entre atendentes via automação"
+              ]}
+              curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/conversations?id=eq.UUID_DA_CONVERSA" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
     "assigned_to": "UUID_DO_ATENDENTE",
     "department_id": "UUID_DO_DEPARTAMENTO"
-  }'`} />
-              </div>
+  }'`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Fechar conversa:</p>
-                <CodeBlock code={`curl -X PATCH "${SUPABASE_URL}/rest/v1/conversations?id=eq.UUID_DA_CONVERSA" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="PATCH"
+              endpoint="/conversations?id=eq.{uuid}"
+              description="Fechar conversa com motivo"
+              useCases={[
+                "Fechar atendimento automaticamente após confirmação de venda no ERP",
+                "Encerrar conversa quando pagamento é confirmado",
+                "Marcar como perdido quando lead cancela no checkout",
+                "Automatizar fechamento após inatividade prolongada"
+              ]}
+              curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/conversations?id=eq.UUID_DA_CONVERSA" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
     "status": "closed",
     "closed_at": "2024-12-07T15:00:00Z",
     "close_reason": "sold"
-  }'`} />
-              </div>
+  }'`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Reabrir conversa:</p>
-                <CodeBlock code={`curl -X PATCH "${SUPABASE_URL}/rest/v1/conversations?id=eq.UUID_DA_CONVERSA" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="PATCH"
+              endpoint="/conversations?id=eq.{uuid}"
+              description="Reabrir conversa fechada"
+              useCases={[
+                "Reabrir quando cliente responde após fechamento",
+                "Retomar atendimento após resolução de problema técnico",
+                "Reativar conversa para follow-up de pós-venda"
+              ]}
+              curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/conversations?id=eq.UUID_DA_CONVERSA" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
     "status": "open",
     "closed_at": null,
     "close_reason": null
-  }'`} />
-              </div>
-            </div>
+  }'`}
+            />
           </AccordionContent>
         </AccordionItem>
 
-        {/* Messages */}
+        {/* Messages & WhatsApp */}
         <AccordionItem value="messages" className="border rounded-lg px-4">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
@@ -285,68 +440,77 @@ Content-Type: application/json`} />
               <Badge variant="secondary">4 endpoints</Badge>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="pt-4 space-y-6">
-            <div className="space-y-2">
-              <EndpointRow method="GET" endpoint="/messages?conversation_id=eq.{uuid}" description="Histórico de mensagens" />
-              <EndpointRow method="POST" endpoint="/messages" description="Criar mensagem no banco" />
-              <EndpointRow method="POST" endpoint="/functions/v1/whatsapp-instance" description="Enviar mensagem via WhatsApp" />
-              <EndpointRow method="PATCH" endpoint="/messages?id=eq.{uuid}" description="Atualizar status da mensagem" />
-            </div>
+          <AccordionContent className="pt-4 space-y-4">
+            <EndpointCard
+              method="GET"
+              endpoint="/messages?conversation_id=eq.{uuid}"
+              description="Buscar histórico de mensagens de uma conversa"
+              useCases={[
+                "Auditoria e compliance de atendimentos",
+                "Gerar relatórios de qualidade de atendimento",
+                "Exportar histórico para análise de sentimento via IA",
+                "Backup de conversas para arquivo"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/messages?conversation_id=eq.UUID_DA_CONVERSA&select=id,content,is_from_me,status,message_type,media_url,created_at&order=created_at.desc&limit=100" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-            <div className="space-y-4">
-              <h4 className="font-medium">Exemplos</h4>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Buscar histórico de mensagens:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/messages?conversation_id=eq.UUID_DA_CONVERSA&select=id,content,is_from_me,status,created_at&order=created_at.desc&limit=50" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
-
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
-                <p className="text-sm text-blue-700 dark:text-blue-400">
-                  <strong>Envio via WhatsApp:</strong> Para enviar mensagens pelo WhatsApp, use a Edge Function 
-                  <code className="mx-1 bg-blue-500/20 px-1 rounded">whatsapp-instance</code> com a action "send".
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Enviar mensagem de texto via WhatsApp:</p>
-                <CodeBlock code={`curl -X POST "${SUPABASE_URL}/functions/v1/whatsapp-instance" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="POST"
+              endpoint="/functions/v1/whatsapp-instance"
+              description="Enviar mensagem de texto via WhatsApp"
+              useCases={[
+                "Enviar notificações automáticas de status de pedido",
+                "Confirmar agendamentos e lembretes",
+                "Disparar mensagens de boas-vindas após cadastro",
+                "Enviar links de pagamento após fechamento de venda",
+                "Integrar com chatbots externos (Dialogflow, ChatGPT)"
+              ]}
+              note="Esta é uma Edge Function. Use apenas o header Authorization (sem apikey)."
+              curl={`curl -X POST "${SUPABASE_URL}/functions/v1/whatsapp-instance" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
     "action": "send",
-    "channelId": "UUID_DO_CANAL",
+    "channelId": "UUID_DO_CANAL_WHATSAPP",
     "phone": "5521999999999",
-    "content": "Olá! Esta é uma mensagem via API.",
+    "content": "Olá! Seu pedido #12345 foi confirmado. Previsão de entrega: 3 dias úteis.",
     "type": "text"
-  }'`} />
-              </div>
+  }'`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Enviar imagem via WhatsApp:</p>
-                <CodeBlock code={`curl -X POST "${SUPABASE_URL}/functions/v1/whatsapp-instance" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="POST"
+              endpoint="/functions/v1/whatsapp-instance"
+              description="Enviar imagem/documento via WhatsApp"
+              useCases={[
+                "Enviar comprovantes de pagamento",
+                "Enviar boletos e notas fiscais",
+                "Enviar catálogos de produtos",
+                "Compartilhar contratos e documentos"
+              ]}
+              curl={`curl -X POST "${SUPABASE_URL}/functions/v1/whatsapp-instance" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
     "action": "send",
-    "channelId": "UUID_DO_CANAL",
+    "channelId": "UUID_DO_CANAL_WHATSAPP",
     "phone": "5521999999999",
-    "content": "Legenda da imagem",
-    "type": "image",
-    "mediaUrl": "https://exemplo.com/imagem.jpg"
-  }'`} />
-              </div>
+    "content": "Segue seu boleto para pagamento",
+    "type": "document",
+    "mediaUrl": "https://seu-servidor.com/boleto.pdf",
+    "fileName": "boleto_12345.pdf"
+  }'`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Resposta de envio:</p>
-                <CodeBlock language="json" code={`{
+            <div className="border rounded-lg p-4 bg-card">
+              <p className="text-sm text-muted-foreground mb-2">Resposta de envio bem-sucedido:</p>
+              <CodeBlock language="json" code={`{
   "success": true,
   "messageId": "BAED5F1234567890",
   "status": "PENDING"
 }`} />
-              </div>
             </div>
           </AccordionContent>
         </AccordionItem>
@@ -360,44 +524,55 @@ Content-Type: application/json`} />
               <Badge variant="secondary">5 endpoints</Badge>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="pt-4 space-y-6">
-            <div className="space-y-2">
-              <EndpointRow method="GET" endpoint="/tags" description="Listar todas as tags" />
-              <EndpointRow method="POST" endpoint="/tags" description="Criar nova tag" />
-              <EndpointRow method="GET" endpoint="/contact_tags?contact_id=eq.{uuid}" description="Listar tags de um contato" />
-              <EndpointRow method="POST" endpoint="/contact_tags" description="Adicionar tag ao contato" />
-              <EndpointRow method="DELETE" endpoint="/contact_tags?contact_id=eq.{uuid}&tag_id=eq.{uuid}" description="Remover tag do contato" />
-            </div>
+          <AccordionContent className="pt-4 space-y-4">
+            <EndpointCard
+              method="GET"
+              endpoint="/tags"
+              description="Listar todas as tags disponíveis"
+              useCases={[
+                "Carregar opções de segmentação em sistema externo",
+                "Sincronizar categorias com ferramenta de marketing",
+                "Mapear tags para campos de CRM externo"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/tags?is_active=eq.true&select=id,name,color,usage_count&order=name.asc" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-            <div className="space-y-4">
-              <h4 className="font-medium">Exemplos</h4>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Listar todas as tags:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/tags?select=id,name,color,usage_count" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Adicionar tag a um contato:</p>
-                <CodeBlock code={`curl -X POST "${SUPABASE_URL}/rest/v1/contact_tags" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="POST"
+              endpoint="/contact_tags"
+              description="Adicionar tag a um contato"
+              useCases={[
+                "Segmentar leads automaticamente baseado em comportamento (ex: acessou página de preços)",
+                "Marcar leads que vieram de campanha específica",
+                "Categorizar leads por interesse detectado em mensagens",
+                "Etiquetar clientes VIP após compra de alto valor"
+              ]}
+              curl={`curl -X POST "${SUPABASE_URL}/rest/v1/contact_tags" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
+  -H "Prefer: return=representation" \\
   -d '{
     "contact_id": "UUID_DO_CONTATO",
     "tag_id": "UUID_DA_TAG"
-  }'`} />
-              </div>
+  }'`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Remover tag de um contato:</p>
-                <CodeBlock code={`curl -X DELETE "${SUPABASE_URL}/rest/v1/contact_tags?contact_id=eq.UUID_DO_CONTATO&tag_id=eq.UUID_DA_TAG" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
-            </div>
+            <EndpointCard
+              method="DELETE"
+              endpoint="/contact_tags?contact_id=eq.{uuid}&tag_id=eq.{uuid}"
+              description="Remover tag de um contato"
+              useCases={[
+                "Limpar segmentação quando lead avança no funil",
+                "Remover tag de promoção após término da campanha",
+                "Atualizar categorização após mudança de status"
+              ]}
+              curl={`curl -X DELETE "${SUPABASE_URL}/rest/v1/contact_tags?contact_id=eq.UUID_DO_CONTATO&tag_id=eq.UUID_DA_TAG" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
           </AccordionContent>
         </AccordionItem>
 
@@ -410,67 +585,97 @@ Content-Type: application/json`} />
               <Badge variant="secondary">6 endpoints</Badge>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="pt-4 space-y-6">
-            <div className="space-y-2">
-              <EndpointRow method="GET" endpoint="/pipelines" description="Listar pipelines" />
-              <EndpointRow method="GET" endpoint="/pipeline_stages?pipeline_id=eq.{uuid}" description="Listar etapas do pipeline" />
-              <EndpointRow method="GET" endpoint="/deals?pipeline_id=eq.{uuid}" description="Listar negócios do pipeline" />
-              <EndpointRow method="POST" endpoint="/deals" description="Criar novo negócio" />
-              <EndpointRow method="PATCH" endpoint="/deals?id=eq.{uuid}" description="Atualizar negócio / mover etapa" />
-              <EndpointRow method="DELETE" endpoint="/deals?id=eq.{uuid}" description="Arquivar negócio" />
-            </div>
+          <AccordionContent className="pt-4 space-y-4">
+            <EndpointCard
+              method="GET"
+              endpoint="/pipelines"
+              description="Listar pipelines de vendas"
+              useCases={[
+                "Carregar opções de pipeline em sistema de automação",
+                "Sincronizar etapas com ferramenta de BI"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/pipelines?is_active=eq.true&select=id,name,description" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-            <div className="space-y-4">
-              <h4 className="font-medium">Exemplos</h4>
+            <EndpointCard
+              method="GET"
+              endpoint="/pipeline_stages?pipeline_id=eq.{uuid}"
+              description="Listar etapas de um pipeline"
+              useCases={[
+                "Mapear etapas para automações de movimentação",
+                "Criar regras de negócio baseadas em estágio"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/pipeline_stages?pipeline_id=eq.UUID_DO_PIPELINE&select=id,name,color,order_position&order=order_position.asc" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Listar pipelines:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/pipelines?is_active=eq.true&select=id,name,description" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Criar negócio:</p>
-                <CodeBlock code={`curl -X POST "${SUPABASE_URL}/rest/v1/deals" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="POST"
+              endpoint="/deals"
+              description="Criar novo negócio"
+              useCases={[
+                "Criar oportunidade automaticamente quando lead demonstra interesse",
+                "Integrar com checkout para criar deal quando carrinho é preenchido",
+                "Gerar negócio após qualificação automática do lead",
+                "Criar proposta comercial a partir de cotação no ERP"
+              ]}
+              curl={`curl -X POST "${SUPABASE_URL}/rest/v1/deals" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -H "Prefer: return=representation" \\
   -d '{
-    "title": "Venda para João",
+    "title": "Venda Plano Premium - João Silva",
     "pipeline_id": "UUID_DO_PIPELINE",
-    "stage_id": "UUID_DA_ETAPA",
+    "stage_id": "UUID_DA_ETAPA_INICIAL",
     "contact_id": "UUID_DO_CONTATO",
     "value": 5000,
-    "assigned_to": "UUID_DO_VENDEDOR"
-  }'`} />
-              </div>
+    "assigned_to": "UUID_DO_VENDEDOR",
+    "expected_close_date": "2024-12-31"
+  }'`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Mover negócio para outra etapa:</p>
-                <CodeBlock code={`curl -X PATCH "${SUPABASE_URL}/rest/v1/deals?id=eq.UUID_DO_NEGOCIO" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="PATCH"
+              endpoint="/deals?id=eq.{uuid}"
+              description="Mover negócio para outra etapa"
+              useCases={[
+                "Avançar deal quando pagamento é confirmado no gateway",
+                "Mover para 'Aguardando Documentos' após envio de contrato",
+                "Integrar com sistema financeiro para atualizar status",
+                "Automatizar fluxo baseado em eventos externos"
+              ]}
+              curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/deals?id=eq.UUID_DO_NEGOCIO" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
     "stage_id": "UUID_DA_NOVA_ETAPA",
     "stage_entered_at": "2024-12-07T15:00:00Z"
-  }'`} />
-              </div>
+  }'`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Marcar negócio como ganho:</p>
-                <CodeBlock code={`curl -X PATCH "${SUPABASE_URL}/rest/v1/deals?id=eq.UUID_DO_NEGOCIO" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN" \\
+            <EndpointCard
+              method="PATCH"
+              endpoint="/deals?id=eq.{uuid}"
+              description="Marcar negócio como ganho/perdido"
+              useCases={[
+                "Fechar como ganho quando pagamento é confirmado",
+                "Marcar como perdido quando pedido é cancelado",
+                "Atualizar automaticamente via webhook do gateway de pagamento"
+              ]}
+              curl={`curl -X PATCH "${SUPABASE_URL}/rest/v1/deals?id=eq.UUID_DO_NEGOCIO" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
     "status": "won",
     "closed_at": "2024-12-07T15:00:00Z"
-  }'`} />
-              </div>
-            </div>
+  }'`}
+            />
           </AccordionContent>
         </AccordionItem>
 
@@ -483,40 +688,60 @@ Content-Type: application/json`} />
               <Badge variant="secondary">6 endpoints</Badge>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="pt-4 space-y-6">
-            <div className="space-y-2">
-              <EndpointRow method="GET" endpoint="/departments" description="Listar departamentos" />
-              <EndpointRow method="GET" endpoint="/whatsapp_channels?is_deleted=eq.false" description="Listar canais WhatsApp ativos" />
-              <EndpointRow method="GET" endpoint="/profiles" description="Listar usuários/atendentes" />
-              <EndpointRow method="GET" endpoint="/profiles?role=eq.vendedor" description="Listar vendedores" />
-              <EndpointRow method="GET" endpoint="/profiles?is_online=eq.true" description="Listar usuários online" />
-              <EndpointRow method="GET" endpoint="/close_reasons" description="Listar motivos de fechamento" />
-            </div>
+          <AccordionContent className="pt-4 space-y-4">
+            <EndpointCard
+              method="GET"
+              endpoint="/departments"
+              description="Listar departamentos"
+              useCases={[
+                "Carregar opções de departamento para roteamento de leads",
+                "Mapear departamentos para regras de distribuição"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/departments?is_active=eq.true&select=id,name,color,icon" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-            <div className="space-y-4">
-              <h4 className="font-medium">Exemplos</h4>
+            <EndpointCard
+              method="GET"
+              endpoint="/whatsapp_channels?is_deleted=eq.false"
+              description="Listar canais WhatsApp conectados"
+              useCases={[
+                "Selecionar canal para envio de mensagens via API",
+                "Monitorar status de conexão dos canais",
+                "Rotear mensagens para canal específico baseado em regra"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/whatsapp_channels?is_deleted=eq.false&status=eq.connected&select=id,name,owner,status" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Listar departamentos ativos:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/departments?is_active=eq.true&select=id,name,color,icon" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
+            <EndpointCard
+              method="GET"
+              endpoint="/profiles?role=eq.vendedor&is_active=eq.true"
+              description="Listar vendedores disponíveis"
+              useCases={[
+                "Distribuir leads baseado em disponibilidade",
+                "Balancear carga entre atendentes",
+                "Criar regras de round-robin para atribuição"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/profiles?role=eq.vendedor&is_active=eq.true&select=id,full_name,is_online,is_available,current_conversations,max_conversations" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Listar canais WhatsApp conectados:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/whatsapp_channels?is_deleted=eq.false&status=eq.connected&select=id,name,owner,status" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Listar vendedores disponíveis:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/profiles?role=eq.vendedor&is_active=eq.true&select=id,full_name,is_online,current_conversations" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
-            </div>
+            <EndpointCard
+              method="GET"
+              endpoint="/close_reasons"
+              description="Listar motivos de fechamento"
+              useCases={[
+                "Carregar opções de fechamento em automação",
+                "Mapear motivos para relatórios externos"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/close_reasons?is_active=eq.true&select=id,name,value,color&order=order_position.asc" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
           </AccordionContent>
         </AccordionItem>
 
@@ -529,31 +754,33 @@ Content-Type: application/json`} />
               <Badge variant="secondary">4 endpoints</Badge>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="pt-4 space-y-6">
-            <div className="space-y-2">
-              <EndpointRow method="GET" endpoint="/message_templates" description="Listar todos os templates" />
-              <EndpointRow method="GET" endpoint="/message_templates?id=eq.{uuid}" description="Buscar template por ID" />
-              <EndpointRow method="POST" endpoint="/message_templates" description="Criar novo template" />
-              <EndpointRow method="PATCH" endpoint="/message_templates?id=eq.{uuid}" description="Atualizar template" />
-            </div>
+          <AccordionContent className="pt-4 space-y-4">
+            <EndpointCard
+              method="GET"
+              endpoint="/message_templates"
+              description="Listar templates de mensagem"
+              useCases={[
+                "Carregar templates disponíveis em sistema de automação",
+                "Usar template específico em campanhas de disparo",
+                "Sincronizar templates com chatbot externo"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/message_templates?is_active=eq.true&select=id,title,content,shortcut,category,media_url,media_type" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
 
-            <div className="space-y-4">
-              <h4 className="font-medium">Exemplos</h4>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Listar templates ativos:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/message_templates?is_active=eq.true&select=id,title,content,shortcut,category" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Buscar template por atalho:</p>
-                <CodeBlock code={`curl -X GET "${SUPABASE_URL}/rest/v1/message_templates?shortcut=eq.ola&select=id,title,content" \\
-  -H "apikey: SUA_KEY" \\
-  -H "Authorization: Bearer SEU_TOKEN"`} />
-              </div>
-            </div>
+            <EndpointCard
+              method="GET"
+              endpoint="/message_templates?shortcut=eq.{atalho}"
+              description="Buscar template por atalho"
+              useCases={[
+                "Encontrar template específico para uso em automação",
+                "Validar se atalho existe antes de usar"
+              ]}
+              curl={`curl -X GET "${SUPABASE_URL}/rest/v1/message_templates?shortcut=eq.ola&select=id,title,content,media_url" \\
+  -H "apikey: ${ANON_KEY}" \\
+  -H "Authorization: Bearer SEU_JWT_TOKEN"`}
+            />
           </AccordionContent>
         </AccordionItem>
       </Accordion>
@@ -569,18 +796,27 @@ Content-Type: application/json`} />
         <CardContent className="space-y-4">
           <CodeBlock language="typescript" code={`import { createClient } from '@supabase/supabase-js'
 
+// Inicializar cliente
 const supabase = createClient(
   '${SUPABASE_URL}',
-  'SUA_SUPABASE_ANON_KEY'
+  '${ANON_KEY}'
 )
 
-// Buscar contatos
+// 1. Fazer login para obter sessão
+const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+  email: 'seu_email@exemplo.com',
+  password: 'sua_senha'
+})
+// O token JWT está em: authData.session.access_token
+
+// 2. Buscar contatos
 const { data: contacts, error } = await supabase
   .from('contacts')
   .select('id, full_name, phone, email, lead_status')
+  .order('created_at', { ascending: false })
   .limit(50)
 
-// Criar contato
+// 3. Criar contato
 const { data: newContact, error: createError } = await supabase
   .from('contacts')
   .insert({
@@ -592,19 +828,24 @@ const { data: newContact, error: createError } = await supabase
   .select()
   .single()
 
-// Atualizar contato
+// 4. Atualizar contato
 const { error: updateError } = await supabase
   .from('contacts')
-  .update({ lead_status: 'qualified' })
+  .update({ lead_status: 'qualified', negotiated_value: 5000 })
   .eq('id', 'UUID_DO_CONTATO')
 
-// Enviar mensagem via WhatsApp (Edge Function)
+// 5. Adicionar tag ao contato
+const { error: tagError } = await supabase
+  .from('contact_tags')
+  .insert({ contact_id: 'UUID_DO_CONTATO', tag_id: 'UUID_DA_TAG' })
+
+// 6. Enviar mensagem via WhatsApp (Edge Function)
 const { data, error: sendError } = await supabase.functions.invoke('whatsapp-instance', {
   body: {
     action: 'send',
     channelId: 'UUID_DO_CANAL',
     phone: '5521999999999',
-    content: 'Olá! Mensagem via API.',
+    content: 'Olá! Seu pedido foi confirmado.',
     type: 'text'
   }
 })`} />
@@ -634,6 +875,13 @@ const { data, error: sendError } = await supabase.functions.invoke('whatsapp-ins
                 <li>• Service Role Key bypassa todas as políticas</li>
               </ul>
             </div>
+          </div>
+          
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mt-4">
+            <p className="text-sm text-blue-700 dark:text-blue-400">
+              <strong>Dica:</strong> Para integrações N8N, Make ou Zapier, use a Service Role Key para evitar 
+              problemas com autenticação de usuário. Lembre-se de manter esta chave em segredo.
+            </p>
           </div>
         </CardContent>
       </Card>
