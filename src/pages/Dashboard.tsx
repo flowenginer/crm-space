@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   UserPlus, 
   MessageSquare, 
@@ -10,6 +11,7 @@ import {
 import { startOfMonth } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { useRecentActivity } from '@/hooks/useDashboard';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   useDashboardKPIs,
   useLeadsByStatus,
@@ -53,6 +55,15 @@ function formatCurrency(value: number): string {
 
 export default function Dashboard() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
+  const { isAdmin, isFullyLoaded } = usePermissions();
+  
+  // Redireciona não-admins para /conversations
+  useEffect(() => {
+    if (isFullyLoaded && !isAdmin) {
+      navigate('/conversations', { replace: true });
+    }
+  }, [isFullyLoaded, isAdmin, navigate]);
   
   // Filters state
   const [filters, setFilters] = useState<Filters>({

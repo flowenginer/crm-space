@@ -38,7 +38,7 @@ interface NavItem {
   href: string;
   icon: LucideIcon;
   permission?: string; // format: 'category.action'
-  roles?: ('admin' | 'supervisor' | 'vendedor' | 'designer')[];
+  roles?: string[]; // Aceita qualquer role (admin, supervisor, vendedor, designer, sac, etc.)
 }
 
 const navItems: NavItem[] = [

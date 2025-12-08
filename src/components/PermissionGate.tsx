@@ -5,7 +5,7 @@ import { Lock } from 'lucide-react';
 interface PermissionGateProps {
   children: ReactNode;
   permission?: string; // Ex: 'contacts.create'
-  roles?: ('admin' | 'supervisor' | 'vendedor' | 'designer')[];
+  roles?: string[]; // Aceita qualquer role
   fallback?: ReactNode;
   showLock?: boolean;
 }
@@ -105,7 +105,7 @@ export function withPermission<P extends object>(
 // HOC to protect by role
 export function withRole<P extends object>(
   Component: React.ComponentType<P>,
-  allowedRoles: ('admin' | 'supervisor' | 'vendedor' | 'designer')[]
+  allowedRoles: string[]
 ) {
   return function WrappedComponent(props: P) {
     const { role, isLoading } = usePermissions();

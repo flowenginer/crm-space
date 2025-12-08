@@ -14,7 +14,8 @@ interface RoleDefinition {
   is_system: boolean;
 }
 
-type UserRole = 'admin' | 'supervisor' | 'vendedor' | 'designer';
+// Suporta roles conhecidos + qualquer novo role criado dinamicamente
+type UserRole = 'admin' | 'supervisor' | 'vendedor' | 'designer' | 'sac' | (string & {});
 
 interface UserProfile {
   id: string;
