@@ -163,6 +163,7 @@ export type Database = {
           city: string | null
           cnpj: string | null
           company_name: string | null
+          conversion_status_ids: string[] | null
           created_at: string | null
           email: string | null
           id: string
@@ -187,6 +188,7 @@ export type Database = {
           city?: string | null
           cnpj?: string | null
           company_name?: string | null
+          conversion_status_ids?: string[] | null
           created_at?: string | null
           email?: string | null
           id?: string
@@ -211,6 +213,7 @@ export type Database = {
           city?: string | null
           cnpj?: string | null
           company_name?: string | null
+          conversion_status_ids?: string[] | null
           created_at?: string | null
           email?: string | null
           id?: string
@@ -1249,6 +1252,129 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_assignment_history: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          assigned_from: string | null
+          assigned_to: string | null
+          assignment_type: string | null
+          contact_id: string
+          conversation_id: string | null
+          created_at: string | null
+          id: string
+          time_to_assign_seconds: number | null
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          assigned_from?: string | null
+          assigned_to?: string | null
+          assignment_type?: string | null
+          contact_id: string
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          time_to_assign_seconds?: number | null
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          assigned_from?: string | null
+          assigned_to?: string | null
+          assignment_type?: string | null
+          contact_id?: string
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          time_to_assign_seconds?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_assignment_history_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_assignment_history_assigned_from_fkey"
+            columns: ["assigned_from"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_assignment_history_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_assignment_history_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_assignment_history_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_status_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          contact_id: string
+          created_at: string | null
+          duration_seconds: number | null
+          id: string
+          new_status: string
+          previous_status: string | null
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          contact_id: string
+          created_at?: string | null
+          duration_seconds?: number | null
+          id?: string
+          new_status: string
+          previous_status?: string | null
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          contact_id?: string
+          created_at?: string | null
+          duration_seconds?: number | null
+          id?: string
+          new_status?: string
+          previous_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_status_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_status_history_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
             referencedColumns: ["id"]
           },
         ]
