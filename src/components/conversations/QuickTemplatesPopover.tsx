@@ -10,7 +10,9 @@ import {
   Star,
   Clock,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Send,
+  Edit2
 } from 'lucide-react';
 import {
   Popover,
@@ -62,6 +64,7 @@ interface QuickTemplatesPopoverProps {
     mediaName?: string | null,
     contentBlocks?: ContentBlock[] | null
   ) => void;
+  onCopyToInput?: (content: string) => void;
   onStartFlow?: (flowId: string) => void;
   onTriggerAutomation?: (triggerId: string) => void;
 }
@@ -70,6 +73,7 @@ export function QuickTemplatesPopover({
   contactName,
   contactPhone,
   onSelectTemplate,
+  onCopyToInput,
   onStartFlow,
   onTriggerAutomation,
 }: QuickTemplatesPopoverProps) {
@@ -105,12 +109,11 @@ export function QuickTemplatesPopover({
         filtered = [];
     }
 
-    // Apply search filter
+    // Apply search filter - only by title
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(t => 
-        t.title.toLowerCase().includes(query) || 
-        t.content.toLowerCase().includes(query)
+        t.title.toLowerCase().includes(query)
       );
     }
 
@@ -169,6 +172,14 @@ export function QuickTemplatesPopover({
     setOpen(false);
     setSearchQuery('');
   }, [replaceVariables, onSelectTemplate, incrementUsage]);
+
+  const handleCopyToInput = useCallback((template: MessageTemplate) => {
+    const processedContent = replaceVariables(template.content);
+    onCopyToInput?.(processedContent);
+    incrementUsage.mutate(template.id);
+    setOpen(false);
+    setSearchQuery('');
+  }, [replaceVariables, onCopyToInput, incrementUsage]);
 
   const handleSelectFlow = useCallback((flowId: string) => {
     onStartFlow?.(flowId);
@@ -317,9 +328,8 @@ export function QuickTemplatesPopover({
               </div>
             ) : (
               filteredTemplates.map((template) => (
-                <button
+                <div
                   key={template.id}
-                  onClick={() => handleSelectTemplate(template)}
                   className="w-full flex items-start gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors text-left group"
                 >
                   <div className={cn(
@@ -348,7 +358,24 @@ export function QuickTemplatesPopover({
                       {template.content}
                     </p>
                   </div>
-                </button>
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <button
+                      onClick={() => handleCopyToInput(template)}
+                      className="p-1.5 hover:bg-background rounded-md transition-colors"
+                      title="Editar antes de enviar"
+                    >
+                      <Edit2 size={14} className="text-muted-foreground" />
+                    </button>
+                    <button
+                      onClick={() => handleSelectTemplate(template)}
+                      className="p-1.5 hover:bg-primary/10 rounded-md transition-colors"
+                      title="Enviar direto"
+                    >
+                      <Send size={14} className="text-primary" />
+                    </button>
+                  </div>
+                </div>
               ))
             )
           )}
