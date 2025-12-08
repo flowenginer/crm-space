@@ -1233,12 +1233,26 @@ function EditContactModal({
   const handleSave = async () => {
     setIsLoading(true);
     try {
+      // Converter strings vazias em null para campos que o PostgreSQL não aceita vazio
+      const updateData = {
+        full_name: formData.full_name,
+        email: formData.email || null,
+        cpf_cnpj: formData.cpf_cnpj || null,
+        birth_date: formData.birth_date || null,
+        zip_code: formData.zip_code || null,
+        street: formData.street || null,
+        number: formData.number || null,
+        complement: formData.complement || null,
+        neighborhood: formData.neighborhood || null,
+        city: formData.city || null,
+        state: formData.state || null,
+        notes: formData.notes || null,
+        updated_at: new Date().toISOString()
+      };
+
       const { error } = await supabase
         .from('contacts')
-        .update({
-          ...formData,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', contact.id);
 
       if (error) throw error;
