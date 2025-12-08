@@ -39,6 +39,7 @@ import {
   Building2,
   RefreshCw,
   ArrowRightLeft,
+  PenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -102,6 +103,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useAuth } from '@/hooks/useAuth';
 import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
@@ -1119,6 +1121,10 @@ export default function Conversations() {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [signatureEnabled, setSignatureEnabled] = useState(() => {
+    const saved = localStorage.getItem('signature_enabled');
+    return saved !== null ? saved === 'true' : true; // padrão: ativo
+  });
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -1159,6 +1165,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePermissions();
+  const { profile: authProfile } = useAuth();
   
   // Permissão para ver conversas não atribuídas (admins, supervisores ou com permissão específica)
   const canViewUnassigned = isAdmin || isSupervisor || hasPermission('conversations', 'view_unassigned');
@@ -1176,6 +1183,11 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const [blockedContact, setBlockedContact] = useState<{ id: string; full_name: string; phone: string } | null>(null);
   const [blockedByAgent, setBlockedByAgent] = useState<{ id: string; full_name: string | null; avatar_url: string | null } | null>(null);
   const [blockedConversationId, setBlockedConversationId] = useState<string | null>(null);
+
+  // Persist signature preference
+  useEffect(() => {
+    localStorage.setItem('signature_enabled', String(signatureEnabled));
+  }, [signatureEnabled]);
 
   // Debounce search query for server-side search (300ms)
   useEffect(() => {
@@ -1998,17 +2010,15 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
       isSendingRef.current = true;
       setIsUploading(true);
       
-      // Get assignee name for signature
-      const assigneeName = selectedConv?.assignee?.full_name;
       
       // Função auxiliar para enviar via WhatsApp (Edge Function - sem CORS)
       const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string, quotedMsgId?: string): Promise<string | undefined> => {
         if (channelId && contactPhone) {
           try {
-            // Add agent signature for text messages when there's an assigned agent
+            // Add agent signature for text messages when signature is enabled
             let formattedContent = content;
-            if (type === 'text' && assigneeName) {
-              formattedContent = `*${assigneeName}*:\n${content}`;
+            if (type === 'text' && signatureEnabled && authProfile?.full_name) {
+              formattedContent = `*${authProfile.full_name}*:\n${content}`;
             }
             
             const result = await sendWhatsAppMessage(
@@ -3554,6 +3564,20 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                     <StickyNote size={22} />
                   </button>
 
+                  {/* Signature Toggle Button */}
+                  <button
+                    onClick={() => setSignatureEnabled(!signatureEnabled)}
+                    className={cn(
+                      'p-2 rounded-lg transition-colors',
+                      signatureEnabled 
+                        ? 'bg-primary text-primary-foreground' 
+                        : 'hover:bg-muted text-muted-foreground'
+                    )}
+                    title={signatureEnabled ? `Assinatura ativada: ${authProfile?.full_name || 'Usuário'}` : "Assinatura desativada"}
+                  >
+                    <PenLine size={22} />
+                  </button>
+
                   {/* Quick Templates Popover */}
                   <QuickTemplatesPopover
                     contactName={selectedConversation?.contact?.full_name}
@@ -3561,7 +3585,6 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                     onSelectTemplate={async (content, type, mediaUrl, mediaType, mediaName, contentBlocks) => {
                       const channelId = selectedConversation?.channel_id;
                       const contactPhone = selectedConversation?.contact?.phone;
-                      const assigneeName = selectedConversation?.assignee?.full_name;
                       
                       // Helper to build full media URL
                       const getFullMediaUrl = (url: string) => 
@@ -3585,8 +3608,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                             
                             if (block.type === 'text' && block.content?.trim()) {
                               let textContent = block.content;
-                              if (assigneeName && i === 0) {
-                                textContent = `*${assigneeName}*:\n${block.content}`;
+                              if (signatureEnabled && authProfile?.full_name && i === 0) {
+                                textContent = `*${authProfile.full_name}*:\n${block.content}`;
                               }
                               
                               // Save to database
@@ -3657,8 +3680,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                           // Send text first if exists
                           if (content && content.trim()) {
                             let textContent = content;
-                            if (assigneeName) {
-                              textContent = `*${assigneeName}*:\n${content}`;
+                            if (signatureEnabled && authProfile?.full_name) {
+                              textContent = `*${authProfile.full_name}*:\n${content}`;
                             }
                             
                             sendMessage.mutate({
