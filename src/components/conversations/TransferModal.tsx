@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, ChevronRight } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -18,9 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
+import { useAllUserDepartments } from '@/hooks/useUserDepartments';
 import { useTransferConversation } from '@/hooks/useConversationEvents';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
@@ -41,19 +41,42 @@ export function TransferModal({
   currentAssignedTo,
   currentDepartmentId,
 }: TransferModalProps) {
-  const [transferType, setTransferType] = useState<'department' | 'user'>('department');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [note, setNote] = useState('');
 
   const { data: departments = [] } = useDepartments();
   const { data: team = [] } = useTeam();
+  const { data: allUserDepartments = [] } = useAllUserDepartments();
   const transferConversation = useTransferConversation();
   const { can } = usePermissions();
   const { user } = useAuth();
 
   const activeDepartments = departments.filter(d => d.is_active);
-  const activeTeam = team.filter(t => t.id !== currentAssignedTo);
+
+  // Reset userId when department changes
+  useEffect(() => {
+    setSelectedUserId('');
+  }, [selectedDepartmentId]);
+
+  // Filter team members that belong to the selected department
+  const teamInDepartment = useMemo(() => {
+    if (!selectedDepartmentId) return [];
+    
+    // Get users who have this department in user_departments table
+    const usersInDepartment = allUserDepartments
+      .filter(ud => ud.department_id === selectedDepartmentId)
+      .map(ud => ud.user_id);
+    
+    // Also include users whose primary department_id matches
+    return team.filter(member => 
+      member.id !== currentAssignedTo && // Exclude current assignee
+      (
+        usersInDepartment.includes(member.id) || 
+        member.department_id === selectedDepartmentId
+      )
+    );
+  }, [team, selectedDepartmentId, allUserDepartments, currentAssignedTo]);
 
   // Check if user can transfer this conversation
   const canTransfer = (): boolean => {
@@ -64,6 +87,11 @@ export function TransferModal({
     
     // Admin/supervisor can transfer any conversation
     if (can.viewAllConversations()) {
+      return true;
+    }
+    
+    // Allow transferring orphan conversations (no owner)
+    if (currentAssignedTo === null || currentAssignedTo === undefined) {
       return true;
     }
     
@@ -81,12 +109,12 @@ export function TransferModal({
       return;
     }
 
-    if (transferType === 'department' && !selectedDepartmentId) {
+    if (!selectedDepartmentId) {
       toast.error('Selecione um departamento');
       return;
     }
 
-    if (transferType === 'user' && !selectedUserId) {
+    if (!selectedUserId) {
       toast.error('Selecione um atendente');
       return;
     }
@@ -97,9 +125,9 @@ export function TransferModal({
     try {
       await transferConversation.mutateAsync({
         conversationId,
-        toUserId: transferType === 'user' ? selectedUserId : null,
+        toUserId: selectedUserId,
         toUserName: selectedUser?.full_name || null,
-        toDepartmentId: transferType === 'department' ? selectedDepartmentId : null,
+        toDepartmentId: selectedDepartmentId,
         toDepartmentName: selectedDepartment?.name || null,
         note: note.trim() || undefined,
       });
@@ -113,7 +141,6 @@ export function TransferModal({
   };
 
   const handleClose = () => {
-    setTransferType('department');
     setSelectedDepartmentId('');
     setSelectedUserId('');
     setNote('');
@@ -131,7 +158,7 @@ export function TransferModal({
             Transferir Conversa
           </DialogTitle>
           <DialogDescription>
-            Escolha para onde deseja transferir esta conversa
+            Selecione o departamento e o atendente para transferir
           </DialogDescription>
         </DialogHeader>
 
@@ -151,77 +178,73 @@ export function TransferModal({
           </div>
         ) : (
           <div className="space-y-4 py-4">
-            {/* Transfer Type Selection */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Transferir para:</Label>
-              <RadioGroup
-                value={transferType}
-                onValueChange={(value) => setTransferType(value as 'department' | 'user')}
-                className="flex gap-4"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="department" id="department" />
-                  <Label htmlFor="department" className="flex items-center gap-1.5 cursor-pointer">
-                    <Building2 size={14} />
-                    Departamento
-                  </Label>
+            {/* Step indicator */}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+              <div className={`flex items-center gap-1.5 ${selectedDepartmentId ? 'text-primary' : ''}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${selectedDepartmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                  1
                 </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="user" id="user" />
-                  <Label htmlFor="user" className="flex items-center gap-1.5 cursor-pointer">
-                    <User size={14} />
-                    Atendente
-                  </Label>
+                <span>Departamento</span>
+              </div>
+              <ChevronRight size={16} />
+              <div className={`flex items-center gap-1.5 ${selectedUserId ? 'text-primary' : ''}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${selectedUserId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                  2
                 </div>
-              </RadioGroup>
+                <span>Atendente</span>
+              </div>
             </div>
 
-            {/* Department Selection */}
-            {transferType === 'department' && (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Selecione o departamento</Label>
-                <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Escolha um departamento..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeDepartments.length === 0 ? (
-                      <SelectItem value="none" disabled>
-                        Nenhum departamento disponível
+            {/* Step 1: Department Selection (Required) */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Building2 size={14} />
+                Departamento <span className="text-destructive">*</span>
+              </Label>
+              <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o departamento..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeDepartments.length === 0 ? (
+                    <SelectItem value="none" disabled>
+                      Nenhum departamento disponível
+                    </SelectItem>
+                  ) : (
+                    activeDepartments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: dept.color || '#8B5CF6' }}
+                          />
+                          {dept.name}
+                        </div>
                       </SelectItem>
-                    ) : (
-                      activeDepartments.map((dept) => (
-                        <SelectItem key={dept.id} value={dept.id}>
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: dept.color || '#8B5CF6' }}
-                            />
-                            {dept.name}
-                          </div>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
 
-            {/* User Selection */}
-            {transferType === 'user' && (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Selecione o atendente</Label>
+            {/* Step 2: User Selection (Required, only appears after department is selected) */}
+            {selectedDepartmentId && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <User size={14} />
+                  Atendente <span className="text-destructive">*</span>
+                </Label>
                 <Select value={selectedUserId} onValueChange={setSelectedUserId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Escolha um atendente..." />
+                    <SelectValue placeholder="Selecione o atendente..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {activeTeam.length === 0 ? (
+                    {teamInDepartment.length === 0 ? (
                       <SelectItem value="none" disabled>
-                        Nenhum atendente disponível
+                        Nenhum atendente neste departamento
                       </SelectItem>
                     ) : (
-                      activeTeam.map((member) => (
+                      teamInDepartment.map((member) => (
                         <SelectItem key={member.id} value={member.id}>
                           <div className="flex items-center gap-2">
                             <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-medium">
@@ -237,6 +260,11 @@ export function TransferModal({
                     )}
                   </SelectContent>
                 </Select>
+                {teamInDepartment.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Não há atendentes cadastrados neste departamento.
+                  </p>
+                )}
               </div>
             )}
 
@@ -261,7 +289,7 @@ export function TransferModal({
           {userCanTransfer && (
             <Button
               onClick={handleTransfer}
-              disabled={transferConversation.isPending}
+              disabled={transferConversation.isPending || !selectedDepartmentId || !selectedUserId}
               className="gap-2"
             >
               {transferConversation.isPending ? (

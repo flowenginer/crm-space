@@ -159,17 +159,20 @@ export function useTransferConversation() {
       const fromUserId = currentConversation?.assigned_to;
       const fromUserName = (currentConversation?.assigned_user as any)?.full_name || null;
 
-      // Update the conversation
+      // Update the conversation - always set both assigned_to and department_id
       const updateData: any = {
         transferred_at: new Date().toISOString(),
         transferred_from: fromUserId || user.id,
         transfer_note: note || null,
       };
 
+      // Always set the user if provided
       if (toUserId) {
         updateData.assigned_to = toUserId;
-      } else if (toDepartmentId) {
-        updateData.assigned_to = null; // Unassign when transferring to department
+      }
+      
+      // Always set the department if provided
+      if (toDepartmentId) {
         updateData.department_id = toDepartmentId;
       }
 
