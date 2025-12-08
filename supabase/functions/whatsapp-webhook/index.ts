@@ -525,6 +525,15 @@ serve(async (req) => {
       });
     }
 
+    // Handle reaction events
+    if (isReactionEvent(provider, payload)) {
+      console.log(`[Webhook] Processing reaction event`);
+      await handleReactionEvent(supabase, provider, payload, instanceId);
+      return new Response(JSON.stringify({ success: true, message: "Reaction event processed" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Check if this is a message event
     if (!isMessageEvent(provider, payload)) {
       console.log(`[Webhook] Not a message event, skipping`);
@@ -1852,6 +1861,152 @@ function mapProviderStatus(providerStatus: string): string | null {
   }
   
   return null;
+}
+
+// =====================================================
+// REACTION EVENTS - Handle message reactions
+// =====================================================
+
+function isReactionEvent(provider: WhatsAppProvider, payload: any): boolean {
+  switch (provider) {
+    case "zapi":
+      return payload.type === "reaction" || payload.event === "reaction";
+    case "uazapi":
+      return payload.event === "messages.reaction";
+    case "evolution":
+      const evolutionEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
+      return evolutionEvent === "messages.reaction";
+    default:
+      return false;
+  }
+}
+
+async function handleReactionEvent(
+  supabase: any,
+  provider: WhatsAppProvider,
+  payload: any,
+  instanceId: string
+): Promise<void> {
+  console.log(`[Webhook] handleReactionEvent - Provider: ${provider}, Payload:`, JSON.stringify(payload).substring(0, 1000));
+  
+  // Extract reaction data based on provider
+  let reactionData: {
+    messageId: string;
+    emoji: string;
+    fromMe: boolean;
+    fromPhone: string;
+  } | null = null;
+  
+  switch (provider) {
+    case "evolution":
+      // Evolution API format:
+      // { event: "messages.reaction", data: { key: { id, remoteJid, fromMe }, reaction: { key: { id: originalMsgId }, text: "👍" } } }
+      const evolutionData = payload.data;
+      if (evolutionData?.reaction) {
+        const reactionKey = evolutionData.reaction.key || {};
+        const senderKey = evolutionData.key || {};
+        reactionData = {
+          messageId: reactionKey.id || reactionKey.remoteJid?.split('@')[0] || "",
+          emoji: evolutionData.reaction.text || "",
+          fromMe: senderKey.fromMe || false,
+          fromPhone: (senderKey.remoteJid || "").replace("@s.whatsapp.net", "").replace("@c.us", "")
+        };
+      }
+      break;
+    
+    case "uazapi":
+      // UAZAPI format similar to Evolution
+      const uazapiData = payload.data;
+      if (uazapiData?.reaction) {
+        reactionData = {
+          messageId: uazapiData.reaction.key?.id || "",
+          emoji: uazapiData.reaction.text || "",
+          fromMe: uazapiData.key?.fromMe || false,
+          fromPhone: (uazapiData.key?.remoteJid || "").replace("@s.whatsapp.net", "")
+        };
+      }
+      break;
+    
+    case "zapi":
+      // Z-API format
+      if (payload.reactionMessageId) {
+        reactionData = {
+          messageId: payload.reactionMessageId,
+          emoji: payload.reaction || "",
+          fromMe: payload.fromMe || false,
+          fromPhone: (payload.phone || "").replace(/\D/g, "")
+        };
+      }
+      break;
+  }
+  
+  if (!reactionData || !reactionData.messageId) {
+    console.log(`[Webhook] Could not extract reaction data`);
+    return;
+  }
+  
+  console.log(`[Webhook] Reaction: messageId=${reactionData.messageId}, emoji="${reactionData.emoji}", fromMe=${reactionData.fromMe}, fromPhone=${reactionData.fromPhone}`);
+  
+  // Find the message by whatsapp_message_id
+  const { data: message, error: findError } = await supabase
+    .from("messages")
+    .select("id, reactions, conversation_id")
+    .eq("whatsapp_message_id", reactionData.messageId)
+    .maybeSingle();
+  
+  if (findError || !message) {
+    console.log(`[Webhook] Message not found for reaction: ${reactionData.messageId}`);
+    return;
+  }
+  
+  // Get current reactions array
+  const currentReactions = (message.reactions as { emoji: string; user_id: string; from_contact?: boolean }[]) || [];
+  
+  // Determine if this is a removal (empty emoji) or addition
+  const isRemoval = !reactionData.emoji || reactionData.emoji.trim() === "";
+  
+  let newReactions: { emoji: string; user_id: string; from_contact?: boolean }[];
+  
+  if (isRemoval) {
+    // Remove reaction from this sender
+    // For contact reactions (fromMe=false), remove by from_contact=true
+    // For agent reactions (fromMe=true), we don't typically receive removal events from webhook
+    if (!reactionData.fromMe) {
+      newReactions = currentReactions.filter(r => r.from_contact !== true);
+    } else {
+      newReactions = currentReactions;
+    }
+    console.log(`[Webhook] Removing reaction from contact`);
+  } else {
+    // Add or update reaction
+    if (!reactionData.fromMe) {
+      // Reaction from contact - remove any existing contact reaction and add new one
+      newReactions = currentReactions.filter(r => r.from_contact !== true);
+      newReactions.push({
+        emoji: reactionData.emoji,
+        user_id: "contact", // Special identifier for contact reactions
+        from_contact: true
+      });
+      console.log(`[Webhook] Adding reaction from contact: ${reactionData.emoji}`);
+    } else {
+      // Reaction from agent (fromMe) - this would be confirmation of sent reaction
+      // We don't need to update as the frontend already saved it
+      console.log(`[Webhook] Skipping fromMe reaction confirmation`);
+      return;
+    }
+  }
+  
+  // Update the message
+  const { error: updateError } = await supabase
+    .from("messages")
+    .update({ reactions: newReactions })
+    .eq("id", message.id);
+  
+  if (updateError) {
+    console.error(`[Webhook] Error updating message reactions:`, updateError);
+  } else {
+    console.log(`[Webhook] Message ${message.id} reactions updated:`, newReactions);
+  }
 }
 
 function extractInstanceId(provider: WhatsAppProvider, payload: any): string {

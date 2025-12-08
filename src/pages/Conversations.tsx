@@ -459,14 +459,22 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
   const hasMedia = message.media_url && message.message_type !== 'text';
   const isDeleted = message.is_deleted;
   const isTextMessage = message.message_type === 'text';
-  const reactions = (message.reactions || []) as { emoji: string; user_id: string }[];
+  const reactions = (message.reactions || []) as { emoji: string; user_id: string; from_contact?: boolean }[];
   const replyTo = message.reply_to?.[0];
 
-  // Group reactions by emoji
+  // Group reactions by emoji, keeping track of source
   const groupedReactions = reactions.reduce((acc, r) => {
-    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+    if (!acc[r.emoji]) {
+      acc[r.emoji] = { count: 0, fromContact: false, fromAgent: false };
+    }
+    acc[r.emoji].count += 1;
+    if (r.from_contact) {
+      acc[r.emoji].fromContact = true;
+    } else {
+      acc[r.emoji].fromAgent = true;
+    }
     return acc;
-  }, {} as Record<string, number>);
+  }, {} as Record<string, { count: number; fromContact: boolean; fromAgent: boolean }>);
 
   const handleEmojiReaction = (emojiData: EmojiClickData) => {
     onReact?.(message.id, emojiData.emoji);
@@ -712,13 +720,19 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
           {/* Reactions display */}
           {Object.keys(groupedReactions).length > 0 && (
             <div className={cn('flex gap-1 mt-1', isMe ? 'justify-end' : 'justify-start')}>
-              {Object.entries(groupedReactions).map(([emoji, count]) => (
+              {Object.entries(groupedReactions).map(([emoji, data]) => (
                 <span 
                   key={emoji} 
-                  className="bg-muted/80 px-1.5 py-0.5 rounded-full text-xs flex items-center gap-0.5 cursor-pointer hover:bg-muted"
+                  className={cn(
+                    "px-1.5 py-0.5 rounded-full text-xs flex items-center gap-0.5 cursor-pointer transition-colors",
+                    data.fromContact 
+                      ? "bg-blue-500/20 hover:bg-blue-500/30 ring-1 ring-blue-500/30" 
+                      : "bg-muted/80 hover:bg-muted"
+                  )}
                   onClick={() => onReact?.(message.id, emoji)}
+                  title={data.fromContact ? 'Reação do contato' : 'Sua reação'}
                 >
-                  {emoji} {count > 1 && <span className="text-muted-foreground">{count}</span>}
+                  {emoji} {data.count > 1 && <span className="text-muted-foreground">{data.count}</span>}
                 </span>
               ))}
             </div>
@@ -2141,10 +2155,22 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   };
 
   const handleReactToMessage = async (messageId: string, emoji: string) => {
-    if (!selectedConversationId) return;
+    if (!selectedConversationId || !selectedConversation) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    reactToMessage.mutate({ messageId, conversationId: selectedConversationId, emoji, userId: user.id });
+    
+    // Find the message to get whatsappMessageId
+    const targetMessage = messages.find(m => m.id === messageId);
+    
+    reactToMessage.mutate({ 
+      messageId, 
+      conversationId: selectedConversationId, 
+      emoji, 
+      userId: user.id,
+      whatsappMessageId: targetMessage?.whatsapp_message_id,
+      channelId: selectedConversation?.channel_id,
+      contactPhone: selectedConversation?.contact?.phone,
+    });
   };
 
   // Scroll to message when clicking on reply reference
