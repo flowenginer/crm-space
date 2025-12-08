@@ -81,6 +81,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
       { key: 'conversations.respond', name: 'Responder Mensagens', description: 'Enviar mensagens nas conversas' },
       { key: 'conversations.transfer', name: 'Transferir Conversa', description: 'Transferir para outro atendente/departamento' },
       { key: 'conversations.close', name: 'Fechar Conversa', description: 'Fechar atendimentos' },
+      { key: 'conversations.requests', name: 'Gerenciar Requisições', description: 'Visualizar e gerenciar requisições de contato' },
     ],
   },
   {

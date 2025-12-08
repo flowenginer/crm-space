@@ -91,8 +91,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const isConversationsActive = location.pathname.startsWith('/conversations');
   const [conversationsOpen, setConversationsOpen] = useState(isConversationsActive);
   
-  // Check if user can see requests (admin or supervisor)
-  const canSeeRequests = isAdmin || userRole === 'supervisor';
+  // Check if user can see requests - now uses proper permission
+  const canSeeRequests = isAdmin || hasPermission('conversations', 'requests');
   const canSeeConversations = isAdmin || hasPermission('conversations', 'view');
 
   // Fetch pending scheduled messages count
