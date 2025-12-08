@@ -139,6 +139,8 @@ export interface LeadJourneyMetrics {
   totalUnassigned: number;
   assignmentRate: number;
   leadResponseRate: number; // % leads que responderam após contato
+  conversions: number;
+  conversionRate: number;
 }
 
 export function useLeadJourneyMetrics(filters: DashboardFilters) {
@@ -216,6 +218,33 @@ export function useLeadJourneyMetrics(filters: DashboardFilters) {
           : 0;
       }
 
+      // Get conversion status IDs from company settings
+      const { data: settings } = await supabase
+        .from('company_settings')
+        .select('conversion_status_ids')
+        .limit(1)
+        .maybeSingle();
+
+      const conversionStatusIds = settings?.conversion_status_ids || [];
+
+      // Count conversions using lead_status_history
+      let conversions = 0;
+      if (conversionStatusIds.length > 0 && conversations && conversations.length > 0) {
+        const { data: conversionHistory, count } = await supabase
+          .from('lead_status_history')
+          .select('contact_id', { count: 'exact' })
+          .gte('changed_at', dateFrom)
+          .lte('changed_at', dateTo)
+          .in('new_status', conversionStatusIds);
+        
+        conversions = count || 0;
+      }
+
+      const totalConversations = conversations?.length || 0;
+      const conversionRate = totalConversations > 0 
+        ? (conversions / totalConversations) * 100 
+        : 0;
+
       return {
         avgTimeToAssignment: Math.round(avgTimeToAssignment),
         avgTimeToFirstResponse: Math.round(avgTimeToFirstResponse),
@@ -224,6 +253,8 @@ export function useLeadJourneyMetrics(filters: DashboardFilters) {
         totalUnassigned,
         assignmentRate,
         leadResponseRate,
+        conversions,
+        conversionRate,
       };
     },
     staleTime: STALE_TIME,

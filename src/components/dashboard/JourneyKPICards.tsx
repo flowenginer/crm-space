@@ -12,9 +12,6 @@ import { LeadJourneyMetrics, formatDuration } from '@/hooks/useLeadJourneyDashbo
 
 interface JourneyKPICardsProps {
   metrics: LeadJourneyMetrics | undefined;
-  totalLeads: number;
-  conversions: number;
-  conversionRate: number;
   isLoading?: boolean;
 }
 
@@ -93,11 +90,12 @@ function KPICard({ title, value, subtitle, icon, color, isLoading }: KPICardProp
 
 export function JourneyKPICards({ 
   metrics, 
-  totalLeads, 
-  conversions, 
-  conversionRate,
   isLoading 
 }: JourneyKPICardsProps) {
+  const totalLeads = (metrics?.totalAssigned || 0) + (metrics?.totalUnassigned || 0);
+  const conversions = metrics?.conversions || 0;
+  const conversionRate = metrics?.conversionRate || 0;
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
       <KPICard
