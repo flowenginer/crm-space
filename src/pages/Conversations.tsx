@@ -1111,7 +1111,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     customDateTo: customDateRange.to,
     sortFilter: (sortFilter !== 'newest' && sortFilter !== 'oldest') ? sortFilter : undefined,
     tagId: advancedFilters.tagIds.length === 1 ? advancedFilters.tagIds[0] : undefined, // Single tag filter
-  }), [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, channelFilter, dateFilter, customDateRange.from, customDateRange.to, sortFilter]);
+    statusFilter: statusFilter, // Status filter for conversation counts
+  }), [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, channelFilter, dateFilter, customDateRange.from, customDateRange.to, sortFilter, statusFilter]);
 
   // Filters for each count type (excluding self to avoid circular filtering)
   const deptCountFilters: CountFilters = useMemo(() => ({ ...countFilters, departmentId: undefined }), [countFilters]);

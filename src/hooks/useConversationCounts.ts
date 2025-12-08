@@ -55,7 +55,22 @@ export interface CountFilters {
   channelId?: string;
   sortFilter?: string; // 'unread', 'not_replied', 'client_not_replied'
   tagId?: string; // Filter by specific tag
+  statusFilter?: 'active' | 'open' | 'pending' | 'closed' | 'all'; // Conversation status filter
 }
+
+// Helper to apply status filter to a query
+const applyStatusFilter = (query: any, statusFilter?: string) => {
+  if (!statusFilter || statusFilter === 'active') {
+    // Default: show open + pending
+    return query.in('status', ['open', 'pending']);
+  } else if (statusFilter === 'all') {
+    // All: no status filter
+    return query;
+  } else {
+    // Specific status: open, pending, or closed
+    return query.eq('status', statusFilter);
+  }
+};
 
 interface ConversationCounts {
   all: number;
@@ -182,14 +197,17 @@ export function useConversationTotalCounts(filters?: CountFilters) {
       
       // Build base queries - usar join com contacts se filtro de data ativo
       const buildBaseQuery = () => {
+        let baseQuery;
         if (needsContactJoin) {
-          return supabase.from('conversations')
+          baseQuery = supabase.from('conversations')
             .select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true })
-            .eq('status', 'open')
             .gte('contact.first_contact_at', dateStartISO!)
             .lte('contact.first_contact_at', dateEndISO!);
+        } else {
+          baseQuery = supabase.from('conversations').select('*', { count: 'exact', head: true });
         }
-        return supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open');
+        // Apply status filter
+        return applyStatusFilter(baseQuery, filters?.statusFilter);
       };
       
       let allQuery = buildBaseQuery();
@@ -261,7 +279,7 @@ export function useChannelCounts(filters?: CountFilters) {
   return useQuery({
     queryKey: ['channel-counts', filters],
     queryFn: async (): Promise<ChannelCounts> => {
-      let query = supabase.from('conversations').select('channel_id').eq('status', 'open');
+      let query = applyStatusFilter(supabase.from('conversations').select('channel_id'), filters?.statusFilter);
       
       // Apply filters (excluding channelId since we're grouping by it)
       if (filters) {
@@ -334,7 +352,7 @@ export function useDateFilterCounts(filters?: CountFilters) {
       
       // Build base query with filters (excluding date filters)
       const buildQuery = () => {
-        let query = supabase.from('conversations').select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true }).eq('status', 'open');
+        let query = applyStatusFilter(supabase.from('conversations').select('id, contact:contacts!inner(first_contact_at)', { count: 'exact', head: true }), filters?.statusFilter);
         if (filters) {
           if (filters.departmentId) query = query.eq('department_id', filters.departmentId);
           if (filters.agentId) query = query.eq('assigned_to', filters.agentId);
@@ -377,7 +395,7 @@ export function useDepartmentCounts(filters?: CountFilters) {
   return useQuery({
     queryKey: ['department-counts', filters],
     queryFn: async (): Promise<DepartmentCounts> => {
-      let query = supabase.from('conversations').select('department_id').eq('status', 'open').not('department_id', 'is', null);
+      let query = applyStatusFilter(supabase.from('conversations').select('department_id'), filters?.statusFilter).not('department_id', 'is', null);
       
       // Apply filters (excluding departmentId since we're grouping by it)
       if (filters) {
@@ -412,7 +430,7 @@ export function useOriginCounts(filters?: CountFilters) {
   return useQuery({
     queryKey: ['origin-counts', filters],
     queryFn: async (): Promise<OriginCounts> => {
-      let query = supabase.from('conversations').select('id, referral_source, contact:contacts(origin)').eq('status', 'open');
+      let query = applyStatusFilter(supabase.from('conversations').select('id, referral_source, contact:contacts(origin)'), filters?.statusFilter);
       
       // Apply filters (excluding origin since we're grouping by it)
       if (filters) {
@@ -482,7 +500,7 @@ export function useAgentCounts(filters?: CountFilters) {
   return useQuery({
     queryKey: ['agent-counts', filters],
     queryFn: async (): Promise<Record<string, number>> => {
-      let query = supabase.from('conversations').select('assigned_to').eq('status', 'open').not('assigned_to', 'is', null);
+      let query = applyStatusFilter(supabase.from('conversations').select('assigned_to'), filters?.statusFilter).not('assigned_to', 'is', null);
       
       // Apply filters (excluding agentId since we're grouping by it)
       if (filters) {
@@ -517,7 +535,7 @@ export function useSortFilterCounts(filters?: CountFilters) {
   return useQuery({
     queryKey: ['sort-filter-counts', filters],
     queryFn: async () => {
-      let query = supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open').eq('is_unread', true);
+      let query = applyStatusFilter(supabase.from('conversations').select('*', { count: 'exact', head: true }), filters?.statusFilter).eq('is_unread', true);
       
       // Apply filters
       if (filters) {
