@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 export interface ConversationEvent {
   id: string;
   conversation_id: string;
-  event_type: 'transfer' | 'close' | 'reopen';
+  event_type: 'transfer' | 'close' | 'reopen' | 'auto_reassign';
   actor_id: string | null;
   data: {
     from_user_id?: string;
@@ -16,6 +16,13 @@ export interface ConversationEvent {
     note?: string;
     close_reason?: string;
     is_return?: boolean;
+    // Close event data
+    active_time_seconds?: number;
+    total_time_seconds?: number;
+    // Reopen event data
+    previous_close_reason?: string;
+    previous_closed_at?: string;
+    trigger?: 'client_message' | 'manual';
   };
   created_at: string;
   actor?: {

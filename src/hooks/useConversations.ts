@@ -18,6 +18,11 @@ export interface Conversation {
   closed_at: string | null;
   closed_by: string | null;
   referral_source: string | null;
+  // Reopen tracking fields
+  reopen_count?: number | null;
+  reopened_at?: string | null;
+  total_active_time_seconds?: number | null;
+  previous_close_reason?: string | null;
   referral_data: {
     ctwaClid?: string;
     sourceId?: string;

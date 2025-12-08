@@ -259,16 +259,46 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
         if (closedConv) {
           // Reopen the conversation if it was closed
           if (closedConv.status === 'closed') {
+            // Get previous close data for history
+            const { data: convData } = await supabase
+              .from('conversations')
+              .select('close_reason, closed_at, closed_by, reopen_count')
+              .eq('id', closedConv.id)
+              .single();
+            
+            const previousCloseReason = convData?.close_reason;
+            const previousClosedAt = convData?.closed_at;
+            const previousClosedBy = convData?.closed_by;
+            const currentReopenCount = convData?.reopen_count || 0;
+            
+            // Update conversation for reopen
             await supabase
               .from('conversations')
               .update({ 
                 status: 'open', 
+                reopened_at: new Date().toISOString(),
+                reopen_count: currentReopenCount + 1,
+                previous_close_reason: previousCloseReason,
+                previous_closed_at: previousClosedAt,
+                previous_closed_by: previousClosedBy,
                 closed_at: null, 
                 closed_by: null,
                 close_reason: null,
                 updated_at: new Date().toISOString()
               })
               .eq('id', closedConv.id);
+            
+            // Register reopen event
+            await supabase.from('conversation_events').insert({
+              conversation_id: closedConv.id,
+              event_type: 'reopen',
+              actor_id: user?.id || null,
+              data: {
+                previous_close_reason: previousCloseReason,
+                previous_closed_at: previousClosedAt,
+                trigger: 'manual',
+              },
+            });
             
             toast.success('Conversa reaberta');
           } else {
@@ -278,6 +308,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           // Invalidate correct query keys used by usePaginatedConversations
           queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
           queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
+          queryClient.invalidateQueries({ queryKey: ['conversation-events', closedConv.id] });
           
           if (onConversationCreated) {
             onConversationCreated(closedConv.id);

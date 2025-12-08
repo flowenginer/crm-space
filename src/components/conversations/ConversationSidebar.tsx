@@ -353,28 +353,58 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
     }
   });
 
-  // Mutation: Close conversation
+  // Mutation: Close conversation with timer pause
   const closeConversation = useMutation({
     mutationFn: async (reason?: string) => {
       const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
       
+      // Get current conversation data for timer calculation
+      const { data: currentConv, error: fetchError } = await supabase
+        .from('conversations')
+        .select('created_at, reopened_at, total_active_time_seconds')
+        .eq('id', conversationId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      // Calculate active time since last open/reopen
+      const startTime = currentConv.reopened_at || currentConv.created_at;
+      const activeSeconds = Math.floor((Date.now() - new Date(startTime).getTime()) / 1000);
+      const newTotalTime = (currentConv.total_active_time_seconds || 0) + activeSeconds;
+      
+      // Update conversation with timer data
       const { error } = await supabase
         .from('conversations')
         .update({ 
           status: 'closed',
           closed_at: new Date().toISOString(),
-          closed_by: user?.id,
+          closed_by: user.id,
           close_reason: reason,
+          total_active_time_seconds: newTotalTime,
           updated_at: new Date().toISOString()
         })
         .eq('id', conversationId);
       
       if (error) throw error;
+      
+      // Register close event
+      await supabase.from('conversation_events').insert({
+        conversation_id: conversationId,
+        event_type: 'close',
+        actor_id: user.id,
+        data: {
+          close_reason: reason,
+          active_time_seconds: activeSeconds,
+          total_time_seconds: newTotalTime,
+        },
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-events', conversationId] });
       
       // Navigate away from the closed conversation
       if (onNavigateAway) {
