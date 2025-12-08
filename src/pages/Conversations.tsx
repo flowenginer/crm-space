@@ -1040,10 +1040,10 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
-  const { isAdmin, profile, isFullyLoaded, hasPermission } = usePermissions();
+  const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePermissions();
   
-  // Permissão para ver conversas não atribuídas
-  const canViewUnassigned = isAdmin || hasPermission('conversations', 'view_unassigned');
+  // Permissão para ver conversas não atribuídas (admins, supervisores ou com permissão específica)
+  const canViewUnassigned = isAdmin || isSupervisor || hasPermission('conversations', 'view_unassigned');
   
   // Filtros disponíveis baseados na permissão
   const availableQuickFilters = useMemo(() => {
