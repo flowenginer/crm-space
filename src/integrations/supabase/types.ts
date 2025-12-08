@@ -571,12 +571,18 @@ export type Database = {
           last_message_at: string | null
           last_message_preview: string | null
           lead_status: string | null
+          previous_close_reason: string | null
+          previous_closed_at: string | null
+          previous_closed_by: string | null
           priority: string | null
           queue_id: string | null
           referral_data: Json | null
           referral_source: string | null
+          reopen_count: number | null
+          reopened_at: string | null
           sla_status: string | null
           status: string | null
+          total_active_time_seconds: number | null
           transfer_note: string | null
           transferred_at: string | null
           transferred_from: string | null
@@ -598,12 +604,18 @@ export type Database = {
           last_message_at?: string | null
           last_message_preview?: string | null
           lead_status?: string | null
+          previous_close_reason?: string | null
+          previous_closed_at?: string | null
+          previous_closed_by?: string | null
           priority?: string | null
           queue_id?: string | null
           referral_data?: Json | null
           referral_source?: string | null
+          reopen_count?: number | null
+          reopened_at?: string | null
           sla_status?: string | null
           status?: string | null
+          total_active_time_seconds?: number | null
           transfer_note?: string | null
           transferred_at?: string | null
           transferred_from?: string | null
@@ -625,12 +637,18 @@ export type Database = {
           last_message_at?: string | null
           last_message_preview?: string | null
           lead_status?: string | null
+          previous_close_reason?: string | null
+          previous_closed_at?: string | null
+          previous_closed_by?: string | null
           priority?: string | null
           queue_id?: string | null
           referral_data?: Json | null
           referral_source?: string | null
+          reopen_count?: number | null
+          reopened_at?: string | null
           sla_status?: string | null
           status?: string | null
+          total_active_time_seconds?: number | null
           transfer_note?: string | null
           transferred_at?: string | null
           transferred_from?: string | null
@@ -671,6 +689,13 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_previous_closed_by_fkey"
+            columns: ["previous_closed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {

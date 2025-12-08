@@ -1245,7 +1245,7 @@ serve(async (req) => {
       // Check if there's a closed conversation to potentially reopen
       const { data: closedConversation } = await supabase
         .from("conversations")
-        .select("id, status, assigned_to, close_reason, last_message_at")
+        .select("id, status, assigned_to, close_reason, closed_at, closed_by, last_message_at")
         .eq("contact_id", contact.id)
         .eq("channel_id", channel.id)
         .eq("status", "closed")
@@ -1256,6 +1256,20 @@ serve(async (req) => {
       if (closedConversation) {
         // Reopen the closed conversation
         console.log(`[Webhook] Reopening closed conversation: ${closedConversation.id}`);
+        
+        // Store previous close data for history
+        const previousCloseReason = closedConversation.close_reason;
+        const previousClosedAt = closedConversation.closed_at;
+        const previousClosedBy = closedConversation.closed_by;
+        
+        // Get current reopen count
+        const { data: convData } = await supabase
+          .from("conversations")
+          .select("reopen_count")
+          .eq("id", closedConversation.id)
+          .single();
+        
+        const currentReopenCount = convData?.reopen_count || 0;
         
         // Determine who should be assigned based on owner agent rules
         let newAssignedTo = closedConversation.assigned_to;
@@ -1280,6 +1294,14 @@ serve(async (req) => {
             last_message_at: new Date().toISOString(),
             last_message_preview: normalizedMessage.content.substring(0, 100),
             assigned_to: newAssignedTo,
+            reopened_at: new Date().toISOString(),
+            reopen_count: currentReopenCount + 1,
+            previous_close_reason: previousCloseReason,
+            previous_closed_at: previousClosedAt,
+            previous_closed_by: previousClosedBy,
+            closed_at: null,
+            closed_by: null,
+            close_reason: null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", closedConversation.id);
@@ -1288,6 +1310,18 @@ serve(async (req) => {
           console.error(`[Webhook] Error reopening conversation:`, reopenError);
           throw reopenError;
         }
+
+        // Register reopen event
+        await supabase.from("conversation_events").insert({
+          conversation_id: closedConversation.id,
+          event_type: "reopen",
+          actor_id: null, // Client triggered
+          data: {
+            previous_close_reason: previousCloseReason,
+            previous_closed_at: previousClosedAt,
+            trigger: "client_message",
+          }
+        });
 
         // Log event if reassigned
         if (newAssignedTo !== closedConversation.assigned_to) {
