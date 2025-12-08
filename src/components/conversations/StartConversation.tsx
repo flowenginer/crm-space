@@ -4,14 +4,21 @@ import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { MessageSquare, Send, Loader2, Phone, User, Smartphone, ShieldAlert } from 'lucide-react';
+import { MessageSquare, Send, Loader2, Phone, User, Smartphone, ShieldAlert, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBrazilianPhone, normalizePhoneForStorage, getPhoneSearchVariations, isValidBrazilianPhone } from '@/utils/phone';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
+import { ContactRequestModal } from './ContactRequestModal';
 
 interface StartConversationProps {
   onConversationCreated?: (conversationId: string) => void;
+}
+
+interface BlockedContactInfo {
+  contact: { id: string; full_name: string; phone: string };
+  owner: { id: string; full_name: string | null; avatar_url: string | null };
+  conversationId?: string | null;
 }
 
 export function StartConversation({ onConversationCreated }: StartConversationProps) {
@@ -21,6 +28,8 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
   const [showSearchResult, setShowSearchResult] = useState(false);
   const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [pendingContact, setPendingContact] = useState<any>(null);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [blockedContactInfo, setBlockedContactInfo] = useState<BlockedContactInfo | null>(null);
   
   const queryClient = useQueryClient();
   const { can } = usePermissions();
@@ -50,7 +59,12 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
   const isValidPhone = () => isValidBrazilianPhone(phoneNumber);
 
   // Check if user can access a conversation
-  const checkConversationAccess = async (conversationId: string): Promise<{ canAccess: boolean; ownerName?: string }> => {
+  const checkConversationAccess = async (conversationId: string): Promise<{ 
+    canAccess: boolean; 
+    ownerName?: string;
+    ownerId?: string;
+    ownerAvatar?: string | null;
+  }> => {
     // Admin/supervisor can access all
     if (can.viewAllConversations()) {
       return { canAccess: true };
@@ -72,30 +86,36 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
       return { canAccess: true };
     }
 
-    // Conversation is unassigned - check department
+    // Conversation is unassigned - check department using user_departments
     if (!conv.assigned_to) {
-      // Get user's department
-      const { data: userProfile } = await supabase
-        .from('profiles')
+      // Get user's departments from user_departments table
+      const { data: userDepartments } = await supabase
+        .from('user_departments')
         .select('department_id')
-        .eq('id', user?.id)
-        .single();
+        .eq('user_id', user?.id!);
 
-      // If conversation has no department or same department as user
-      if (!conv.department_id || conv.department_id === userProfile?.department_id) {
+      const userDeptIds = userDepartments?.map(d => d.department_id) || [];
+
+      // If conversation has no department or user belongs to that department
+      if (!conv.department_id || userDeptIds.includes(conv.department_id)) {
         return { canAccess: true };
       }
     }
 
-    // Get owner name for the error message
+    // Get owner info for the request modal
     if (conv.assigned_to) {
       const { data: ownerProfile } = await supabase
         .from('profiles')
-        .select('full_name')
+        .select('id, full_name, avatar_url')
         .eq('id', conv.assigned_to)
         .single();
       
-      return { canAccess: false, ownerName: ownerProfile?.full_name || 'outro atendente' };
+      return { 
+        canAccess: false, 
+        ownerName: ownerProfile?.full_name || 'outro atendente',
+        ownerId: ownerProfile?.id,
+        ownerAvatar: ownerProfile?.avatar_url
+      };
     }
 
     return { canAccess: false, ownerName: 'outro departamento' };
@@ -136,14 +156,16 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
         if (openConv) {
           // Check if user can access this conversation
-          const { canAccess, ownerName } = await checkConversationAccess(openConv.id);
+          const { canAccess, ownerName, ownerId, ownerAvatar } = await checkConversationAccess(openConv.id);
           
           if (!canAccess) {
-            toast.error(`Este lead pertence a ${ownerName}`, {
-              icon: <ShieldAlert className="text-destructive" size={18} />,
-              description: 'Você não tem permissão para acessar conversas de outros atendentes.',
+            // Show request modal instead of just error
+            setBlockedContactInfo({
+              contact: { id: contact.id, full_name: contact.full_name, phone: contact.phone },
+              owner: { id: ownerId!, full_name: ownerName || null, avatar_url: ownerAvatar || null },
+              conversationId: openConv.id,
             });
-            setPhoneNumber('');
+            setShowRequestModal(true);
             return;
           }
 
@@ -167,14 +189,16 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
         if (closedConv) {
           // Check if user can access this conversation
-          const { canAccess, ownerName } = await checkConversationAccess(closedConv.id);
+          const { canAccess, ownerName, ownerId, ownerAvatar } = await checkConversationAccess(closedConv.id);
           
           if (!canAccess) {
-            toast.error(`Este lead pertence a ${ownerName}`, {
-              icon: <ShieldAlert className="text-destructive" size={18} />,
-              description: 'Você não tem permissão para reabrir conversas de outros atendentes.',
+            // Show request modal instead of just error
+            setBlockedContactInfo({
+              contact: { id: contact.id, full_name: contact.full_name, phone: contact.phone },
+              owner: { id: ownerId!, full_name: ownerName || null, avatar_url: ownerAvatar || null },
+              conversationId: closedConv.id,
             });
-            setPhoneNumber('');
+            setShowRequestModal(true);
             return;
           }
 
@@ -495,6 +519,23 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Contact Request Modal */}
+      {blockedContactInfo && (
+        <ContactRequestModal
+          open={showRequestModal}
+          onOpenChange={(open) => {
+            setShowRequestModal(open);
+            if (!open) {
+              setBlockedContactInfo(null);
+              setPhoneNumber('');
+            }
+          }}
+          contact={blockedContactInfo.contact}
+          currentOwner={blockedContactInfo.owner}
+          conversationId={blockedContactInfo.conversationId}
+        />
+      )}
     </div>
   );
 }

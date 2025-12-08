@@ -40,8 +40,11 @@ import { OwnerAgentSettings } from '@/components/settings/OwnerAgentSettings';
 import { CloseReasonManagement } from '@/components/settings/CloseReasonManagement';
 import { MetricsSettings } from '@/components/settings/MetricsSettings';
 import { ActiveSessions } from '@/components/settings/ActiveSessions';
-import { Facebook, UserCheck } from 'lucide-react';
+import { ContactRequestsPanel } from '@/components/settings/ContactRequestsPanel';
+import { Facebook, UserCheck, GitPullRequest } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { usePermissions } from '@/hooks/usePermissions';
+import { usePendingRequestsCount } from '@/hooks/useContactRequests';
 import {
   Dialog,
   DialogContent,
@@ -87,6 +90,8 @@ const fieldTypeLabels: Record<string, string> = {
 
 export default function Settings() {
   const { user } = useAuth();
+  const { can } = usePermissions();
+  const { data: pendingRequestsCount = 0 } = usePendingRequestsCount();
   
   // Fetch real data
   const { data: teamMembers = [], isLoading: loadingTeam } = useTeam();
@@ -529,6 +534,21 @@ export default function Settings() {
             <Target size={16} />
             Métricas
           </TabsTrigger>
+          {/* Tab de Requisições - Só admin/supervisor */}
+          {can.viewAllConversations() && (
+            <TabsTrigger
+              value="requests"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
+            >
+              <GitPullRequest size={16} />
+              Requisições
+              {pendingRequestsCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 text-xs bg-destructive text-destructive-foreground rounded-full">
+                  {pendingRequestsCount}
+                </span>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* TAB 1: Team Management */}
@@ -571,6 +591,13 @@ export default function Settings() {
             <MetricsSettings />
           </div>
         </TabsContent>
+
+        {/* TAB: Contact Requests - Solo admin/supervisor */}
+        {can.viewAllConversations() && (
+          <TabsContent value="requests" className="space-y-6">
+            <ContactRequestsPanel />
+          </TabsContent>
+        )}
 
         {/* TAB 4: Channels */}
         <TabsContent value="channels" className="space-y-6">
