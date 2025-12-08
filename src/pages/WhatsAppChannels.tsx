@@ -20,7 +20,14 @@ import {
   Smartphone,
   Download,
   AlertTriangle,
+  Info,
 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -849,10 +856,22 @@ export default function WhatsAppChannels() {
                     </div>
 
                     <div>
-                      <Label>Departamento (opcional)</Label>
+                      <div className="flex items-center gap-2">
+                        <Label>Departamento de entrada</Label>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info size={14} className="text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p>Leads que chegarem por este canal serão direcionados automaticamente para este departamento</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
                       <Select value={selectedDepartmentId || "none"} onValueChange={(val) => setSelectedDepartmentId(val === "none" ? "" : val)}>
                         <SelectTrigger className="mt-2">
-                          <SelectValue placeholder="Nenhum departamento" />
+                          <SelectValue placeholder="Selecionar departamento..." />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Nenhum</SelectItem>
@@ -861,6 +880,12 @@ export default function WhatsAppChannels() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {!selectedDepartmentId && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1">
+                          <AlertCircle size={12} />
+                          Sem departamento, leads ficarão sem atribuição inicial
+                        </p>
+                      )}
                     </div>
                   </>
                 ) : (
@@ -1095,15 +1120,54 @@ export default function WhatsAppChannels() {
                 </div>
               </div>
 
+              {/* Configuração de Entrada */}
+              <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Settings size={14} className="text-primary" />
+                  Configuração de Entrada
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-muted-foreground">Departamento padrão:</span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info size={12} className="text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>Novos leads serão direcionados para este departamento</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <Select 
+                    value={selectedChannel.department_id || "none"} 
+                    onValueChange={async (val) => {
+                      await updateChannel.mutateAsync({
+                        id: selectedChannel.id,
+                        department_id: val === "none" ? null : val,
+                      });
+                      toast.success("Departamento atualizado!");
+                    }}
+                  >
+                    <SelectTrigger className="w-36 h-8 text-xs">
+                      <SelectValue placeholder="Selecionar..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Nenhum</SelectItem>
+                      {departments?.map((dept) => (
+                        <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               {/* Channel Details */}
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Instance ID:</span>
                   <span className="font-mono text-xs">{selectedChannel.instance_id || '-'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Departamento:</span>
-                  <span>{selectedChannel.department?.name || 'Nenhum'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Última sync:</span>
@@ -1332,6 +1396,11 @@ function ChannelCard({
           >
             {isConnected ? 'Conectado' : 'Desconectado'}
           </span>
+          {channel.department && (
+            <span className="px-2 py-1 rounded-full font-medium text-xs bg-secondary text-secondary-foreground">
+              {channel.department.name}
+            </span>
+          )}
         </div>
       </div>
 
