@@ -159,7 +159,39 @@ export function useTransferConversation() {
       const fromUserId = currentConversation?.assigned_to;
       const fromUserName = (currentConversation?.assigned_user as any)?.full_name || null;
 
-      // Update the conversation - always set both assigned_to and department_id
+      // Build the transfer event data BEFORE updating the conversation
+      const eventData: ConversationEvent['data'] = {
+        from_user_id: fromUserId || user.id,
+        from_user_name: fromUserName || actorProfile?.full_name || 'Usuário',
+        note,
+      };
+
+      if (toUserId) {
+        eventData.to_user_id = toUserId;
+        eventData.to_user_name = toUserName || 'Usuário';
+      }
+
+      if (toDepartmentId) {
+        eventData.to_department_id = toDepartmentId;
+        eventData.to_department_name = toDepartmentName || 'Departamento';
+      }
+
+      // IMPORTANT: Create the transfer event FIRST (before updating assigned_to)
+      // This is because the RLS policy on conversation_events checks if the current user
+      // is the assigned_to of the conversation. If we update first, the user is no longer
+      // the assigned_to and the INSERT will fail.
+      const { error: eventError } = await supabase
+        .from('conversation_events')
+        .insert({
+          conversation_id: conversationId,
+          event_type: 'transfer',
+          actor_id: user.id,
+          data: eventData,
+        });
+
+      if (eventError) throw eventError;
+
+      // Now update the conversation - the event is already recorded
       const updateData: any = {
         transferred_at: new Date().toISOString(),
         transferred_from: fromUserId || user.id,
@@ -182,34 +214,6 @@ export function useTransferConversation() {
         .eq('id', conversationId);
 
       if (updateError) throw updateError;
-
-      // Create the transfer event
-      const eventData: ConversationEvent['data'] = {
-        from_user_id: fromUserId || user.id,
-        from_user_name: fromUserName || actorProfile?.full_name || 'Usuário',
-        note,
-      };
-
-      if (toUserId) {
-        eventData.to_user_id = toUserId;
-        eventData.to_user_name = toUserName || 'Usuário';
-      }
-
-      if (toDepartmentId) {
-        eventData.to_department_id = toDepartmentId;
-        eventData.to_department_name = toDepartmentName || 'Departamento';
-      }
-
-      const { error: eventError } = await supabase
-        .from('conversation_events')
-        .insert({
-          conversation_id: conversationId,
-          event_type: 'transfer',
-          actor_id: user.id,
-          data: eventData,
-        });
-
-      if (eventError) throw eventError;
 
       return { success: true };
     },
