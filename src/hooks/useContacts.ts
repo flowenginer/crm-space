@@ -223,6 +223,19 @@ export function useUpdateContact() {
     mutationFn: async ({ id, tags, assignee, department, custom_fields, phone, ...contact }: Partial<Contact> & { id: string }) => {
       const updateData: Record<string, unknown> = { ...contact };
       
+      // Converter strings vazias em null para campos de data
+      if (updateData.birth_date === '') {
+        updateData.birth_date = null;
+      }
+      
+      // Converter outros campos vazios em null se necessário
+      const fieldsToNullifyIfEmpty = ['email', 'cpf_cnpj', 'zip_code', 'street', 'number', 'complement', 'neighborhood', 'city', 'state', 'notes'];
+      fieldsToNullifyIfEmpty.forEach(field => {
+        if (updateData[field] === '') {
+          updateData[field] = null;
+        }
+      });
+      
       // Se estiver atualizando o telefone, normalizar e verificar duplicatas
       if (phone) {
         const normalizedPhone = normalizePhoneForStorage(phone);
