@@ -570,6 +570,7 @@ export type Database = {
           is_new_transfer: boolean | null
           is_unread: boolean | null
           last_message_at: string | null
+          last_message_is_from_me: boolean | null
           last_message_preview: string | null
           lead_status: string | null
           previous_close_reason: string | null
@@ -604,6 +605,7 @@ export type Database = {
           is_new_transfer?: boolean | null
           is_unread?: boolean | null
           last_message_at?: string | null
+          last_message_is_from_me?: boolean | null
           last_message_preview?: string | null
           lead_status?: string | null
           previous_close_reason?: string | null
@@ -638,6 +640,7 @@ export type Database = {
           is_new_transfer?: boolean | null
           is_unread?: boolean | null
           last_message_at?: string | null
+          last_message_is_from_me?: boolean | null
           last_message_preview?: string | null
           lead_status?: string | null
           previous_close_reason?: string | null

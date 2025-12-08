@@ -79,7 +79,7 @@ import { ConversationSidebar } from '@/components/conversations/ConversationSide
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { QuickTemplatesPopover } from '@/components/conversations/QuickTemplatesPopover';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
-import { usePaginatedConversations, type SortFilter, type ConversationFilters, type StatusFilter } from '@/hooks/usePaginatedConversations';
+import { usePaginatedConversations, useSortFilterCounts, type SortFilter, type ConversationFilters, type StatusFilter } from '@/hooks/usePaginatedConversations';
 import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, type CountFilters } from '@/hooks/useConversationCounts';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
@@ -1247,6 +1247,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const { data: tagCountsData } = useTagCounts(tagCountFilters);
   const { data: absoluteTagCountsData } = useTagCounts(); // Contagens absolutas sem filtros para o modal
   const { data: agentCountsData } = useAgentCounts(agentCountFilters);
+  const { data: sortFilterCountsFromDb } = useSortFilterCounts(statusFilter); // Real counts for not_replied and client_not_replied
   
   // Flatten paginated conversations
   const paginatedConversations = useMemo(() => {
@@ -1543,44 +1544,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     }
   }, [selectedConversationId, selectedConversation, isAdmin, profile?.id, isFullyLoaded, teamMembers, navigate]);
 
-  // Fetch last message for each conversation (OPTIMIZED - limited scope)
-  // Only fetch for first 50 visible conversations to reduce query size
-  const visibleConversationIds = useMemo(() => conversations.slice(0, 50).map(c => c.id), [conversations]);
-  const { data: lastMessages = [] } = useQuery({
-    queryKey: ['last-messages', visibleConversationIds.length > 0 ? visibleConversationIds.slice(0, 5).join(',') : 'empty'],
-    queryFn: async (): Promise<{ conversation_id: string; is_from_me: boolean }[]> => {
-      if (visibleConversationIds.length === 0) return [];
-      
-      // Optimized query - only fetch for visible conversations, limit results
-      const { data } = await supabase
-        .from('messages')
-        .select('conversation_id, is_from_me')
-        .in('conversation_id', visibleConversationIds)
-        .order('created_at', { ascending: false })
-        .limit(100); // Fixed limit to prevent massive queries
-      
-      // Group by conversation_id and get first (most recent) for each
-      const grouped = new Map<string, { conversation_id: string; is_from_me: boolean }>();
-      data?.forEach(msg => {
-        if (!grouped.has(msg.conversation_id)) {
-          grouped.set(msg.conversation_id, {
-            conversation_id: msg.conversation_id,
-            is_from_me: msg.is_from_me ?? false
-          });
-        }
-      });
-      return Array.from(grouped.values());
-    },
-    enabled: visibleConversationIds.length > 0,
-    staleTime: 60000, // 1 minute cache - this data changes less frequently
-  });
-
-  // Create a map for quick lookup of last message info
-  const lastMessageMap = useMemo(() => {
-    const map = new Map<string, boolean>();
-    lastMessages.forEach(m => map.set(m.conversation_id, m.is_from_me));
-    return map;
-  }, [lastMessages]);
+  // Note: last_message_is_from_me is now included directly in conversation data from the server
+  // No need to fetch last messages separately anymore
   
   // Fetch contact tags for the selected conversation
   const { data: contactTags = [], refetch: refetchContactTags } = useQuery({
@@ -1797,39 +1762,14 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
           if (b.id === selectedConversationId) return 1;
         }
         
-        // For server-sorted filters (newest, oldest, unread), preserve server order
-        // Only apply local sorting for filters that require message data (not_replied, client_not_replied)
-        if (sortFilter === 'newest' || sortFilter === 'oldest' || sortFilter === 'unread') {
-          // Server already sorted these, just maintain relative order for pinned
-          return 0;
-        }
-        
-        // Helper para usar last_message_at com fallback para created_at
-        const getDate = (conv: Conversation) => 
-          new Date(conv.last_message_at || conv.created_at).getTime();
-        
-        switch (sortFilter) {
-          case 'not_replied':
-            // Conversations where last message is from client (not from me) first
-            const aLastIsFromClient = lastMessageMap.has(a.id) && !lastMessageMap.get(a.id);
-            const bLastIsFromClient = lastMessageMap.has(b.id) && !lastMessageMap.get(b.id);
-            if (aLastIsFromClient && !bLastIsFromClient) return -1;
-            if (!aLastIsFromClient && bLastIsFromClient) return 1;
-            return getDate(b) - getDate(a);
-          case 'client_not_replied':
-            // Conversations where last message is from me first
-            const aLastIsFromMe = lastMessageMap.has(a.id) && lastMessageMap.get(a.id);
-            const bLastIsFromMe = lastMessageMap.has(b.id) && lastMessageMap.get(b.id);
-            if (aLastIsFromMe && !bLastIsFromMe) return -1;
-            if (!aLastIsFromMe && bLastIsFromMe) return 1;
-            return getDate(b) - getDate(a);
-          default:
-            return 0;
-        }
+        // For server-sorted filters, preserve server order
+        // All filters are now server-side (not_replied and client_not_replied included)
+        // Server already sorted/filtered these, just maintain relative order
+        return 0;
       });
     
     return filtered;
-  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, lastMessageMap, selectedConversationId, profile?.id, debouncedSearchQuery]);
+  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery]);
 
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
@@ -1902,23 +1842,17 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
     return counts;
   }, [channelCountsData, conversations]);
 
-  // Calculate sort filter counts - use real database count for unread
+  // Calculate sort filter counts - use REAL counts from database for accuracy
   const sortFilterCounts = useMemo(() => {
     // Use real database count for unread
     const unreadCount = totalCounts?.unread ?? conversations.filter(conv => conv.is_unread).length;
     
-    // Count not replied (last message from client) - these are calculated from loaded data
-    let notRepliedCount = 0;
-    let clientNotRepliedCount = 0;
-    
-    conversations.forEach(conv => {
-      const isFromMe = lastMessageMap.get(conv.id);
-      if (isFromMe === false) notRepliedCount++;
-      if (isFromMe === true) clientNotRepliedCount++;
-    });
+    // Use real database counts for not_replied and client_not_replied
+    const notRepliedCount = sortFilterCountsFromDb?.not_replied ?? 0;
+    const clientNotRepliedCount = sortFilterCountsFromDb?.client_not_replied ?? 0;
     
     return { unread: unreadCount, not_replied: notRepliedCount, client_not_replied: clientNotRepliedCount };
-  }, [totalCounts, conversations, lastMessageMap]);
+  }, [totalCounts, conversations, sortFilterCountsFromDb]);
 
   // Conversation action handlers
   const handleMarkAsUnread = () => {
