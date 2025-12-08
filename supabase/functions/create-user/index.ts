@@ -78,7 +78,8 @@ serve(async (req) => {
       password, 
       full_name, 
       role, 
-      department_id,
+      department_id, // legacy single department support
+      department_ids, // new: array of { id: string, is_primary: boolean }
       phone
     } = await req.json()
 
@@ -98,6 +99,12 @@ serve(async (req) => {
     // Validate password strength
     if (password.length < 6) {
       throw new Error('Password must be at least 6 characters')
+    }
+
+    // Validate department for non-admin roles
+    const hasDepartments = (department_ids && department_ids.length > 0) || department_id;
+    if (role !== 'admin' && !hasDepartments) {
+      throw new Error('At least one department is required for non-admin users')
     }
 
     // Check if email already exists
@@ -126,13 +133,22 @@ serve(async (req) => {
 
     console.log('User created with ID:', newUser.user.id);
 
+    // Determine primary department for backwards compatibility
+    let primaryDepartmentId = null;
+    if (department_ids && department_ids.length > 0) {
+      const primary = department_ids.find((d: any) => d.is_primary);
+      primaryDepartmentId = primary?.id || department_ids[0].id;
+    } else if (department_id) {
+      primaryDepartmentId = department_id;
+    }
+
     // Update the profile that was created by the trigger
     const { error: profileUpdateError } = await supabaseAdmin
       .from('profiles')
       .update({
         full_name,
         role,
-        department_id: department_id || null,
+        department_id: primaryDepartmentId, // Keep for backwards compatibility
         phone: phone || null,
         is_active: true,
         is_online: false,
@@ -142,6 +158,40 @@ serve(async (req) => {
 
     if (profileUpdateError) {
       console.error('Profile update error:', profileUpdateError);
+    }
+
+    // Insert into user_departments table
+    if (department_ids && department_ids.length > 0) {
+      console.log('Adding user to departments:', department_ids);
+      
+      for (const dept of department_ids) {
+        const { error: deptError } = await supabaseAdmin
+          .from('user_departments')
+          .insert({
+            user_id: newUser.user.id,
+            department_id: dept.id,
+            is_primary: dept.is_primary || false
+          })
+        
+        if (deptError) {
+          console.error('Error adding user to department:', deptError);
+        }
+      }
+    } else if (department_id) {
+      // Legacy support: single department_id
+      console.log('Adding user to single department (legacy):', department_id);
+      
+      const { error: deptError } = await supabaseAdmin
+        .from('user_departments')
+        .insert({
+          user_id: newUser.user.id,
+          department_id: department_id,
+          is_primary: true
+        })
+      
+      if (deptError) {
+        console.error('Error adding user to department:', deptError);
+      }
     }
 
     // Map role to app_role enum and update user_roles table
@@ -171,7 +221,7 @@ serve(async (req) => {
       console.error('Role update error:', roleError);
     }
 
-    console.log('User profile and role updated successfully');
+    console.log('User profile, departments, and role updated successfully');
 
     return new Response(
       JSON.stringify({ 

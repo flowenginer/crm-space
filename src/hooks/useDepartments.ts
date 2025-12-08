@@ -24,15 +24,15 @@ export function useDepartments() {
 
       if (error) throw error;
       
-      // Get member counts
-      const { data: profiles } = await supabase
-        .from('profiles')
+      // Get member counts from user_departments table (new approach)
+      const { data: userDepts } = await supabase
+        .from('user_departments')
         .select('department_id');
       
       const countMap: Record<string, number> = {};
-      profiles?.forEach(p => {
-        if (p.department_id) {
-          countMap[p.department_id] = (countMap[p.department_id] || 0) + 1;
+      userDepts?.forEach(ud => {
+        if (ud.department_id) {
+          countMap[ud.department_id] = (countMap[ud.department_id] || 0) + 1;
         }
       });
 
