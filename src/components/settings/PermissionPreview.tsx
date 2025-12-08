@@ -59,20 +59,20 @@ const PAGE_PERMISSIONS: { key: string; name: string; icon: LucideIcon; permissio
   { key: 'settings', name: 'Configurações', icon: Settings, permission: { category: 'settings', action: 'view' } },
 ];
 
-// Settings tabs and their required permissions
+// Settings tabs and their required permissions - using granular settings permissions
 const SETTINGS_TABS: { key: string; name: string; permission: { category: string; action: string } | null; adminOnly?: boolean }[] = [
-  { key: 'team', name: 'Equipe', permission: { category: 'users', action: 'read' } },
-  { key: 'departments', name: 'Departamentos', permission: { category: 'settings', action: 'update' } },
-  { key: 'roles', name: 'Perfis de Acesso', permission: { category: 'settings', action: 'update' }, adminOnly: true },
-  { key: 'channels', name: 'Canais', permission: { category: 'channels', action: 'read' } },
-  { key: 'statuses', name: 'Etapas de Lead', permission: { category: 'settings', action: 'update' } },
-  { key: 'close-reasons', name: 'Motivos de Fechamento', permission: { category: 'settings', action: 'update' } },
-  { key: 'tags', name: 'Etiquetas', permission: { category: 'tags', action: 'read' } },
-  { key: 'custom-fields', name: 'Campos Personalizados', permission: { category: 'settings', action: 'update' } },
-  { key: 'integrations', name: 'Integrações', permission: { category: 'settings', action: 'update' }, adminOnly: true },
-  { key: 'webhooks', name: 'Webhooks / API', permission: { category: 'settings', action: 'update' }, adminOnly: true },
-  { key: 'metrics', name: 'Métricas', permission: { category: 'settings', action: 'update' }, adminOnly: true },
-  { key: 'company', name: 'Dados da Empresa', permission: { category: 'settings', action: 'update' }, adminOnly: true },
+  { key: 'team', name: 'Equipe', permission: { category: 'settings', action: 'users' } },
+  { key: 'departments', name: 'Departamentos', permission: { category: 'settings', action: 'departments' } },
+  { key: 'roles', name: 'Perfis de Acesso', permission: null, adminOnly: true },
+  { key: 'channels', name: 'Canais', permission: { category: 'settings', action: 'channels' } },
+  { key: 'fields', name: 'Campos Personalizados', permission: { category: 'settings', action: 'fields' } },
+  { key: 'tags', name: 'Etiquetas', permission: { category: 'settings', action: 'tags' } },
+  { key: 'close-reasons', name: 'Motivos de Fechamento', permission: { category: 'settings', action: 'close_reasons' } },
+  { key: 'owner-agent', name: 'Responsável', permission: { category: 'settings', action: 'update' } },
+  { key: 'integrations', name: 'Integrações', permission: { category: 'settings', action: 'integrations' } },
+  { key: 'general', name: 'Configurações Gerais', permission: { category: 'settings', action: 'update' } },
+  { key: 'tools', name: 'Ferramentas', permission: { category: 'settings', action: 'update' } },
+  { key: 'metrics', name: 'Métricas', permission: { category: 'settings', action: 'update' } },
   { key: 'notifications', name: 'Notificações', permission: null },
   { key: 'security', name: 'Segurança', permission: null },
 ];
