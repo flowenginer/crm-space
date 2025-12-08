@@ -3585,6 +3585,10 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
                         messageInputRef.current?.focus();
                       }
                     }}
+                    onCopyToInput={(content) => {
+                      setMessageInput(content);
+                      messageInputRef.current?.focus();
+                    }}
                     onStartFlow={(flowId) => {
                       toast.info('Iniciando funil...', { description: `Flow ID: ${flowId}` });
                       // TODO: Implement flow start logic
