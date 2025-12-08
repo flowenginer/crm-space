@@ -18,17 +18,13 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { useAgentsForFilter, useDepartmentsForFilter } from '@/hooks/useDashboardAdvanced';
+import { type DashboardFilters } from '@/hooks/useLeadJourneyDashboard';
 
 interface AdvancedFiltersProps {
-  dateFrom: Date;
-  dateTo: Date;
-  agentId?: string;
-  departmentId?: string;
-  onDateFromChange: (date: Date) => void;
-  onDateToChange: (date: Date) => void;
-  onAgentChange: (agentId: string | undefined) => void;
-  onDepartmentChange: (departmentId: string | undefined) => void;
+  filters: DashboardFilters;
+  onFiltersChange: (filters: DashboardFilters) => void;
+  agents: { id: string; full_name: string }[];
+  departments: { id: string; name: string }[];
 }
 
 const presetRanges = [
@@ -41,32 +37,25 @@ const presetRanges = [
 ];
 
 export function AdvancedFilters({
-  dateFrom,
-  dateTo,
-  agentId,
-  departmentId,
-  onDateFromChange,
-  onDateToChange,
-  onAgentChange,
-  onDepartmentChange,
+  filters,
+  onFiltersChange,
+  agents,
+  departments,
 }: AdvancedFiltersProps) {
   const [isDateOpen, setIsDateOpen] = useState(false);
   
-  const { data: agents = [] } = useAgentsForFilter(departmentId);
-  const { data: departments = [] } = useDepartmentsForFilter();
+  const { dateFrom, dateTo, agentId, departmentId } = filters;
 
   const activeFiltersCount = [agentId, departmentId].filter(Boolean).length;
 
   const handlePresetClick = (preset: typeof presetRanges[0]) => {
     const { from, to } = preset.getValue();
-    onDateFromChange(from);
-    onDateToChange(to);
+    onFiltersChange({ ...filters, dateFrom: from, dateTo: to });
     setIsDateOpen(false);
   };
 
   const clearFilters = () => {
-    onAgentChange(undefined);
-    onDepartmentChange(undefined);
+    onFiltersChange({ ...filters, agentId: undefined, departmentId: undefined });
   };
 
   return (
@@ -116,7 +105,7 @@ export function AdvancedFilters({
                   <Calendar
                     mode="single"
                     selected={dateFrom}
-                    onSelect={(date) => date && onDateFromChange(date)}
+                    onSelect={(date) => date && onFiltersChange({ ...filters, dateFrom: date })}
                     locale={ptBR}
                     className="pointer-events-auto"
                   />
@@ -126,7 +115,7 @@ export function AdvancedFilters({
                   <Calendar
                     mode="single"
                     selected={dateTo}
-                    onSelect={(date) => date && onDateToChange(date)}
+                    onSelect={(date) => date && onFiltersChange({ ...filters, dateTo: date })}
                     locale={ptBR}
                     disabled={(date) => date < dateFrom}
                     className="pointer-events-auto"
@@ -141,7 +130,7 @@ export function AdvancedFilters({
       {/* Department Filter */}
       <Select
         value={departmentId || 'all'}
-        onValueChange={(value) => onDepartmentChange(value === 'all' ? undefined : value)}
+        onValueChange={(value) => onFiltersChange({ ...filters, departmentId: value === 'all' ? undefined : value, agentId: undefined })}
       >
         <SelectTrigger className="w-[180px]">
           <SelectValue placeholder="Departamento" />
@@ -159,7 +148,7 @@ export function AdvancedFilters({
       {/* Agent Filter */}
       <Select
         value={agentId || 'all'}
-        onValueChange={(value) => onAgentChange(value === 'all' ? undefined : value)}
+        onValueChange={(value) => onFiltersChange({ ...filters, agentId: value === 'all' ? undefined : value })}
       >
         <SelectTrigger className="w-[180px]">
           <SelectValue placeholder="Vendedor" />
