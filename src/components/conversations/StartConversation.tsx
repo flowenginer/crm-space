@@ -339,20 +339,20 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
         contactId = existingContact.id;
 
-        // Also check if a conversation already exists for this contact
-        // to prevent creating duplicates
-        const { data: existingConv } = await supabase
+        // Check if conversation already exists for this contact ON THIS SPECIFIC CHANNEL
+        const { data: existingConvSameChannel } = await supabase
           .from('conversations')
           .select('id')
           .eq('contact_id', contactId)
+          .eq('channel_id', channelId) // *** CRITICAL: Filter by specific channel ***
           .in('status', ['open', 'pending'])
           .limit(1)
           .maybeSingle();
 
-        if (existingConv) {
-          toast.info('Conversa existente encontrada');
+        if (existingConvSameChannel) {
+          toast.info('Já existe conversa aberta neste canal');
           if (onConversationCreated) {
-            onConversationCreated(existingConv.id);
+            onConversationCreated(existingConvSameChannel.id);
           }
           setPhoneNumber('');
           setSearchResult(null);
@@ -398,19 +398,20 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           toast.info(`Contato já existe: ${existingByPhone.full_name}`);
           contactId = existingByPhone.id;
 
-          // Check for existing conversation to prevent duplicates
-          const { data: existingConv } = await supabase
+          // Check for existing conversation ON THIS SPECIFIC CHANNEL to prevent duplicates
+          const { data: existingConvSameChannel } = await supabase
             .from('conversations')
             .select('id')
             .eq('contact_id', contactId)
+            .eq('channel_id', channelId) // *** CRITICAL: Filter by specific channel ***
             .in('status', ['open', 'pending'])
             .limit(1)
             .maybeSingle();
 
-          if (existingConv) {
-            toast.info('Conversa existente encontrada');
+          if (existingConvSameChannel) {
+            toast.info('Já existe conversa aberta neste canal');
             if (onConversationCreated) {
-              onConversationCreated(existingConv.id);
+              onConversationCreated(existingConvSameChannel.id);
             }
             setPhoneNumber('');
             setSearchResult(null);
