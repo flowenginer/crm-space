@@ -1875,7 +1875,21 @@ function isReactionEvent(provider: WhatsAppProvider, payload: any): boolean {
       return payload.event === "messages.reaction";
     case "evolution":
       const evolutionEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
-      return evolutionEvent === "messages.reaction";
+      
+      // Case 1: Explicit messages.reaction event
+      if (evolutionEvent === "messages.reaction") return true;
+      
+      // Case 2: Reaction embedded in messages.upsert or send.message as reactionMessage
+      if (evolutionEvent === "messages.upsert" || evolutionEvent === "send.message") {
+        let msg = payload.data;
+        if (Array.isArray(msg)) msg = msg[0];
+        
+        if (msg?.message?.reactionMessage || msg?.messageType === "reactionMessage") {
+          console.log(`[Webhook] 🎯 Reaction detected in ${evolutionEvent} as reactionMessage`);
+          return true;
+        }
+      }
+      return false;
     default:
       return false;
   }
@@ -1887,7 +1901,7 @@ async function handleReactionEvent(
   payload: any,
   instanceId: string
 ): Promise<void> {
-  console.log(`[Webhook] handleReactionEvent - Provider: ${provider}, Payload:`, JSON.stringify(payload).substring(0, 1000));
+  console.log(`[Webhook] handleReactionEvent - Provider: ${provider}, Payload:`, JSON.stringify(payload).substring(0, 1500));
   
   // Extract reaction data based on provider
   let reactionData: {
@@ -1899,18 +1913,34 @@ async function handleReactionEvent(
   
   switch (provider) {
     case "evolution":
-      // Evolution API format:
-      // { event: "messages.reaction", data: { key: { id, remoteJid, fromMe }, reaction: { key: { id: originalMsgId }, text: "👍" } } }
-      const evolutionData = payload.data;
-      if (evolutionData?.reaction) {
-        const reactionKey = evolutionData.reaction.key || {};
-        const senderKey = evolutionData.key || {};
+      let evolutionMsg = payload.data;
+      if (Array.isArray(evolutionMsg)) evolutionMsg = evolutionMsg[0];
+      
+      // Format 1: Explicit messages.reaction event
+      // { event: "messages.reaction", data: { key: {...}, reaction: { key: { id: originalMsgId }, text: "👍" } } }
+      if (evolutionMsg?.reaction) {
+        const reactionKey = evolutionMsg.reaction.key || {};
+        const senderKey = evolutionMsg.key || {};
         reactionData = {
-          messageId: reactionKey.id || reactionKey.remoteJid?.split('@')[0] || "",
-          emoji: evolutionData.reaction.text || "",
+          messageId: reactionKey.id || "",
+          emoji: evolutionMsg.reaction.text || "",
           fromMe: senderKey.fromMe || false,
-          fromPhone: (senderKey.remoteJid || "").replace("@s.whatsapp.net", "").replace("@c.us", "")
+          fromPhone: (senderKey.remoteJid || "").replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "")
         };
+        console.log(`[Webhook] Extracted from messages.reaction format`);
+      }
+      // Format 2: reactionMessage embedded in messages.upsert or send.message
+      // { event: "send.message", data: { key: {...}, message: { reactionMessage: { key: { id }, text: "👍" } } } }
+      else if (evolutionMsg?.message?.reactionMessage) {
+        const reactionMsg = evolutionMsg.message.reactionMessage;
+        const senderKey = evolutionMsg.key || {};
+        reactionData = {
+          messageId: reactionMsg.key?.id || "",
+          emoji: reactionMsg.text || "",
+          fromMe: senderKey.fromMe || false,
+          fromPhone: (senderKey.remoteJid || "").replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "")
+        };
+        console.log(`[Webhook] Extracted from reactionMessage format`);
       }
       break;
     
@@ -2215,6 +2245,15 @@ function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
   }
   
   if (!msg?.key) return null;
+  
+  // =====================================================
+  // CRITICAL: Skip reactionMessage - these are handled by handleReactionEvent
+  // Processing them here creates "ghost messages" with just timestamps
+  // =====================================================
+  if (msg?.message?.reactionMessage || msg?.messageType === "reactionMessage") {
+    console.log(`[Webhook Evolution] Skipping reactionMessage in normalizeEvolutionMessage - handled separately`);
+    return null;
+  }
 
   const rawRemoteJid = msg.key.remoteJid || "";
   
