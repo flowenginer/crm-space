@@ -567,6 +567,7 @@ export type Database = {
           department_id: string | null
           first_response_at: string | null
           id: string
+          is_new_transfer: boolean | null
           is_unread: boolean | null
           last_message_at: string | null
           last_message_preview: string | null
@@ -600,6 +601,7 @@ export type Database = {
           department_id?: string | null
           first_response_at?: string | null
           id?: string
+          is_new_transfer?: boolean | null
           is_unread?: boolean | null
           last_message_at?: string | null
           last_message_preview?: string | null
@@ -633,6 +635,7 @@ export type Database = {
           department_id?: string | null
           first_response_at?: string | null
           id?: string
+          is_new_transfer?: boolean | null
           is_unread?: boolean | null
           last_message_at?: string | null
           last_message_preview?: string | null
