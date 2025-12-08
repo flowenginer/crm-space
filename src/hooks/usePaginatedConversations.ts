@@ -226,35 +226,44 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         query = query.is('assigned_to', null);
       } else if (assignment === 'pending' && user) {
         // Pending = conversations with no assigned user but with a department
-        // Filter by user's departments
-        const { data: userDepts } = await supabase
-          .from('user_departments')
-          .select('department_id')
-          .eq('user_id', user.id);
-        
+        // Check if user is admin or supervisor
         const { data: userProfile } = await supabase
           .from('profiles')
-          .select('department_id')
+          .select('department_id, role')
           .eq('id', user.id)
           .single();
         
-        // Get all department IDs the user belongs to
-        const departmentIds = [
-          ...(userDepts?.map(ud => ud.department_id) || []),
-          userProfile?.department_id
-        ].filter(Boolean) as string[];
+        const isAdminOrSupervisor = userProfile?.role === 'admin' || userProfile?.role === 'supervisor';
         
-        if (departmentIds.length > 0) {
+        if (isAdminOrSupervisor) {
+          // Admin/Supervisor sees ALL pending conversations (no department filter)
           query = query
             .is('assigned_to', null)
-            .in('department_id', departmentIds);
+            .not('department_id', 'is', null);
         } else {
-          // User has no departments, return empty
-          return {
-            conversations: [] as Conversation[],
-            nextPage: undefined,
-            pageParam: 0,
-          };
+          // Regular users see only pending from their departments
+          const { data: userDepts } = await supabase
+            .from('user_departments')
+            .select('department_id')
+            .eq('user_id', user.id);
+          
+          const departmentIds = [
+            ...(userDepts?.map(ud => ud.department_id) || []),
+            userProfile?.department_id
+          ].filter(Boolean) as string[];
+          
+          if (departmentIds.length > 0) {
+            query = query
+              .is('assigned_to', null)
+              .in('department_id', departmentIds);
+          } else {
+            // User has no departments, return empty
+            return {
+              conversations: [] as Conversation[],
+              nextPage: undefined,
+              pageParam: 0,
+            };
+          }
         }
       }
 
