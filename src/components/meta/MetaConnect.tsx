@@ -2,119 +2,37 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Facebook, Loader2, Check, AlertCircle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Facebook, Loader2, Check, AlertCircle, ExternalLink, Key } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
-interface AdAccount {
-  id: string;
-  account_id: string;
-  name: string;
-  currency?: string;
-  timezone_name?: string;
-  business?: {
-    id: string;
-    name: string;
-  };
-}
-
 export function MetaConnect() {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [step, setStep] = useState<'initial' | 'select-account' | 'success'>('initial');
-  const [adAccounts, setAdAccounts] = useState<AdAccount[]>([]);
-  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [expiresIn, setExpiresIn] = useState<number | null>(null);
+  const [step, setStep] = useState<'initial' | 'success'>('initial');
+  const [accessToken, setAccessToken] = useState('');
+  const [accountId, setAccountId] = useState('');
   const queryClient = useQueryClient();
 
   const handleConnect = async () => {
-    setIsLoading(true);
-    try {
-      // Get login URL
-      const session = await supabase.auth.getSession();
-      const response = await fetch(
-        `https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/meta-oauth?action=get-login-url`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${session.data.session?.access_token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      
-      const { loginUrl } = await response.json();
-      
-      // Open popup
-      const width = 600;
-      const height = 700;
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-      
-      const popup = window.open(
-        loginUrl,
-        'meta-oauth',
-        `width=${width},height=${height},left=${left},top=${top}`
-      );
-
-      // Listen for message from popup
-      const handleMessage = async (event: MessageEvent) => {
-        if (event.data.type === 'META_OAUTH_SUCCESS') {
-          window.removeEventListener('message', handleMessage);
-          
-          setAccessToken(event.data.accessToken);
-          setExpiresIn(event.data.expiresIn);
-          setAdAccounts(event.data.adAccounts || []);
-          
-          if (event.data.adAccounts && event.data.adAccounts.length > 0) {
-            setStep('select-account');
-          } else {
-            toast.error('Nenhuma conta de anúncio encontrada');
-            setStep('initial');
-          }
-          
-          setIsLoading(false);
-        } else if (event.data.type === 'META_OAUTH_ERROR') {
-          window.removeEventListener('message', handleMessage);
-          toast.error('Erro na autenticação: ' + event.data.error);
-          setIsLoading(false);
-        }
-      };
-
-      window.addEventListener('message', handleMessage);
-
-      // Check if popup was closed
-      const checkPopup = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(checkPopup);
-          if (isLoading) {
-            setIsLoading(false);
-          }
-        }
-      }, 500);
-
-    } catch (error: any) {
-      console.error('Error starting OAuth:', error);
-      toast.error('Erro ao iniciar conexão');
-      setIsLoading(false);
+    if (!accessToken.trim() || !accountId.trim()) {
+      toast.error('Preencha todos os campos');
+      return;
     }
-  };
 
-  const handleSaveAccount = async () => {
-    if (!selectedAccount || !accessToken) return;
+    // Normalize account ID (add act_ prefix if not present)
+    const normalizedAccountId = accountId.startsWith('act_') ? accountId : `act_${accountId}`;
 
     setIsLoading(true);
     try {
-      const account = adAccounts.find(a => a.id === selectedAccount);
-      if (!account) throw new Error('Conta não encontrada');
-
       const session = await supabase.auth.getSession();
       
       const response = await fetch(
-        `https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/meta-oauth?action=save-account`,
+        `https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/meta-oauth?action=manual-connect`,
         {
           method: 'POST',
           headers: {
@@ -122,13 +40,8 @@ export function MetaConnect() {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            accountId: account.id,
-            accountName: account.name,
-            accessToken,
-            expiresIn,
-            businessId: account.business?.id,
-            currency: account.currency,
-            timezone: account.timezone_name
+            accessToken: accessToken.trim(),
+            accountId: normalizedAccountId
           })
         }
       );
@@ -136,7 +49,7 @@ export function MetaConnect() {
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.error || 'Erro ao salvar conta');
+        throw new Error(data.error || 'Erro ao conectar conta');
       }
 
       queryClient.invalidateQueries({ queryKey: ['meta-accounts'] });
@@ -147,28 +60,36 @@ export function MetaConnect() {
       setTimeout(() => {
         setIsOpen(false);
         setStep('initial');
-        setAdAccounts([]);
-        setSelectedAccount(null);
-        setAccessToken(null);
+        setAccessToken('');
+        setAccountId('');
       }, 2000);
 
     } catch (error: any) {
-      console.error('Error saving account:', error);
-      toast.error(error.message || 'Erro ao salvar conta');
+      console.error('Error connecting account:', error);
+      toast.error(error.message || 'Erro ao conectar conta');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      setStep('initial');
+      setAccessToken('');
+      setAccountId('');
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Facebook className="h-4 w-4" />
           Conectar Meta Ads
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Facebook className="h-5 w-5 text-blue-600" />
@@ -205,75 +126,88 @@ export function MetaConnect() {
               </CardContent>
             </Card>
 
+            {/* Manual Connection Form */}
+            <div className="space-y-4 pt-2">
+              <div className="space-y-2">
+                <Label htmlFor="accessToken" className="flex items-center gap-2">
+                  <Key className="h-4 w-4" />
+                  Access Token
+                </Label>
+                <Textarea
+                  id="accessToken"
+                  placeholder="Cole seu Access Token aqui..."
+                  value={accessToken}
+                  onChange={(e) => setAccessToken(e.target.value)}
+                  rows={3}
+                  className="font-mono text-xs"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="accountId">
+                  Account ID (ID da Conta de Anúncios)
+                </Label>
+                <Input
+                  id="accountId"
+                  placeholder="act_123456789 ou apenas 123456789"
+                  value={accountId}
+                  onChange={(e) => setAccountId(e.target.value)}
+                  className="font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Instructions */}
+            <Card className="bg-muted/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Como obter suas credenciais:</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="space-y-1">
+                  <p className="font-medium">1. Access Token:</p>
+                  <ul className="list-disc list-inside text-muted-foreground space-y-1 pl-2">
+                    <li>Acesse o <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Graph API Explorer <ExternalLink className="h-3 w-3" /></a></li>
+                    <li>Selecione seu app no dropdown</li>
+                    <li>Adicione permissões: <code className="bg-muted px-1 rounded">ads_read</code>, <code className="bg-muted px-1 rounded">ads_management</code></li>
+                    <li>Clique em "Generate Access Token"</li>
+                  </ul>
+                </div>
+                
+                <div className="space-y-1">
+                  <p className="font-medium">2. Account ID:</p>
+                  <ul className="list-disc list-inside text-muted-foreground space-y-1 pl-2">
+                    <li>Acesse o <a href="https://business.facebook.com/settings/ad-accounts" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Business Settings <ExternalLink className="h-3 w-3" /></a></li>
+                    <li>Vá em Contas → Contas de anúncios</li>
+                    <li>Copie o ID da conta (ex: 123456789)</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+
             <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg text-sm">
               <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
               <p className="text-amber-800 dark:text-amber-200">
-                Você precisará fazer login com uma conta que tenha acesso às contas de anúncio do Meta Business.
+                O Access Token expira após 60 dias. Você precisará renová-lo periodicamente.
               </p>
             </div>
 
-            <Button onClick={handleConnect} disabled={isLoading} className="w-full gap-2">
+            <Button 
+              onClick={handleConnect} 
+              disabled={isLoading || !accessToken.trim() || !accountId.trim()} 
+              className="w-full gap-2"
+            >
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Conectando...
+                  Verificando e conectando...
                 </>
               ) : (
                 <>
-                  <Facebook className="h-4 w-4" />
-                  Continuar com Facebook
+                  <Check className="h-4 w-4" />
+                  Verificar e Conectar
                 </>
               )}
             </Button>
-          </div>
-        )}
-
-        {step === 'select-account' && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Selecione a conta de anúncios:</label>
-              <Select value={selectedAccount || ''} onValueChange={setSelectedAccount}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma conta" />
-                </SelectTrigger>
-                <SelectContent>
-                  {adAccounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      <div className="flex flex-col">
-                        <span>{account.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {account.account_id} • {account.currency}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={() => setStep('initial')}
-                className="flex-1"
-              >
-                Voltar
-              </Button>
-              <Button 
-                onClick={handleSaveAccount} 
-                disabled={!selectedAccount || isLoading}
-                className="flex-1"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Salvando...
-                  </>
-                ) : (
-                  'Conectar'
-                )}
-              </Button>
-            </div>
           </div>
         )}
 

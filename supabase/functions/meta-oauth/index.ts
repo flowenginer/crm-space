@@ -146,8 +146,126 @@ serve(async (req) => {
       `, { headers: { 'Content-Type': 'text/html' } });
     }
 
+    if (action === 'manual-connect') {
+      // Manual connection with access token and account ID
+      const body = await req.json();
+      const { accessToken, accountId } = body;
+
+      if (!userId) {
+        return new Response(JSON.stringify({ error: 'Não autorizado' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (!accessToken || !accountId) {
+        return new Response(JSON.stringify({ error: 'Access Token e Account ID são obrigatórios' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      console.log('[Meta OAuth] Manual connect attempt for account:', accountId);
+
+      // Validate the access token by calling /me
+      const meResponse = await fetch(
+        `https://graph.facebook.com/v21.0/me?access_token=${accessToken}`
+      );
+      const meData = await meResponse.json();
+
+      if (meData.error) {
+        console.error('[Meta OAuth] Token validation failed:', meData.error);
+        return new Response(JSON.stringify({ 
+          error: `Token inválido: ${meData.error.message}` 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      console.log('[Meta OAuth] Token validated for user:', meData.name);
+
+      // Fetch ad account details
+      const accountResponse = await fetch(
+        `https://graph.facebook.com/v21.0/${accountId}?fields=id,name,account_id,currency,timezone_name,business&access_token=${accessToken}`
+      );
+      const accountData = await accountResponse.json();
+
+      if (accountData.error) {
+        console.error('[Meta OAuth] Account fetch failed:', accountData.error);
+        return new Response(JSON.stringify({ 
+          error: `Conta não encontrada ou sem permissão: ${accountData.error.message}` 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      console.log('[Meta OAuth] Account details:', accountData);
+
+      // Try to get a long-lived token (60 days)
+      let finalToken = accessToken;
+      let expiresIn = 5184000; // Default 60 days
+
+      if (META_APP_ID && META_APP_SECRET) {
+        try {
+          const longLivedResponse = await fetch(
+            `https://graph.facebook.com/v21.0/oauth/access_token?` +
+            `grant_type=fb_exchange_token` +
+            `&client_id=${META_APP_ID}` +
+            `&client_secret=${META_APP_SECRET}` +
+            `&fb_exchange_token=${accessToken}`
+          );
+          const longLivedData = await longLivedResponse.json();
+          
+          if (longLivedData.access_token) {
+            finalToken = longLivedData.access_token;
+            expiresIn = longLivedData.expires_in || 5184000;
+            console.log('[Meta OAuth] Got long-lived token, expires in:', expiresIn);
+          }
+        } catch (e) {
+          console.log('[Meta OAuth] Could not get long-lived token, using original');
+        }
+      }
+
+      const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+      // Delete any pending connections for this user
+      await supabase.from('meta_ad_accounts')
+        .delete()
+        .eq('user_id', userId)
+        .like('account_id', 'pending_%');
+
+      // Upsert the account
+      const { data, error } = await supabase.from('meta_ad_accounts').upsert({
+        user_id: userId,
+        account_id: accountData.id || accountId,
+        account_name: accountData.name || `Conta ${accountId}`,
+        access_token: finalToken,
+        token_expires_at: tokenExpiresAt,
+        business_id: accountData.business?.id,
+        currency: accountData.currency || 'BRL',
+        timezone: accountData.timezone_name || 'America/Sao_Paulo',
+        is_active: true
+      }, { onConflict: 'account_id' }).select().single();
+
+      if (error) {
+        console.error('[Meta OAuth] Save error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      console.log('[Meta OAuth] Account saved successfully:', data.id);
+
+      return new Response(JSON.stringify({ success: true, account: data }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     if (action === 'save-account') {
-      // Save selected ad account
+      // Save selected ad account (legacy OAuth flow)
       const body = await req.json();
       const { accountId, accountName, accessToken, expiresIn, businessId, currency, timezone } = body;
 
