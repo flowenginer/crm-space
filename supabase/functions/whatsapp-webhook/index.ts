@@ -545,7 +545,7 @@ serve(async (req) => {
     const { data: channel, error: channelError } = await supabase
       .from("whatsapp_channels")
       .select(`
-        id, name, instance_id,
+        id, name, instance_id, department_id,
         provider:whatsapp_providers!inner(code, base_url, admin_token)
       `)
       .eq("instance_id", instanceId)
@@ -1165,6 +1165,7 @@ serve(async (req) => {
           .insert({
             contact_id: contact.id,
             channel_id: channel.id,
+            department_id: channel.department_id || null,
             status: "open",
             is_unread: true,
             unread_count: 1,
@@ -1174,7 +1175,7 @@ serve(async (req) => {
             referral_data: conversationReferralData,
             assigned_to: initialAssignedTo,
           })
-          .select("id, status, assigned_to, close_reason, last_message_at")
+          .select("id, status, assigned_to, close_reason, last_message_at, department_id")
           .single();
 
         if (convError) {
