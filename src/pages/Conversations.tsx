@@ -104,16 +104,86 @@ import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePin
 import { usePermissions } from '@/hooks/usePermissions';
 import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
 
-// Helper function to linkify URLs in text
-const linkifyText = (text: string) => {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const parts = text.split(urlRegex);
+// Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
+const formatWhatsAppText = (text: string): React.ReactNode => {
+  if (!text) return null;
   
-  return parts.map((part, index) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  
+  // First split by URLs to preserve them
+  const urlParts = text.split(urlRegex);
+  
+  const processFormatting = (segment: string, segmentIndex: number): React.ReactNode[] => {
+    const elements: React.ReactNode[] = [];
+    let remaining = segment;
+    let keyCounter = 0;
+    
+    // Combined regex for all WhatsApp formatting patterns
+    // Order matters: we process in order of precedence
+    const formatPatterns = [
+      { regex: /\*([^*]+)\*/, tag: 'bold' },
+      { regex: /_([^_]+)_/, tag: 'italic' },
+      { regex: /~([^~]+)~/, tag: 'strikethrough' },
+    ];
+    
+    while (remaining.length > 0) {
+      let earliestMatch: { index: number; length: number; content: string; tag: string } | null = null;
+      
+      // Find the earliest formatting match
+      for (const pattern of formatPatterns) {
+        const match = remaining.match(pattern.regex);
+        if (match && match.index !== undefined) {
+          if (!earliestMatch || match.index < earliestMatch.index) {
+            earliestMatch = {
+              index: match.index,
+              length: match[0].length,
+              content: match[1],
+              tag: pattern.tag,
+            };
+          }
+        }
+      }
+      
+      if (earliestMatch) {
+        // Add text before the match
+        if (earliestMatch.index > 0) {
+          elements.push(remaining.slice(0, earliestMatch.index));
+        }
+        
+        // Add the formatted element
+        const key = `${segmentIndex}-${keyCounter++}`;
+        const formattedContent = processFormatting(earliestMatch.content, segmentIndex);
+        
+        switch (earliestMatch.tag) {
+          case 'bold':
+            elements.push(<strong key={key}>{formattedContent}</strong>);
+            break;
+          case 'italic':
+            elements.push(<em key={key}>{formattedContent}</em>);
+            break;
+          case 'strikethrough':
+            elements.push(<del key={key} className="line-through">{formattedContent}</del>);
+            break;
+        }
+        
+        // Continue with the rest
+        remaining = remaining.slice(earliestMatch.index + earliestMatch.length);
+      } else {
+        // No more formatting found, add remaining text
+        elements.push(remaining);
+        break;
+      }
+    }
+    
+    return elements;
+  };
+  
+  return urlParts.map((part, index) => {
+    // Check if this part is a URL
     if (urlRegex.test(part)) {
       return (
         <a
-          key={index}
+          key={`url-${index}`}
           href={part}
           target="_blank"
           rel="noopener noreferrer"
@@ -123,9 +193,13 @@ const linkifyText = (text: string) => {
         </a>
       );
     }
-    return part;
+    // Process WhatsApp formatting for non-URL parts
+    return <span key={`text-${index}`}>{processFormatting(part, index)}</span>;
   });
 };
+
+// Alias for backwards compatibility
+const linkifyText = formatWhatsAppText;
 
 // Mock Data for reference (will be replaced by real data)
 const mockConversations = [
