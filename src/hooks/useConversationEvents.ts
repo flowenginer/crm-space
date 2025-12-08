@@ -135,12 +135,17 @@ export function useTransferConversation() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
+      console.log('[Transfer] Starting transfer for conversation:', conversationId);
+      console.log('[Transfer] Current user ID:', user.id);
+
       // Get current user's profile for the event data
       const { data: actorProfile } = await supabase
         .from('profiles')
         .select('full_name')
         .eq('id', user.id)
         .single();
+
+      console.log('[Transfer] Actor profile:', actorProfile?.full_name);
 
       // Get current conversation to capture the "from" state
       const { data: currentConversation, error: convError } = await supabase
@@ -154,7 +159,13 @@ export function useTransferConversation() {
         .eq('id', conversationId)
         .single();
 
-      if (convError) throw convError;
+      if (convError) {
+        console.error('[Transfer] Error fetching conversation:', convError);
+        throw convError;
+      }
+
+      console.log('[Transfer] Current conversation assigned_to:', currentConversation?.assigned_to);
+      console.log('[Transfer] Is user the owner?:', currentConversation?.assigned_to === user.id);
 
       const fromUserId = currentConversation?.assigned_to;
       const fromUserName = (currentConversation?.assigned_user as any)?.full_name || null;
@@ -180,6 +191,7 @@ export function useTransferConversation() {
       // This is because the RLS policy on conversation_events checks if the current user
       // is the assigned_to of the conversation. If we update first, the user is no longer
       // the assigned_to and the INSERT will fail.
+      console.log('[Transfer] Creating transfer event...');
       const { error: eventError } = await supabase
         .from('conversation_events')
         .insert({
@@ -189,7 +201,11 @@ export function useTransferConversation() {
           data: eventData,
         });
 
-      if (eventError) throw eventError;
+      if (eventError) {
+        console.error('[Transfer] Error creating event:', eventError);
+        throw eventError;
+      }
+      console.log('[Transfer] Event created successfully');
 
       // Now update the conversation - the event is already recorded
       const updateData: any = {
@@ -208,12 +224,17 @@ export function useTransferConversation() {
         updateData.department_id = toDepartmentId;
       }
 
+      console.log('[Transfer] Updating conversation with:', updateData);
       const { error: updateError } = await supabase
         .from('conversations')
         .update(updateData)
         .eq('id', conversationId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('[Transfer] Error updating conversation:', updateError);
+        throw updateError;
+      }
+      console.log('[Transfer] Conversation updated successfully');
 
       return { success: true };
     },
