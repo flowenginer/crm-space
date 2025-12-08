@@ -318,7 +318,7 @@ function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, o
         isSelected 
           ? 'bg-accent border-l-4 border-l-primary' 
           : isNewTransfer
-            ? 'bg-blue-500/10 border-l-4 border-l-blue-500 animate-pulse'
+            ? 'bg-emerald-500/20 border-l-4 border-l-emerald-500 animate-pulse'
             : isUnread 
               ? 'bg-[hsl(var(--unread-bg))] border-l-3 border-l-purple-400/60' 
               : 'hover:bg-muted/50'
@@ -427,9 +427,9 @@ function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, o
               
               {/* Transfer Badge */}
               {isNewTransfer && (
-                <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/20 rounded-full">
-                  <ArrowRightLeft size={10} className="text-blue-500" />
-                  <span className="text-xs text-blue-500 font-medium">Transferida</span>
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/30 rounded-full">
+                  <ArrowRightLeft size={10} className="text-emerald-600" />
+                  <span className="text-xs text-emerald-600 font-medium">Transferida</span>
                 </div>
               )}
               
