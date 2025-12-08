@@ -324,7 +324,7 @@ Authorization: Bearer SUA_SERVICE_ROLE_KEY`} />
               <Endpoint
                 method="GET"
                 endpoint="/conversations?status=eq.open"
-                description="Listar conversas abertas"
+                description="Listar conversas abertas (básico)"
                 curl={`curl -X GET "${SUPABASE_URL}/rest/v1/conversations?status=eq.open&select=id,contact_id,assigned_to,last_message_at&order=last_message_at.desc" \\
   -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
@@ -340,12 +340,71 @@ Authorization: Bearer SUA_SERVICE_ROLE_KEY`} />
 
               <Endpoint
                 method="GET"
+                endpoint="/conversations?select=*,contacts(*),profiles(*),departments(*),whatsapp_channels(*)"
+                description="⭐ Listar conversas COM TODOS OS DADOS RELACIONADOS (contato, atendente, departamento, canal)"
+                curl={`curl -X GET "${SUPABASE_URL}/rest/v1/conversations?status=eq.open&select=*,contacts:contact_id(id,full_name,phone,email,lead_status,avatar_url,negotiated_value,origin,first_contact_at),assigned_agent:assigned_to(id,full_name,role,avatar_url),departments:department_id(id,name,color),whatsapp_channels:channel_id(id,name,phone_number)&order=last_message_at.desc" \\
+  -H "apikey: SUA_SERVICE_ROLE_KEY" \\
+  -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
+                response={`[
+  {
+    "id": "eac777cd-0819-4161-bc63-ed9d4942ed7f",
+    "contact_id": "365262e1-2292-4810-aeb8-e1077fab87a3",
+    "channel_id": "1b81ac1d-418d-4ce6-91ae-aa2e0ae40c9d",
+    "assigned_to": "uuid-do-atendente",
+    "department_id": "440b4be6-5833-44ae-a1a9-c61162fc0afa",
+    "status": "open",
+    "lead_status": "new",
+    "last_message_at": "2025-12-08T02:28:51.961+00:00",
+    "last_message_preview": "Olá, vim pelo Linktree...",
+    "contacts": {
+      "id": "365262e1-2292-4810-aeb8-e1077fab87a3",
+      "full_name": "João Silva",
+      "phone": "5521994576762",
+      "email": "joao@email.com",
+      "lead_status": "new",
+      "avatar_url": null,
+      "negotiated_value": 0,
+      "origin": "linktree",
+      "first_contact_at": "2025-12-05T10:00:00Z"
+    },
+    "assigned_agent": {
+      "id": "uuid-do-atendente",
+      "full_name": "Diego",
+      "role": "vendedor",
+      "avatar_url": null
+    },
+    "departments": {
+      "id": "440b4be6-5833-44ae-a1a9-c61162fc0afa",
+      "name": "Vendas",
+      "color": "#8B5CF6"
+    },
+    "whatsapp_channels": {
+      "id": "1b81ac1d-418d-4ce6-91ae-aa2e0ae40c9d",
+      "name": "VENDAS 01",
+      "phone_number": "5521999999999"
+    }
+  }
+]`}
+              />
+
+              <Endpoint
+                method="GET"
                 endpoint="/conversations?contact_id=eq.{uuid}"
-                description="Buscar conversas de um contato"
-                curl={`curl -X GET "${SUPABASE_URL}/rest/v1/conversations?contact_id=eq.UUID_DO_CONTATO&select=*" \\
+                description="Buscar conversas de um contato específico"
+                curl={`curl -X GET "${SUPABASE_URL}/rest/v1/conversations?contact_id=eq.UUID_DO_CONTATO&select=*,contacts:contact_id(full_name,phone),assigned_agent:assigned_to(full_name),departments:department_id(name)" \\
   -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
               />
+
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mt-4 mb-4">
+                <p className="text-sm text-blue-700 dark:text-blue-400 flex items-start gap-2">
+                  <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Dica de JOINs:</strong> Use a sintaxe <code>nome_alias:coluna_fk(campos)</code> para trazer dados relacionados. 
+                    Por exemplo: <code>assigned_agent:assigned_to(full_name)</code> traz o nome do atendente usando a FK <code>assigned_to</code>.
+                  </span>
+                </p>
+              </div>
             </div>
 
             {/* Messages */}
