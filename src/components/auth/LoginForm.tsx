@@ -67,7 +67,7 @@ export function LoginForm() {
         title: 'Bem-vindo!',
         description: 'Login realizado com sucesso',
       });
-      navigate('/');
+      navigate('/conversations');
     }
     
     setIsLoading(false);
