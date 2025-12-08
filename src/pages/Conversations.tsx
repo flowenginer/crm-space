@@ -1051,6 +1051,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const dragCounterRef = useRef<number>(0);
   const isSendingRef = useRef(false);
+  const recordingCancelledRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
@@ -2296,9 +2297,18 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
       };
 
       mediaRecorder.onstop = async () => {
+        // Stop all tracks first
+        stream.getTracks().forEach(track => track.stop());
+        
+        // Check if recording was cancelled - if so, don't send
+        if (recordingCancelledRef.current) {
+          recordingCancelledRef.current = false;
+          audioChunksRef.current = [];
+          return;
+        }
+        
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const audioFile = new File([audioBlob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
-        stream.getTracks().forEach(track => track.stop());
         
         // Prevent duplicate sends
         if (isSendingRef.current) return;
@@ -2356,6 +2366,9 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   };
 
   const stopRecording = () => {
+    // Ensure we're sending (not cancelling)
+    recordingCancelledRef.current = false;
+    
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -2367,6 +2380,9 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   };
 
   const cancelRecording = () => {
+    // IMPORTANT: Set cancelled flag BEFORE calling stop()
+    recordingCancelledRef.current = true;
+    
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
