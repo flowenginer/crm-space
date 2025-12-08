@@ -77,7 +77,7 @@ export function useReturnConversation() {
         .single();
 
       // Update the conversation
-      const { error: updateError } = await supabase
+      const { data: updateResult, error: updateError } = await supabase
         .from('conversations')
         .update({
           assigned_to: toUserId,
@@ -85,9 +85,14 @@ export function useReturnConversation() {
           transferred_from: user.id,
           transfer_note: 'Devolução de transferência',
         })
-        .eq('id', conversationId);
+        .eq('id', conversationId)
+        .select('id');
 
       if (updateError) throw updateError;
+      
+      if (!updateResult || updateResult.length === 0) {
+        throw new Error('Falha ao devolver conversa. Verifique suas permissões.');
+      }
 
       // Create the return transfer event
       const { error: eventError } = await supabase
@@ -225,16 +230,24 @@ export function useTransferConversation() {
       }
 
       console.log('[Transfer] Updating conversation with:', updateData);
-      const { error: updateError } = await supabase
+      const { data: updateResult, error: updateError } = await supabase
         .from('conversations')
         .update(updateData)
-        .eq('id', conversationId);
+        .eq('id', conversationId)
+        .select('id');
 
       if (updateError) {
         console.error('[Transfer] Error updating conversation:', updateError);
         throw updateError;
       }
-      console.log('[Transfer] Conversation updated successfully');
+      
+      // Verify the update actually affected a row
+      if (!updateResult || updateResult.length === 0) {
+        console.error('[Transfer] No rows updated - RLS policy may have blocked the update');
+        throw new Error('Falha ao transferir conversa. Verifique suas permissões.');
+      }
+      
+      console.log('[Transfer] Conversation updated successfully:', updateResult);
 
       return { success: true };
     },
