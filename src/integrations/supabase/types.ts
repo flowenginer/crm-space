@@ -2790,6 +2790,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_access_conversation: {
+        Args: { conv_id: string; user_id: string }
+        Returns: boolean
+      }
       check_user_permission: {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
@@ -2810,6 +2814,10 @@ export type Database = {
           contact_id: string
           total_count: number
         }[]
+      }
+      get_conversation_owner_name: {
+        Args: { conv_id: string }
+        Returns: string
       }
       get_conversation_tag_counts: {
         Args: {
