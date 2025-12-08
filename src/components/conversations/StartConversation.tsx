@@ -4,9 +4,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { MessageSquare, Send, Loader2, Phone, User, Smartphone } from 'lucide-react';
+import { MessageSquare, Send, Loader2, Phone, User, Smartphone, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBrazilianPhone, normalizePhoneForStorage, getPhoneSearchVariations, isValidBrazilianPhone } from '@/utils/phone';
+import { usePermissions } from '@/hooks/usePermissions';
+import { useAuth } from '@/hooks/useAuth';
 
 interface StartConversationProps {
   onConversationCreated?: (conversationId: string) => void;
@@ -21,6 +23,8 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
   const [pendingContact, setPendingContact] = useState<any>(null);
   
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const { user } = useAuth();
 
   // Fetch available WhatsApp channels
   const { data: channels = [] } = useQuery({
@@ -44,6 +48,58 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
   };
 
   const isValidPhone = () => isValidBrazilianPhone(phoneNumber);
+
+  // Check if user can access a conversation
+  const checkConversationAccess = async (conversationId: string): Promise<{ canAccess: boolean; ownerName?: string }> => {
+    // Admin/supervisor can access all
+    if (can.viewAllConversations()) {
+      return { canAccess: true };
+    }
+
+    // Check if conversation is assigned to current user or unassigned in their department
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('assigned_to, department_id')
+      .eq('id', conversationId)
+      .single();
+
+    if (!conv) {
+      return { canAccess: false };
+    }
+
+    // User is the owner
+    if (conv.assigned_to === user?.id) {
+      return { canAccess: true };
+    }
+
+    // Conversation is unassigned - check department
+    if (!conv.assigned_to) {
+      // Get user's department
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('department_id')
+        .eq('id', user?.id)
+        .single();
+
+      // If conversation has no department or same department as user
+      if (!conv.department_id || conv.department_id === userProfile?.department_id) {
+        return { canAccess: true };
+      }
+    }
+
+    // Get owner name for the error message
+    if (conv.assigned_to) {
+      const { data: ownerProfile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', conv.assigned_to)
+        .single();
+      
+      return { canAccess: false, ownerName: ownerProfile?.full_name || 'outro atendente' };
+    }
+
+    return { canAccess: false, ownerName: 'outro departamento' };
+  };
 
   // Search for existing contact and conversation
   const searchContact = async () => {
@@ -79,6 +135,18 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           .maybeSingle();
 
         if (openConv) {
+          // Check if user can access this conversation
+          const { canAccess, ownerName } = await checkConversationAccess(openConv.id);
+          
+          if (!canAccess) {
+            toast.error(`Este lead pertence a ${ownerName}`, {
+              icon: <ShieldAlert className="text-destructive" size={18} />,
+              description: 'Você não tem permissão para acessar conversas de outros atendentes.',
+            });
+            setPhoneNumber('');
+            return;
+          }
+
           // Navigate to existing open conversation
           toast.info('Conversa existente encontrada');
           if (onConversationCreated) {
@@ -91,16 +159,27 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
         // Check for any conversation (including closed) and reopen it
         const { data: closedConv } = await supabase
           .from('conversations')
-          .select('id, status')
+          .select('id, status, assigned_to')
           .eq('contact_id', contact.id)
           .order('last_message_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (closedConv) {
+          // Check if user can access this conversation
+          const { canAccess, ownerName } = await checkConversationAccess(closedConv.id);
+          
+          if (!canAccess) {
+            toast.error(`Este lead pertence a ${ownerName}`, {
+              icon: <ShieldAlert className="text-destructive" size={18} />,
+              description: 'Você não tem permissão para reabrir conversas de outros atendentes.',
+            });
+            setPhoneNumber('');
+            return;
+          }
+
           // Reopen the conversation if it was closed
           if (closedConv.status === 'closed') {
-            const { data: { user } } = await supabase.auth.getUser();
             await supabase
               .from('conversations')
               .update({ 
@@ -151,7 +230,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
     
     try {
       const normalizedPhone = normalizePhoneForStorage(phoneNumber);
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       
       let contactId: string;
 
@@ -216,7 +295,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           contact_id: contactId,
           channel_id: channelId,
           status: 'open',
-          assigned_to: user?.id,
+          assigned_to: currentUser?.id,
           is_unread: false,
           unread_count: 0,
           last_message_at: new Date().toISOString(),
