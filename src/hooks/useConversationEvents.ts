@@ -117,10 +117,14 @@ export function useReturnConversation() {
       return { success: true };
     },
     onSuccess: (_, variables) => {
+      // Invalidar todas as queries relacionadas imediatamente
       queryClient.invalidateQueries({ queryKey: ['conversation-events', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['conversation', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-direct', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
     },
   });
 }
@@ -151,10 +155,14 @@ export function useTransferConversation() {
       return { success: data };
     },
     onSuccess: (_, variables) => {
+      // Invalidar todas as queries relacionadas imediatamente
       queryClient.invalidateQueries({ queryKey: ['conversation-events', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['conversation', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-direct', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', variables.conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
     },
   });
 }

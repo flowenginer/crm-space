@@ -74,7 +74,15 @@ export function useRealtimeConversations() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    // Debounced invalidation to prevent excessive updates
+    // Invalidação imediata para mudanças críticas (transferências)
+    const invalidateImmediately = () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
+    };
+
+    // Debounced invalidation para outras mudanças (150ms - mais responsivo)
     const invalidateConversations = debounce(() => {
       // Invalidate paginated queries (primary)
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
@@ -92,7 +100,7 @@ export function useRealtimeConversations() {
       queryClient.invalidateQueries({ queryKey: ['origin-counts'] });
       queryClient.invalidateQueries({ queryKey: ['tag-counts'] });
       queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
-    }, 500);
+    }, 150);
 
     // Subscribe to conversation updates
     const channel = supabase
@@ -100,12 +108,31 @@ export function useRealtimeConversations() {
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
           schema: 'public',
           table: 'conversations',
         },
         (payload) => {
-          console.log('Conversation updated:', payload.eventType);
+          // Se assigned_to mudou (transferência), invalidar imediatamente
+          const oldAssignedTo = (payload.old as any)?.assigned_to;
+          const newAssignedTo = (payload.new as any)?.assigned_to;
+          
+          if (oldAssignedTo !== newAssignedTo) {
+            console.log('Conversation transferred - immediate refresh');
+            invalidateImmediately();
+          } else {
+            invalidateConversations();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'conversations',
+        },
+        () => {
           invalidateConversations();
         }
       )
@@ -115,6 +142,38 @@ export function useRealtimeConversations() {
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
+}
+
+// Hook para escutar eventos de conversa em tempo real (transferências, fechamentos)
+export function useRealtimeConversationEvents(conversationId: string | null) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const channel = supabase
+      .channel(`conv-events:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'conversation_events',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        () => {
+          // Invalidar imediatamente quando há novo evento
+          queryClient.invalidateQueries({ queryKey: ['conversation-events', conversationId] });
+          queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+          queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId, queryClient]);
 }
 
 export function useTypingIndicator(conversationId: string | null) {

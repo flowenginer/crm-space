@@ -84,7 +84,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useConversationEvents, useReturnConversation, type ConversationEvent } from '@/hooks/useConversationEvents';
 import { TransferEventCard } from '@/components/conversations/TransferEventCard';
-import { useRealtimeMessages, useRealtimeConversations, useTypingIndicator } from '@/hooks/useRealtimeChat';
+import { useRealtimeMessages, useRealtimeConversations, useRealtimeConversationEvents, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
 import { formatDistanceToNow, format, isToday, isYesterday, parseISO } from 'date-fns';
@@ -1271,6 +1271,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   // Realtime subscriptions
   useRealtimeMessages(selectedConversationId);
   useRealtimeConversations();
+  useRealtimeConversationEvents(selectedConversationId);
   const { typingUsers, startTyping, stopTyping } = useTypingIndicator(selectedConversationId);
 
   // Direct fetch for selected conversation - ALWAYS fetch when we have a selectedConversationId
