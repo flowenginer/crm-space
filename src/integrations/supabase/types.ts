@@ -2719,6 +2719,7 @@ export type Database = {
         Returns: undefined
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_admin_or_supervisor: { Args: { _user_id: string }; Returns: boolean }
       is_lid_contact: { Args: { phone: string }; Returns: boolean }
       merge_duplicate_contacts: {
         Args: {
