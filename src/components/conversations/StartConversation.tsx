@@ -58,6 +58,57 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
   const isValidPhone = () => isValidBrazilianPhone(phoneNumber);
 
+  // Check if user can access a CONTACT (not just conversation)
+  const checkContactAccess = async (contact: { id: string; assigned_to: string | null; department_id: string | null }): Promise<{ 
+    canAccess: boolean; 
+    ownerName?: string;
+    ownerId?: string;
+    ownerAvatar?: string | null;
+  }> => {
+    // Admin/supervisor can access all
+    if (can.viewAllConversations()) {
+      return { canAccess: true };
+    }
+
+    // If contact has an owner (assigned_to), check if it's the current user
+    if (contact.assigned_to) {
+      if (contact.assigned_to === user?.id) {
+        return { canAccess: true };
+      }
+      
+      // Contact belongs to another user - get owner info
+      const { data: ownerProfile } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .eq('id', contact.assigned_to)
+        .single();
+      
+      return { 
+        canAccess: false, 
+        ownerName: ownerProfile?.full_name || 'outro atendente',
+        ownerId: ownerProfile?.id,
+        ownerAvatar: ownerProfile?.avatar_url
+      };
+    }
+
+    // Contact has no owner - check department access
+    if (contact.department_id) {
+      const { data: userDepartments } = await supabase
+        .from('user_departments')
+        .select('department_id')
+        .eq('user_id', user?.id!);
+
+      const userDeptIds = userDepartments?.map(d => d.department_id) || [];
+      
+      if (!userDeptIds.includes(contact.department_id)) {
+        return { canAccess: false, ownerName: 'outro departamento' };
+      }
+    }
+
+    // Contact is accessible (no owner, or user has department access)
+    return { canAccess: true };
+  };
+
   // Check if user can access a conversation
   const checkConversationAccess = async (conversationId: string): Promise<{ 
     canAccess: boolean; 
@@ -144,7 +195,39 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
       if (error) throw error;
 
       if (contact) {
-        // Check for existing conversation (open or pending first)
+        // *** CRITICAL: First check if user can access the CONTACT itself ***
+        const contactAccessResult = await checkContactAccess({
+          id: contact.id,
+          assigned_to: contact.assigned_to,
+          department_id: contact.department_id
+        });
+
+        if (!contactAccessResult.canAccess) {
+          // Contact belongs to another user - show request modal immediately
+          // Find the most recent conversation for context
+          const { data: anyConv } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('contact_id', contact.id)
+            .order('last_message_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          setBlockedContactInfo({
+            contact: { id: contact.id, full_name: contact.full_name, phone: contact.phone },
+            owner: { 
+              id: contactAccessResult.ownerId!, 
+              full_name: contactAccessResult.ownerName || null, 
+              avatar_url: contactAccessResult.ownerAvatar || null 
+            },
+            conversationId: anyConv?.id || null,
+          });
+          setShowRequestModal(true);
+          toast.error(`Este contato pertence a ${contactAccessResult.ownerName}. Você precisa solicitar acesso.`);
+          return;
+        }
+
+        // User CAN access this contact - now check for existing conversations
         const { data: openConv } = await supabase
           .from('conversations')
           .select('id')
@@ -155,20 +238,6 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           .maybeSingle();
 
         if (openConv) {
-          // Check if user can access this conversation
-          const { canAccess, ownerName, ownerId, ownerAvatar } = await checkConversationAccess(openConv.id);
-          
-          if (!canAccess) {
-            // Show request modal instead of just error
-            setBlockedContactInfo({
-              contact: { id: contact.id, full_name: contact.full_name, phone: contact.phone },
-              owner: { id: ownerId!, full_name: ownerName || null, avatar_url: ownerAvatar || null },
-              conversationId: openConv.id,
-            });
-            setShowRequestModal(true);
-            return;
-          }
-
           // Navigate to existing open conversation
           toast.info('Conversa existente encontrada');
           if (onConversationCreated) {
@@ -188,20 +257,6 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           .maybeSingle();
 
         if (closedConv) {
-          // Check if user can access this conversation
-          const { canAccess, ownerName, ownerId, ownerAvatar } = await checkConversationAccess(closedConv.id);
-          
-          if (!canAccess) {
-            // Show request modal instead of just error
-            setBlockedContactInfo({
-              contact: { id: contact.id, full_name: contact.full_name, phone: contact.phone },
-              owner: { id: ownerId!, full_name: ownerName || null, avatar_url: ownerAvatar || null },
-              conversationId: closedConv.id,
-            });
-            setShowRequestModal(true);
-            return;
-          }
-
           // Reopen the conversation if it was closed
           if (closedConv.status === 'closed') {
             await supabase
@@ -259,22 +314,113 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
       let contactId: string;
 
       if (existingContact?.id) {
+        // *** CRITICAL: Double-check contact access before proceeding ***
+        const accessCheck = await checkContactAccess({
+          id: existingContact.id,
+          assigned_to: existingContact.assigned_to,
+          department_id: existingContact.department_id
+        });
+
+        if (!accessCheck.canAccess) {
+          toast.error(`Este contato pertence a ${accessCheck.ownerName}. Você precisa solicitar acesso.`);
+          setBlockedContactInfo({
+            contact: { id: existingContact.id, full_name: existingContact.full_name, phone: existingContact.phone },
+            owner: { 
+              id: accessCheck.ownerId!, 
+              full_name: accessCheck.ownerName || null, 
+              avatar_url: accessCheck.ownerAvatar || null 
+            },
+            conversationId: null,
+          });
+          setShowRequestModal(true);
+          setIsLoading(false);
+          return;
+        }
+
         contactId = existingContact.id;
+
+        // Also check if a conversation already exists for this contact
+        // to prevent creating duplicates
+        const { data: existingConv } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_id', contactId)
+          .in('status', ['open', 'pending'])
+          .limit(1)
+          .maybeSingle();
+
+        if (existingConv) {
+          toast.info('Conversa existente encontrada');
+          if (onConversationCreated) {
+            onConversationCreated(existingConv.id);
+          }
+          setPhoneNumber('');
+          setSearchResult(null);
+          setShowSearchResult(false);
+          setPendingContact(null);
+          setIsLoading(false);
+          return;
+        }
       } else {
         // Verificar duplicata uma última vez antes de criar
         const searchVariations = getPhoneSearchVariations(normalizedPhone);
         const orConditions = searchVariations.map(v => `phone.eq.${v}`).join(',');
         const { data: existingByPhone } = await supabase
           .from('contacts')
-          .select('id, full_name')
+          .select('id, full_name, assigned_to, department_id')
           .or(orConditions)
           .maybeSingle();
         
         if (existingByPhone) {
+          // *** CRITICAL: Check if this existing contact belongs to another user ***
+          const accessCheck = await checkContactAccess({
+            id: existingByPhone.id,
+            assigned_to: existingByPhone.assigned_to,
+            department_id: existingByPhone.department_id
+          });
+
+          if (!accessCheck.canAccess) {
+            toast.error(`Este contato pertence a ${accessCheck.ownerName}. Você precisa solicitar acesso.`);
+            setBlockedContactInfo({
+              contact: { id: existingByPhone.id, full_name: existingByPhone.full_name, phone: normalizedPhone },
+              owner: { 
+                id: accessCheck.ownerId!, 
+                full_name: accessCheck.ownerName || null, 
+                avatar_url: accessCheck.ownerAvatar || null 
+              },
+              conversationId: null,
+            });
+            setShowRequestModal(true);
+            setIsLoading(false);
+            return;
+          }
+
           toast.info(`Contato já existe: ${existingByPhone.full_name}`);
           contactId = existingByPhone.id;
+
+          // Check for existing conversation to prevent duplicates
+          const { data: existingConv } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('contact_id', contactId)
+            .in('status', ['open', 'pending'])
+            .limit(1)
+            .maybeSingle();
+
+          if (existingConv) {
+            toast.info('Conversa existente encontrada');
+            if (onConversationCreated) {
+              onConversationCreated(existingConv.id);
+            }
+            setPhoneNumber('');
+            setSearchResult(null);
+            setShowSearchResult(false);
+            setPendingContact(null);
+            setIsLoading(false);
+            return;
+          }
         } else {
-          // Create new contact with normalized phone
+          // Create new contact with normalized phone - assign to current user
           const { data: newContact, error: contactError } = await supabase
             .from('contacts')
             .insert({
@@ -283,6 +429,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
               lead_status: 'new',
               origin: 'manual',
               first_contact_at: new Date().toISOString(),
+              assigned_to: currentUser?.id, // *** CRITICAL: Assign new contact to current user ***
             })
             .select()
             .single();
@@ -292,11 +439,34 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
             if (contactError.code === '23505') {
               const { data: foundContact } = await supabase
                 .from('contacts')
-                .select('id, full_name')
+                .select('id, full_name, assigned_to, department_id')
                 .or(orConditions)
                 .maybeSingle();
               
               if (foundContact) {
+                // Check access for this found contact
+                const accessCheck = await checkContactAccess({
+                  id: foundContact.id,
+                  assigned_to: foundContact.assigned_to,
+                  department_id: foundContact.department_id
+                });
+
+                if (!accessCheck.canAccess) {
+                  toast.error(`Este contato pertence a ${accessCheck.ownerName}.`);
+                  setBlockedContactInfo({
+                    contact: { id: foundContact.id, full_name: foundContact.full_name, phone: normalizedPhone },
+                    owner: { 
+                      id: accessCheck.ownerId!, 
+                      full_name: accessCheck.ownerName || null, 
+                      avatar_url: accessCheck.ownerAvatar || null 
+                    },
+                    conversationId: null,
+                  });
+                  setShowRequestModal(true);
+                  setIsLoading(false);
+                  return;
+                }
+
                 toast.info(`Contato encontrado: ${foundContact.full_name}`);
                 contactId = foundContact.id;
               } else {
@@ -329,6 +499,13 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
         .single();
 
       if (createError) throw createError;
+
+      // Also update the contact's assigned_to if not already set
+      await supabase
+        .from('contacts')
+        .update({ assigned_to: currentUser?.id })
+        .eq('id', contactId)
+        .is('assigned_to', null);
 
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
