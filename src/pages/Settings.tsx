@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Users,
   Building2,
@@ -28,6 +28,7 @@ import {
   Plug,
   Target,
   Wrench,
+  LucideIcon,
 } from 'lucide-react';
 import { UserManagement } from '@/components/settings/UserManagement';
 import { RoleManagement } from '@/components/settings/RoleManagement';
@@ -86,9 +87,61 @@ const fieldTypeLabels: Record<string, string> = {
   multiselect: 'Multi-seleção',
 };
 
+// Definição de abas com permissões necessárias
+interface SettingsTab {
+  value: string;
+  label: string;
+  icon: LucideIcon;
+  // Permissão necessária: [categoria, ação] ou null para acesso livre (ex: notificações pessoais)
+  permission: [string, string] | null;
+  // Se true, só admins podem ver
+  adminOnly?: boolean;
+}
+
+const SETTINGS_TABS: SettingsTab[] = [
+  { value: 'team', label: 'Equipe', icon: Users, permission: ['users', 'read'] },
+  { value: 'roles', label: 'Perfis', icon: Shield, permission: ['users', 'manage_roles'], adminOnly: true },
+  { value: 'departments', label: 'Departamentos', icon: Building2, permission: ['settings', 'update'] },
+  { value: 'channels', label: 'Canais', icon: MessageSquare, permission: ['channels', 'read'] },
+  { value: 'fields', label: 'Campos', icon: Database, permission: ['settings', 'update'] },
+  { value: 'tags', label: 'Etiquetas', icon: Tag, permission: ['tags', 'read'] },
+  { value: 'owner-agent', label: 'Responsável', icon: UserCheck, permission: ['settings', 'update'] },
+  { value: 'close-reasons', label: 'Fechamento', icon: X, permission: ['settings', 'update'] },
+  { value: 'notifications', label: 'Notificações', icon: Bell, permission: null }, // Todos podem configurar suas notificações
+  { value: 'security', label: 'Segurança', icon: Key, permission: null }, // Todos podem trocar sua senha
+  { value: 'integrations', label: 'Integrações', icon: Plug, permission: ['settings', 'update'] },
+  { value: 'meta-ads', label: 'Meta Ads', icon: Facebook, permission: ['marketing', 'manage'] },
+  { value: 'general', label: 'Geral', icon: Palette, permission: ['settings', 'update'] },
+  { value: 'tools', label: 'Ferramentas', icon: Wrench, permission: ['settings', 'update'] },
+  { value: 'metrics', label: 'Métricas', icon: Target, permission: ['settings', 'update'] },
+];
+
 export default function Settings() {
   const { user } = useAuth();
-  const { can } = usePermissions();
+  const { hasPermission, isAdmin, isFullyLoaded } = usePermissions();
+  
+  // Filtra abas disponíveis baseado nas permissões do usuário
+  const availableTabs = useMemo(() => {
+    if (!isFullyLoaded) return [];
+    
+    return SETTINGS_TABS.filter(tab => {
+      // Admin sempre tem acesso a tudo
+      if (isAdmin) return true;
+      
+      // Tabs só para admin
+      if (tab.adminOnly) return false;
+      
+      // Tabs sem permissão específica (ex: notificações pessoais)
+      if (tab.permission === null) return true;
+      
+      // Verifica permissão específica
+      const [category, action] = tab.permission;
+      return hasPermission(category, action);
+    });
+  }, [isFullyLoaded, isAdmin, hasPermission]);
+
+  // Define a primeira aba disponível como default
+  const defaultTab = availableTabs.length > 0 ? availableTabs[0].value : 'notifications';
   
   // Fetch real data
   const { data: teamMembers = [], isLoading: loadingTeam } = useTeam();
@@ -411,6 +464,33 @@ export default function Settings() {
     }
   };
 
+  // Verifica se uma aba específica está disponível
+  const isTabAvailable = (tabValue: string) => {
+    return availableTabs.some(tab => tab.value === tabValue);
+  };
+
+  // Loading state
+  if (!isFullyLoaded) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Se não há abas disponíveis
+  if (availableTabs.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="text-center">
+          <Shield className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-foreground mb-2">Acesso Limitado</h2>
+          <p className="text-muted-foreground">Você não tem permissão para acessar as configurações do sistema.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -423,666 +503,584 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="team" className="w-full">
+      {/* Tabs - Apenas exibe as abas que o usuário tem permissão */}
+      <Tabs defaultValue={defaultTab} className="w-full">
         <TabsList className="bg-card border border-border rounded-xl p-2 shadow-sm w-full flex flex-wrap gap-1.5 mb-6 h-auto">
-          <TabsTrigger
-            value="team"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Users size={16} />
-            Equipe
-          </TabsTrigger>
-          <TabsTrigger
-            value="roles"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Shield size={16} />
-            Perfis
-          </TabsTrigger>
-          <TabsTrigger
-            value="departments"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Building2 size={16} />
-            Departamentos
-          </TabsTrigger>
-          <TabsTrigger
-            value="channels"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <MessageSquare size={16} />
-            Canais
-          </TabsTrigger>
-          <TabsTrigger
-            value="fields"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Database size={16} />
-            Campos
-          </TabsTrigger>
-          <TabsTrigger
-            value="tags"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Tag size={16} />
-            Etiquetas
-          </TabsTrigger>
-          <TabsTrigger
-            value="owner-agent"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <UserCheck size={16} />
-            Responsável
-          </TabsTrigger>
-          <TabsTrigger
-            value="close-reasons"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <X size={16} />
-            Fechamento
-          </TabsTrigger>
-          <TabsTrigger
-            value="notifications"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Bell size={16} />
-            Notificações
-          </TabsTrigger>
-          <TabsTrigger
-            value="security"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Key size={16} />
-            Segurança
-          </TabsTrigger>
-          <TabsTrigger
-            value="integrations"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Plug size={16} />
-            Integrações
-          </TabsTrigger>
-          <TabsTrigger
-            value="meta-ads"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Facebook size={16} />
-            Meta Ads
-          </TabsTrigger>
-          <TabsTrigger
-            value="general"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Palette size={16} />
-            Geral
-          </TabsTrigger>
-          <TabsTrigger
-            value="tools"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Wrench size={16} />
-            Ferramentas
-          </TabsTrigger>
-          <TabsTrigger
-            value="metrics"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
-          >
-            <Target size={16} />
-            Métricas
-          </TabsTrigger>
+          {availableTabs.map(tab => {
+            const Icon = tab.icon;
+            return (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white data-[state=active]:shadow-md"
+              >
+                <Icon size={16} />
+                {tab.label}
+              </TabsTrigger>
+            );
+          })}
         </TabsList>
 
         {/* TAB 1: Team Management */}
-        <TabsContent value="team" className="space-y-6">
-          <UserManagement />
-        </TabsContent>
+        {isTabAvailable('team') && (
+          <TabsContent value="team" className="space-y-6">
+            <UserManagement />
+          </TabsContent>
+        )}
 
         {/* TAB 2: Role Management */}
-        <TabsContent value="roles" className="space-y-6">
-          <RoleManagement />
-        </TabsContent>
+        {isTabAvailable('roles') && (
+          <TabsContent value="roles" className="space-y-6">
+            <RoleManagement />
+          </TabsContent>
+        )}
 
         {/* TAB 3: Departments */}
-        <TabsContent value="departments" className="space-y-6">
-          <DepartmentManagement />
-        </TabsContent>
+        {isTabAvailable('departments') && (
+          <TabsContent value="departments" className="space-y-6">
+            <DepartmentManagement />
+          </TabsContent>
+        )}
 
         {/* TAB: Tags */}
-        <TabsContent value="tags" className="space-y-6">
-          <TagManagement />
-        </TabsContent>
+        {isTabAvailable('tags') && (
+          <TabsContent value="tags" className="space-y-6">
+            <TagManagement />
+          </TabsContent>
+        )}
 
         {/* TAB: Owner Agent Settings */}
-        <TabsContent value="owner-agent" className="space-y-6">
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <OwnerAgentSettings />
-          </div>
-        </TabsContent>
+        {isTabAvailable('owner-agent') && (
+          <TabsContent value="owner-agent" className="space-y-6">
+            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+              <OwnerAgentSettings />
+            </div>
+          </TabsContent>
+        )}
 
         {/* TAB: Close Reasons Management */}
-        <TabsContent value="close-reasons" className="space-y-6">
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <CloseReasonManagement />
-          </div>
-        </TabsContent>
+        {isTabAvailable('close-reasons') && (
+          <TabsContent value="close-reasons" className="space-y-6">
+            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+              <CloseReasonManagement />
+            </div>
+          </TabsContent>
+        )}
 
         {/* TAB: Metrics Settings */}
-        <TabsContent value="metrics" className="space-y-6">
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <MetricsSettings />
-          </div>
-        </TabsContent>
-
+        {isTabAvailable('metrics') && (
+          <TabsContent value="metrics" className="space-y-6">
+            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+              <MetricsSettings />
+            </div>
+          </TabsContent>
+        )}
 
         {/* TAB 4: Channels */}
-        <TabsContent value="channels" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <p className="text-muted-foreground">Gerencie seus canais de atendimento WhatsApp</p>
-            <button
-              onClick={() => {
-                setEditingItem(null);
-                setChannelForm({ name: '', phone: '', department_id: '' });
-                setShowChannelModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all"
-            >
-              <Plus size={18} />
-              Novo Canal
-            </button>
-          </div>
+        {isTabAvailable('channels') && (
+          <TabsContent value="channels" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <p className="text-muted-foreground">Gerencie seus canais de atendimento WhatsApp</p>
+              {hasPermission('channels', 'create') && (
+                <button
+                  onClick={() => {
+                    setEditingItem(null);
+                    setChannelForm({ name: '', phone: '', department_id: '' });
+                    setShowChannelModal(true);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all"
+                >
+                  <Plus size={18} />
+                  Novo Canal
+                </button>
+              )}
+            </div>
 
-          {loadingChannels ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : channels.length === 0 ? (
-            <div className="bg-card rounded-2xl border border-border p-12 text-center">
-              <MessageSquare size={48} className="mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">Nenhum canal cadastrado</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4">
-              {channels.map((channel) => (
-                <div key={channel.id} className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                        channel.status === 'connected' ? 'bg-status-success/10' : 'bg-status-error/10'
-                      }`}>
-                        <MessageSquare size={24} className={
-                          channel.status === 'connected' ? 'text-status-success' : 'text-status-error'
-                        } />
+            {loadingChannels ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : channels.length === 0 ? (
+              <div className="bg-card rounded-2xl border border-border p-12 text-center">
+                <MessageSquare size={48} className="mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">Nenhum canal cadastrado</h3>
+                <p className="text-muted-foreground mb-4">Adicione seu primeiro canal WhatsApp</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {channels.map((channel: any) => (
+                  <div
+                    key={channel.id}
+                    className="bg-card rounded-xl border border-border p-4 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <MessageSquare size={20} className="text-primary" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-foreground">{channel.name}</h4>
+                          <p className="text-sm text-muted-foreground">{channel.phone}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-foreground">{channel.name}</h3>
-                        <p className="text-sm text-muted-foreground">{channel.phone}</p>
-                      </div>
+                      {(hasPermission('channels', 'update') || hasPermission('channels', 'delete')) && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+                            <MoreVertical size={16} className="text-muted-foreground" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {hasPermission('channels', 'update') && (
+                              <DropdownMenuItem onClick={() => handleEditChannel(channel)}>
+                                <Edit3 size={14} className="mr-2" />
+                                Editar
+                              </DropdownMenuItem>
+                            )}
+                            {hasPermission('channels', 'delete') && (
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteChannel(channel.id)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 size={14} className="mr-2" />
+                                Excluir
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        channel.status === 'connected'
-                          ? 'bg-status-success/10 text-status-success'
-                          : 'bg-status-error/10 text-status-error'
-                      }`}>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                          channel.status === 'connected'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                        }`}
+                      >
                         {channel.status === 'connected' ? 'Conectado' : 'Desconectado'}
                       </span>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className="p-1.5 hover:bg-muted rounded-lg transition-colors">
-                            <MoreVertical size={16} className="text-muted-foreground" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleEditChannel(channel)}>
-                            <Edit3 size={14} className="mr-2" />
-                            Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDeleteChannel(channel.id)} className="text-status-error">
-                            <Trash2 size={14} className="mr-2" />
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                     </div>
                   </div>
-                  <div className="pt-4 border-t border-border">
-                    <span className="text-sm text-muted-foreground">
-                      Departamento: {channel.department?.name || 'Não definido'}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        )}
+
+        {/* TAB 5: Custom Fields */}
+        {isTabAvailable('fields') && (
+          <TabsContent value="fields" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <p className="text-muted-foreground">Personalize os campos de contatos e negócios</p>
+              <button
+                onClick={() => {
+                  setEditingItem(null);
+                  setFieldForm({ name: '', field_type: 'text', options: '', entity_type: 'contact', is_required: false });
+                  setShowFieldModal(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all"
+              >
+                <Plus size={18} />
+                Novo Campo
+              </button>
             </div>
-          )}
-        </TabsContent>
 
-        {/* TAB 4: Custom Fields */}
-        <TabsContent value="fields" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <p className="text-muted-foreground">Crie campos personalizados para contatos e negócios</p>
-            <button
-              onClick={() => {
-                setEditingItem(null);
-                setFieldForm({ name: '', field_type: 'text', options: '', entity_type: 'contact', is_required: false });
-                setShowFieldModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all"
-            >
-              <Plus size={18} />
-              Novo Campo
-            </button>
-          </div>
-
-          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
             {loadingFields ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
+            ) : customFields.length === 0 ? (
+              <div className="bg-card rounded-2xl border border-border p-12 text-center">
+                <Database size={48} className="mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">Nenhum campo personalizado</h3>
+                <p className="text-muted-foreground mb-4">Adicione campos para personalizar seus dados</p>
+              </div>
             ) : (
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-muted/50 border-b border-border">
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome do Campo</th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo</th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Entidade</th>
-                    <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Obrigatório</th>
-                    <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {customFields.length === 0 ? (
+              <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-muted/50 border-b border-border">
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
-                        Nenhum campo customizado cadastrado
-                      </td>
+                      <th className="text-left px-6 py-3 text-sm font-medium text-muted-foreground">Nome</th>
+                      <th className="text-left px-6 py-3 text-sm font-medium text-muted-foreground">Tipo</th>
+                      <th className="text-left px-6 py-3 text-sm font-medium text-muted-foreground">Entidade</th>
+                      <th className="text-left px-6 py-3 text-sm font-medium text-muted-foreground">Obrigatório</th>
+                      <th className="px-6 py-3"></th>
                     </tr>
-                  ) : (
-                    customFields.map((field) => (
-                      <tr key={field.id} className="hover:bg-muted/30">
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {customFields.map((field: any) => (
+                      <tr key={field.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-6 py-4">
-                          <div>
-                            <span className="font-medium text-foreground">{field.name}</span>
-                            {Array.isArray(field.options) && field.options.length > 0 && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Opções: {field.options.join(', ')}
-                              </p>
-                            )}
-                          </div>
+                          <span className="font-medium text-foreground">{field.name}</span>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="px-2.5 py-1 bg-muted rounded-lg text-xs font-medium text-foreground">
-                            {fieldTypeLabels[field.field_type] || field.field_type}
-                          </span>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {fieldTypeLabels[field.field_type] || field.field_type}
                         </td>
-                        <td className="px-6 py-4 text-sm text-foreground">
+                        <td className="px-6 py-4 text-muted-foreground capitalize">
                           {field.entity_type === 'contact' ? 'Contato' : 'Negócio'}
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-6 py-4">
                           {field.is_required ? (
-                            <Check size={18} className="text-status-success mx-auto" />
+                            <Check size={16} className="text-green-500" />
                           ) : (
-                            <X size={18} className="text-muted-foreground mx-auto" />
+                            <X size={16} className="text-muted-foreground" />
                           )}
                         </td>
                         <td className="px-6 py-4">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              onClick={() => handleEditField(field)}
-                              className="p-2 hover:bg-muted rounded-lg transition-colors"
-                            >
-                              <Edit3 size={16} className="text-muted-foreground" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteField(field.id)}
-                              className="p-2 hover:bg-status-error/10 rounded-lg transition-colors"
-                            >
-                              <Trash2 size={16} className="text-status-error" />
-                            </button>
+                          <div className="flex justify-end">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+                                <MoreVertical size={16} className="text-muted-foreground" />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleEditField(field)}>
+                                  <Edit3 size={14} className="mr-2" />
+                                  Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleDeleteField(field.id)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 size={14} className="mr-2" />
+                                  Excluir
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </div>
-        </TabsContent>
+          </TabsContent>
+        )}
 
-        {/* TAB 5: Notifications */}
-        <TabsContent value="notifications" className="space-y-6">
-          {loadingNotifications ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <>
-              <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-foreground mb-6">Preferências de Notificação</h3>
-
+        {/* TAB 6: Notifications */}
+        {isTabAvailable('notifications') && (
+          <TabsContent value="notifications" className="space-y-6">
+            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Preferências de Notificação</h3>
+              
+              {loadingNotifications ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : (
                 <div className="space-y-6">
-                  {[
-                    { key: 'new_messages', title: 'Novas mensagens', description: 'Receba notificação quando uma nova mensagem chegar' },
-                    { key: 'new_deals', title: 'Novos negócios', description: 'Seja notificado quando um novo negócio for criado' },
-                    { key: 'stage_changes', title: 'Mudança de etapa', description: 'Notifique quando um negócio mudar de etapa no funil' },
-                    { key: 'sla_alerts', title: 'Alerta de SLA', description: 'Avise quando um atendimento estiver perto do limite' },
-                    { key: 'daily_summary', title: 'Resumo diário', description: 'Receba um resumo diário das atividades' },
-                  ].map((setting) => (
-                    <div key={setting.key} className="flex items-center justify-between py-4 border-b border-border last:border-0">
-                      <div>
-                        <h4 className="font-medium text-foreground">{setting.title}</h4>
-                        <p className="text-sm text-muted-foreground">{setting.description}</p>
-                      </div>
-                      <Switch
-                        checked={notificationSettings?.[setting.key as keyof typeof notificationSettings] as boolean ?? false}
-                        onCheckedChange={(checked) => handleNotificationChange(setting.key, checked)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-foreground mb-6">Canais de Notificação</h3>
-
-                <div className="space-y-4">
-                  {[
-                    { key: 'email_enabled', title: 'Email', icon: Mail },
-                    { key: 'push_enabled', title: 'Push (Navegador)', icon: Bell },
-                    { key: 'whatsapp_enabled', title: 'WhatsApp', icon: MessageSquare },
-                  ].map((channel) => (
-                    <div key={channel.key} className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                          <channel.icon size={20} className="text-primary" />
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-medium text-foreground">Canais de Notificação</h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
+                        <div className="flex items-center gap-3">
+                          <Bell size={20} className="text-muted-foreground" />
+                          <div>
+                            <p className="font-medium text-foreground">Push (Navegador)</p>
+                            <p className="text-sm text-muted-foreground">Receber notificações no navegador</p>
+                          </div>
                         </div>
-                        <span className="font-medium text-foreground">{channel.title}</span>
+                        <Switch
+                          checked={notificationSettings?.push_enabled ?? true}
+                          onCheckedChange={(checked) => handleNotificationChange('push_enabled', checked)}
+                        />
                       </div>
-                      <Switch
-                        checked={notificationSettings?.[channel.key as keyof typeof notificationSettings] as boolean ?? false}
-                        onCheckedChange={(checked) => handleNotificationChange(channel.key, checked)}
+                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
+                        <div className="flex items-center gap-3">
+                          <Mail size={20} className="text-muted-foreground" />
+                          <div>
+                            <p className="font-medium text-foreground">E-mail</p>
+                            <p className="text-sm text-muted-foreground">Receber notificações por e-mail</p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={notificationSettings?.email_enabled ?? true}
+                          onCheckedChange={(checked) => handleNotificationChange('email_enabled', checked)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-medium text-foreground">Eventos</h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
+                        <div>
+                          <p className="font-medium text-foreground">Novas mensagens</p>
+                          <p className="text-sm text-muted-foreground">Quando receber novas mensagens</p>
+                        </div>
+                        <Switch
+                          checked={notificationSettings?.new_messages ?? true}
+                          onCheckedChange={(checked) => handleNotificationChange('new_messages', checked)}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
+                        <div>
+                          <p className="font-medium text-foreground">Alertas de SLA</p>
+                          <p className="text-sm text-muted-foreground">Quando o SLA estiver próximo do limite</p>
+                        </div>
+                        <Switch
+                          checked={notificationSettings?.sla_alerts ?? true}
+                          onCheckedChange={(checked) => handleNotificationChange('sla_alerts', checked)}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
+                        <div>
+                          <p className="font-medium text-foreground">Novos negócios</p>
+                          <p className="text-sm text-muted-foreground">Quando um negócio for criado ou atribuído</p>
+                        </div>
+                        <Switch
+                          checked={notificationSettings?.new_deals ?? true}
+                          onCheckedChange={(checked) => handleNotificationChange('new_deals', checked)}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
+                        <div>
+                          <p className="font-medium text-foreground">Mudanças de etapa</p>
+                          <p className="text-sm text-muted-foreground">Quando um negócio mudar de etapa</p>
+                        </div>
+                        <Switch
+                          checked={notificationSettings?.stage_changes ?? false}
+                          onCheckedChange={(checked) => handleNotificationChange('stage_changes', checked)}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
+                        <div>
+                          <p className="font-medium text-foreground">Resumo diário</p>
+                          <p className="text-sm text-muted-foreground">Receber resumo das atividades do dia</p>
+                        </div>
+                        <Switch
+                          checked={notificationSettings?.daily_summary ?? false}
+                          onCheckedChange={(checked) => handleNotificationChange('daily_summary', checked)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        )}
+
+        {/* TAB 7: Security */}
+        {isTabAvailable('security') && (
+          <TabsContent value="security" className="space-y-6">
+            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-foreground mb-6">Segurança da Conta</h3>
+              
+              <div className="space-y-6">
+                {/* Change Password */}
+                <div className="p-6 border border-border rounded-xl">
+                  <h4 className="font-medium text-foreground mb-4 flex items-center gap-2">
+                    <Key size={18} />
+                    Alterar Senha
+                  </h4>
+                  <div className="space-y-4 max-w-md">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Nova Senha
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showNewPassword ? 'text' : 'password'}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="w-full px-4 py-2.5 pr-10 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
+                          placeholder="Digite a nova senha"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Confirmar Nova Senha
+                      </label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
+                        placeholder="Confirme a nova senha"
                       />
                     </div>
-                  ))}
+                    <button
+                      onClick={handleChangePassword}
+                      disabled={changingPassword || !newPassword || !confirmPassword}
+                      className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {changingPassword ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          Alterando...
+                        </>
+                      ) : (
+                        <>
+                          <Key size={16} />
+                          Alterar Senha
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
-        </TabsContent>
 
-        {/* TAB 6: Security */}
-        <TabsContent value="security" className="space-y-6">
-          {/* Change Password */}
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-foreground mb-6">Alterar Minha Senha</h3>
-            <div className="max-w-md space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Nova senha</label>
-                <div className="relative">
-                  <input
-                    type={showNewPassword ? 'text' : 'password'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
+                {/* Active Sessions */}
+                <div className="p-6 border border-border rounded-xl">
+                  <h4 className="font-medium text-foreground mb-4 flex items-center gap-2">
+                    <Monitor size={18} />
+                    Sessões Ativas
+                  </h4>
+                  <ActiveSessions />
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Mínimo 6 caracteres</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Confirmar nova senha</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className={`w-full px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-primary/20 bg-background ${
-                    confirmPassword && newPassword !== confirmPassword 
-                      ? 'border-destructive' 
-                      : 'border-border focus:border-primary'
-                  }`}
-                />
-                {confirmPassword && newPassword !== confirmPassword && (
-                  <p className="text-xs text-destructive mt-1">As senhas não conferem</p>
-                )}
-              </div>
-              <button 
-                onClick={handleChangePassword}
-                disabled={changingPassword || !newPassword || newPassword !== confirmPassword}
-                className="px-6 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {changingPassword ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Alterando...
-                  </>
-                ) : (
-                  'Alterar senha'
-                )}
-              </button>
             </div>
-          </div>
+          </TabsContent>
+        )}
 
-          {/* Sessions - Real data */}
-          <ActiveSessions />
-
-          {/* Two-Factor Authentication */}
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <Key size={24} className="text-primary" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">Autenticação de dois fatores</h3>
-                  <p className="text-sm text-muted-foreground">Adicione uma camada extra de segurança à sua conta</p>
-                </div>
-              </div>
-              <button className="px-4 py-2 border border-border rounded-xl hover:bg-muted transition-colors">
-                Configurar
-              </button>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* TAB: Integrações */}
-        <TabsContent value="integrations" className="space-y-6">
-          <IntegrationSettings />
-        </TabsContent>
+        {/* TAB 8: Integrations */}
+        {isTabAvailable('integrations') && (
+          <TabsContent value="integrations" className="space-y-6">
+            <IntegrationSettings />
+          </TabsContent>
+        )}
 
         {/* TAB: Meta Ads */}
-        <TabsContent value="meta-ads" className="space-y-6">
-          <MetaAdsSettings />
-        </TabsContent>
+        {isTabAvailable('meta-ads') && (
+          <TabsContent value="meta-ads" className="space-y-6">
+            <MetaAdsSettings />
+          </TabsContent>
+        )}
 
-        {/* TAB: Ferramentas */}
-        <TabsContent value="tools" className="space-y-6">
-          <ToolsSettings />
-        </TabsContent>
+        {/* TAB 9: General / Appearance */}
+        {isTabAvailable('general') && (
+          <TabsContent value="general" className="space-y-6">
+            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-foreground mb-6">Configurações Gerais</h3>
+              
+              <div className="space-y-6">
+                {/* Timezone */}
+                <div className="p-4 bg-muted/30 rounded-xl">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Globe size={20} className="text-muted-foreground" />
+                    <div>
+                      <p className="font-medium text-foreground">Fuso Horário</p>
+                      <p className="text-sm text-muted-foreground">Define o fuso horário para agendamentos</p>
+                    </div>
+                  </div>
+                  <select className="w-full max-w-xs px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground">
+                    <option value="America/Sao_Paulo">América/São Paulo (BRT)</option>
+                    <option value="America/Manaus">América/Manaus (AMT)</option>
+                    <option value="America/Fortaleza">América/Fortaleza (BRT)</option>
+                  </select>
+                </div>
 
-
-        {/* TAB 7: General */}
-        <TabsContent value="general" className="space-y-6">
-          {/* Company Info */}
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-foreground mb-6">Informações da Empresa</h3>
-            <div className="max-w-md space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Nome da empresa</label>
-                <input
-                  type="text"
-                  defaultValue="Space Sports"
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">CNPJ</label>
-                <input
-                  type="text"
-                  placeholder="00.000.000/0000-00"
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Telefone</label>
-                <input
-                  type="tel"
-                  placeholder="+55 (00) 00000-0000"
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Email</label>
-                <input
-                  type="email"
-                  placeholder="contato@empresa.com"
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                />
-              </div>
-              <button className="px-6 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all">
-                Salvar alterações
-              </button>
-            </div>
-          </div>
-
-          {/* Working Hours */}
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-              <Clock size={20} className="text-primary" />
-              <h3 className="text-lg font-semibold text-foreground">Horário de Funcionamento</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-4 max-w-md mb-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Início</label>
-                <input
-                  type="time"
-                  defaultValue="08:00"
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Fim</label>
-                <input
-                  type="time"
-                  defaultValue="18:00"
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                />
+                {/* Business Hours */}
+                <div className="p-4 bg-muted/30 rounded-xl">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Clock size={20} className="text-muted-foreground" />
+                    <div>
+                      <p className="font-medium text-foreground">Horário de Funcionamento</p>
+                      <p className="text-sm text-muted-foreground">Configure os horários de atendimento</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 max-w-md">
+                    <div>
+                      <label className="block text-sm text-muted-foreground mb-1">Início</label>
+                      <input
+                        type="time"
+                        defaultValue="08:00"
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-muted-foreground mb-1">Fim</label>
+                      <input
+                        type="time"
+                        defaultValue="18:00"
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Dias de funcionamento</label>
-              <div className="flex gap-2">
-                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, idx) => (
-                  <button
-                    key={day}
-                    className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors ${
-                      idx >= 1 && idx <= 5
-                        ? 'bg-primary text-white'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    }`}
-                  >
-                    {day}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          </TabsContent>
+        )}
 
-          {/* Timezone */}
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-4">
-              <Globe size={20} className="text-primary" />
-              <h3 className="text-lg font-semibold text-foreground">Fuso Horário</h3>
-            </div>
-            <select className="w-full max-w-md px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background">
-              <option>America/Sao_Paulo (UTC-03:00)</option>
-              <option>America/Manaus (UTC-04:00)</option>
-              <option>America/Fortaleza (UTC-03:00)</option>
-              <option>America/Recife (UTC-03:00)</option>
-            </select>
-          </div>
-
-          {/* Danger Zone */}
-          <div className="bg-status-error/5 rounded-2xl border border-status-error/20 p-6">
-            <h3 className="text-lg font-semibold text-status-error mb-2">Zona de Perigo</h3>
-            <p className="text-sm text-status-error/80 mb-4">Ações irreversíveis que afetam toda a sua conta</p>
-            <div className="flex gap-4">
-              <button className="px-4 py-2 border border-status-error/30 text-status-error rounded-xl hover:bg-status-error/10 transition-colors">
-                Exportar todos os dados
-              </button>
-              <button className="px-4 py-2 border border-status-error/30 text-status-error rounded-xl hover:bg-status-error/10 transition-colors">
-                Excluir conta
-              </button>
-            </div>
-          </div>
-        </TabsContent>
+        {/* TAB: Tools */}
+        {isTabAvailable('tools') && (
+          <TabsContent value="tools" className="space-y-6">
+            <ToolsSettings />
+          </TabsContent>
+        )}
       </Tabs>
 
-      {/* Member Modal */}
+      {/* Member Edit Modal */}
       <Dialog open={showMemberModal} onOpenChange={setShowMemberModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Editar Membro</DialogTitle>
-            <DialogDescription>Atualize os dados do membro da equipe</DialogDescription>
+            <DialogDescription>
+              Atualize as informações do membro da equipe
+            </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Nome completo</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Nome</label>
               <input
                 type="text"
                 value={memberForm.full_name}
                 onChange={(e) => setMemberForm({ ...memberForm, full_name: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                placeholder="Nome do membro"
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
+                placeholder="Nome completo"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Telefone</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Telefone</label>
               <input
                 type="tel"
                 value={memberForm.phone}
                 onChange={(e) => setMemberForm({ ...memberForm, phone: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                placeholder="+55 21 99999-0000"
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
+                placeholder="(00) 00000-0000"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Departamento</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Departamento</label>
               <select
                 value={memberForm.department_id}
                 onChange={(e) => setMemberForm({ ...memberForm, department_id: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
               >
-                <option value="">Selecione</option>
-                {departments.map((dept) => (
+                <option value="">Sem departamento</option>
+                {departments.map((dept: any) => (
                   <option key={dept.id} value={dept.id}>{dept.name}</option>
                 ))}
               </select>
             </div>
           </div>
-
           <DialogFooter>
             <button
               onClick={() => setShowMemberModal(false)}
-              className="px-4 py-2 text-muted-foreground hover:bg-muted rounded-lg"
+              className="px-4 py-2.5 text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleSaveMember}
               disabled={updateMember.isPending}
-              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50"
             >
-              {updateMember.isPending ? 'Salvando...' : 'Salvar'}
+              {updateMember.isPending ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Check size={16} />
+              )}
+              Salvar
             </button>
           </DialogFooter>
         </DialogContent>
@@ -1090,56 +1088,62 @@ export default function Settings() {
 
       {/* Department Modal */}
       <Dialog open={showDepartmentModal} onOpenChange={setShowDepartmentModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>{editingItem ? 'Editar Departamento' : 'Novo Departamento'}</DialogTitle>
+            <DialogDescription>
+              {editingItem ? 'Atualize as informações do departamento' : 'Adicione um novo departamento'}
+            </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Nome *</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Nome</label>
               <input
                 type="text"
                 value={departmentForm.name}
                 onChange={(e) => setDepartmentForm({ ...departmentForm, name: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
                 placeholder="Nome do departamento"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Descrição</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Descrição</label>
               <textarea
                 value={departmentForm.description}
                 onChange={(e) => setDepartmentForm({ ...departmentForm, description: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none bg-background"
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground resize-none"
+                placeholder="Descrição opcional"
                 rows={3}
-                placeholder="Descrição do departamento"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Cor</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Cor</label>
               <input
                 type="color"
                 value={departmentForm.color}
                 onChange={(e) => setDepartmentForm({ ...departmentForm, color: e.target.value })}
-                className="w-full h-12 rounded-xl cursor-pointer"
+                className="w-16 h-10 rounded-lg cursor-pointer"
               />
             </div>
           </div>
-
           <DialogFooter>
             <button
               onClick={() => setShowDepartmentModal(false)}
-              className="px-4 py-2 text-muted-foreground hover:bg-muted rounded-lg"
+              className="px-4 py-2.5 text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleSaveDepartment}
               disabled={createDepartment.isPending || updateDepartment.isPending}
-              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50"
             >
-              {(createDepartment.isPending || updateDepartment.isPending) ? 'Salvando...' : editingItem ? 'Salvar' : 'Criar'}
+              {(createDepartment.isPending || updateDepartment.isPending) ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Check size={16} />
+              )}
+              Salvar
             </button>
           </DialogFooter>
         </DialogContent>
@@ -1147,148 +1151,156 @@ export default function Settings() {
 
       {/* Channel Modal */}
       <Dialog open={showChannelModal} onOpenChange={setShowChannelModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>{editingItem ? 'Editar Canal' : 'Novo Canal'}</DialogTitle>
+            <DialogDescription>
+              {editingItem ? 'Atualize as informações do canal' : 'Adicione um novo canal WhatsApp'}
+            </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Nome *</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Nome</label>
               <input
                 type="text"
                 value={channelForm.name}
                 onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                placeholder="Ex: Vendas 01"
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
+                placeholder="Nome do canal"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Telefone *</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Telefone</label>
               <input
                 type="tel"
                 value={channelForm.phone}
                 onChange={(e) => setChannelForm({ ...channelForm, phone: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                placeholder="+55 21 99999-0000"
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
+                placeholder="+55 (00) 00000-0000"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Departamento</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Departamento</label>
               <select
                 value={channelForm.department_id}
                 onChange={(e) => setChannelForm({ ...channelForm, department_id: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
               >
-                <option value="">Selecione</option>
-                {departments.map((dept) => (
+                <option value="">Sem departamento</option>
+                {departments.map((dept: any) => (
                   <option key={dept.id} value={dept.id}>{dept.name}</option>
                 ))}
               </select>
             </div>
           </div>
-
           <DialogFooter>
             <button
               onClick={() => setShowChannelModal(false)}
-              className="px-4 py-2 text-muted-foreground hover:bg-muted rounded-lg"
+              className="px-4 py-2.5 text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleSaveChannel}
               disabled={createChannel.isPending || updateChannel.isPending}
-              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50"
             >
-              {(createChannel.isPending || updateChannel.isPending) ? 'Salvando...' : editingItem ? 'Salvar' : 'Criar'}
+              {(createChannel.isPending || updateChannel.isPending) ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Check size={16} />
+              )}
+              Salvar
             </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Field Modal */}
+      {/* Custom Field Modal */}
       <Dialog open={showFieldModal} onOpenChange={setShowFieldModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>{editingItem ? 'Editar Campo' : 'Novo Campo'}</DialogTitle>
+            <DialogDescription>
+              {editingItem ? 'Atualize as informações do campo' : 'Adicione um novo campo personalizado'}
+            </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Nome *</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Nome</label>
               <input
                 type="text"
                 value={fieldForm.name}
                 onChange={(e) => setFieldForm({ ...fieldForm, name: e.target.value })}
-                className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
                 placeholder="Nome do campo"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Tipo</label>
-                <select
-                  value={fieldForm.field_type}
-                  onChange={(e) => setFieldForm({ ...fieldForm, field_type: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                >
-                  <option value="text">Texto</option>
-                  <option value="number">Número</option>
-                  <option value="date">Data</option>
-                  <option value="select">Seleção</option>
-                  <option value="multiselect">Multi-seleção</option>
-                  <option value="checkbox">Checkbox</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Entidade</label>
-                <select
-                  value={fieldForm.entity_type}
-                  onChange={(e) => setFieldForm({ ...fieldForm, entity_type: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                >
-                  <option value="contact">Contato</option>
-                  <option value="deal">Negócio</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Tipo</label>
+              <select
+                value={fieldForm.field_type}
+                onChange={(e) => setFieldForm({ ...fieldForm, field_type: e.target.value })}
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
+              >
+                <option value="text">Texto</option>
+                <option value="number">Número</option>
+                <option value="select">Seleção</option>
+                <option value="multiselect">Multi-seleção</option>
+                <option value="date">Data</option>
+                <option value="checkbox">Checkbox</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Entidade</label>
+              <select
+                value={fieldForm.entity_type}
+                onChange={(e) => setFieldForm({ ...fieldForm, entity_type: e.target.value })}
+                className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
+              >
+                <option value="contact">Contato</option>
+                <option value="deal">Negócio</option>
+              </select>
             </div>
             {(fieldForm.field_type === 'select' || fieldForm.field_type === 'multiselect') && (
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Opções (separadas por vírgula)</label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Opções</label>
                 <input
                   type="text"
                   value={fieldForm.options}
                   onChange={(e) => setFieldForm({ ...fieldForm, options: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
+                  className="w-full px-4 py-2.5 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-foreground"
                   placeholder="Opção 1, Opção 2, Opção 3"
                 />
+                <p className="text-xs text-muted-foreground mt-1">Separe as opções por vírgula</p>
               </div>
             )}
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="required"
+              <Switch
                 checked={fieldForm.is_required}
-                onChange={(e) => setFieldForm({ ...fieldForm, is_required: e.target.checked })}
-                className="rounded border-border"
+                onCheckedChange={(checked) => setFieldForm({ ...fieldForm, is_required: checked })}
               />
-              <label htmlFor="required" className="text-sm text-foreground">Campo obrigatório</label>
+              <span className="text-sm text-foreground">Campo obrigatório</span>
             </div>
           </div>
-
           <DialogFooter>
             <button
               onClick={() => setShowFieldModal(false)}
-              className="px-4 py-2 text-muted-foreground hover:bg-muted rounded-lg"
+              className="px-4 py-2.5 text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleSaveField}
               disabled={createField.isPending || updateField.isPending}
-              className="px-6 py-2 btn-gradient text-white rounded-lg font-medium disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50"
             >
-              {(createField.isPending || updateField.isPending) ? 'Salvando...' : editingItem ? 'Salvar' : 'Criar'}
+              {(createField.isPending || updateField.isPending) ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Check size={16} />
+              )}
+              Salvar
             </button>
           </DialogFooter>
         </DialogContent>
