@@ -1,6 +1,47 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useEffect } from 'react';
+
+// Hook para escutar mudanças em tempo real nas requisições de contato
+export function useContactRequestsRealtime() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('contact-requests-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'contact_requests'
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['pending-requests-count'] });
+          queryClient.invalidateQueries({ queryKey: ['contact-requests'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'contact_requests'
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['pending-requests-count'] });
+          queryClient.invalidateQueries({ queryKey: ['contact-requests'] });
+          queryClient.invalidateQueries({ queryKey: ['my-contact-requests'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+}
 
 export interface ContactRequest {
   id: string;
