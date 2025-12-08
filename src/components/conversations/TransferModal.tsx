@@ -49,7 +49,7 @@ export function TransferModal({
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [note, setNote] = useState('');
 
-  const { data: departments = [] } = useDepartments();
+  const { data: departments = [], isLoading: isDepartmentsLoading } = useDepartments();
   const { data: team = [] } = useTeam();
   const { data: allUserDepartments = [] } = useAllUserDepartments();
   const transferConversation = useTransferConversation();
@@ -242,12 +242,17 @@ export function TransferModal({
                 <Building2 size={14} />
                 Departamento <span className="text-destructive">*</span>
               </Label>
-              <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o departamento..." />
+            <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
+                <SelectTrigger disabled={isDepartmentsLoading}>
+                  <SelectValue placeholder={isDepartmentsLoading ? "Carregando..." : "Selecione o departamento..."} />
                 </SelectTrigger>
                 <SelectContent>
-                  {activeDepartments.length === 0 ? (
+                  {isDepartmentsLoading ? (
+                    <div className="flex items-center justify-center py-4 gap-2">
+                      <Loader2 size={16} className="animate-spin" />
+                      <span className="text-sm text-muted-foreground">Carregando departamentos...</span>
+                    </div>
+                  ) : activeDepartments.length === 0 ? (
                     <SelectItem value="none" disabled>
                       Nenhum departamento disponível
                     </SelectItem>
