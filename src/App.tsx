@@ -54,27 +54,27 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/conversations" element={
-                <ProtectedRoute permission="conversations.read">
+                <ProtectedRoute permission="conversations.view">
                   <Conversations />
                 </ProtectedRoute>
               } />
               <Route path="/quick-messages" element={
-                <ProtectedRoute permission="templates.read">
+                <ProtectedRoute permission="templates.view">
                   <QuickMessages />
                 </ProtectedRoute>
               } />
               <Route path="/crm" element={
-                <ProtectedRoute permission="deals.read">
+                <ProtectedRoute permission="deals.view">
                   <CRM />
                 </ProtectedRoute>
               } />
               <Route path="/whatsapp-channels" element={
-                <ProtectedRoute permission="channels.read">
+                <ProtectedRoute permission="channels.view">
                   <WhatsAppChannels />
                 </ProtectedRoute>
               } />
               <Route path="/contacts" element={
-                <ProtectedRoute permission="contacts.read">
+                <ProtectedRoute permission="contacts.view">
                   <Contacts />
                 </ProtectedRoute>
               } />
@@ -89,12 +89,12 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/agendamentos" element={
-                <ProtectedRoute permission="templates.read">
+                <ProtectedRoute permission="schedules.view">
                   <ScheduledMessages />
                 </ProtectedRoute>
               } />
               <Route path="/ao-vivo" element={
-                <ProtectedRoute permission="settings.view">
+                <ProtectedRoute permission="live.view">
                   <LiveMonitor />
                 </ProtectedRoute>
               } />
@@ -104,37 +104,37 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/relatorios/campanhas" element={
-                <ProtectedRoute permission="reports.view">
+                <ProtectedRoute permission="marketing.view_campaigns">
                   <CampaignReport />
                 </ProtectedRoute>
               } />
               <Route path="/relatorio-campanhas" element={
-                <ProtectedRoute permission="reports.view">
+                <ProtectedRoute permission="marketing.view_campaigns">
                   <CampaignReport />
                 </ProtectedRoute>
               } />
               <Route path="/meta-ads" element={
-                <ProtectedRoute permission="reports.view">
+                <ProtectedRoute permission="marketing.view">
                   <MetaAdsManager />
                 </ProtectedRoute>
               } />
               <Route path="/automations" element={
-                <ProtectedRoute permission="settings.view">
+                <ProtectedRoute permission="automations.view">
                   <Automations />
                 </ProtectedRoute>
               } />
               <Route path="/automations/:id/edit" element={
-                <ProtectedRoute permission="settings.view">
+                <ProtectedRoute permission="automations.update">
                   <FlowEditor />
                 </ProtectedRoute>
               } />
               <Route path="/automations/:id/stats" element={
-                <ProtectedRoute permission="settings.view">
+                <ProtectedRoute permission="automations.view">
                   <Automations />
                 </ProtectedRoute>
               } />
               <Route path="/webhooks" element={
-                <ProtectedRoute permission="settings.view">
+                <ProtectedRoute permission="webhooks.view">
                   <Webhooks />
                 </ProtectedRoute>
               } />
