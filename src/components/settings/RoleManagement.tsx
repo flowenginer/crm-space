@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Shield,
   Plus,
@@ -9,26 +9,14 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
-  Save,
   Settings2,
-  LayoutDashboard,
-  MessageSquare,
-  Radio,
-  FileText,
-  Clock,
-  Workflow,
-  TrendingUp,
-  Smartphone,
-  UserCircle,
-  Megaphone,
-  BarChart3,
-  Settings,
   LucideIcon,
+  RefreshCw,
+  Save,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -46,22 +34,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { useRoles, usePermissionDefinitions, useCreateRole, useUpdateRole, useDeleteRole, RoleDefinition } from '@/hooks/useRoles';
+import { SYSTEM_PERMISSIONS, getCategoryConfig } from '@/config/permissions';
+import { usePermissionSync } from '@/hooks/usePermissionSync';
 
-// Configuração de categorias com ícones e labels
-const categoryConfig: Record<string, { label: string; icon: LucideIcon; order: number }> = {
-  dashboard: { label: 'Dashboard', icon: LayoutDashboard, order: 1 },
-  conversations: { label: 'Conversas', icon: MessageSquare, order: 2 },
-  live: { label: 'Ao Vivo', icon: Radio, order: 3 },
-  templates: { label: 'Mensagens Rápidas', icon: FileText, order: 4 },
-  schedules: { label: 'Agendamentos', icon: Clock, order: 5 },
-  automations: { label: 'Automações', icon: Workflow, order: 6 },
-  crm: { label: 'CRM', icon: TrendingUp, order: 7 },
-  channels: { label: 'Canais WhatsApp', icon: Smartphone, order: 8 },
-  contacts: { label: 'Contatos', icon: UserCircle, order: 9 },
-  marketing: { label: 'Marketing', icon: Megaphone, order: 10 },
-  reports: { label: 'Relatórios', icon: BarChart3, order: 11 },
-  settings: { label: 'Configurações', icon: Settings, order: 12 },
-};
+// Usar configuração centralizada de permissões
+const categoryConfig = getCategoryConfig();
 
 const colorOptions = [
   '#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#6366F1', '#14B8A6'
@@ -70,6 +47,7 @@ const colorOptions = [
 export function RoleManagement() {
   const { data: roles = [], isLoading: loadingRoles } = useRoles();
   const { data: permissionDefs = [], isLoading: loadingPermissions } = usePermissionDefinitions();
+  const { syncPermissions, isSyncing } = usePermissionSync();
   
   const createRole = useCreateRole();
   const updateRole = useUpdateRole();

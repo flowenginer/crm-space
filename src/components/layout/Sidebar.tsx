@@ -41,24 +41,28 @@ interface NavItem {
   roles?: string[]; // Aceita qualquer role (admin, supervisor, vendedor, designer, sac, etc.)
 }
 
+/**
+ * NAVEGAÇÃO COM PERMISSÕES CORRETAS
+ * Todas as permissões devem corresponder às definidas em src/config/permissions.ts
+ */
 const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard, permission: 'dashboard.view' },
-  { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.read' },
-  { title: 'Ao Vivo', href: '/ao-vivo', icon: Radio, roles: ['admin', 'supervisor'] },
-  { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.read' },
-  { title: 'Agendamentos', href: '/agendamentos', icon: CalendarClock, permission: 'templates.read' },
-  { title: 'Automações', href: '/automations', icon: Workflow, permission: 'settings.view' },
-  { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.read' },
+  { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.view' },
+  { title: 'Ao Vivo', href: '/ao-vivo', icon: Radio, permission: 'live.view' },
+  { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.view' },
+  { title: 'Agendamentos', href: '/agendamentos', icon: CalendarClock, permission: 'schedules.view' },
+  { title: 'Automações', href: '/automations', icon: Workflow, permission: 'automations.view' },
+  { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.view' },
   { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.view' },
-  { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.read' },
+  { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.view' },
   // Marketing
-  { title: 'Meta Ads', href: '/meta-ads', icon: Megaphone, permission: 'reports.view' },
-  { title: 'Relatório Campanhas', href: '/relatorios/campanhas', icon: Target, permission: 'reports.view' },
+  { title: 'Meta Ads', href: '/meta-ads', icon: Megaphone, permission: 'marketing.view' },
+  { title: 'Relatório Campanhas', href: '/relatorios/campanhas', icon: Target, permission: 'marketing.view_campaigns' },
   // Relatórios
   { title: 'Atendimentos', href: '/relatorios/atendimentos', icon: ClipboardList, permission: 'reports.view' },
   { title: 'Relatórios', href: '/reports', icon: BarChart3, permission: 'reports.view' },
   // Integrações
-  { title: 'Webhooks', href: '/webhooks', icon: Link2, permission: 'settings.view' },
+  { title: 'Webhooks', href: '/webhooks', icon: Link2, permission: 'webhooks.view' },
   { title: 'Configurações', href: '/settings', icon: Settings, permission: 'settings.view' },
 ];
 
