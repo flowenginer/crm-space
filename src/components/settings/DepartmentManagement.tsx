@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Building2,
   Plus,
@@ -11,10 +13,12 @@ import {
   Search,
   ChevronRight,
   UserPlus,
+  Star,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -38,7 +42,6 @@ import {
   useDeleteDepartment,
   Department,
 } from '@/hooks/useDepartments';
-import { useTeam } from '@/hooks/useTeam';
 
 const colorOptions = [
   '#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#6366F1', '#14B8A6',
@@ -52,7 +55,6 @@ const iconOptions = [
 
 export function DepartmentManagement() {
   const { data: departments = [], isLoading } = useDepartments();
-  const { data: teamMembers = [] } = useTeam();
   
   const createDepartment = useCreateDepartment();
   const updateDepartment = useUpdateDepartment();
@@ -70,6 +72,25 @@ export function DepartmentManagement() {
     color: '#8B5CF6',
     icon: 'Building2',
     is_active: true,
+  });
+
+  // Fetch department members from user_departments table
+  const { data: deptMembers = [], isLoading: loadingMembers } = useQuery({
+    queryKey: ['department-members', selectedDept?.id],
+    enabled: !!selectedDept?.id && showMembersModal,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_departments')
+        .select(`
+          id,
+          is_primary,
+          user:profiles(id, full_name, avatar_url, role, is_online)
+        `)
+        .eq('department_id', selectedDept!.id);
+
+      if (error) throw error;
+      return data || [];
+    },
   });
 
   const filteredDepartments = departments.filter(dept =>
@@ -164,10 +185,6 @@ export function DepartmentManagement() {
       toast.error('Erro ao atualizar departamento');
     }
   };
-
-  const deptMembers = selectedDept
-    ? teamMembers.filter(m => m.department_id === selectedDept.id)
-    : [];
 
   return (
     <div className="space-y-6">
@@ -398,7 +415,11 @@ export function DepartmentManagement() {
           </DialogHeader>
 
           <div className="py-4">
-            {deptMembers.length === 0 ? (
+            {loadingMembers ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : deptMembers.length === 0 ? (
               <div className="text-center py-8">
                 <Users size={40} className="mx-auto text-muted-foreground mb-3" />
                 <p className="text-muted-foreground">Nenhum membro neste departamento</p>
@@ -409,33 +430,41 @@ export function DepartmentManagement() {
               </div>
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {deptMembers.map((member) => (
+                {deptMembers.map((member: any) => (
                   <div
                     key={member.id}
                     className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      {member.avatar_url ? (
+                      {member.user?.avatar_url ? (
                         <img
-                          src={member.avatar_url}
-                          alt={member.full_name || ''}
+                          src={member.user.avatar_url}
+                          alt={member.user?.full_name || ''}
                           className="w-10 h-10 rounded-full object-cover"
                         />
                       ) : (
                         <span className="text-primary font-semibold">
-                          {(member.full_name || 'U')[0].toUpperCase()}
+                          {(member.user?.full_name || 'U')[0].toUpperCase()}
                         </span>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground truncate">
-                        {member.full_name || 'Sem nome'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{member.role || 'Usuário'}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-foreground truncate">
+                          {member.user?.full_name || 'Sem nome'}
+                        </p>
+                        {member.is_primary && (
+                          <Badge variant="outline" className="text-xs gap-1 border-warning text-warning">
+                            <Star size={10} fill="currentColor" />
+                            Primário
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{member.user?.role || 'Usuário'}</p>
                     </div>
                     <div
                       className={`w-2.5 h-2.5 rounded-full ${
-                        member.is_online ? 'bg-status-success' : 'bg-muted-foreground'
+                        member.user?.is_online ? 'bg-status-success' : 'bg-muted-foreground'
                       }`}
                     />
                   </div>

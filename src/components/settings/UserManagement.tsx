@@ -3,12 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useRoles, type RoleDefinition } from '@/hooks/useRoles';
+import { useUserDepartments, useAddUserToDepartment, useRemoveUserFromDepartment, useSetPrimaryDepartment } from '@/hooks/useUserDepartments';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
   Shield,
@@ -39,6 +41,7 @@ import {
   Headphones,
   Settings,
   Users,
+  Star,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -102,7 +105,7 @@ export function UserManagement() {
     return map;
   }, [roles]);
 
-  // Fetch users
+  // Fetch users with their departments
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users', search, filterRole],
     queryFn: async () => {
@@ -110,7 +113,13 @@ export function UserManagement() {
         .from('profiles')
         .select(`
           *,
-          department:departments(id, name)
+          department:departments(id, name),
+          user_departments(
+            id,
+            department_id,
+            is_primary,
+            department:departments(id, name, color)
+          )
         `)
         .order('full_name');
       
@@ -330,7 +339,7 @@ export function UserManagement() {
                   Função
                 </th>
                 <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell">
-                  Departamento
+                  Departamentos
                 </th>
                 <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell">
                   Status
@@ -374,6 +383,8 @@ export function UserManagement() {
                   const role = rolesMap[user.role];
                   const style = getRoleStyle(role);
                   const Icon = style.Icon;
+                  const userDepts = user.user_departments || [];
+                  const primaryDept = userDepts.find((ud: any) => ud.is_primary);
                   
                   return (
                     <tr key={user.id} className="hover:bg-muted/30 transition-colors">
@@ -407,7 +418,31 @@ export function UserManagement() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-foreground hidden lg:table-cell">
-                        {user.department?.name || '-'}
+                        <div className="flex flex-wrap gap-1">
+                          {userDepts.length === 0 ? (
+                            <span className="text-muted-foreground">-</span>
+                          ) : (
+                            userDepts.slice(0, 3).map((ud: any) => (
+                              <Badge
+                                key={ud.id}
+                                variant="outline"
+                                className="text-xs"
+                                style={{ 
+                                  borderColor: ud.department?.color || '#8B5CF6',
+                                  backgroundColor: `${ud.department?.color || '#8B5CF6'}15`
+                                }}
+                              >
+                                {ud.is_primary && <Star size={10} className="mr-1" fill="currentColor" />}
+                                {ud.department?.name}
+                              </Badge>
+                            ))
+                          )}
+                          {userDepts.length > 3 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{userDepts.length - 3}
+                            </Badge>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 hidden lg:table-cell">
                         <span className={`
@@ -504,9 +539,12 @@ function CreateUserModal({ open, onClose, departments, roles }: {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [role, setRole] = useState<string>('vendedor');
-  const [departmentId, setDepartmentId] = useState('');
+  const [selectedDepartments, setSelectedDepartments] = useState<{ id: string; name: string; color: string; isPrimary: boolean }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const queryClient = useQueryClient();
+
+  // Check if department is required (not admin)
+  const isDepartmentRequired = role !== 'admin';
 
   // Generate random password
   const generatePassword = () => {
@@ -539,6 +577,48 @@ function CreateUserModal({ open, onClose, departments, roles }: {
 
   const passwordStrength = getPasswordStrength();
 
+  // Add department to selection
+  const handleAddDepartment = (deptId: string) => {
+    const dept = departments.find(d => d.id === deptId);
+    if (!dept) return;
+    
+    if (selectedDepartments.some(d => d.id === deptId)) {
+      toast.error('Departamento já adicionado');
+      return;
+    }
+
+    const isFirst = selectedDepartments.length === 0;
+    setSelectedDepartments(prev => [...prev, {
+      id: dept.id,
+      name: dept.name,
+      color: dept.color || '#8B5CF6',
+      isPrimary: isFirst
+    }]);
+  };
+
+  // Remove department from selection
+  const handleRemoveDepartment = (deptId: string) => {
+    const dept = selectedDepartments.find(d => d.id === deptId);
+    const wasProimary = dept?.isPrimary;
+    
+    setSelectedDepartments(prev => {
+      const updated = prev.filter(d => d.id !== deptId);
+      // If we removed the primary, make the first remaining one primary
+      if (wasProimary && updated.length > 0) {
+        updated[0].isPrimary = true;
+      }
+      return updated;
+    });
+  };
+
+  // Set primary department
+  const handleSetPrimary = (deptId: string) => {
+    setSelectedDepartments(prev => prev.map(d => ({
+      ...d,
+      isPrimary: d.id === deptId
+    })));
+  };
+
   const handleSubmit = async () => {
     // Validation
     if (!fullName.trim()) {
@@ -565,6 +645,12 @@ function CreateUserModal({ open, onClose, departments, roles }: {
       toast.error('Senhas não conferem');
       return;
     }
+    
+    // Department validation for non-admins
+    if (isDepartmentRequired && selectedDepartments.length === 0) {
+      toast.error('Pelo menos um departamento é obrigatório');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -573,6 +659,12 @@ function CreateUserModal({ open, onClose, departments, roles }: {
       if (!session) {
         throw new Error('Você precisa estar logado para criar usuários');
       }
+
+      // Prepare department_ids with primary info
+      const department_ids = selectedDepartments.map(d => ({
+        id: d.id,
+        is_primary: d.isPrimary
+      }));
 
       const response = await fetch(
         `https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/create-user`,
@@ -587,7 +679,7 @@ function CreateUserModal({ open, onClose, departments, roles }: {
             password,
             full_name: fullName.trim(),
             role,
-            department_id: departmentId || null,
+            department_ids,
             phone: phone || null
           })
         }
@@ -632,7 +724,7 @@ function CreateUserModal({ open, onClose, departments, roles }: {
     setPassword('');
     setConfirmPassword('');
     setRole('vendedor');
-    setDepartmentId('');
+    setSelectedDepartments([]);
     setShowPassword(false);
     setShowConfirmPassword(false);
     onClose();
@@ -640,6 +732,11 @@ function CreateUserModal({ open, onClose, departments, roles }: {
 
   const selectedRole = roles.find(r => r.role_key === role);
   const selectedStyle = getRoleStyle(selectedRole);
+
+  // Available departments (not yet selected)
+  const availableDepartments = departments.filter(d => 
+    d.is_active && !selectedDepartments.some(sd => sd.id === d.id)
+  );
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -838,24 +935,83 @@ function CreateUserModal({ open, onClose, departments, roles }: {
             </div>
           )}
 
-          {/* Department */}
+          {/* Departments - Multi-select */}
           <div>
             <Label className="flex items-center gap-2 mb-2">
               <Building2 size={14} />
-              Departamento
+              Departamentos {isDepartmentRequired && '*'}
             </Label>
-            <Select value={departmentId} onValueChange={setDepartmentId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um departamento (opcional)" />
-              </SelectTrigger>
-              <SelectContent>
-                {departments.map((dept) => (
-                  <SelectItem key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </SelectItem>
+            
+            {/* Selected departments */}
+            {selectedDepartments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3 p-3 bg-muted/50 rounded-lg">
+                {selectedDepartments.map((dept) => (
+                  <Badge
+                    key={dept.id}
+                    variant="outline"
+                    className="pl-2 pr-1 py-1.5 gap-1 cursor-pointer group"
+                    style={{ 
+                      borderColor: dept.color,
+                      backgroundColor: `${dept.color}15`
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleSetPrimary(dept.id)}
+                      className="flex items-center gap-1"
+                      title={dept.isPrimary ? 'Departamento primário' : 'Definir como primário'}
+                    >
+                      {dept.isPrimary && <Star size={12} className="text-warning" fill="currentColor" />}
+                      {dept.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveDepartment(dept.id)}
+                      className="ml-1 p-0.5 hover:bg-destructive/20 rounded transition-colors"
+                    >
+                      <X size={14} className="text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </Badge>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            )}
+
+            {/* Add department select */}
+            {availableDepartments.length > 0 && (
+              <Select onValueChange={handleAddDepartment} value="">
+                <SelectTrigger>
+                  <SelectValue placeholder="Adicionar departamento..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableDepartments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: dept.color || '#8B5CF6' }}
+                        />
+                        {dept.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {/* Validation message */}
+            {isDepartmentRequired && selectedDepartments.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                <AlertCircle size={12} />
+                Pelo menos um departamento é obrigatório para este perfil
+              </p>
+            )}
+
+            {selectedDepartments.length > 1 && (
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                <Star size={12} className="text-warning" />
+                Clique no departamento para defini-lo como primário
+              </p>
+            )}
           </div>
         </div>
 
@@ -865,7 +1021,7 @@ function CreateUserModal({ open, onClose, departments, roles }: {
           </Button>
           <Button 
             onClick={handleSubmit}
-            disabled={isLoading || !fullName || !email || !password || password !== confirmPassword}
+            disabled={isLoading || !fullName || !email || !password || password !== confirmPassword || (isDepartmentRequired && selectedDepartments.length === 0)}
             className="gap-2 btn-gradient text-white"
           >
             {isLoading ? (
@@ -897,7 +1053,6 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
   roles: RoleDefinition[];
 }) {
   const [role, setRole] = useState<string>('vendedor');
-  const [departmentId, setDepartmentId] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [showPermissions, setShowPermissions] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -909,7 +1064,15 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [selectedDepartments, setSelectedDepartments] = useState<{ id: string; name: string; color: string; isPrimary: boolean }[]>([]);
   const queryClient = useQueryClient();
+  
+  const addUserToDept = useAddUserToDepartment();
+  const removeUserFromDept = useRemoveUserFromDepartment();
+  const setPrimaryDept = useSetPrimaryDepartment();
+
+  // Check if department is required (not admin)
+  const isDepartmentRequired = role !== 'admin';
 
   // Fetch user email from auth
   const fetchUserEmail = async (userId: string) => {
@@ -943,7 +1106,6 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
   useEffect(() => {
     if (user && open) {
       setRole(user.role || 'vendedor');
-      setDepartmentId(user.department_id || '');
       setIsActive(user.is_active !== false);
       setFullName(user.full_name || '');
       setPhone(user.phone || '');
@@ -952,28 +1114,135 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
       setEmail('');
       setOriginalEmail('');
       fetchUserEmail(user.id);
+
+      // Load user's departments
+      const userDepts = user.user_departments || [];
+      setSelectedDepartments(userDepts.map((ud: any) => ({
+        id: ud.department_id,
+        name: ud.department?.name || '',
+        color: ud.department?.color || '#8B5CF6',
+        isPrimary: ud.is_primary
+      })));
     }
   }, [user, open]);
+
+  // Add department to selection
+  const handleAddDepartment = (deptId: string) => {
+    const dept = departments.find(d => d.id === deptId);
+    if (!dept) return;
+    
+    if (selectedDepartments.some(d => d.id === deptId)) {
+      toast.error('Departamento já adicionado');
+      return;
+    }
+
+    const isFirst = selectedDepartments.length === 0;
+    setSelectedDepartments(prev => [...prev, {
+      id: dept.id,
+      name: dept.name,
+      color: dept.color || '#8B5CF6',
+      isPrimary: isFirst
+    }]);
+  };
+
+  // Remove department from selection
+  const handleRemoveDepartment = (deptId: string) => {
+    if (isDepartmentRequired && selectedDepartments.length <= 1) {
+      toast.error('Pelo menos um departamento é obrigatório');
+      return;
+    }
+
+    const dept = selectedDepartments.find(d => d.id === deptId);
+    const wasPrimary = dept?.isPrimary;
+    
+    setSelectedDepartments(prev => {
+      const updated = prev.filter(d => d.id !== deptId);
+      // If we removed the primary, make the first remaining one primary
+      if (wasPrimary && updated.length > 0) {
+        updated[0].isPrimary = true;
+      }
+      return updated;
+    });
+  };
+
+  // Set primary department
+  const handleSetPrimary = (deptId: string) => {
+    setSelectedDepartments(prev => prev.map(d => ({
+      ...d,
+      isPrimary: d.id === deptId
+    })));
+  };
 
   const handleSubmit = async () => {
     if (!user) return;
 
+    // Validate departments for non-admins
+    if (isDepartmentRequired && selectedDepartments.length === 0) {
+      toast.error('Pelo menos um departamento é obrigatório');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      // Update profile
+      // Update profile (keep department_id for backwards compatibility)
+      const primaryDeptId = selectedDepartments.find(d => d.isPrimary)?.id || selectedDepartments[0]?.id || null;
+      
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
           full_name: fullName,
           phone,
           role,
-          department_id: departmentId || null,
+          department_id: primaryDeptId,
           is_active: isActive,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
 
       if (profileError) throw profileError;
+
+      // Sync departments in user_departments table
+      const currentDepts = user.user_departments?.map((ud: any) => ud.department_id) || [];
+      const newDepts = selectedDepartments.map(d => d.id);
+      
+      // Remove departments that are no longer selected
+      const deptsToRemove = currentDepts.filter((id: string) => !newDepts.includes(id));
+      for (const deptId of deptsToRemove) {
+        await supabase
+          .from('user_departments')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('department_id', deptId);
+      }
+
+      // Add new departments
+      const deptsToAdd = selectedDepartments.filter(d => !currentDepts.includes(d.id));
+      for (const dept of deptsToAdd) {
+        await supabase
+          .from('user_departments')
+          .insert({
+            user_id: user.id,
+            department_id: dept.id,
+            is_primary: dept.isPrimary
+          });
+      }
+
+      // Update primary status for existing departments
+      const primaryDept = selectedDepartments.find(d => d.isPrimary);
+      if (primaryDept) {
+        // Set all to non-primary first
+        await supabase
+          .from('user_departments')
+          .update({ is_primary: false })
+          .eq('user_id', user.id);
+        
+        // Set the primary one
+        await supabase
+          .from('user_departments')
+          .update({ is_primary: true })
+          .eq('user_id', user.id)
+          .eq('department_id', primaryDept.id);
+      }
 
       // Update email/password via edge function if changed
       if (email !== originalEmail || newPassword) {
@@ -1003,6 +1272,8 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
 
       toast.success('Usuário atualizado com sucesso!');
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['user-departments'] });
+      queryClient.invalidateQueries({ queryKey: ['all-user-departments'] });
       onClose();
     } catch (error: any) {
       console.error(error);
@@ -1016,6 +1287,11 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
 
   const selectedRole = roles.find(r => r.role_key === role);
   const selectedStyle = getRoleStyle(selectedRole);
+
+  // Available departments (not yet selected)
+  const availableDepartments = departments.filter(d => 
+    d.is_active && !selectedDepartments.some(sd => sd.id === d.id)
+  );
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -1163,24 +1439,84 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
             </Select>
           </div>
 
-          {/* Department */}
+          {/* Departments - Multi-select */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Departamento
-            </label>
-            <Select value={departmentId || "none"} onValueChange={(val) => setDepartmentId(val === "none" ? "" : val)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um departamento" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Nenhum</SelectItem>
-                {departments.map((dept) => (
-                  <SelectItem key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </SelectItem>
+            <Label className="flex items-center gap-2 mb-2">
+              <Building2 size={14} />
+              Departamentos {isDepartmentRequired && '*'}
+            </Label>
+            
+            {/* Selected departments */}
+            {selectedDepartments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3 p-3 bg-muted/50 rounded-lg">
+                {selectedDepartments.map((dept) => (
+                  <Badge
+                    key={dept.id}
+                    variant="outline"
+                    className="pl-2 pr-1 py-1.5 gap-1 cursor-pointer group"
+                    style={{ 
+                      borderColor: dept.color,
+                      backgroundColor: `${dept.color}15`
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleSetPrimary(dept.id)}
+                      className="flex items-center gap-1"
+                      title={dept.isPrimary ? 'Departamento primário' : 'Definir como primário'}
+                    >
+                      {dept.isPrimary && <Star size={12} className="text-warning" fill="currentColor" />}
+                      {dept.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveDepartment(dept.id)}
+                      className="ml-1 p-0.5 hover:bg-destructive/20 rounded transition-colors"
+                      disabled={isDepartmentRequired && selectedDepartments.length <= 1}
+                    >
+                      <X size={14} className={`${isDepartmentRequired && selectedDepartments.length <= 1 ? 'text-muted-foreground/30' : 'text-muted-foreground hover:text-destructive'}`} />
+                    </button>
+                  </Badge>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            )}
+
+            {/* Add department select */}
+            {availableDepartments.length > 0 && (
+              <Select onValueChange={handleAddDepartment} value="">
+                <SelectTrigger>
+                  <SelectValue placeholder="Adicionar departamento..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableDepartments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: dept.color || '#8B5CF6' }}
+                        />
+                        {dept.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {/* Validation message */}
+            {isDepartmentRequired && selectedDepartments.length === 0 && (
+              <p className="text-xs text-destructive mt-2 flex items-center gap-1">
+                <AlertCircle size={12} />
+                Pelo menos um departamento é obrigatório para este perfil
+              </p>
+            )}
+
+            {selectedDepartments.length > 1 && (
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                <Star size={12} className="text-warning" />
+                Clique no departamento para defini-lo como primário
+              </p>
+            )}
           </div>
 
           {/* Active Status */}
@@ -1250,7 +1586,7 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
           </Button>
           <Button 
             onClick={handleSubmit}
-            disabled={isLoading || !fullName}
+            disabled={isLoading || !fullName || (isDepartmentRequired && selectedDepartments.length === 0)}
             className="gap-2 btn-gradient text-white"
           >
             {isLoading ? (
