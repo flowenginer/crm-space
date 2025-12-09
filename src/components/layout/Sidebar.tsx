@@ -13,7 +13,6 @@ import {
   Shirt,
   Bell,
   ChevronLeft,
-  ChevronDown,
   Menu,
   LucideIcon,
   CalendarClock,
@@ -36,7 +35,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { usePendingRequestsCount, useContactRequestsRealtime } from '@/hooks/useContactRequests';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+
 
 interface NavItem {
   title: string;
@@ -52,7 +51,8 @@ interface NavItem {
  */
 const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard, permission: 'dashboard.view' },
-  // Conversas agora é um submenu, removido daqui
+  { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.view' },
+  { title: 'Requisições', href: '/conversations/requests', icon: GitPullRequest, permission: 'conversations.requests' },
   { title: 'Ao Vivo', href: '/ao-vivo', icon: Radio, permission: 'live.view' },
   { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.view' },
   { title: 'Agendamentos', href: '/agendamentos', icon: CalendarClock, permission: 'schedules.view' },
@@ -87,13 +87,6 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   
   // Ativar listener de realtime para requisições
   useContactRequestsRealtime();
-  // State for collapsible conversations submenu
-  const isConversationsActive = location.pathname.startsWith('/conversations');
-  const [conversationsOpen, setConversationsOpen] = useState(isConversationsActive);
-  
-  // Check if user can see requests - now uses proper permission
-  const canSeeRequests = isAdmin || hasPermission('conversations', 'requests');
-  const canSeeConversations = isAdmin || hasPermission('conversations', 'view');
 
   // Fetch pending scheduled messages count
   const { data: pendingCount } = useQuery({
@@ -263,96 +256,6 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             );
           })}
 
-          {/* Conversas - Submenu expansível */}
-          {canSeeConversations && (
-            <Collapsible open={conversationsOpen} onOpenChange={setConversationsOpen}>
-              <CollapsibleTrigger asChild>
-                <button
-                  className={cn(
-                    'group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
-                    isConversationsActive
-                      ? isDark
-                        ? 'bg-primary/15 text-primary border-l-4 border-primary'
-                        : 'bg-white/20 text-white shadow-lg border-l-4 border-white'
-                      : isDark
-                        ? 'text-muted-foreground hover:bg-muted hover:text-foreground hover:scale-[1.02]'
-                        : 'text-purple-100 hover:bg-white/10 hover:text-white hover:scale-[1.02]',
-                    isCollapsed && 'justify-center px-3'
-                  )}
-                >
-                  <MessageSquare className={cn(
-                    'h-5 w-5 shrink-0 transition-transform',
-                    isConversationsActive 
-                      ? isDark ? 'text-primary' : 'text-white'
-                      : isDark 
-                        ? 'text-muted-foreground group-hover:text-foreground' 
-                        : 'text-purple-200 group-hover:text-white'
-                  )} />
-                  {!isCollapsed && (
-                    <>
-                      <span className="flex-1 text-left">Conversas</span>
-                      {canSeeRequests && pendingRequestsCount > 0 && (
-                        <span className="mr-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-white">
-                          {pendingRequestsCount > 99 ? '99+' : pendingRequestsCount}
-                        </span>
-                      )}
-                      <ChevronDown className={cn(
-                        'h-4 w-4 transition-transform',
-                        conversationsOpen && 'rotate-180'
-                      )} />
-                    </>
-                  )}
-                </button>
-              </CollapsibleTrigger>
-              {!isCollapsed && (
-                <CollapsibleContent className="mt-1 ml-4 space-y-1">
-                  {/* Subitem: Conversas */}
-                  <NavLink
-                    to="/conversations"
-                    end
-                    className={cn(
-                      'group flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200',
-                      location.pathname === '/conversations'
-                        ? isDark
-                          ? 'bg-primary/10 text-primary'
-                          : 'bg-white/15 text-white'
-                        : isDark
-                          ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                          : 'text-purple-200 hover:bg-white/10 hover:text-white'
-                    )}
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    <span>Conversas</span>
-                  </NavLink>
-                  
-                  {/* Subitem: Requisições - só admin/supervisor */}
-                  {canSeeRequests && (
-                    <NavLink
-                      to="/conversations/requests"
-                      className={cn(
-                        'group flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200',
-                        location.pathname === '/conversations/requests'
-                          ? isDark
-                            ? 'bg-primary/10 text-primary'
-                            : 'bg-white/15 text-white'
-                          : isDark
-                            ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                            : 'text-purple-200 hover:bg-white/10 hover:text-white'
-                      )}
-                    >
-                      <GitPullRequest className="h-4 w-4" />
-                      <span className="flex-1">Requisições</span>
-                      {pendingRequestsCount > 0 && (
-                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-white">
-                          {pendingRequestsCount > 99 ? '99+' : pendingRequestsCount}
-                        </span>
-                      )}
-                    </NavLink>
-                  )}
-                </CollapsibleContent>
-              )}
-            </Collapsible>
-          )}
 
           {/* Demais itens de navegação */}
           {filteredNavItems.filter(item => item.href !== '/').map((item) => {
@@ -361,6 +264,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
             const showBadge = item.href === '/agendamentos' && pendingCount && pendingCount > 0;
             const showLiveBadge = item.href === '/ao-vivo';
+            const showRequestsBadge = item.href === '/conversations/requests' && pendingRequestsCount > 0;
 
             return (
               <NavLink
@@ -392,6 +296,11 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                     {showBadge && (
                       <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
                         {pendingCount > 99 ? '99+' : pendingCount}
+                      </span>
+                    )}
+                    {showRequestsBadge && (
+                      <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-white">
+                        {pendingRequestsCount > 99 ? '99+' : pendingRequestsCount}
                       </span>
                     )}
                     {showLiveBadge && (
