@@ -410,7 +410,7 @@ function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, o
       className={cn(
         'p-4 border-b border-border/50 cursor-pointer transition-all duration-200 group',
         isSelected 
-          ? 'bg-accent border-l-4 border-l-primary' 
+          ? 'bg-success/15 border-l-4 border-l-success'
           : isChecked
             ? 'bg-primary/10 border-l-4 border-l-primary'
             : isNewTransfer
