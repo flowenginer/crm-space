@@ -1565,9 +1565,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
       }
     }
     
-    // If we have a directly fetched conversation and it's not already in the list, prepend it
+    // If we have a directly fetched conversation and it's not already in the list, append it (don't move to top)
+    // The conversation will only move to the top naturally when a message is sent (due to last_message_at sorting)
     if (directSelectedConversation && !existingIds.has(directSelectedConversation.id)) {
-      result = [directSelectedConversation, ...result];
+      result = [...result, directSelectedConversation];
     }
     
     return result;
