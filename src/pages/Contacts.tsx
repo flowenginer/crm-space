@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import {
   Search,
   Plus,
@@ -166,6 +166,24 @@ const { isAdmin, isSupervisor, profile } = usePermissions();
   
   const [isOpeningChat, setIsOpeningChat] = useState(false);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  
+  // Estado para seletor de canal WhatsApp
+  const [showChannelSelector, setShowChannelSelector] = useState(false);
+  const [selectedContactForChat, setSelectedContactForChat] = useState<Contact | null>(null);
+  
+  // Buscar canais WhatsApp ativos
+  const { data: whatsappChannels = [] } = useQuery({
+    queryKey: ['whatsapp-channels-active'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('whatsapp_channels')
+        .select('id, name, phone, status')
+        .eq('is_deleted', false)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
 
   // Modal states
   const [showContactModal, setShowContactModal] = useState(false);
@@ -321,6 +339,31 @@ const { isAdmin, isSupervisor, profile } = usePermissions();
     }
   };
 
+  // Função para criar conversa com canal selecionado
+  const createConversationWithChannel = async (contact: Contact, channelId: string, userId: string | undefined) => {
+    const { data: newConversation, error: createError } = await supabase
+      .from('conversations')
+      .insert({
+        contact_id: contact.id,
+        channel_id: channelId,
+        status: 'open',
+        assigned_to: userId,
+        is_unread: false,
+        unread_count: 0,
+        last_message_at: new Date().toISOString(),
+        last_message_preview: 'Nova conversa iniciada',
+      })
+      .select('id')
+      .single();
+
+    if (createError) throw createError;
+    
+    setShowChannelSelector(false);
+    setSelectedContactForChat(null);
+    queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    navigate(`/conversations?id=${newConversation.id}`);
+  };
+
   const handleOpenChat = async (contact: Contact) => {
     if (isOpeningChat) return;
     
@@ -382,35 +425,28 @@ const { isAdmin, isSupervisor, profile } = usePermissions();
       }
       // ============ FIM DA VERIFICAÇÃO ============
 
-      toast.info(`Abrindo conversa com ${contact.full_name}...`);
-
-      let conversationId: string;
-
       if (existingConversation) {
-        conversationId = existingConversation.id;
+        toast.info(`Abrindo conversa com ${contact.full_name}...`);
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        navigate(`/conversations?id=${existingConversation.id}`);
       } else {
-        // Create new conversation
-        const { data: newConversation, error: createError } = await supabase
-          .from('conversations')
-          .insert({
-            contact_id: contact.id,
-            status: 'open',
-            assigned_to: currentUserId,
-            is_unread: false,
-            unread_count: 0,
-            last_message_at: new Date().toISOString(),
-            last_message_preview: 'Nova conversa iniciada',
-          })
-          .select('id')
-          .single();
-
-        if (createError) throw createError;
-        conversationId = newConversation.id;
+        // Mostrar seletor de canal para criar nova conversa
+        const connectedChannels = whatsappChannels.filter(c => c.status === 'connected');
+        
+        if (connectedChannels.length === 0) {
+          toast.error('Nenhum canal WhatsApp conectado. Configure um canal primeiro.');
+          return;
+        }
+        
+        if (connectedChannels.length === 1) {
+          // Se só tem um canal, criar diretamente
+          await createConversationWithChannel(contact, connectedChannels[0].id, currentUserId);
+        } else {
+          // Mostrar seletor de canal
+          setSelectedContactForChat(contact);
+          setShowChannelSelector(true);
+        }
       }
-
-      // Invalidate queries and navigate
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      navigate(`/conversations?id=${conversationId}`);
       
     } catch (error: any) {
       console.error('Error opening chat:', error);
@@ -1573,6 +1609,37 @@ const { isAdmin, isSupervisor, profile } = usePermissions();
                 </button>
               </div>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de seleção de canal WhatsApp */}
+      <Dialog open={showChannelSelector} onOpenChange={setShowChannelSelector}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Selecione o Canal WhatsApp</DialogTitle>
+            <DialogDescription>
+              Escolha por qual número deseja iniciar a conversa com {selectedContactForChat?.full_name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {whatsappChannels.filter(c => c.status === 'connected').map(channel => (
+              <Button
+                key={channel.id}
+                variant="outline"
+                className="w-full justify-start gap-2"
+                onClick={async () => {
+                  if (selectedContactForChat) {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    await createConversationWithChannel(selectedContactForChat, channel.id, user?.id);
+                  }
+                }}
+              >
+                <MessageCircle className="h-4 w-4 text-green-500" />
+                <span>{channel.name}</span>
+                <span className="text-xs text-muted-foreground ml-auto">{channel.phone}</span>
+              </Button>
+            ))}
           </div>
         </DialogContent>
       </Dialog>
