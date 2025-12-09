@@ -40,6 +40,8 @@ import {
   RefreshCw,
   ArrowRightLeft,
   PenLine,
+  CheckSquare,
+  SquareCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -362,9 +364,12 @@ interface ConversationItemProps {
   isNewTransfer: boolean;
   onClick: () => void;
   onTogglePin: () => void;
+  isSelectionMode?: boolean;
+  isChecked?: boolean;
+  onToggleCheck?: () => void;
 }
 
-function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, onClick, onTogglePin }: ConversationItemProps) {
+function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, onClick, onTogglePin, isSelectionMode, isChecked, onToggleCheck }: ConversationItemProps) {
   const contactName = conversation.contact?.full_name || 'Contato';
   const isOnline = conversation.contact?.is_online || false;
   const isUnread = conversation.is_unread || false;
@@ -391,24 +396,45 @@ function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, o
     }
   };
 
+  const handleClick = () => {
+    if (isSelectionMode && onToggleCheck) {
+      onToggleCheck();
+    } else {
+      onClick();
+    }
+  };
+
   return (
     <div
-      onClick={onClick}
+      onClick={handleClick}
       className={cn(
         'p-4 border-b border-border/50 cursor-pointer transition-all duration-200 group',
         isSelected 
           ? 'bg-accent border-l-4 border-l-primary' 
-          : isNewTransfer
-            ? 'bg-emerald-500/20 border-l-4 border-l-emerald-500 animate-pulse'
-            : isUnread 
-              ? 'bg-[hsl(var(--unread-bg))] border-l-3 border-l-purple-400/60' 
-              : 'hover:bg-muted/50'
+          : isChecked
+            ? 'bg-primary/10 border-l-4 border-l-primary'
+            : isNewTransfer
+              ? 'bg-emerald-500/20 border-l-4 border-l-emerald-500 animate-pulse'
+              : isUnread 
+                ? 'bg-[hsl(var(--unread-bg))] border-l-3 border-l-purple-400/60' 
+                : 'hover:bg-muted/50'
       )}
     >
       <div className="flex items-start gap-3">
-        {/* Avatar */}
+        {/* Selection Checkbox or Avatar */}
         <div className="relative flex-shrink-0">
-          {conversation.contact?.avatar_url ? (
+          {isSelectionMode ? (
+            <div 
+              className={cn(
+                "w-12 h-12 rounded-full flex items-center justify-center transition-all",
+                isChecked 
+                  ? "bg-primary" 
+                  : "bg-muted border-2 border-border"
+              )}
+            >
+              {isChecked && <Check size={24} className="text-primary-foreground" />}
+            </div>
+          ) : conversation.contact?.avatar_url ? (
             <img
               src={conversation.contact.avatar_url}
               alt={contactName}
@@ -1192,6 +1218,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const [newTagDepartmentId, setNewTagDepartmentId] = useState('');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
+  const [isConversationSelectionMode, setIsConversationSelectionMode] = useState(false);
+  const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -1956,6 +1984,62 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
     }
   };
 
+  // Bulk mark as unread
+  const handleBulkMarkAsUnread = async () => {
+    if (selectedConversationIds.size === 0) return;
+    
+    const ids = Array.from(selectedConversationIds);
+    
+    try {
+      // Update all selected conversations
+      await Promise.all(
+        ids.map(id => 
+          supabase
+            .from('conversations')
+            .update({ is_unread: true, unread_count: 1 })
+            .eq('id', id)
+        )
+      );
+      
+      // Invalidate queries to refresh the list
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-counts'] });
+      
+      toast.success(`${ids.length} conversa(s) marcada(s) como não lida(s)`);
+      
+      // Clear selection
+      setSelectedConversationIds(new Set());
+      setIsConversationSelectionMode(false);
+    } catch (error) {
+      toast.error('Erro ao marcar conversas como não lidas');
+    }
+  };
+
+  // Toggle conversation selection
+  const toggleConversationSelection = (id: string) => {
+    setSelectedConversationIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Cancel selection mode
+  const cancelConversationSelection = () => {
+    setSelectedConversationIds(new Set());
+    setIsConversationSelectionMode(false);
+  };
+
+  // Select all visible conversations
+  const selectAllConversations = () => {
+    const allIds = new Set(filteredConversations.map(c => c.id));
+    setSelectedConversationIds(allIds);
+  };
+
   const handleCloseConversation = () => {
     if (selectedConversationId) {
       updateConversation.mutate({ 
@@ -2639,9 +2723,24 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-foreground">Conversas</h2>
-            <button className="p-2 hover:bg-muted rounded-lg transition-colors">
-              <Edit3 size={18} className="text-muted-foreground" />
-            </button>
+            <div className="flex items-center gap-1">
+              {/* Bulk Select Button */}
+              <button 
+                onClick={() => setIsConversationSelectionMode(!isConversationSelectionMode)}
+                className={cn(
+                  "p-2 rounded-lg transition-colors",
+                  isConversationSelectionMode 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-muted text-muted-foreground"
+                )}
+                title={isConversationSelectionMode ? "Cancelar seleção" : "Selecionar múltiplas"}
+              >
+                <CheckSquare size={18} />
+              </button>
+              <button className="p-2 hover:bg-muted rounded-lg transition-colors">
+                <Edit3 size={18} className="text-muted-foreground" />
+              </button>
+            </div>
           </div>
 
           {/* Search */}
@@ -2969,6 +3068,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
                     togglePin(conv.id);
                     toast.success(isPinned(conv.id) ? 'Conversa desafixada' : 'Conversa fixada');
                   }}
+                  isSelectionMode={isConversationSelectionMode}
+                  isChecked={selectedConversationIds.has(conv.id)}
+                  onToggleCheck={() => toggleConversationSelection(conv.id)}
                 />
               ))}
               {/* Loading indicator for more conversations */}
@@ -2981,6 +3083,43 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
             </>
           )}
         </div>
+        
+        {/* Bulk Actions Floating Toolbar */}
+        {isConversationSelectionMode && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-card border border-border rounded-xl shadow-lg px-4 py-3">
+            <span className="text-sm text-muted-foreground mr-2">
+              {selectedConversationIds.size} selecionada(s)
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={selectAllConversations}
+              className="h-8"
+            >
+              <SquareCheck size={16} className="mr-1" />
+              Todas
+            </Button>
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleBulkMarkAsUnread}
+              disabled={selectedConversationIds.size === 0}
+              className="h-8"
+            >
+              <Mail size={16} className="mr-1" />
+              Não lidas
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={cancelConversationSelection}
+              className="h-8"
+            >
+              <X size={16} className="mr-1" />
+              Cancelar
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Column 2: Chat Area */}
