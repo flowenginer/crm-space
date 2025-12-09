@@ -1826,12 +1826,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
         if (aIsNewTransfer && !bIsNewTransfer) return -1;
         if (!aIsNewTransfer && bIsNewTransfer) return 1;
         
-        // Keep selected conversation at top if it wouldn't normally appear
-        if (selectedConversationId) {
-          if (a.id === selectedConversationId) return -1;
-          if (b.id === selectedConversationId) return 1;
-        }
-        
         // For server-sorted filters, preserve server order
         // All filters are now server-side (not_replied and client_not_replied included)
         // Server already sorted/filtered these, just maintain relative order
