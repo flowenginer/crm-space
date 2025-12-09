@@ -780,3 +780,82 @@ export function useHourlyTimeline(filters: DashboardFilters) {
     refetchInterval: REFETCH_INTERVAL,
   });
 }
+
+// Interaction Timeline Data Interface - Client vs Agent messages by hour
+export interface InteractionHourlyData {
+  hour: string;           // "00:00", "01:00", ..., "23:00"
+  hourNum: number;        // 0, 1, ..., 23
+  clientMessages: number; // Messages from clients (is_from_me = false)
+  agentMessages: number;  // Messages from agents (is_from_me = true)
+}
+
+// Interaction Timeline Hook - Shows client vs agent messages by hour (00:00-23:59)
+export function useInteractionTimeline(filters: DashboardFilters) {
+  return useQuery({
+    queryKey: ['interaction_timeline', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId],
+    queryFn: async (): Promise<InteractionHourlyData[]> => {
+      const dateFrom = startOfDay(filters.dateFrom).toISOString();
+      const dateTo = endOfDay(filters.dateTo).toISOString();
+
+      // Initialize hours array (0h to 23h - full day)
+      const hours: InteractionHourlyData[] = [];
+      for (let h = 0; h <= 23; h++) {
+        hours.push({
+          hour: `${h.toString().padStart(2, '0')}:00`,
+          hourNum: h,
+          clientMessages: 0,
+          agentMessages: 0
+        });
+      }
+
+      // Get conversations that match filters
+      let conversationsQuery = supabase
+        .from('conversations')
+        .select('id')
+        .gte('created_at', dateFrom)
+        .lte('created_at', dateTo);
+
+      if (filters.agentId) {
+        conversationsQuery = conversationsQuery.eq('assigned_to', filters.agentId);
+      }
+      if (filters.departmentId) {
+        conversationsQuery = conversationsQuery.eq('department_id', filters.departmentId);
+      }
+
+      const { data: conversations } = await conversationsQuery;
+      
+      if (!conversations || conversations.length === 0) {
+        return hours;
+      }
+
+      const convIds = conversations.map(c => c.id);
+
+      // Get all messages for these conversations in the period
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('id, conversation_id, is_from_me, created_at')
+        .in('conversation_id', convIds)
+        .gte('created_at', dateFrom)
+        .lte('created_at', dateTo);
+
+      // Count messages by hour and type (with timezone correction)
+      messages?.forEach(msg => {
+        const zonedDate = toZonedTime(new Date(msg.created_at), BRAZIL_TIMEZONE);
+        const hour = zonedDate.getHours();
+        const hourData = hours.find(h => h.hourNum === hour);
+        
+        if (hourData) {
+          if (msg.is_from_me) {
+            hourData.agentMessages++;
+          } else {
+            hourData.clientMessages++;
+          }
+        }
+      });
+
+      return hours;
+    },
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
+  });
+}
