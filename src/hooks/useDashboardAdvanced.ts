@@ -797,12 +797,20 @@ export function useInteractionTimeline(filters: DashboardFilters) {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
 
-      // Initialize hours array (0h to 23h - full day)
+      // Initialize slots array (00:00, 00:30, 01:00, 01:30, ... 23:30 - 48 slots of 30 min)
       const hours: InteractionHourlyData[] = [];
       for (let h = 0; h <= 23; h++) {
+        // First slot: XX:00
         hours.push({
           hour: `${h.toString().padStart(2, '0')}:00`,
-          hourNum: h,
+          hourNum: h * 2,
+          clientMessages: 0,
+          agentMessages: 0
+        });
+        // Second slot: XX:30
+        hours.push({
+          hour: `${h.toString().padStart(2, '0')}:30`,
+          hourNum: h * 2 + 1,
           clientMessages: 0,
           agentMessages: 0
         });
@@ -846,11 +854,14 @@ export function useInteractionTimeline(filters: DashboardFilters) {
 
       const { data: messages } = await messagesQuery;
 
-      // Count messages by hour and type (with timezone correction)
+      // Count messages by 30-min slot and type (with timezone correction)
       messages?.forEach(msg => {
         const zonedDate = toZonedTime(new Date(msg.created_at), BRAZIL_TIMEZONE);
         const hour = zonedDate.getHours();
-        const hourData = hours.find(h => h.hourNum === hour);
+        const minutes = zonedDate.getMinutes();
+        // Calculate slot index: 0-29 min = first slot, 30-59 min = second slot
+        const slotIndex = hour * 2 + (minutes >= 30 ? 1 : 0);
+        const hourData = hours.find(h => h.hourNum === slotIndex);
         
         if (hourData) {
           if (msg.is_from_me) {
