@@ -101,6 +101,12 @@ export function useRealtimeConversations() {
       queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
     }, 150);
 
+    // Helper para obter o ID do usuário atual
+    const getCurrentUserId = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      return user?.id;
+    };
+
     console.log('📡 [Realtime] Setting up conversation channels...');
 
     // Channel 1: Subscribe to conversation updates
@@ -113,7 +119,7 @@ export function useRealtimeConversations() {
           schema: 'public',
           table: 'conversations',
         },
-        (payload) => {
+        async (payload) => {
           console.log('🔔 [Realtime] Conversation UPDATE received:', {
             id: (payload.new as any)?.id,
             oldAssignedTo: (payload.old as any)?.assigned_to,
@@ -126,13 +132,82 @@ export function useRealtimeConversations() {
           const newAssignedTo = (payload.new as any)?.assigned_to;
           const oldStatus = (payload.old as any)?.status;
           const newStatus = (payload.new as any)?.status;
+          const conversationId = (payload.new as any)?.id;
           
-          // Transferência ou fechamento = invalidação imediata
+          // Fechamento = invalidação imediata
           if (newStatus === 'closed' && oldStatus !== 'closed') {
             console.log('✅ [Realtime] Conversation CLOSED - immediate refresh');
             invalidateImmediately();
-          } else if (oldAssignedTo !== newAssignedTo) {
-            console.log('✅ [Realtime] Conversation TRANSFERRED - immediate refresh');
+            return;
+          }
+          
+          // Transferência = atualização otimista + invalidação
+          if (oldAssignedTo !== newAssignedTo) {
+            console.log('✅ [Realtime] Conversation TRANSFERRED - checking user');
+            
+            const currentUserId = await getCurrentUserId();
+            
+            // Se EU recebi a conversa, adicionar ao meu cache
+            if (newAssignedTo === currentUserId) {
+              console.log('🎯 [Realtime] Conversa transferida PARA MIM - adicionando ao cache');
+              
+              // Buscar dados completos da conversa
+              const { data: fullConversation } = await supabase
+                .from('conversations')
+                .select(`
+                  id, status, unread_count, is_unread, last_message_preview, last_message_at,
+                  assigned_to, department_id, channel_id, is_new_transfer, lead_status, priority,
+                  contact:contacts(id, full_name, phone, avatar_url, origin, lead_status)
+                `)
+                .eq('id', conversationId)
+                .single();
+              
+              if (fullConversation) {
+                // Adicionar conversa ao cache local imediatamente
+                queryClient.setQueriesData(
+                  { queryKey: ['conversations-paginated'] },
+                  (oldData: any) => {
+                    if (!oldData?.pages) return oldData;
+                    
+                    // Verificar se já existe
+                    const exists = oldData.pages.some((page: any) => 
+                      page.conversations?.some((c: any) => c.id === conversationId)
+                    );
+                    
+                    if (exists) return oldData;
+                    
+                    // Adicionar no início da primeira página
+                    const newPages = [...oldData.pages];
+                    if (newPages[0]) {
+                      newPages[0] = {
+                        ...newPages[0],
+                        conversations: [fullConversation, ...(newPages[0].conversations || [])]
+                      };
+                    }
+                    return { ...oldData, pages: newPages };
+                  }
+                );
+              }
+            }
+            
+            // Se EU enviei a conversa, remover do meu cache
+            if (oldAssignedTo === currentUserId) {
+              console.log('📤 [Realtime] Conversa transferida DE MIM - removendo do cache');
+              queryClient.setQueriesData(
+                { queryKey: ['conversations-paginated'] },
+                (oldData: any) => {
+                  if (!oldData?.pages) return oldData;
+                  return {
+                    ...oldData,
+                    pages: oldData.pages.map((page: any) => ({
+                      ...page,
+                      conversations: page.conversations?.filter((c: any) => c.id !== conversationId) || []
+                    }))
+                  };
+                }
+              );
+            }
+            
             invalidateImmediately();
           } else {
             invalidateConversations();
@@ -184,10 +259,77 @@ export function useRealtimeConversations() {
         console.log('📡 [Realtime] global-conversation-events channel status:', status);
       });
 
+    // Channel 3: BROADCAST channel para transferências instantâneas (mais rápido que postgres_changes)
+    const transferBroadcastChannel = supabase
+      .channel('live-transfers')
+      .on('broadcast', { event: 'conversation-transferred' }, async (payload) => {
+        const { toUserId, fromUserId, conversationId, conversationData } = payload.payload;
+        const currentUserId = await getCurrentUserId();
+        
+        console.log('⚡ [Broadcast] Transfer received:', { toUserId, fromUserId, conversationId, currentUserId });
+        
+        if (!currentUserId) return;
+        
+        // Se EU recebi a conversa
+        if (toUserId === currentUserId && conversationData) {
+          console.log('🎯 [Broadcast] Conversa transferida PARA MIM:', conversationId);
+          
+          // Adicionar conversa ao cache IMEDIATAMENTE
+          queryClient.setQueriesData(
+            { queryKey: ['conversations-paginated'] },
+            (oldData: any) => {
+              if (!oldData?.pages) return oldData;
+              
+              // Verificar se já existe
+              const exists = oldData.pages.some((page: any) => 
+                page.conversations?.some((c: any) => c.id === conversationId)
+              );
+              
+              if (exists) return oldData;
+              
+              // Adicionar no início da primeira página
+              const newPages = [...oldData.pages];
+              if (newPages[0]) {
+                newPages[0] = {
+                  ...newPages[0],
+                  conversations: [conversationData, ...(newPages[0].conversations || [])]
+                };
+              }
+              return { ...oldData, pages: newPages };
+            }
+          );
+          
+          // Atualizar contagens
+          queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+        }
+        
+        // Se EU enviei a conversa (backup, normalmente já removido localmente)
+        if (fromUserId === currentUserId) {
+          console.log('📤 [Broadcast] Confirmação: conversa transferida de mim:', conversationId);
+          queryClient.setQueriesData(
+            { queryKey: ['conversations-paginated'] },
+            (oldData: any) => {
+              if (!oldData?.pages) return oldData;
+              return {
+                ...oldData,
+                pages: oldData.pages.map((page: any) => ({
+                  ...page,
+                  conversations: page.conversations?.filter((c: any) => c.id !== conversationId) || []
+                }))
+              };
+            }
+          );
+        }
+      })
+      .subscribe((status) => {
+        console.log('📡 [Realtime] live-transfers broadcast channel status:', status);
+      });
+
     return () => {
       console.log('🔌 [Realtime] Cleaning up conversation channels');
       supabase.removeChannel(conversationsChannel);
       supabase.removeChannel(eventsChannel);
+      supabase.removeChannel(transferBroadcastChannel);
     };
   }, [queryClient]);
 }

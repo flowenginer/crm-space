@@ -146,6 +146,10 @@ export function useTransferConversation() {
       toDepartmentId,
       note,
     }: TransferConversationParams) => {
+      // Obter dados do usuário atual ANTES da transferência
+      const { data: { user } } = await supabase.auth.getUser();
+      const fromUserId = user?.id;
+
       // Usar a função RPC SECURITY DEFINER para transferência
       const { data, error } = await supabase.rpc('transfer_conversation', {
         p_conversation_id: conversationId,
@@ -159,10 +163,62 @@ export function useTransferConversation() {
         throw new Error(error.message || 'Falha ao transferir conversa');
       }
 
-      return { success: data };
+      // BROADCAST: Enviar notificação instantânea para o destinatário
+      if (toUserId) {
+        try {
+          // Buscar dados completos da conversa para enviar no broadcast
+          const { data: conversationData } = await supabase
+            .from('conversations')
+            .select(`
+              id, status, unread_count, is_unread, last_message_preview, last_message_at,
+              assigned_to, department_id, channel_id, is_new_transfer, lead_status, priority,
+              contact:contacts(id, full_name, phone, avatar_url, origin, lead_status)
+            `)
+            .eq('id', conversationId)
+            .single();
+
+          if (conversationData) {
+            console.log('⚡ [Transfer] Sending broadcast to recipient:', toUserId);
+            
+            await supabase.channel('live-transfers').send({
+              type: 'broadcast',
+              event: 'conversation-transferred',
+              payload: {
+                conversationId,
+                toUserId,
+                fromUserId,
+                conversationData
+              }
+            });
+          }
+        } catch (broadcastError) {
+          // Não falhar a transferência se o broadcast falhar
+          console.warn('[Transfer] Broadcast failed (fallback to postgres_changes):', broadcastError);
+        }
+      }
+
+      return { success: data, fromUserId };
+    },
+    onMutate: async (variables) => {
+      // ATUALIZAÇÃO OTIMISTA: Remover a conversa do cache ANTES da API responder
+      console.log('🚀 [Transfer] Optimistic update - removing from cache:', variables.conversationId);
+      
+      queryClient.setQueriesData(
+        { queryKey: ['conversations-paginated'] },
+        (oldData: any) => {
+          if (!oldData?.pages) return oldData;
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page: any) => ({
+              ...page,
+              conversations: page.conversations?.filter((c: any) => c.id !== variables.conversationId) || []
+            }))
+          };
+        }
+      );
     },
     onSuccess: (_, variables) => {
-      // Invalidar todas as queries relacionadas imediatamente
+      // Invalidar todas as queries relacionadas
       queryClient.invalidateQueries({ queryKey: ['conversation-events', variables.conversationId] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
@@ -170,6 +226,11 @@ export function useTransferConversation() {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', variables.conversationId] });
       queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
       queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
+    },
+    onError: (error, variables) => {
+      // Se a transferência falhar, invalidar para restaurar o estado
+      console.error('[Transfer] Error - restoring cache:', error);
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
     },
   });
 }
