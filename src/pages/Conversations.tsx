@@ -461,7 +461,21 @@ function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, o
             'text-sm truncate mb-2',
             isUnread ? 'text-foreground font-medium' : 'text-muted-foreground'
           )}>
-            {conversation.last_message_preview || 'Nova conversa'}
+            {conversation.last_message_preview ? (
+              <>
+                <span className={cn(
+                  'font-medium',
+                  conversation.last_message_is_from_me ? 'text-primary' : 'text-muted-foreground'
+                )}>
+                  {conversation.last_message_is_from_me 
+                    ? (assigneeName ? assigneeName.split(' ')[0] : 'Você') 
+                    : 'Cliente'}:
+                </span>{' '}
+                {conversation.last_message_preview}
+              </>
+            ) : (
+              'Nova conversa'
+            )}
           </p>
 
           <div className="flex items-center justify-between gap-2">

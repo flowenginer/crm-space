@@ -12,6 +12,7 @@ export interface Conversation {
   unread_count: number | null;
   last_message_at: string | null;
   last_message_preview: string | null;
+  last_message_is_from_me: boolean | null;
   lead_status: string | null;
   created_at: string;
   updated_at: string;
@@ -91,7 +92,7 @@ export type AssignmentFilter = 'all' | 'mine' | 'unassigned';
 const CONVERSATION_FIELDS = `
   id, contact_id, channel_id, assigned_to, department_id,
   status, is_unread, unread_count, last_message_at, last_message_preview,
-  lead_status, created_at, updated_at, closed_at, closed_by,
+  last_message_is_from_me, lead_status, created_at, updated_at, closed_at, closed_by,
   referral_source, referral_data,
   contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data),
   assignee:profiles!conversations_assigned_to_fkey(id, full_name),
@@ -235,6 +236,7 @@ export function useSendMessage() {
         .update({
           last_message_at: new Date().toISOString(),
           last_message_preview: preview,
+          last_message_is_from_me: message.is_from_me ?? true,
         })
         .eq('id', message.conversation_id)
         .then(() => {});
