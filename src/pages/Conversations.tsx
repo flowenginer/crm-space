@@ -838,7 +838,19 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                 {message.content && message.message_type === 'text' && (
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{linkifyText(message.content)}</p>
                 )}
-                {message.content && message.message_type !== 'text' && message.message_type !== 'document' && message.message_type !== 'audio' && message.message_type !== 'video' && message.message_type !== 'image' && (
+                
+                {/* Caption for images */}
+                {message.message_type === 'image' && message.content && message.content !== '[Imagem]' && (
+                  <p className="text-sm leading-relaxed mt-2 whitespace-pre-wrap">{linkifyText(message.content)}</p>
+                )}
+                
+                {/* Caption for videos */}
+                {message.message_type === 'video' && message.content && message.content !== '[Vídeo]' && (
+                  <p className="text-sm leading-relaxed mt-2 whitespace-pre-wrap">{linkifyText(message.content)}</p>
+                )}
+                
+                {/* Other message types with content */}
+                {message.content && !['text', 'document', 'audio', 'video', 'image'].includes(message.message_type || '') && (
                   <p className="text-sm leading-relaxed mt-1 whitespace-pre-wrap">{linkifyText(message.content)}</p>
                 )}
               </>
