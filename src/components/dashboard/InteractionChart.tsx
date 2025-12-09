@@ -112,10 +112,10 @@ export function InteractionChart({ data, isLoading, agentName }: InteractionChar
               <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
               <XAxis 
                 dataKey="hour" 
-                tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                 tickLine={false}
                 axisLine={false}
-                interval={2}
+                interval={3}
               />
               <YAxis 
                 tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
