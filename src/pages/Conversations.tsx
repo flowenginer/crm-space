@@ -107,6 +107,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/store/userStore';
 import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
 import { ImagePreviewDialog } from '@/components/conversations/ImagePreviewDialog';
+import { MediaDownloadButton } from '@/components/conversations/MediaDownloadButton';
+import { DocumentPreview } from '@/components/conversations/DocumentPreview';
 import type { Profile } from '@/types';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
@@ -746,63 +748,73 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                 {hasMedia && (
                   <div className="mb-2">
                     {message.message_type === 'image' && (
-                      <img 
-                        src={message.media_url!} 
-                        alt="Imagem" 
-                        className="rounded-lg max-h-64 w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                        onClick={() => setShowImagePreview(true)}
-                        loading="lazy"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          target.parentElement?.insertAdjacentHTML('beforeend', 
-                            '<div class="flex items-center gap-2 p-3 bg-muted/50 rounded-lg"><span class="text-sm text-muted-foreground">Imagem não disponível</span></div>'
-                          );
-                        }}
-                      />
+                      <div className="relative group/media inline-block">
+                        <img 
+                          src={message.media_url!} 
+                          alt="Imagem" 
+                          className="rounded-lg max-h-64 w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={() => setShowImagePreview(true)}
+                          loading="lazy"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            target.parentElement?.insertAdjacentHTML('beforeend', 
+                              '<div class="flex items-center gap-2 p-3 bg-muted/50 rounded-lg"><span class="text-sm text-muted-foreground">Imagem não disponível</span></div>'
+                            );
+                          }}
+                        />
+                        <MediaDownloadButton
+                          url={message.media_url!}
+                          fileName={message.content || 'imagem'}
+                          className="absolute top-2 right-2 opacity-0 group-hover/media:opacity-100 transition-opacity"
+                        />
+                      </div>
                     )}
                     {message.message_type === 'video' && (
-                      <video 
-                        src={message.media_url!} 
-                        controls 
-                        preload="metadata"
-                        className="rounded-lg max-h-64 w-full bg-black"
-                        onError={(e) => {
-                          const target = e.target as HTMLVideoElement;
-                          target.style.display = 'none';
-                          target.parentElement?.insertAdjacentHTML('beforeend', 
-                            '<div class="flex items-center gap-2 p-3 bg-muted/50 rounded-lg"><span class="text-sm text-muted-foreground">🎬 Vídeo não disponível</span></div>'
-                          );
-                        }}
-                      >
-                        <source src={message.media_url!} />
-                        Seu navegador não suporta vídeos.
-                      </video>
+                      <div className="relative group/media">
+                        <video 
+                          src={message.media_url!} 
+                          controls 
+                          preload="metadata"
+                          className="rounded-lg max-h-64 w-full bg-black"
+                          onError={(e) => {
+                            const target = e.target as HTMLVideoElement;
+                            target.style.display = 'none';
+                            target.parentElement?.insertAdjacentHTML('beforeend', 
+                              '<div class="flex items-center gap-2 p-3 bg-muted/50 rounded-lg"><span class="text-sm text-muted-foreground">🎬 Vídeo não disponível</span></div>'
+                            );
+                          }}
+                        >
+                          <source src={message.media_url!} />
+                          Seu navegador não suporta vídeos.
+                        </video>
+                        <MediaDownloadButton
+                          url={message.media_url!}
+                          fileName={message.content || 'video'}
+                          className="absolute top-2 right-2 opacity-0 group-hover/media:opacity-100 transition-opacity"
+                        />
+                      </div>
                     )}
                     {message.message_type === 'audio' && (
-                      <audio 
-                        src={message.media_url!} 
-                        controls 
-                        className="w-full min-w-[200px]"
-                      />
+                      <div className="relative group/media flex items-center gap-2">
+                        <audio 
+                          src={message.media_url!} 
+                          controls 
+                          className="flex-1 min-w-[200px]"
+                        />
+                        <MediaDownloadButton
+                          url={message.media_url!}
+                          fileName={message.content || 'audio'}
+                          className="opacity-0 group-hover/media:opacity-100 transition-opacity flex-shrink-0"
+                        />
+                      </div>
                     )}
                     {message.message_type === 'document' && (
-                      <a 
-                        href={message.media_url!} 
-                        download={message.content || 'documento'}
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className={cn(
-                          'flex items-center gap-3 p-3 rounded-lg transition-colors',
-                          isMe ? 'bg-white/10 hover:bg-white/20' : 'bg-muted hover:bg-muted/80'
-                        )}
-                      >
-                        <FileText size={24} className={isMe ? 'text-white' : 'text-muted-foreground'} />
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm truncate block">{message.content || 'Documento'}</span>
-                        </div>
-                        <Download size={18} className={cn('flex-shrink-0', isMe ? 'text-white/70' : 'text-muted-foreground')} />
-                      </a>
+                      <DocumentPreview 
+                        url={message.media_url!} 
+                        fileName={message.content || 'Documento'} 
+                        isMe={isMe}
+                      />
                     )}
                     {message.message_type === 'sticker' && message.media_url && (
                       <img 
