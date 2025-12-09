@@ -788,15 +788,19 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                     {message.message_type === 'document' && (
                       <a 
                         href={message.media_url!} 
+                        download={message.content || 'documento'}
                         target="_blank" 
                         rel="noopener noreferrer"
                         className={cn(
-                          'flex items-center gap-2 p-2 rounded-lg transition-colors',
+                          'flex items-center gap-3 p-3 rounded-lg transition-colors',
                           isMe ? 'bg-white/10 hover:bg-white/20' : 'bg-muted hover:bg-muted/80'
                         )}
                       >
                         <FileText size={24} className={isMe ? 'text-white' : 'text-muted-foreground'} />
-                        <span className="text-sm truncate">{message.content || 'Documento'}</span>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm truncate block">{message.content || 'Documento'}</span>
+                        </div>
+                        <Download size={18} className={cn('flex-shrink-0', isMe ? 'text-white/70' : 'text-muted-foreground')} />
                       </a>
                     )}
                     {message.message_type === 'sticker' && message.media_url && (
