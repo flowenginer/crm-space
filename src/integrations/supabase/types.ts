@@ -3015,7 +3015,7 @@ export type Database = {
           p_origin?: string
           p_status_filter?: string
           p_timezone?: string
-          p_user_id: string
+          p_user_id?: string
         }
         Returns: Json
       }
@@ -3079,6 +3079,7 @@ export type Database = {
           p_channel_id?: string
           p_department_id?: string
           p_origin?: string
+          p_status_filter?: string
           p_timezone?: string
         }
         Returns: Json
