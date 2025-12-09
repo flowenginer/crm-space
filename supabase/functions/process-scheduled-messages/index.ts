@@ -15,6 +15,7 @@ interface ScheduledMessage {
   contact_id: string
   conversation_id: string
   attempts: number
+  created_by: string | null
   contact: { id: string; full_name: string; phone: string } | null
 }
 
@@ -381,6 +382,33 @@ Deno.serve(async (req) => {
         const hasText = scheduled.content && scheduled.content.trim().length > 0
         const hasMedia = scheduled.media_url && scheduled.media_url.length > 0
         
+        // =====================================================
+        // ASSINATURA OBRIGATÓRIA: Adicionar assinatura do agente se for mensagem de texto
+        // =====================================================
+        let finalTextContent = scheduled.content
+        if (msgType === 'text' && hasText && scheduled.created_by) {
+          // Verificar se já tem assinatura (começa com *Algo*:)
+          const hasSignature = /^\*[^*]+\*:\s*/.test(scheduled.content || '')
+          
+          if (!hasSignature) {
+            // Buscar perfil do agente que criou a mensagem
+            const { data: agentProfile } = await supabase
+              .from('profiles')
+              .select('full_name, signature_name, signature_enabled')
+              .eq('id', scheduled.created_by)
+              .single()
+            
+            // Só adiciona assinatura se signature_enabled !== false (default true)
+            if (agentProfile && agentProfile.signature_enabled !== false) {
+              const signatureName = agentProfile.signature_name || agentProfile.full_name
+              if (signatureName) {
+                finalTextContent = `*${signatureName}*:\n${scheduled.content}`
+                console.log(`[Scheduled] Added signature from agent: ${signatureName}`)
+              }
+            }
+          }
+        }
+        
         // For audio messages, we need to send text separately (audio doesn't support caption)
         // For image/video/document, we can include caption but still send text separately for reliability
         const needsSeparateTextMessage = hasText && hasMedia && (msgType === 'audio' || msgType === 'text')
@@ -397,14 +425,14 @@ Deno.serve(async (req) => {
               typedChannel.instance_id,
               apiKey,
               contactPhone,
-              scheduled.content
+              finalTextContent
             )
           } else if (provider.code === 'zapi') {
             sendResult = await sendZAPIText(
               typedChannel.instance_id,
               typedChannel.instance_token,
               contactPhone,
-              scheduled.content
+              finalTextContent
             )
           } else {
             sendResult = { success: false, error: `Provider ${provider.code} not supported` }
@@ -421,7 +449,7 @@ Deno.serve(async (req) => {
           console.log(`[Scheduled] Sending media message...`)
           
           // For image/video/document, include caption only if we didn't send text separately
-          const caption = (msgType !== 'audio' && !needsSeparateTextMessage) ? scheduled.content : undefined
+          const caption = (msgType !== 'audio' && !needsSeparateTextMessage) ? finalTextContent : undefined
           
           if (provider.code === 'evolution') {
             sendResult = await sendEvolutionMedia(
@@ -477,7 +505,7 @@ Deno.serve(async (req) => {
           .insert({
             conversation_id: scheduled.conversation_id,
             contact_id: scheduled.contact_id,
-            content: scheduled.content,
+            content: finalTextContent,
             media_url: scheduled.media_url,
             message_type: hasMedia ? msgType : 'text',
             is_from_me: true,
@@ -496,7 +524,7 @@ Deno.serve(async (req) => {
           .from('conversations')
           .update({
             last_message_at: new Date().toISOString(),
-            last_message_preview: scheduled.content?.substring(0, 100) || '[Mídia]'
+            last_message_preview: finalTextContent?.substring(0, 100) || '[Mídia]'
           })
           .eq('id', scheduled.conversation_id)
 

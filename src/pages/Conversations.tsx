@@ -104,7 +104,9 @@ import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
+import { useUserStore } from '@/store/userStore';
 import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
+import type { Profile } from '@/types';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
 const formatWhatsAppText = (text: string): React.ReactNode => {
@@ -1172,7 +1174,25 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
 const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePermissions();
-  const { profile: authProfile } = useAuth();
+  const { profile: authProfile, user } = useAuth();
+  const { setProfile } = useUserStore();
+  
+  // Forçar reload do profile do banco para garantir signature_name e signature_enabled atualizados
+  useEffect(() => {
+    const refreshProfile = async () => {
+      if (user?.id) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        if (data) {
+          setProfile(data as Profile);
+        }
+      }
+    };
+    refreshProfile();
+  }, [user?.id, setProfile]);
   
   // Supervisor e admin têm acesso total a todas as conversas e contatos
   const canAccessAllConversations = isAdmin || isSupervisor;

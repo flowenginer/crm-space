@@ -626,7 +626,7 @@ serve(async (req) => {
         // Buscar conversa existente com esse contato
         const { data: conv } = await supabase
           .from("conversations")
-          .select("id")
+          .select("id, assigned_to")
           .eq("contact_id", contact.id)
           .eq("channel_id", channel.id)
           .in("status", ["open", "pending"])
@@ -718,7 +718,7 @@ serve(async (req) => {
             last_message_at: new Date().toISOString(),
             last_message_preview: normalizedMessage.content?.substring(0, 100) || "[Mídia]",
           })
-          .select("id")
+          .select("id, assigned_to")
           .single();
         
         if (convError) {
@@ -727,7 +727,7 @@ serve(async (req) => {
             console.log(`[Webhook] Conversation already exists (race condition), fetching...`);
             const { data: existingConv } = await supabase
               .from("conversations")
-              .select("id")
+              .select("id, assigned_to")
               .eq("contact_id", contact.id)
               .eq("channel_id", channel.id)
               .in("status", ["open", "pending"])
@@ -971,9 +971,36 @@ serve(async (req) => {
       }
 
       // Inserir apenas se for de outro dispositivo (não encontrou mensagem pendente)
+      // =====================================================
+      // ASSINATURA OBRIGATÓRIA: Adicionar assinatura do agente se for mensagem de texto
+      // =====================================================
+      let finalContent = normalizedMessage.content;
+      if (normalizedMessage.type === 'text' && conversation.assigned_to) {
+        // Verificar se já tem assinatura (começa com *Algo*:)
+        const hasSignature = /^\*[^*]+\*:\s*/.test(normalizedMessage.content || '');
+        
+        if (!hasSignature) {
+          // Buscar perfil do agente atribuído
+          const { data: agentProfile } = await supabase
+            .from('profiles')
+            .select('full_name, signature_name, signature_enabled')
+            .eq('id', conversation.assigned_to)
+            .single();
+          
+          // Só adiciona assinatura se signature_enabled !== false (default true)
+          if (agentProfile && agentProfile.signature_enabled !== false) {
+            const signatureName = agentProfile.signature_name || agentProfile.full_name;
+            if (signatureName) {
+              finalContent = `*${signatureName}*:\n${normalizedMessage.content}`;
+              console.log(`[Webhook] Added signature from agent: ${signatureName}`);
+            }
+          }
+        }
+      }
+
       const { error: msgError } = await supabase.from("messages").insert({
         conversation_id: conversation.id,
-        content: normalizedMessage.content,
+        content: finalContent,
         message_type: normalizedMessage.type,
         media_url: finalMediaUrl,
         media_mime_type: normalizedMessage.mediaMimeType,
