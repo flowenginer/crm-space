@@ -1203,6 +1203,22 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Função para redimensionar o textarea baseado no conteúdo
+  const resizeTextarea = useCallback(() => {
+    if (messageInputRef.current) {
+      const textarea = messageInputRef.current;
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+    }
+  }, []);
+
+  // Auto-resize quando messageInput muda (ex: inserção de mensagem rápida)
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      resizeTextarea();
+    });
+  }, [messageInput, resizeTextarea]);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
 const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePermissions();
@@ -3795,11 +3811,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
                       value={messageInput}
                       onChange={(e) => {
                         setMessageInput(e.target.value);
-                        
-                        // Auto-resize: ajusta altura conforme conteúdo
-                        const textarea = e.target;
-                        textarea.style.height = 'auto';
-                        textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+                        resizeTextarea();
                         
                         if (!isInternalNoteMode && e.target.value.length > 0) {
                           startTyping();
