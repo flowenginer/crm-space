@@ -43,6 +43,7 @@ import {
   Settings,
   Users,
   Star,
+  PenLine,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -1065,6 +1066,8 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [selectedDepartments, setSelectedDepartments] = useState<{ id: string; name: string; color: string; isPrimary: boolean }[]>([]);
+  const [signatureName, setSignatureName] = useState('');
+  const [signatureEnabled, setSignatureEnabled] = useState(true);
   const queryClient = useQueryClient();
   
   const addUserToDept = useAddUserToDepartment();
@@ -1113,6 +1116,8 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
       setShowPasswordSection(false);
       setEmail('');
       setOriginalEmail('');
+      setSignatureName(user.signature_name || '');
+      setSignatureEnabled(user.signature_enabled !== false);
       fetchUserEmail(user.id);
 
       // Load user's departments
@@ -1195,6 +1200,8 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
           role,
           department_id: primaryDeptId,
           is_active: isActive,
+          signature_name: signatureName || null,
+          signature_enabled: signatureEnabled,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
@@ -1517,6 +1524,41 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
                 Clique no departamento para defini-lo como primário
               </p>
             )}
+          </div>
+
+          {/* Signature Settings Section */}
+          <div className="border border-border rounded-xl p-4 space-y-4">
+            <h3 className="font-medium text-foreground flex items-center gap-2">
+              <PenLine size={16} />
+              Assinatura de Mensagens
+            </h3>
+            
+            {/* Nome da Assinatura */}
+            <div>
+              <Label className="text-sm mb-2 block">Nome na Assinatura</Label>
+              <Input
+                value={signatureName}
+                onChange={(e) => setSignatureName(e.target.value)}
+                placeholder={fullName || "Usar nome de cadastro"}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Se vazio, usa o nome de cadastro: {fullName || '(não definido)'}
+              </p>
+            </div>
+            
+            {/* Switch Ativar/Desativar */}
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Assinatura Ativa</Label>
+                <p className="text-xs text-muted-foreground">
+                  Quando ativo, mensagens incluem: *Nome*: antes do texto
+                </p>
+              </div>
+              <Switch
+                checked={signatureEnabled}
+                onCheckedChange={setSignatureEnabled}
+              />
+            </div>
           </div>
 
           {/* Active Status */}

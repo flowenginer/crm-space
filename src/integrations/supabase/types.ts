@@ -2100,6 +2100,8 @@ export type Database = {
           permissions: Json | null
           phone: string | null
           role: string | null
+          signature_enabled: boolean | null
+          signature_name: string | null
           updated_at: string
         }
         Insert: {
@@ -2121,6 +2123,8 @@ export type Database = {
           permissions?: Json | null
           phone?: string | null
           role?: string | null
+          signature_enabled?: boolean | null
+          signature_name?: string | null
           updated_at?: string
         }
         Update: {
@@ -2142,6 +2146,8 @@ export type Database = {
           permissions?: Json | null
           phone?: string | null
           role?: string | null
+          signature_enabled?: boolean | null
+          signature_name?: string | null
           updated_at?: string
         }
         Relationships: [
