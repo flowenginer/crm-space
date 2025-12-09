@@ -3782,6 +3782,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
                       value={messageInput}
                       onChange={(e) => {
                         setMessageInput(e.target.value);
+                        
+                        // Auto-resize: ajusta altura conforme conteúdo
+                        const textarea = e.target;
+                        textarea.style.height = 'auto';
+                        textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+                        
                         if (!isInternalNoteMode && e.target.value.length > 0) {
                           startTyping();
                         } else {
@@ -3794,10 +3800,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
                           e.preventDefault();
                           stopTyping();
                           handleSendMessage();
+                          // Reset height após enviar
+                          if (messageInputRef.current) {
+                            messageInputRef.current.style.height = 'auto';
+                          }
                         }
                       }}
                       className={cn(
-                        'min-h-[44px] max-h-[120px] resize-none rounded-xl',
+                        'min-h-[44px] max-h-[200px] resize-none rounded-xl overflow-y-auto transition-[height] duration-100',
                         isInternalNoteMode
                           ? 'bg-amber-500/10 border-amber-500/30 placeholder:text-amber-600/50 dark:placeholder:text-amber-400/50'
                           : 'bg-muted/50 border-border/50'
