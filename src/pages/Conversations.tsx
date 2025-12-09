@@ -748,8 +748,19 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                       <video 
                         src={message.media_url!} 
                         controls 
-                        className="rounded-lg max-h-64 w-full"
-                      />
+                        preload="metadata"
+                        className="rounded-lg max-h-64 w-full bg-black"
+                        onError={(e) => {
+                          const target = e.target as HTMLVideoElement;
+                          target.style.display = 'none';
+                          target.parentElement?.insertAdjacentHTML('beforeend', 
+                            '<div class="flex items-center gap-2 p-3 bg-muted/50 rounded-lg"><span class="text-sm text-muted-foreground">🎬 Vídeo não disponível</span></div>'
+                          );
+                        }}
+                      >
+                        <source src={message.media_url!} />
+                        Seu navegador não suporta vídeos.
+                      </video>
                     )}
                     {message.message_type === 'audio' && (
                       <audio 

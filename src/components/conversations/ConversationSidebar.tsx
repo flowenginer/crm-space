@@ -744,6 +744,29 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
         </DialogContent>
       </Dialog>
 
+      {/* Action Buttons - Top */}
+      <div className="flex gap-2 p-3 border-b border-border">
+        <Button
+          onClick={() => setShowTransferModal(true)}
+          variant="outline"
+          size="sm"
+          className="flex-1 gap-2 h-9 text-xs"
+        >
+          <ArrowRightLeft size={14} />
+          Transferir
+        </Button>
+        
+        <Button
+          onClick={() => setShowCloseModal(true)}
+          variant="ghost"
+          size="sm"
+          className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10 gap-2 h-9 text-xs"
+        >
+          <X size={14} />
+          Fechar
+        </Button>
+      </div>
+
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
         {/* Valor Negociado - Campo para input de valor com botão confirmar */}
@@ -1075,67 +1098,6 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
 
       </div>
 
-      {/* Footer: Action Buttons */}
-      <div className="p-3 border-t border-border space-y-3">
-        {/* Transfer & Close Buttons */}
-        <div className="flex gap-2 pb-3 border-b border-border">
-          <Button
-            onClick={() => setShowTransferModal(true)}
-            variant="outline"
-            size="sm"
-            className="flex-1 gap-2 h-9 text-xs"
-          >
-            <ArrowRightLeft size={14} />
-            Transferir
-          </Button>
-          
-          <Button
-            onClick={() => setShowCloseModal(true)}
-            variant="ghost"
-            size="sm"
-            className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10 gap-2 h-9 text-xs"
-          >
-            <X size={14} />
-            Fechar
-          </Button>
-        </div>
-
-        {/* Start New Conversation */}
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-            Iniciar nova conversa
-          </label>
-          <div className="flex gap-2">
-            <div className="flex items-center gap-1 px-2 bg-muted rounded-lg text-xs text-muted-foreground flex-shrink-0">
-              <span>BR</span>
-              <span>+55</span>
-            </div>
-            <Input
-              type="tel"
-              placeholder="(00) 00000-0000"
-              value={newConversationPhone}
-              onChange={(e) => setNewConversationPhone(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleStartNewConversation()}
-              className="h-9 text-sm flex-1"
-            />
-            <Button
-              onClick={handleStartNewConversation}
-              disabled={isStartingConversation || !newConversationPhone.trim()}
-              size="sm"
-              className="h-9 w-9 p-0 flex-shrink-0"
-            >
-              {isStartingConversation ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Send size={14} />
-              )}
-            </Button>
-          </div>
-          <p className="text-[10px] text-muted-foreground text-center mt-1.5">
-            Digite o número com DDD para iniciar uma conversa
-          </p>
-        </div>
-      </div>
 
       {/* Modals */}
       <EditContactModal
