@@ -1132,10 +1132,6 @@ export default function Conversations() {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [signatureEnabled, setSignatureEnabled] = useState(() => {
-    const saved = localStorage.getItem('signature_enabled');
-    return saved !== null ? saved === 'true' : true; // padrão: ativo
-  });
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -1197,11 +1193,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
   const [blockedContact, setBlockedContact] = useState<{ id: string; full_name: string; phone: string } | null>(null);
   const [blockedByAgent, setBlockedByAgent] = useState<{ id: string; full_name: string | null; avatar_url: string | null } | null>(null);
   const [blockedConversationId, setBlockedConversationId] = useState<string | null>(null);
-
-  // Persist signature preference
-  useEffect(() => {
-    localStorage.setItem('signature_enabled', String(signatureEnabled));
-  }, [signatureEnabled]);
 
   // Debounce search query for server-side search (300ms)
   useEffect(() => {
@@ -2029,10 +2020,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
       const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string, quotedMsgId?: string): Promise<string | undefined> => {
         if (channelId && contactPhone) {
           try {
-            // Add agent signature for text messages when signature is enabled
+            // Add agent signature for text messages when signature is enabled in profile
             let formattedContent = content;
-            if (type === 'text' && signatureEnabled && authProfile?.full_name) {
-              formattedContent = `*${authProfile.full_name}*:\n${content}`;
+            const signatureName = authProfile?.signature_name || authProfile?.full_name;
+            const signatureEnabled = authProfile?.signature_enabled !== false; // Default true
+            if (type === 'text' && signatureEnabled && signatureName) {
+              formattedContent = `*${signatureName}*:\n${content}`;
             }
             
             const result = await sendWhatsAppMessage(
@@ -3578,20 +3571,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
                     <StickyNote size={22} />
                   </button>
 
-                  {/* Signature Toggle Button */}
-                  <button
-                    onClick={() => setSignatureEnabled(!signatureEnabled)}
-                    className={cn(
-                      'p-2 rounded-lg transition-colors',
-                      signatureEnabled 
-                        ? 'bg-primary text-primary-foreground' 
-                        : 'hover:bg-muted text-muted-foreground'
-                    )}
-                    title={signatureEnabled ? `Assinatura ativada: ${authProfile?.full_name || 'Usuário'}` : "Assinatura desativada"}
-                  >
-                    <PenLine size={22} />
-                  </button>
-
                   {/* Quick Templates Popover */}
                   <QuickTemplatesPopover
                     contactName={selectedConversation?.contact?.full_name}
@@ -3622,8 +3601,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
                             
                             if (block.type === 'text' && block.content?.trim()) {
                               let textContent = block.content;
-                              if (signatureEnabled && authProfile?.full_name && i === 0) {
-                                textContent = `*${authProfile.full_name}*:\n${block.content}`;
+                              const sigName = authProfile?.signature_name || authProfile?.full_name;
+                              const sigEnabled = authProfile?.signature_enabled !== false;
+                              if (sigEnabled && sigName && i === 0) {
+                                textContent = `*${sigName}*:\n${block.content}`;
                               }
                               
                               // Save to database
@@ -3694,8 +3675,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
                           // Send text first if exists
                           if (content && content.trim()) {
                             let textContent = content;
-                            if (signatureEnabled && authProfile?.full_name) {
-                              textContent = `*${authProfile.full_name}*:\n${content}`;
+                            const sigName = authProfile?.signature_name || authProfile?.full_name;
+                            const sigEnabled = authProfile?.signature_enabled !== false;
+                            if (sigEnabled && sigName) {
+                              textContent = `*${sigName}*:\n${content}`;
                             }
                             
                             sendMessage.mutate({

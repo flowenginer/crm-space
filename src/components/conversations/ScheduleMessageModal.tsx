@@ -35,7 +35,6 @@ export function ScheduleMessageModal({
   const [message, setMessage] = useState('');
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
-  const [useSignature, setUseSignature] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   
   // Audio recording state
@@ -315,16 +314,20 @@ export function ScheduleMessageModal({
         console.log('File uploaded:', publicUrl);
       }
 
-      // Add signature if enabled
+      // Add signature if enabled in profile
       let finalMessage = message;
-      if (useSignature && message) {
+      if (message) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('full_name')
+          .select('full_name, signature_name, signature_enabled')
           .eq('id', user?.id)
           .single();
         
-        finalMessage = `${message}\n\n— ${profile?.full_name || 'Atendente'}`;
+        const signatureName = profile?.signature_name || profile?.full_name;
+        const signatureEnabled = profile?.signature_enabled !== false;
+        if (signatureEnabled && signatureName) {
+          finalMessage = `*${signatureName}*:\n${message}`;
+        }
       }
 
       // Create scheduled message
@@ -539,15 +542,6 @@ export function ScheduleMessageModal({
 
                 {/* Spacer */}
                 <div className="flex-1" />
-
-                {/* Signature Toggle */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Assinatura</span>
-                  <Switch
-                    checked={useSignature}
-                    onCheckedChange={setUseSignature}
-                  />
-                </div>
               </div>
 
               {/* Audio Preview */}
