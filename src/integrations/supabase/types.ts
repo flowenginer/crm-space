@@ -3006,19 +3006,33 @@ export type Database = {
           other_count: number
         }[]
       }
-      get_all_conversation_counts: {
-        Args: {
-          p_agent_id?: string
-          p_channel_id?: string
-          p_date_filter?: string
-          p_department_id?: string
-          p_origin?: string
-          p_status_filter?: string
-          p_timezone?: string
-          p_user_id?: string
-        }
-        Returns: Json
-      }
+      get_all_conversation_counts:
+        | {
+            Args: {
+              p_agent_id?: string
+              p_channel_id?: string
+              p_date_filter?: string
+              p_department_id?: string
+              p_origin?: string
+              p_status_filter?: string
+              p_timezone?: string
+              p_user_id?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_agent_id?: string
+              p_channel_id?: string
+              p_date_filter?: string
+              p_department_id?: string
+              p_origin?: string
+              p_status_filter?: string
+              p_timezone?: string
+              p_user_id?: string
+            }
+            Returns: Json
+          }
       get_channel_counts: {
         Args: {
           p_agent_id?: string
@@ -3073,17 +3087,29 @@ export type Database = {
           new_leads: number
         }[]
       }
-      get_date_filter_counts: {
-        Args: {
-          p_agent_id?: string
-          p_channel_id?: string
-          p_department_id?: string
-          p_origin?: string
-          p_status_filter?: string
-          p_timezone?: string
-        }
-        Returns: Json
-      }
+      get_date_filter_counts:
+        | {
+            Args: {
+              p_agent_id?: string
+              p_channel_id?: string
+              p_department_id?: string
+              p_origin?: string
+              p_status_filter?: string
+              p_timezone?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_agent_id?: string
+              p_channel_id?: string
+              p_department_id?: string
+              p_origin?: string
+              p_status_filter?: string
+              p_timezone?: string
+            }
+            Returns: Json
+          }
       get_department_counts: {
         Args: {
           p_agent_id?: string
