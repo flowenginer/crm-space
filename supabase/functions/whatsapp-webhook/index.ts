@@ -662,7 +662,9 @@ serve(async (req) => {
       if (!contact) {
         console.log(`[Webhook] 🆕 Creating contact for fromMe message (external system): ${recipientPhone}`);
         
-        const contactName = normalizedMessage.fromName || `WhatsApp ${recipientPhone}`;
+        // IMPORTANTE: Para mensagens fromMe, o pushName é o nome da EMPRESA (ex: "Space Sports")
+        // e não do cliente! Sempre usar nome genérico para que seja atualizado quando cliente responder
+        const contactName = `WhatsApp ${recipientPhone}`;
         
         const { data: newContact, error: contactError } = await supabase
           .from("contacts")
