@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { startOfMonth } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,7 +11,7 @@ import {
   useLeadAlerts,
   type DashboardFilters as JourneyFilters
 } from '@/hooks/useLeadJourneyDashboard';
-import { useAgentsForFilter, useDepartmentsForFilter } from '@/hooks/useDashboardAdvanced';
+import { useAgentsForFilter, useDepartmentsForFilter, useInteractionTimeline } from '@/hooks/useDashboardAdvanced';
 
 // Components
 import { JourneyKPICards } from '@/components/dashboard/JourneyKPICards';
@@ -21,6 +21,7 @@ import { StatusDurationChart } from '@/components/dashboard/StatusDurationChart'
 import { AgentPerformanceTableAdvanced } from '@/components/dashboard/AgentPerformanceTableAdvanced';
 import { LeadAlertsPanel } from '@/components/dashboard/LeadAlertsPanel';
 import { AdvancedFilters } from '@/components/dashboard/AdvancedFilters';
+import { InteractionChart } from '@/components/dashboard/InteractionChart';
 
 export default function Dashboard() {
   const { profile } = useAuth();
@@ -49,10 +50,18 @@ export default function Dashboard() {
   const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentDistributionAdvanced(filters);
   const { data: statusFunnel = [], isLoading: loadingFunnel } = useStatusFunnel(filters);
   const { data: leadAlerts = [], isLoading: loadingAlerts } = useLeadAlerts(filters);
+  const { data: interactionData = [], isLoading: loadingInteraction } = useInteractionTimeline(filters);
   
   // Filter options
   const { data: agents = [] } = useAgentsForFilter(filters.departmentId);
   const { data: departments = [] } = useDepartmentsForFilter();
+
+  // Get selected agent name for chart title
+  const selectedAgentName = useMemo(() => {
+    if (!filters.agentId) return undefined;
+    const agent = agents.find(a => a.id === filters.agentId);
+    return agent?.full_name?.split(' ')[0]; // First name only
+  }, [filters.agentId, agents]);
 
   return (
     <div className="space-y-6">
@@ -87,7 +96,16 @@ export default function Dashboard() {
         <StatusFunnelChart data={statusFunnel} isLoading={loadingFunnel} />
       </div>
 
-      {/* Charts Row 2: Status Duration */}
+      {/* Charts Row 2: Interaction Timeline */}
+      <div className="animate-fade-in">
+        <InteractionChart 
+          data={interactionData} 
+          isLoading={loadingInteraction}
+          agentName={selectedAgentName}
+        />
+      </div>
+
+      {/* Charts Row 3: Status Duration */}
       <div className="animate-fade-in">
         <StatusDurationChart data={statusFunnel} isLoading={loadingFunnel} />
       </div>
