@@ -1203,6 +1203,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const manuallyMarkedUnreadRef = useRef<string | null>(null);
 
   // Função para redimensionar o textarea baseado no conteúdo
   const resizeTextarea = useCallback(() => {
@@ -1684,8 +1685,13 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
     };
   }, [selectedConversation?.contact?.id, selectedConversation?.contact?.is_typing]);
 
-  // Mark conversation as read when selected
+  // Mark conversation as read when selected (respeitando marcação manual de não lida)
   useEffect(() => {
+    // Se a conversa foi marcada manualmente como não lida, não marcar como lida
+    if (manuallyMarkedUnreadRef.current === selectedConversationId) {
+      return;
+    }
+    
     if (selectedConversationId && selectedConversation?.is_unread) {
       updateConversation.mutate({
         id: selectedConversationId,
@@ -1694,6 +1700,13 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
       });
     }
   }, [selectedConversationId, selectedConversation?.is_unread]);
+
+  // Limpar a proteção de não lida ao trocar de conversa
+  useEffect(() => {
+    if (manuallyMarkedUnreadRef.current && manuallyMarkedUnreadRef.current !== selectedConversationId) {
+      manuallyMarkedUnreadRef.current = null;
+    }
+  }, [selectedConversationId]);
 
   // Combine messages, internal notes, and conversation events, sorted by created_at
   const allChatItems = useMemo(() => {
@@ -1937,6 +1950,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
   // Conversation action handlers
   const handleMarkAsUnread = () => {
     if (selectedConversationId) {
+      manuallyMarkedUnreadRef.current = selectedConversationId; // Proteger contra auto-marcar como lida
       updateConversation.mutate({ id: selectedConversationId, is_unread: true, unread_count: 1 });
       toast.success('Conversa marcada como não lida');
     }
