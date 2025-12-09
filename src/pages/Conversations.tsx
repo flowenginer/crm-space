@@ -1231,8 +1231,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const manuallyMarkedUnreadRef = useRef<string | null>(null);
-  const bulkMarkedUnreadRef = useRef<Set<string>>(new Set());
+  // Usar Map com timestamp para proteção temporal (5 segundos de proteção)
+  const markedUnreadAtRef = useRef<Map<string, number>>(new Map());
 
   // Função para redimensionar o textarea baseado no conteúdo
   const resizeTextarea = useCallback(() => {
@@ -1721,16 +1721,17 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
       return;
     }
     
-    // Se a conversa foi marcada manualmente como não lida (individual), não marcar como lida
-    if (manuallyMarkedUnreadRef.current === selectedConversationId) {
-      console.log('[Auto-read] Bloqueado: marcado manualmente como não lida (individual)');
-      return;
-    }
-    
-    // Se a conversa foi marcada via bulk action, não marcar como lida
-    if (bulkMarkedUnreadRef.current.has(selectedConversationId)) {
-      console.log('[Auto-read] Bloqueado: marcado via bulk action como não lida');
-      return;
+    // Verificar se a conversa foi marcada como não lida recentemente (dentro de 10 segundos)
+    const markedAt = markedUnreadAtRef.current.get(selectedConversationId);
+    if (markedAt) {
+      const elapsed = Date.now() - markedAt;
+      if (elapsed < 10000) { // 10 segundos de proteção
+        console.log('[Auto-read] Bloqueado: marcado como não lida há', Math.round(elapsed / 1000), 'segundos');
+        return;
+      } else {
+        // Remover entradas antigas
+        markedUnreadAtRef.current.delete(selectedConversationId);
+      }
     }
     
     // Marcar como lida apenas se não foi recentemente marcada como não lida
@@ -1741,13 +1742,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
       unread_count: 0,
     });
   }, [selectedConversationId, selectedConversation?.is_unread]);
-
-  // Limpar a proteção de não lida ao trocar de conversa
-  useEffect(() => {
-    if (manuallyMarkedUnreadRef.current && manuallyMarkedUnreadRef.current !== selectedConversationId) {
-      manuallyMarkedUnreadRef.current = null;
-    }
-  }, [selectedConversationId]);
 
   // Combine messages, internal notes, and conversation events, sorted by created_at
   const allChatItems = useMemo(() => {
@@ -1991,7 +1985,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
   // Conversation action handlers
   const handleMarkAsUnread = () => {
     if (selectedConversationId) {
-      manuallyMarkedUnreadRef.current = selectedConversationId; // Proteger contra auto-marcar como lida
+      // Proteger contra auto-marcar como lida por 10 segundos
+      console.log('[Mark Unread] Adicionando proteção para:', selectedConversationId);
+      markedUnreadAtRef.current.set(selectedConversationId, Date.now());
       updateConversation.mutate({ id: selectedConversationId, is_unread: true, unread_count: 1 });
       toast.success('Conversa marcada como não lida');
     }
@@ -2008,10 +2004,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
     setIsConversationSelectionMode(false);
     
     try {
-      // Mark all IDs as manually marked unread to prevent auto-marking as read
-      console.log('[Bulk Unread] Adicionando IDs ao bulkMarkedUnreadRef:', ids);
-      ids.forEach(id => bulkMarkedUnreadRef.current.add(id));
-      console.log('[Bulk Unread] bulkMarkedUnreadRef atual:', Array.from(bulkMarkedUnreadRef.current));
+      // Mark all IDs with timestamp to prevent auto-marking as read
+      const now = Date.now();
+      console.log('[Bulk Unread] Adicionando IDs ao markedUnreadAtRef:', ids);
+      ids.forEach(id => markedUnreadAtRef.current.set(id, now));
+      console.log('[Bulk Unread] markedUnreadAtRef atual:', Array.from(markedUnreadAtRef.current.entries()));
       
       // Update all selected conversations - .select() ensures query execution
       const results = await Promise.all(
@@ -2035,12 +2032,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
       queryClient.invalidateQueries({ queryKey: ['conversation-counts'] });
       
       toast.success(`${ids.length} conversa(s) marcada(s) como não lida(s)`);
-      
-      // Clear the bulk marked ref after a delay (to allow navigation) - increased to 5s
-      setTimeout(() => {
-        console.log('[Bulk Unread] Limpando bulkMarkedUnreadRef');
-        bulkMarkedUnreadRef.current.clear();
-      }, 5000);
     } catch (error) {
       toast.error('Erro ao marcar conversas como não lidas');
     }
