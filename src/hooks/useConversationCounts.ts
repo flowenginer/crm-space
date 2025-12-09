@@ -269,7 +269,6 @@ export function useDateFilterCounts(filters?: CountFilters) {
         p_agent_id: filters?.agentId || null,
         p_channel_id: filters?.channelId && filters.channelId !== 'no_channel' ? filters.channelId : null,
         p_origin: filters?.origin && filters.origin !== 'all' ? filters.origin : null,
-        p_status_filter: filters?.statusFilter || 'active',
       });
       
       if (error) throw error;
@@ -278,10 +277,10 @@ export function useDateFilterCounts(filters?: CountFilters) {
       return {
         today: result?.today || 0,
         yesterday: result?.yesterday || 0,
-        this_week: result?.thisWeek || 0,
-        last_week: result?.lastWeek || 0,
-        this_month: result?.thisMonth || 0,
-        last_month: result?.lastMonth || 0,
+        this_week: result?.this_week || 0,
+        last_week: result?.last_week || 0,
+        this_month: result?.this_month || 0,
+        last_month: result?.last_month || 0,
       };
     },
     staleTime: 30000,
