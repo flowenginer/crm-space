@@ -106,6 +106,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/store/userStore';
 import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
+import { ImagePreviewDialog } from '@/components/conversations/ImagePreviewDialog';
 import type { Profile } from '@/types';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
@@ -1001,24 +1002,13 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
         </DialogContent>
       </Dialog>
 
-      {/* Image Preview Dialog */}
-      <Dialog open={showImagePreview} onOpenChange={setShowImagePreview}>
-        <DialogContent className="max-w-4xl p-0 bg-black/90 border-none">
-          <div className="relative flex items-center justify-center min-h-[50vh]">
-            <button 
-              onClick={() => setShowImagePreview(false)}
-              className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white z-10"
-            >
-              <X size={24} />
-            </button>
-            <img 
-              src={message.media_url!} 
-              alt="Imagem expandida" 
-              className="max-w-full max-h-[85vh] object-contain"
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Image Preview Dialog with Zoom */}
+      <ImagePreviewDialog
+        open={showImagePreview}
+        onOpenChange={setShowImagePreview}
+        imageUrl={message.media_url || ''}
+        imageName={message.content || undefined}
+      />
     </>
   );
 }
