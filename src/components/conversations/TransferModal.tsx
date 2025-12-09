@@ -54,7 +54,7 @@ export function TransferModal({
   const [note, setNote] = useState('');
   const [shouldUnpin, setShouldUnpin] = useState(true);
 
-  const { data: departments = [], isLoading: isDepartmentsLoading } = useDepartments();
+  const { data: departments = [], isLoading: isDepartmentsLoading, isError: isDepartmentsError, refetch: refetchDepartments } = useDepartments();
   const { data: team = [] } = useTeam();
   const { data: allUserDepartments = [] } = useAllUserDepartments();
   const { data: pinnedConversations = [] } = usePinnedConversations();
@@ -274,10 +274,28 @@ export function TransferModal({
                       <Loader2 size={16} className="animate-spin" />
                       <span className="text-sm text-muted-foreground">Carregando departamentos...</span>
                     </div>
+                  ) : isDepartmentsError ? (
+                    <div className="flex flex-col items-center justify-center py-4 gap-2">
+                      <span className="text-sm text-destructive">Erro ao carregar departamentos</span>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => refetchDepartments()}
+                      >
+                        Tentar novamente
+                      </Button>
+                    </div>
                   ) : activeDepartments.length === 0 ? (
-                    <SelectItem value="none" disabled>
-                      Nenhum departamento disponível
-                    </SelectItem>
+                    <div className="flex flex-col items-center justify-center py-4 gap-2">
+                      <span className="text-sm text-muted-foreground">Nenhum departamento disponível</span>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => refetchDepartments()}
+                      >
+                        Recarregar
+                      </Button>
+                    </div>
                   ) : (
                     activeDepartments.map((dept) => (
                       <SelectItem key={dept.id} value={dept.id}>

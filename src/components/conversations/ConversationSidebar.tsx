@@ -233,22 +233,44 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
     }
   });
 
-  // Mutation: Update assigned user (current agent)
+  // Mutation: Update assigned user (current agent) - funciona como transferência real
   const updateAssignedUser = useMutation({
     mutationFn: async (userId: string | null) => {
-      const { error } = await supabase
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      
+      // Atualizar conversa com novo atendente, status e flag de transferência
+      const { error: updateError } = await supabase
         .from('conversations')
         .update({ 
           assigned_to: userId,
+          status: userId ? 'open' : 'pending', // Se tem atendente = open, senão = pending
+          is_new_transfer: !!userId, // Destacar como nova transferência
           updated_at: new Date().toISOString()
         })
         .eq('id', conversationId);
       
-      if (error) throw error;
+      if (updateError) throw updateError;
+      
+      // Se está atribuindo a alguém, criar evento de transferência
+      if (userId && currentUser?.id) {
+        const selectedMember = teamMembers.find(t => t.id === userId);
+        await supabase.from('conversation_events').insert({
+          conversation_id: conversationId,
+          event_type: 'transfer',
+          actor_id: currentUser.id,
+          data: {
+            to_user_id: userId,
+            to_user_name: selectedMember?.full_name || null,
+            note: 'Atribuição manual via painel',
+          }
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
       toast.success('Atendente atual atualizado!');
     },
     onError: () => {
