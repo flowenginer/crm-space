@@ -2036,22 +2036,25 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
       setIsUploading(true);
       
       
+      // Helper to add signature to text content
+      const addSignatureToContent = (content: string): string => {
+        const signatureName = authProfile?.signature_name || authProfile?.full_name;
+        const signatureEnabled = authProfile?.signature_enabled !== false; // Default true
+        if (signatureEnabled && signatureName) {
+          return `*${signatureName}*:\n${content}`;
+        }
+        return content;
+      };
+      
       // Função auxiliar para enviar via WhatsApp (Edge Function - sem CORS)
+      // NOTE: Content should already have signature added before calling this
       const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string, quotedMsgId?: string): Promise<string | undefined> => {
         if (channelId && contactPhone) {
           try {
-            // Add agent signature for text messages when signature is enabled in profile
-            let formattedContent = content;
-            const signatureName = authProfile?.signature_name || authProfile?.full_name;
-            const signatureEnabled = authProfile?.signature_enabled !== false; // Default true
-            if (type === 'text' && signatureEnabled && signatureName) {
-              formattedContent = `*${signatureName}*:\n${content}`;
-            }
-            
             const result = await sendWhatsAppMessage(
               channelId, 
               contactPhone, 
-              formattedContent, 
+              content, 
               type as 'text' | 'image' | 'audio' | 'video' | 'document',
               mediaUrl,
               quotedMsgId
@@ -2076,11 +2079,13 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
       // Send text message first if exists
       if (hasText && !hasFiles) {
         const textContent = messageInput.trim();
+        // Add signature BEFORE saving to database for consistency
+        const contentWithSignature = addSignatureToContent(textContent);
         
         // INSTANT: Save to database first (optimistic update shows immediately)
         sendMessage.mutate({
           conversation_id: selectedConversationId,
-          content: textContent,
+          content: contentWithSignature,
           is_from_me: true,
           message_type: 'text',
           reply_to_message_id: replyingTo?.id,
@@ -2090,8 +2095,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
         setMessageInput('');
         setReplyingTo(null);
         
-        // BACKGROUND: Send to WhatsApp (don't await)
-        sendViaWhatsApp(textContent, 'text', undefined, quotedWhatsAppId).catch(console.error);
+        // BACKGROUND: Send to WhatsApp with same content (already has signature)
+        sendViaWhatsApp(contentWithSignature, 'text', undefined, quotedWhatsAppId).catch(console.error);
       } else if (hasFiles) {
         // For files, we need to upload first (can't be avoided)
         for (const file of selectedFiles) {
@@ -2124,16 +2129,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
         // Send text after files if exists
         if (hasText) {
           const textContent = messageInput.trim();
+          // Add signature BEFORE saving to database for consistency
+          const contentWithSignature = addSignatureToContent(textContent);
           
           sendMessage.mutate({
             conversation_id: selectedConversationId,
-            content: textContent,
+            content: contentWithSignature,
             is_from_me: true,
             message_type: 'text',
           });
           
-          // BACKGROUND: Send to WhatsApp
-          sendViaWhatsApp(textContent, 'text', undefined, undefined).catch(console.error);
+          // BACKGROUND: Send to WhatsApp with same content (already has signature)
+          sendViaWhatsApp(contentWithSignature, 'text', undefined, undefined).catch(console.error);
         }
         
         setMessageInput('');
