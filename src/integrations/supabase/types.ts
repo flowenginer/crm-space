@@ -1743,6 +1743,73 @@ export type Database = {
         }
         Relationships: []
       }
+      meta_ads: {
+        Row: {
+          ad_id: string
+          adset_id: string | null
+          campaign_id: string | null
+          created_time: string | null
+          creative_id: string | null
+          id: string
+          meta_account_id: string | null
+          name: string
+          preview_url: string | null
+          status: string | null
+          thumbnail_url: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          ad_id: string
+          adset_id?: string | null
+          campaign_id?: string | null
+          created_time?: string | null
+          creative_id?: string | null
+          id?: string
+          meta_account_id?: string | null
+          name: string
+          preview_url?: string | null
+          status?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          ad_id?: string
+          adset_id?: string | null
+          campaign_id?: string | null
+          created_time?: string | null
+          creative_id?: string | null
+          id?: string
+          meta_account_id?: string | null
+          name?: string
+          preview_url?: string | null
+          status?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ads_adset_id_fkey"
+            columns: ["adset_id"]
+            isOneToOne: false
+            referencedRelation: "meta_adsets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_ads_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "meta_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_ads_meta_account_id_fkey"
+            columns: ["meta_account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_adsets: {
         Row: {
           adset_id: string

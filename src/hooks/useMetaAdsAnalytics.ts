@@ -19,6 +19,8 @@ export interface AdBreakdownData {
   imageUrl: string | null;
   headline: string | null;
   mediaType: number | null;
+  campaignName: string | null;
+  adName: string | null;
   total: number;
   byStatus: Record<string, number>;
   conversions: number;
@@ -32,6 +34,8 @@ export interface ChampionCreative {
   imageUrl: string | null;
   headline: string | null;
   mediaType: number | null;
+  campaignName: string | null;
+  adName: string | null;
   total: number;
   conversions: number;
   conversionRate: number;
@@ -124,6 +128,27 @@ export function useAdsBreakdown(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['ads_breakdown', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async (): Promise<AdBreakdownData[]> => {
+      // Buscar meta_ads com nomes das campanhas
+      const { data: metaAds } = await supabase
+        .from('meta_ads')
+        .select(`
+          ad_id,
+          name,
+          thumbnail_url,
+          campaign:meta_campaigns(name, campaign_id)
+        `);
+
+      // Criar mapa de ad_id → { campaignName, adName }
+      const adInfoMap: Record<string, { campaignName: string | null; adName: string | null; thumbnailUrl: string | null }> = {};
+      metaAds?.forEach(ad => {
+        const campaign = ad.campaign as any;
+        adInfoMap[ad.ad_id] = {
+          campaignName: campaign?.name || null,
+          adName: ad.name || null,
+          thumbnailUrl: ad.thumbnail_url || null,
+        };
+      });
+
       let query = supabase
         .from('conversations')
         .select(`
@@ -161,6 +186,8 @@ export function useAdsBreakdown(dateRange?: DateRange) {
         imageUrl: string | null;
         headline: string | null;
         mediaType: number | null;
+        campaignName: string | null;
+        adName: string | null;
         byStatus: Record<string, number>;
         total: number;
         conversions: number;
@@ -173,13 +200,18 @@ export function useAdsBreakdown(dateRange?: DateRange) {
         
         if (!sourceId) return;
 
+        // Buscar info do meta_ads
+        const adInfo = adInfoMap[sourceId];
+
         if (!adsMap[sourceId]) {
           adsMap[sourceId] = {
             sourceUrl: refData?.sourceUrl || null,
-            thumbnailUrl: refData?.thumbnailUrl || null,
+            thumbnailUrl: adInfo?.thumbnailUrl || refData?.thumbnailUrl || null,
             imageUrl: refData?.imageUrl || null,
             headline: refData?.headline || refData?.adName || null,
             mediaType: refData?.mediaType || null,
+            campaignName: adInfo?.campaignName || null,
+            adName: adInfo?.adName || null,
             byStatus: {},
             total: 0,
             conversions: 0,
@@ -217,6 +249,27 @@ export function useChampionCreative(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['champion_creative', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async (): Promise<ChampionCreative | null> => {
+      // Buscar meta_ads com nomes das campanhas
+      const { data: metaAds } = await supabase
+        .from('meta_ads')
+        .select(`
+          ad_id,
+          name,
+          thumbnail_url,
+          campaign:meta_campaigns(name, campaign_id)
+        `);
+
+      // Criar mapa de ad_id → { campaignName, adName }
+      const adInfoMap: Record<string, { campaignName: string | null; adName: string | null; thumbnailUrl: string | null }> = {};
+      metaAds?.forEach(ad => {
+        const campaign = ad.campaign as any;
+        adInfoMap[ad.ad_id] = {
+          campaignName: campaign?.name || null,
+          adName: ad.name || null,
+          thumbnailUrl: ad.thumbnail_url || null,
+        };
+      });
+
       let query = supabase
         .from('conversations')
         .select(`
@@ -254,6 +307,8 @@ export function useChampionCreative(dateRange?: DateRange) {
         imageUrl: string | null;
         headline: string | null;
         mediaType: number | null;
+        campaignName: string | null;
+        adName: string | null;
         total: number;
         conversions: number;
       }> = {};
@@ -265,13 +320,17 @@ export function useChampionCreative(dateRange?: DateRange) {
         
         if (!sourceId) return;
 
+        const adInfo = adInfoMap[sourceId];
+
         if (!adsMap[sourceId]) {
           adsMap[sourceId] = {
             sourceUrl: refData?.sourceUrl || null,
-            thumbnailUrl: refData?.thumbnailUrl || null,
+            thumbnailUrl: adInfo?.thumbnailUrl || refData?.thumbnailUrl || null,
             imageUrl: refData?.imageUrl || null,
             headline: refData?.headline || refData?.adName || null,
             mediaType: refData?.mediaType || null,
+            campaignName: adInfo?.campaignName || null,
+            adName: adInfo?.adName || null,
             total: 0,
             conversions: 0,
           };
@@ -297,6 +356,8 @@ export function useChampionCreative(dateRange?: DateRange) {
             bestRate = rate;
             champion = {
               sourceId,
+              campaignName: data.campaignName,
+              adName: data.adName,
               ...data,
               conversionRate: rate,
             };
@@ -312,6 +373,8 @@ export function useChampionCreative(dateRange?: DateRange) {
             if (!champion || data.conversions > (champion.conversions || 0)) {
               champion = {
                 sourceId,
+                campaignName: data.campaignName,
+                adName: data.adName,
                 ...data,
                 conversionRate: rate,
               };
@@ -327,6 +390,8 @@ export function useChampionCreative(dateRange?: DateRange) {
           const [sourceId, data] = sorted[0];
           champion = {
             sourceId,
+            campaignName: data.campaignName,
+            adName: data.adName,
             ...data,
             conversionRate: 0,
           };
