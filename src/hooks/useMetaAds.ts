@@ -390,12 +390,28 @@ export function useSyncMetaAccount() {
 
   return useMutation({
     mutationFn: async ({ accountId, dateFrom, dateTo }: { accountId: string; dateFrom?: string; dateTo?: string }) => {
-      const { data, error } = await supabase.functions.invoke('meta-sync', {
+      // First sync campaigns
+      const { data: campaignsData, error: campaignsError } = await supabase.functions.invoke('meta-sync', {
         body: { accountId, dateFrom, dateTo, action: 'sync-all' }
       });
 
-      if (error) throw error;
-      return data;
+      if (campaignsError) throw campaignsError;
+
+      // Then sync ads to get campaign names for each ad
+      const { data: adsData, error: adsError } = await supabase.functions.invoke('meta-sync', {
+        body: { accountId, action: 'sync-ads' }
+      });
+
+      if (adsError) {
+        console.error('Error syncing ads:', adsError);
+        // Don't fail the whole sync if ads sync fails
+      }
+
+      return {
+        campaignsCount: campaignsData?.campaignsCount || 0,
+        insightsCount: campaignsData?.insightsCount || 0,
+        adsCount: adsData?.adsCount || 0
+      };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['meta-campaigns'] });
@@ -403,10 +419,37 @@ export function useSyncMetaAccount() {
       queryClient.invalidateQueries({ queryKey: ['meta-campaigns-with-insights'] });
       queryClient.invalidateQueries({ queryKey: ['meta-daily-insights'] });
       queryClient.invalidateQueries({ queryKey: ['meta-accounts'] });
-      toast.success(`Sincronização concluída: ${data.campaignsCount} campanhas, ${data.insightsCount} métricas`);
+      queryClient.invalidateQueries({ queryKey: ['ads_breakdown'] });
+      queryClient.invalidateQueries({ queryKey: ['champion_creative'] });
+      queryClient.invalidateQueries({ queryKey: ['top_creatives'] });
+      toast.success(`Sincronização concluída: ${data.campaignsCount} campanhas, ${data.adsCount} anúncios`);
     },
     onError: (error: any) => {
       toast.error('Erro ao sincronizar: ' + error.message);
+    }
+  });
+}
+
+export function useSyncMetaAds() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (accountId: string) => {
+      const { data, error } = await supabase.functions.invoke('meta-sync', {
+        body: { accountId, action: 'sync-ads' }
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['ads_breakdown'] });
+      queryClient.invalidateQueries({ queryKey: ['champion_creative'] });
+      queryClient.invalidateQueries({ queryKey: ['top_creatives'] });
+      toast.success(`Anúncios sincronizados: ${data.adsCount} anúncios de ${data.campaignsProcessed} campanhas`);
+    },
+    onError: (error: any) => {
+      toast.error('Erro ao sincronizar anúncios: ' + error.message);
     }
   });
 }

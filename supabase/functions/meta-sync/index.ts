@@ -34,6 +34,16 @@ interface MetaInsight {
   date_stop: string;
 }
 
+interface MetaAd {
+  id: string;
+  name: string;
+  status: string;
+  creative?: {
+    thumbnail_url?: string;
+  };
+  created_time?: string;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -217,6 +227,87 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         success: true, 
         insightsCount: totalInsights,
+        campaignsProcessed: dbCampaigns.length
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Sync ads action - fetch individual ads with campaign linkage
+    if (action === 'sync-ads') {
+      console.log(`[Meta Sync] Syncing ads for account ${adAccountId}`);
+
+      // Get campaigns from database first
+      const { data: dbCampaigns } = await supabase
+        .from('meta_campaigns')
+        .select('id, campaign_id')
+        .eq('meta_account_id', accountId);
+
+      if (!dbCampaigns || dbCampaigns.length === 0) {
+        return new Response(JSON.stringify({ 
+          success: true, 
+          message: 'No campaigns found. Sync campaigns first.' 
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      let totalAds = 0;
+
+      for (const campaign of dbCampaigns) {
+        try {
+          // Fetch ads for this campaign
+          const adsResponse = await fetch(
+            `https://graph.facebook.com/v21.0/${campaign.campaign_id}/ads?` +
+            `fields=id,name,status,creative{thumbnail_url},created_time` +
+            `&limit=500` +
+            `&access_token=${accessToken}`
+          );
+
+          const adsData = await adsResponse.json();
+
+          if (adsData.error) {
+            console.error(`[Meta Sync] Error fetching ads for campaign ${campaign.campaign_id}:`, adsData.error);
+            continue;
+          }
+
+          const ads: MetaAd[] = adsData.data || [];
+          console.log(`[Meta Sync] Found ${ads.length} ads for campaign ${campaign.campaign_id}`);
+
+          for (const ad of ads) {
+            const { error: upsertError } = await supabase.from('meta_ads').upsert({
+              meta_account_id: accountId,
+              campaign_id: campaign.id,
+              ad_id: ad.id,
+              name: ad.name,
+              status: ad.status,
+              thumbnail_url: ad.creative?.thumbnail_url || null,
+              created_time: ad.created_time,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'meta_account_id,ad_id' });
+
+            if (upsertError) {
+              console.error('[Meta Sync] Ad upsert error:', upsertError);
+            } else {
+              totalAds++;
+            }
+          }
+
+          // Small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (err) {
+          console.error(`[Meta Sync] Error processing campaign ${campaign.campaign_id}:`, err);
+        }
+      }
+
+      // Update last sync
+      await supabase.from('meta_ad_accounts').update({
+        last_sync_at: new Date().toISOString()
+      }).eq('id', accountId);
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        adsCount: totalAds,
         campaignsProcessed: dbCampaigns.length
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

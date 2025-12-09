@@ -328,6 +328,8 @@ export default function CampaignReport() {
               imageUrl={champion.imageUrl}
               headline={champion.headline}
               mediaType={champion.mediaType}
+              campaignName={champion.campaignName}
+              adName={champion.adName}
               total={champion.total}
               conversions={champion.conversions}
               conversionRate={champion.conversionRate}
@@ -414,6 +416,8 @@ export default function CampaignReport() {
                 imageUrl={creative.imageUrl}
                 headline={creative.headline}
                 mediaType={creative.mediaType}
+                campaignName={creative.campaignName}
+                adName={creative.adName}
                 total={creative.total}
                 conversions={creative.conversions}
                 conversionRate={creative.conversionRate}

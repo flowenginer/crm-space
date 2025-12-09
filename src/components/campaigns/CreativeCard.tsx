@@ -9,6 +9,8 @@ interface CreativeCardProps {
   imageUrl: string | null;
   headline: string | null;
   mediaType: number | null;
+  campaignName?: string | null;
+  adName?: string | null;
   total: number;
   conversions: number;
   conversionRate: number;
@@ -23,6 +25,8 @@ export function CreativeCard({
   imageUrl,
   headline,
   mediaType,
+  campaignName,
+  adName,
   total,
   conversions,
   conversionRate,
@@ -31,6 +35,7 @@ export function CreativeCard({
 }: CreativeCardProps) {
   const previewUrl = thumbnailUrl || imageUrl;
   const isVideo = mediaType === 2;
+  const displayName = campaignName || headline || adName || 'Sem nome';
 
   const openCreative = () => {
     if (sourceUrl) {
@@ -83,9 +88,7 @@ export function CreativeCard({
             <span className="font-medium text-foreground">{total} leads</span>
             <span className="text-green-600 font-medium">{conversions} conv.</span>
           </div>
-          {headline && (
-            <p className="text-xs text-muted-foreground truncate">{headline}</p>
-          )}
+          <p className="text-xs text-muted-foreground truncate">{displayName}</p>
         </div>
       </div>
     );
@@ -134,9 +137,14 @@ export function CreativeCard({
 
         {/* Info */}
         <div className="flex-1 space-y-4">
-          {headline && (
-            <p className="text-sm text-muted-foreground line-clamp-2">{headline}</p>
-          )}
+          <div>
+            <p className="text-base font-medium text-foreground line-clamp-2">
+              {displayName}
+            </p>
+            {adName && campaignName && (
+              <p className="text-sm text-muted-foreground mt-1">{adName}</p>
+            )}
+          </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center p-3 rounded-xl bg-muted/50">

@@ -105,11 +105,18 @@ export function AdsBreakdownTable({ data, statuses, isLoading }: AdsBreakdownTab
                 <TableCell>
                   <div className="space-y-1">
                     <p className="text-sm font-medium truncate max-w-[200px]">
-                      {ad.headline || 'Sem título'}
+                      {ad.campaignName || ad.headline || 'Sem nome'}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      ID: {ad.sourceId.slice(0, 12)}...
-                    </p>
+                    {ad.adName && ad.campaignName && (
+                      <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                        {ad.adName}
+                      </p>
+                    )}
+                    {!ad.campaignName && (
+                      <p className="text-xs text-muted-foreground">
+                        ID: {ad.sourceId.slice(0, 12)}...
+                      </p>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className="text-center">
