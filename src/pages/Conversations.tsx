@@ -2370,6 +2370,69 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  // Handler para colar imagens do clipboard (Ctrl+V)
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboardData = e.clipboardData;
+    
+    if (!clipboardData || !clipboardData.items) return;
+    
+    const imageItems: File[] = [];
+    
+    // Percorrer todos os itens do clipboard
+    for (let i = 0; i < clipboardData.items.length; i++) {
+      const item = clipboardData.items[i];
+      
+      // Verificar se é uma imagem
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          // Criar nome amigável para o arquivo
+          const extension = item.type.split('/')[1] || 'png';
+          const fileName = `screenshot_${Date.now()}_${i}.${extension}`;
+          
+          // Criar novo File com nome personalizado
+          const renamedFile = new File([file], fileName, { type: file.type });
+          imageItems.push(renamedFile);
+        }
+      }
+    }
+    
+    if (imageItems.length > 0) {
+      e.preventDefault(); // Evitar colar como texto
+      
+      const maxFiles = 10;
+      const maxSize = 30 * 1024 * 1024; // 30MB
+      
+      const validFiles = imageItems.filter(file => {
+        if (file.size > maxSize) {
+          toast.error(`Imagem muito grande. Máximo: 30MB`);
+          return false;
+        }
+        return true;
+      });
+      
+      const currentCount = selectedFiles.length;
+      const availableSlots = maxFiles - currentCount;
+      
+      if (availableSlots <= 0) {
+        toast.error(`Máximo de ${maxFiles} arquivos permitido`);
+        return;
+      }
+      
+      const filesToAdd = validFiles.slice(0, availableSlots);
+      
+      if (filesToAdd.length > 0) {
+        setSelectedFiles(prev => [...prev, ...filesToAdd]);
+        toast.success(
+          filesToAdd.length === 1 
+            ? 'Imagem colada do clipboard!' 
+            : `${filesToAdd.length} imagens coladas do clipboard!`
+        );
+      }
+    }
+    // Se não for imagem, deixar o comportamento padrão (colar texto)
+  }, [selectedFiles.length]);
+
   // Drag and drop handlers
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
@@ -3819,6 +3882,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
                           stopTyping();
                         }
                       }}
+                      onPaste={handlePaste}
                       onBlur={() => stopTyping()}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
