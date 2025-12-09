@@ -160,11 +160,29 @@ async function canViewAllData(): Promise<{ canViewAll: boolean; userId: string |
 }
 
 // Fetch contacts for a specific lead status with limit (filtered by user permission)
+// Somente retorna contatos que têm pelo menos uma conversa ativa (open/pending)
 export function useContactsByLeadStatus(statusName?: string | null, limit = 20) {
   return useQuery({
     queryKey: ['contacts-for-kanban', statusName, limit],
     queryFn: async () => {
       const { canViewAll, userId } = await canViewAllData();
+
+      // Primeiro buscar IDs de contatos com conversas ativas
+      let conversationsQuery = supabase
+        .from('conversations')
+        .select('contact_id')
+        .in('status', ['open', 'pending']);
+      
+      const { data: activeConversations, error: convError } = await conversationsQuery;
+      if (convError) throw convError;
+      
+      // Extrair IDs únicos de contatos com conversas ativas
+      const activeContactIds = [...new Set(activeConversations?.map(c => c.contact_id) || [])];
+      
+      // Se não há contatos com conversas ativas, retornar array vazio
+      if (activeContactIds.length === 0) {
+        return [] as ContactForKanban[];
+      }
 
       let query = supabase
         .from('contacts')
@@ -184,6 +202,7 @@ export function useContactsByLeadStatus(statusName?: string | null, limit = 20) 
             avatar_url
           )
         `)
+        .in('id', activeContactIds) // Só contatos com conversas ativas
         .order('updated_at', { ascending: false })
         .limit(limit);
 
