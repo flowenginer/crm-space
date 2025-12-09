@@ -1232,6 +1232,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const manuallyMarkedUnreadRef = useRef<string | null>(null);
+  const bulkMarkedUnreadRef = useRef<Set<string>>(new Set());
 
   // Função para redimensionar o textarea baseado no conteúdo
   const resizeTextarea = useCallback(() => {
@@ -1715,8 +1716,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
 
   // Mark conversation as read when selected (respeitando marcação manual de não lida)
   useEffect(() => {
-    // Se a conversa foi marcada manualmente como não lida, não marcar como lida
+    // Se a conversa foi marcada manualmente como não lida (individual ou bulk), não marcar como lida
     if (manuallyMarkedUnreadRef.current === selectedConversationId) {
+      return;
+    }
+    if (selectedConversationId && bulkMarkedUnreadRef.current.has(selectedConversationId)) {
       return;
     }
     
@@ -1990,7 +1994,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
     
     const ids = Array.from(selectedConversationIds);
     
+    // Exit selection mode FIRST to update UI immediately
+    setSelectedConversationIds(new Set());
+    setIsConversationSelectionMode(false);
+    
     try {
+      // Mark all IDs as manually marked unread to prevent auto-marking as read
+      ids.forEach(id => bulkMarkedUnreadRef.current.add(id));
+      
       // Update all selected conversations
       await Promise.all(
         ids.map(id => 
@@ -2007,9 +2018,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
       
       toast.success(`${ids.length} conversa(s) marcada(s) como não lida(s)`);
       
-      // Clear selection
-      setSelectedConversationIds(new Set());
-      setIsConversationSelectionMode(false);
+      // Clear the bulk marked ref after a delay (to allow navigation)
+      setTimeout(() => {
+        bulkMarkedUnreadRef.current.clear();
+      }, 2000);
     } catch (error) {
       toast.error('Erro ao marcar conversas como não lidas');
     }
