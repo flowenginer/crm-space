@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   RefreshCw, Calendar as CalendarIcon, TrendingUp, DollarSign, 
-  MousePointer, Eye, Users, Target, Loader2, Unplug, Facebook
+  MousePointer, Eye, Users, Target, Loader2, Unplug, Facebook,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -88,6 +89,8 @@ export default function MetaAdsManager() {
     from: subDays(new Date(), 30),
     to: new Date()
   });
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
   const { data: accounts, isLoading: accountsLoading } = useMetaAccounts();
   const { mutate: syncAccount, isPending: isSyncing } = useSyncMetaAccount();
@@ -140,6 +143,82 @@ export default function MetaAdsManager() {
     conversions: d.conversions
   })) || [];
 
+  // Filter and sort campaigns
+  const filteredAndSortedCampaigns = useMemo(() => {
+    if (!campaigns) return [];
+    
+    let result = statusFilter === 'all' 
+      ? campaigns 
+      : campaigns.filter(c => c.status === statusFilter);
+    
+    if (sortConfig) {
+      result = [...result].sort((a, b) => {
+        let aValue: any, bValue: any;
+        
+        switch (sortConfig.key) {
+          case 'name': aValue = a.name || ''; bValue = b.name || ''; break;
+          case 'status': aValue = a.status || ''; bValue = b.status || ''; break;
+          case 'objective': aValue = a.objective || ''; bValue = b.objective || ''; break;
+          case 'impressions': aValue = a.insights?.impressions || 0; bValue = b.insights?.impressions || 0; break;
+          case 'clicks': aValue = a.insights?.clicks || 0; bValue = b.insights?.clicks || 0; break;
+          case 'ctr': aValue = a.insights?.ctr || 0; bValue = b.insights?.ctr || 0; break;
+          case 'spend': aValue = a.insights?.spend || 0; bValue = b.insights?.spend || 0; break;
+          case 'cpc': aValue = a.insights?.cpc || 0; bValue = b.insights?.cpc || 0; break;
+          case 'ctwLeads': aValue = a.ctwLeads || 0; bValue = b.ctwLeads || 0; break;
+          case 'realCpl': aValue = a.realCpl || 0; bValue = b.realCpl || 0; break;
+          default: return 0;
+        }
+        
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    
+    return result;
+  }, [campaigns, statusFilter, sortConfig]);
+
+  // Sortable header component
+  const SortableHeader = ({ children, sortKey, className }: { 
+    children: React.ReactNode; 
+    sortKey: string; 
+    className?: string;
+  }) => {
+    const isActive = sortConfig?.key === sortKey;
+    const direction = isActive ? sortConfig.direction : null;
+    
+    const handleSort = () => {
+      if (!isActive) {
+        setSortConfig({ key: sortKey, direction: 'desc' });
+      } else if (direction === 'desc') {
+        setSortConfig({ key: sortKey, direction: 'asc' });
+      } else {
+        setSortConfig(null);
+      }
+    };
+    
+    return (
+      <TableHead 
+        className={cn("cursor-pointer hover:bg-muted/50 select-none", className)}
+        onClick={handleSort}
+      >
+        <div className="flex items-center gap-1">
+          {children}
+          <div className="flex flex-col">
+            <ChevronUp className={cn(
+              "h-3 w-3 -mb-1",
+              isActive && direction === 'asc' ? 'text-primary' : 'text-muted-foreground/40'
+            )} />
+            <ChevronDown className={cn(
+              "h-3 w-3",
+              isActive && direction === 'desc' ? 'text-primary' : 'text-muted-foreground/40'
+            )} />
+          </div>
+        </div>
+      </TableHead>
+    );
+  };
+
   return (
     <div className="p-6 space-y-6">
         {/* Header */}
@@ -170,6 +249,20 @@ export default function MetaAdsManager() {
                 </SelectContent>
               </Select>
             )}
+
+            {/* Status Filter */}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os status</SelectItem>
+                <SelectItem value="ACTIVE">Ativas</SelectItem>
+                <SelectItem value="PAUSED">Pausadas</SelectItem>
+                <SelectItem value="ARCHIVED">Arquivadas</SelectItem>
+                <SelectItem value="DELETED">Deletadas</SelectItem>
+              </SelectContent>
+            </Select>
 
             {/* Date Range Picker */}
             <Popover>
@@ -397,25 +490,25 @@ export default function MetaAdsManager() {
                     <Skeleton key={i} className="h-12 w-full" />
                   ))}
                 </div>
-              ) : campaigns && campaigns.length > 0 ? (
+              ) : filteredAndSortedCampaigns.length > 0 ? (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Campanha</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Objetivo</TableHead>
-                        <TableHead className="text-right">Impressões</TableHead>
-                        <TableHead className="text-right">Cliques</TableHead>
-                        <TableHead className="text-right">CTR</TableHead>
-                        <TableHead className="text-right">Gasto</TableHead>
-                        <TableHead className="text-right">CPC</TableHead>
-                        <TableHead className="text-right">Leads CTWA</TableHead>
-                        <TableHead className="text-right">CPL Real</TableHead>
+                        <SortableHeader sortKey="name">Campanha</SortableHeader>
+                        <SortableHeader sortKey="status">Status</SortableHeader>
+                        <SortableHeader sortKey="objective">Objetivo</SortableHeader>
+                        <SortableHeader sortKey="impressions" className="text-right">Impressões</SortableHeader>
+                        <SortableHeader sortKey="clicks" className="text-right">Cliques</SortableHeader>
+                        <SortableHeader sortKey="ctr" className="text-right">CTR</SortableHeader>
+                        <SortableHeader sortKey="spend" className="text-right">Gasto</SortableHeader>
+                        <SortableHeader sortKey="cpc" className="text-right">CPC</SortableHeader>
+                        <SortableHeader sortKey="ctwLeads" className="text-right">Leads CTWA</SortableHeader>
+                        <SortableHeader sortKey="realCpl" className="text-right">CPL Real</SortableHeader>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {campaigns.map((campaign) => (
+                      {filteredAndSortedCampaigns.map((campaign) => (
                         <TableRow key={campaign.id}>
                           <TableCell className="font-medium max-w-[200px] truncate">
                             {campaign.name}
