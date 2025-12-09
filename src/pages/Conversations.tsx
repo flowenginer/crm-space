@@ -409,10 +409,10 @@ function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, o
       onClick={handleClick}
       className={cn(
         'p-4 border-b border-border/50 cursor-pointer transition-all duration-200 group',
-        isSelected 
-          ? 'bg-success/15 border-l-4 border-l-success'
-          : isChecked
-            ? 'bg-primary/10 border-l-4 border-l-primary'
+        isSelectionMode && isChecked
+          ? 'bg-primary/10 border-l-4 border-l-primary'
+          : isSelected && !isSelectionMode
+            ? 'bg-success/15 border-l-4 border-l-success'
             : isNewTransfer
               ? 'bg-emerald-500/20 border-l-4 border-l-emerald-500 animate-pulse'
               : isUnread 
@@ -2002,15 +2002,22 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
       // Mark all IDs as manually marked unread to prevent auto-marking as read
       ids.forEach(id => bulkMarkedUnreadRef.current.add(id));
       
-      // Update all selected conversations
-      await Promise.all(
+      // Update all selected conversations - .select() ensures query execution
+      const results = await Promise.all(
         ids.map(id => 
           supabase
             .from('conversations')
             .update({ is_unread: true, unread_count: 1 })
             .eq('id', id)
+            .select()
         )
       );
+      
+      // Log any errors
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        console.error('Erros ao marcar conversas como não lidas:', errors);
+      }
       
       // Invalidate queries to refresh the list
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
