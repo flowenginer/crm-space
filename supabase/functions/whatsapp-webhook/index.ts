@@ -138,30 +138,95 @@ function extractValidPhoneFromPayload(msg: any, rawRemoteJid: string): string | 
 // MEDIA UPLOAD FUNCTIONS
 // =====================================================
 
-function getExtensionFromMimetype(mimetype: string): string {
+function getExtensionFromMimetype(mimetype: string, originalFilename?: string): string {
+  // Se temos o nome original do arquivo, extrair extensão dele
+  if (originalFilename) {
+    const match = originalFilename.match(/\.([a-zA-Z0-9]+)$/);
+    if (match) {
+      return match[1].toLowerCase();
+    }
+  }
+  
   const mimeMap: Record<string, string> = {
+    // Audio
     'audio/ogg': 'ogg',
     'audio/ogg; codecs=opus': 'ogg',
     'audio/mp4': 'm4a',
     'audio/mpeg': 'mp3',
     'audio/wav': 'wav',
     'audio/webm': 'webm',
+    'audio/aac': 'aac',
+    'audio/flac': 'flac',
+    // Images
     'image/jpeg': 'jpg',
     'image/png': 'png',
     'image/webp': 'webp',
     'image/gif': 'gif',
+    'image/bmp': 'bmp',
+    'image/tiff': 'tiff',
+    'image/svg+xml': 'svg',
+    'image/x-icon': 'ico',
+    // Video
     'video/mp4': 'mp4',
     'video/webm': 'webm',
     'video/3gpp': '3gp',
+    'video/quicktime': 'mov',
+    'video/x-msvideo': 'avi',
+    'video/x-matroska': 'mkv',
+    // Documents
     'application/pdf': 'pdf',
     'application/msword': 'doc',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
     'application/vnd.ms-excel': 'xls',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'text/plain': 'txt',
+    'text/csv': 'csv',
+    'text/html': 'html',
+    'application/json': 'json',
+    'application/xml': 'xml',
+    'application/rtf': 'rtf',
+    // Archives
+    'application/zip': 'zip',
+    'application/x-zip-compressed': 'zip',
+    'application/x-rar-compressed': 'rar',
+    'application/vnd.rar': 'rar',
+    'application/x-7z-compressed': '7z',
+    'application/x-tar': 'tar',
+    'application/gzip': 'gz',
+    'application/x-gzip': 'gz',
+    // Design files
+    'image/vnd.adobe.photoshop': 'psd',
+    'application/photoshop': 'psd',
+    'application/psd': 'psd',
+    'application/x-photoshop': 'psd',
+    'image/x-coreldraw': 'cdr',
+    'application/cdr': 'cdr',
+    'application/x-cdr': 'cdr',
+    'application/coreldraw': 'cdr',
+    'application/illustrator': 'ai',
+    'application/postscript': 'eps',
+    'application/x-indesign': 'indd',
+    // CAD
+    'application/x-dwg': 'dwg',
+    'image/vnd.dwg': 'dwg',
+    'application/dxf': 'dxf',
+    'image/vnd.dxf': 'dxf',
+    // Fonts
+    'font/ttf': 'ttf',
+    'font/otf': 'otf',
+    'application/x-font-ttf': 'ttf',
+    'application/x-font-otf': 'otf',
+    'font/woff': 'woff',
+    'font/woff2': 'woff2',
+    // Executables and others
+    'application/x-msdownload': 'exe',
+    'application/octet-stream': 'bin', // Generic binary fallback
   };
   
   // Clean mimetype (remove params like "; codecs=opus")
-  const cleanMime = mimetype.split(';')[0].trim();
+  const cleanMime = mimetype.split(';')[0].trim().toLowerCase();
   return mimeMap[mimetype] || mimeMap[cleanMime] || 'bin';
 }
 
