@@ -808,35 +808,43 @@ export function useInteractionTimeline(filters: DashboardFilters) {
         });
       }
 
-      // Get conversations that match filters
-      let conversationsQuery = supabase
-        .from('conversations')
-        .select('id')
-        .gte('created_at', dateFrom)
-        .lte('created_at', dateTo);
-
-      if (filters.agentId) {
-        conversationsQuery = conversationsQuery.eq('assigned_to', filters.agentId);
-      }
-      if (filters.departmentId) {
-        conversationsQuery = conversationsQuery.eq('department_id', filters.departmentId);
-      }
-
-      const { data: conversations } = await conversationsQuery;
+      // If agent or department filter is applied, get conversation IDs first
+      let conversationIds: string[] | null = null;
       
-      if (!conversations || conversations.length === 0) {
-        return hours;
+      if (filters.agentId || filters.departmentId) {
+        let conversationsQuery = supabase
+          .from('conversations')
+          .select('id');
+
+        if (filters.agentId) {
+          conversationsQuery = conversationsQuery.eq('assigned_to', filters.agentId);
+        }
+        if (filters.departmentId) {
+          conversationsQuery = conversationsQuery.eq('department_id', filters.departmentId);
+        }
+
+        const { data: conversations } = await conversationsQuery;
+        
+        if (!conversations || conversations.length === 0) {
+          return hours;
+        }
+        
+        conversationIds = conversations.map(c => c.id);
       }
 
-      const convIds = conversations.map(c => c.id);
-
-      // Get all messages for these conversations in the period
-      const { data: messages } = await supabase
+      // Get all messages directly from the period (not filtered by conversation creation date)
+      let messagesQuery = supabase
         .from('messages')
         .select('id, conversation_id, is_from_me, created_at')
-        .in('conversation_id', convIds)
         .gte('created_at', dateFrom)
         .lte('created_at', dateTo);
+
+      // Apply conversation filter if we have filtered IDs
+      if (conversationIds && conversationIds.length > 0) {
+        messagesQuery = messagesQuery.in('conversation_id', conversationIds);
+      }
+
+      const { data: messages } = await messagesQuery;
 
       // Count messages by hour and type (with timezone correction)
       messages?.forEach(msg => {
