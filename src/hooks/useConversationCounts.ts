@@ -104,22 +104,23 @@ export function useAllConversationCounts(filters?: CountFilters) {
       
       const result = data as any;
       
+      // Mapeamento correto: banco retorna { totals: {...}, channels: {...}, dates: {...}, ... }
       return {
-        total: result?.total || 0,
-        mine: result?.mine || 0,
-        unassigned: result?.unassigned || 0,
-        unread: result?.unread || 0,
-        byChannel: result?.byChannel || {},
-        byDepartment: result?.byDepartment || {},
+        total: result?.totals?.all || 0,
+        mine: result?.totals?.mine || 0,
+        unassigned: result?.totals?.unassigned || 0,
+        unread: result?.totals?.unread || 0,
+        byChannel: result?.channels || {},
+        byDepartment: result?.departments || {},
         byAgent: result?.byAgent || {},
-        byOrigin: result?.byOrigin || { meta_ads: 0, organic: 0 },
+        byOrigin: result?.origins || { meta_ads: 0, organic: 0 },
         byDate: {
-          today: result?.byDate?.today || 0,
-          yesterday: result?.byDate?.yesterday || 0,
-          thisWeek: result?.byDate?.thisWeek || 0,
-          lastWeek: result?.byDate?.lastWeek || 0,
-          thisMonth: result?.byDate?.thisMonth || 0,
-          lastMonth: result?.byDate?.lastMonth || 0,
+          today: result?.dates?.today || 0,
+          yesterday: result?.dates?.yesterday || 0,
+          thisWeek: result?.dates?.this_week || 0,
+          lastWeek: result?.dates?.last_week || 0,
+          thisMonth: result?.dates?.this_month || 0,
+          lastMonth: result?.dates?.last_month || 0,
         },
       };
     },
@@ -214,11 +215,12 @@ export function useConversationTotalCounts(filters?: CountFilters) {
         pendingCount = count || 0;
       }
       
+      // Mapeamento correto: banco retorna { totals: {...}, ... }
       return {
-        all: result?.total || 0,
-        mine: result?.mine || 0,
-        unassigned: result?.unassigned || 0,
-        unread: result?.unread || 0,
+        all: result?.totals?.all || 0,
+        mine: result?.totals?.mine || 0,
+        unassigned: result?.totals?.unassigned || 0,
+        unread: result?.totals?.unread || 0,
         pending: pendingCount,
       };
     },
