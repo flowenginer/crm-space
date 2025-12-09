@@ -445,11 +445,11 @@ function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, o
                   e.stopPropagation();
                   onTogglePin();
                 }}
-                className="p-1 rounded opacity-0 group-hover/header:opacity-100 hover:bg-muted transition-all"
+                className="p-1 rounded hover:bg-muted transition-all"
                 title={isPinned ? 'Desafixar' : 'Fixar'}
               >
                 {isPinned ? (
-                  <PinOff size={14} className="text-muted-foreground" />
+                  <PinOff size={14} className="text-green-500" />
                 ) : (
                   <Pin size={14} className="text-muted-foreground" />
                 )}
@@ -3556,17 +3556,17 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
                   </div>
                   <button
                     onClick={cancelRecording}
-                    className="p-3 hover:bg-muted rounded-xl transition-colors"
+                    className="p-3 bg-destructive text-white rounded-xl hover:bg-destructive/90 transition-colors"
                     title="Cancelar gravação"
                   >
-                    <X size={22} className="text-muted-foreground" />
+                    <X size={22} />
                   </button>
                   <button
                     onClick={stopRecording}
-                    className="p-3 bg-destructive text-white rounded-xl hover:bg-destructive/90 transition-colors"
+                    className="p-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors"
                     title="Parar e enviar"
                   >
-                    <MicOff size={22} />
+                    <Send size={22} />
                   </button>
                 </div>
               ) : (
