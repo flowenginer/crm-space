@@ -1259,6 +1259,7 @@ function EditContactModal({
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       toast.success('Contato atualizado!');
       onClose();
