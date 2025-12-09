@@ -423,10 +423,29 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
       });
     },
     onSuccess: () => {
+      // Remove a conversa do cache local IMEDIATAMENTE para sumir do painel esquerdo
+      queryClient.setQueriesData(
+        { queryKey: ['conversations-paginated'] },
+        (oldData: any) => {
+          if (!oldData?.pages) return oldData;
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page: any) => ({
+              ...page,
+              conversations: page.conversations?.filter((c: any) => c.id !== conversationId) || []
+            }))
+          };
+        }
+      );
+      
+      // Invalida queries para garantir consistência
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-events', conversationId] });
+      // Invalida CRM para atualizar contagens
+      queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-status-summary'] });
       
       // Navigate away from the closed conversation
       if (onNavigateAway) {
