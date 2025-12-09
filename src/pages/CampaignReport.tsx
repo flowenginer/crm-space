@@ -13,22 +13,17 @@ import {
   Loader2,
   UserPlus,
   ArrowLeft,
-  ExternalLink,
+  BarChart3,
+  Trophy,
 } from 'lucide-react';
 import {
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
 } from 'recharts';
 import {
   Popover,
@@ -49,19 +44,18 @@ import { useNavigate } from 'react-router-dom';
 import {
   useCampaignMetrics,
   useDailyLeads,
-  useCampaignBreakdown,
-  useRecentMetaLeads,
 } from '@/hooks/useCampaignMetrics';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
-const COLORS = ['#1877F2', '#0EA5E9', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B'];
+  useMetaLeadsFunnel,
+  useAdsBreakdown,
+  useChampionCreative,
+  useTopCreatives,
+} from '@/hooks/useMetaAdsAnalytics';
+import { useLeadStatuses } from '@/hooks/useLeadStatuses';
+import { MetaFunnelChart } from '@/components/campaigns/MetaFunnelChart';
+import { CreativeCard } from '@/components/campaigns/CreativeCard';
+import { AdsBreakdownTable } from '@/components/campaigns/AdsBreakdownTable';
+import { StatusLeadsModal } from '@/components/campaigns/StatusLeadsModal';
 
 const datePresets = [
   { label: 'Hoje', getValue: () => ({ from: new Date(), to: new Date() }) },
@@ -134,14 +128,25 @@ export default function CampaignReport() {
     to: new Date(),
   });
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
 
+  // Data hooks
   const { data: metrics, isLoading: loadingMetrics } = useCampaignMetrics();
   const { data: dailyLeads = [], isLoading: loadingDaily } = useDailyLeads({
     from: dateRange?.from || subDays(new Date(), 29),
     to: dateRange?.to || new Date(),
   });
-  const { data: campaigns = [], isLoading: loadingCampaigns } = useCampaignBreakdown();
-  const { data: recentLeads = [], isLoading: loadingRecent } = useRecentMetaLeads(5);
+  const { data: statuses = [] } = useLeadStatuses();
+  
+  const activeDateRange = dateRange?.from && dateRange?.to 
+    ? { from: dateRange.from, to: dateRange.to }
+    : undefined;
+
+  const { data: funnelData = [], isLoading: loadingFunnel } = useMetaLeadsFunnel(activeDateRange);
+  const { data: adsBreakdown = [], isLoading: loadingAds } = useAdsBreakdown(activeDateRange);
+  const { data: champion, isLoading: loadingChampion } = useChampionCreative(activeDateRange);
+  const { data: topCreatives = [], isLoading: loadingTopCreatives } = useTopCreatives(activeDateRange, 6);
 
   const formatDateRange = (range: DateRange | undefined) => {
     if (!range?.from) return 'Selecionar período';
@@ -154,12 +159,12 @@ export default function CampaignReport() {
     setIsDatePickerOpen(false);
   };
 
-  // Pie chart data for source distribution
-  const pieData = campaigns.slice(0, 5).map((c, i) => ({
-    name: c.headline.length > 20 ? c.headline.substring(0, 20) + '...' : c.headline,
-    value: c.leads,
-    fill: COLORS[i % COLORS.length],
-  }));
+  const handleStatusClick = (statusName: string) => {
+    setSelectedStatus(statusName);
+    setIsStatusModalOpen(true);
+  };
+
+  const selectedStatusConfig = statuses.find(s => s.name === selectedStatus);
 
   return (
     <div className="space-y-6">
@@ -179,10 +184,10 @@ export default function CampaignReport() {
               <div className="p-2 bg-blue-600/10 rounded-lg">
                 <Facebook className="h-6 w-6 text-blue-600" />
               </div>
-              <h1 className="text-3xl font-bold text-foreground">Meta Ads - Campanhas</h1>
+              <h1 className="text-3xl font-bold text-foreground">Meta Ads - Cruzamento de Dados</h1>
             </div>
             <p className="text-muted-foreground">
-              Análise de leads e conversões vindos de campanhas Click-to-WhatsApp
+              Análise completa de leads por campanha, anúncio e etapa do funil
             </p>
           </div>
         </div>
@@ -290,198 +295,153 @@ export default function CampaignReport() {
         />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Leads por dia */}
-        <div className="lg:col-span-2 bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-          <h3 className="text-lg font-semibold text-foreground mb-6">Leads por dia</h3>
-          <div className="h-[300px]">
-            {loadingDaily ? (
-              <div className="h-full flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : dailyLeads.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <Facebook className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Nenhum lead de Meta Ads no período</p>
-                </div>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dailyLeads} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1877F2" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#1877F2" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis
-                    dataKey="date"
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Area
-                    type="monotone"
-                    dataKey="leads"
-                    stroke="#1877F2"
-                    strokeWidth={3}
-                    fill="url(#colorLeads)"
-                    name="Leads"
-                    dot={{ fill: '#1877F2', strokeWidth: 2, r: 4 }}
-                    activeDot={{ r: 6, strokeWidth: 0 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* Distribution by campaign */}
-        <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-          <h3 className="text-lg font-semibold text-foreground mb-6">Distribuição por campanha</h3>
-          <div className="h-[300px]">
-            {loadingCampaigns ? (
-              <div className="h-full flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : pieData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <Target className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Sem dados de campanha</p>
-                </div>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend
-                    layout="vertical"
-                    align="right"
-                    verticalAlign="middle"
-                    wrapperStyle={{ fontSize: '12px' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Row */}
+      {/* Main Content: Funnel + Champion Creative */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Campaigns Table */}
+        {/* Funnel Chart */}
         <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-          <h3 className="text-lg font-semibold text-foreground mb-4">Top Campanhas</h3>
-          {loadingCampaigns ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
-          ) : campaigns.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Target className="h-10 w-10 mx-auto mb-3 opacity-50" />
-              <p>Nenhuma campanha encontrada</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Campanha</TableHead>
-                  <TableHead className="text-right">Leads</TableHead>
-                  <TableHead className="text-right">Conv.</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {campaigns.slice(0, 5).map((campaign, index) => (
-                  <TableRow key={campaign.sourceId}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                        />
-                        <span className="truncate max-w-[200px]">{campaign.headline}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">{campaign.leads}</TableCell>
-                    <TableCell className="text-right">{campaign.conversions}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <div className="flex items-center gap-2 mb-6">
+            <BarChart3 className="h-5 w-5 text-primary" />
+            <h3 className="text-lg font-semibold text-foreground">Funil de Conversão</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Clique em uma etapa para ver os leads e de qual anúncio vieram
+          </p>
+          <MetaFunnelChart 
+            data={funnelData} 
+            isLoading={loadingFunnel}
+            onStatusClick={handleStatusClick}
+            selectedStatus={selectedStatus}
+          />
         </div>
 
-        {/* Recent Leads */}
-        <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-foreground">Leads Recentes</h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/contacts')}
-              className="text-primary"
-            >
-              Ver todos
-              <ExternalLink size={14} className="ml-1" />
-            </Button>
-          </div>
-          {loadingRecent ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        {/* Champion Creative */}
+        <div>
+          {loadingChampion ? (
+            <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated h-full flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : recentLeads.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Users className="h-10 w-10 mx-auto mb-3 opacity-50" />
-              <p>Nenhum lead recente</p>
-            </div>
+          ) : champion ? (
+            <CreativeCard
+              sourceId={champion.sourceId}
+              sourceUrl={champion.sourceUrl}
+              thumbnailUrl={champion.thumbnailUrl}
+              imageUrl={champion.imageUrl}
+              headline={champion.headline}
+              mediaType={champion.mediaType}
+              total={champion.total}
+              conversions={champion.conversions}
+              conversionRate={champion.conversionRate}
+              isChampion
+            />
           ) : (
-            <div className="space-y-3">
-              {recentLeads.map((lead: any) => (
-                <div
-                  key={lead.id}
-                  className="flex items-center gap-4 p-3 hover:bg-muted/50 rounded-xl transition-colors"
-                >
-                  <div className="p-2.5 bg-blue-600/10 rounded-lg">
-                    <Facebook className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{lead.full_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {lead.origin_campaign || 'Meta Ads'} • {format(new Date(lead.created_at), 'dd/MM HH:mm')}
-                    </p>
-                  </div>
-                </div>
-              ))}
+            <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated h-full flex items-center justify-center">
+              <div className="text-center text-muted-foreground">
+                <Trophy className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Nenhum criativo com conversões ainda</p>
+              </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Daily Leads Chart */}
+      <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
+        <h3 className="text-lg font-semibold text-foreground mb-6">Leads por dia</h3>
+        <div className="h-[250px]">
+          {loadingDaily ? (
+            <div className="h-full flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : dailyLeads.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <Facebook className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Nenhum lead de Meta Ads no período</p>
+              </div>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={dailyLeads} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#1877F2" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#1877F2" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis
+                  dataKey="date"
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Area
+                  type="monotone"
+                  dataKey="leads"
+                  stroke="#1877F2"
+                  strokeWidth={3}
+                  fill="url(#colorLeads)"
+                  name="Leads"
+                  dot={{ fill: '#1877F2', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* Top Creatives Grid */}
+      {topCreatives.length > 0 && (
+        <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
+          <h3 className="text-lg font-semibold text-foreground mb-6">Top Criativos por Conversão</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {topCreatives.map((creative) => (
+              <CreativeCard
+                key={creative.sourceId}
+                sourceId={creative.sourceId}
+                sourceUrl={creative.sourceUrl}
+                thumbnailUrl={creative.thumbnailUrl}
+                imageUrl={creative.imageUrl}
+                headline={creative.headline}
+                mediaType={creative.mediaType}
+                total={creative.total}
+                conversions={creative.conversions}
+                conversionRate={creative.conversionRate}
+                compact
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ads Breakdown Table */}
+      <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
+        <h3 className="text-lg font-semibold text-foreground mb-6">Detalhamento por Anúncio</h3>
+        <AdsBreakdownTable 
+          data={adsBreakdown} 
+          statuses={statuses}
+          isLoading={loadingAds}
+        />
+      </div>
+
+      {/* Status Leads Modal */}
+      <StatusLeadsModal
+        open={isStatusModalOpen}
+        onOpenChange={setIsStatusModalOpen}
+        statusName={selectedStatus}
+        statusColor={selectedStatusConfig?.color || undefined}
+        dateRange={activeDateRange}
+      />
     </div>
   );
 }
