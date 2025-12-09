@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   BarChart3,
   Trophy,
+  PieChart,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -50,12 +51,14 @@ import {
   useAdsBreakdown,
   useChampionCreative,
   useTopCreatives,
+  useSegmentAnalytics,
 } from '@/hooks/useMetaAdsAnalytics';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
 import { MetaFunnelChart } from '@/components/campaigns/MetaFunnelChart';
 import { CreativeCard } from '@/components/campaigns/CreativeCard';
 import { AdsBreakdownTable } from '@/components/campaigns/AdsBreakdownTable';
 import { StatusLeadsModal } from '@/components/campaigns/StatusLeadsModal';
+import { SegmentChart } from '@/components/campaigns/SegmentChart';
 
 const datePresets = [
   { label: 'Hoje', getValue: () => ({ from: new Date(), to: new Date() }) },
@@ -147,6 +150,7 @@ export default function CampaignReport() {
   const { data: adsBreakdown = [], isLoading: loadingAds } = useAdsBreakdown(activeDateRange);
   const { data: champion, isLoading: loadingChampion } = useChampionCreative(activeDateRange);
   const { data: topCreatives = [], isLoading: loadingTopCreatives } = useTopCreatives(activeDateRange, 6);
+  const { data: segmentData = [], isLoading: loadingSegment } = useSegmentAnalytics(activeDateRange);
 
   const formatDateRange = (range: DateRange | undefined) => {
     if (!range?.from) return 'Selecionar período';
@@ -344,6 +348,18 @@ export default function CampaignReport() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Segment Performance Chart */}
+      <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
+        <div className="flex items-center gap-2 mb-6">
+          <PieChart className="h-5 w-5 text-primary" />
+          <h3 className="text-lg font-semibold text-foreground">Performance por Segmento</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Análise de leads e conversões por segmento extraído do nome das campanhas
+        </p>
+        <SegmentChart data={segmentData} isLoading={loadingSegment} />
       </div>
 
       {/* Daily Leads Chart */}

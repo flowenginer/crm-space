@@ -488,3 +488,130 @@ export function useTopCreatives(dateRange?: DateRange, limit: number = 6) {
     staleTime: 60000,
   });
 }
+
+// Interface para dados de segmento
+export interface SegmentData {
+  segment: string;
+  leads: number;
+  conversions: number;
+  conversionRate: number;
+  color: string;
+}
+
+// Função para extrair segmento do nome da campanha
+function extractSegment(campaignName: string | null): string {
+  if (!campaignName) return 'Outros';
+  
+  const name = campaignName.toLowerCase();
+  
+  if (name.includes('agro')) return 'Agro';
+  if (name.includes('solar') || name.includes('energia solar')) return 'Energia Solar';
+  if (name.includes('telecom')) return 'Telecom';
+  if (name.includes('refrigera')) return 'Refrigeração';
+  
+  return 'Outros';
+}
+
+// Cores por segmento
+const segmentColors: Record<string, string> = {
+  'Agro': '#22C55E',
+  'Energia Solar': '#F59E0B',
+  'Telecom': '#3B82F6',
+  'Refrigeração': '#8B5CF6',
+  'Outros': '#6B7280',
+};
+
+// Hook para buscar métricas por segmento
+export function useSegmentAnalytics(dateRange?: DateRange) {
+  const { data: settings } = useCompanySettings();
+  const conversionStatusIds = settings?.conversion_status_ids || [];
+
+  return useQuery({
+    queryKey: ['segment_analytics', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
+    queryFn: async (): Promise<SegmentData[]> => {
+      // Buscar meta_ads com campanhas
+      const { data: metaAds } = await supabase
+        .from('meta_ads')
+        .select(`
+          ad_id,
+          campaign:meta_campaigns(name)
+        `);
+
+      // Criar mapa de ad_id → campaignName
+      const adCampaignMap: Record<string, string | null> = {};
+      metaAds?.forEach(ad => {
+        const campaign = ad.campaign as any;
+        adCampaignMap[ad.ad_id] = campaign?.name || null;
+      });
+
+      // Buscar conversations de Meta Ads
+      let query = supabase
+        .from('conversations')
+        .select(`
+          referral_data,
+          contact:contacts!inner(lead_status)
+        `)
+        .eq('referral_source', 'meta_ads')
+        .not('referral_data', 'is', null);
+
+      if (dateRange?.from) {
+        query = query.gte('created_at', dateRange.from.toISOString());
+      }
+      if (dateRange?.to) {
+        const endOfDay = new Date(dateRange.to);
+        endOfDay.setHours(23, 59, 59, 999);
+        query = query.lte('created_at', endOfDay.toISOString());
+      }
+
+      const { data: conversations } = await query;
+
+      // Buscar nomes dos status de conversão
+      let conversionStatusNames: string[] = [];
+      if (conversionStatusIds.length > 0) {
+        const { data: statusData } = await supabase
+          .from('lead_statuses')
+          .select('name')
+          .in('id', conversionStatusIds);
+        conversionStatusNames = statusData?.map(s => s.name) || [];
+      }
+
+      // Agrupar por segmento
+      const segmentMap: Record<string, { leads: number; conversions: number }> = {};
+
+      conversations?.forEach(conv => {
+        const refData = conv.referral_data as any;
+        const contact = conv.contact as any;
+        const sourceId = refData?.sourceId;
+        
+        // Buscar nome da campanha pelo sourceId (ad_id)
+        const campaignName = sourceId ? adCampaignMap[sourceId] : null;
+        const segment = extractSegment(campaignName);
+
+        if (!segmentMap[segment]) {
+          segmentMap[segment] = { leads: 0, conversions: 0 };
+        }
+
+        segmentMap[segment].leads++;
+
+        const status = contact?.lead_status || 'new';
+        if (conversionStatusNames.includes(status)) {
+          segmentMap[segment].conversions++;
+        }
+      });
+
+      // Converter para array e calcular taxa
+      const result: SegmentData[] = Object.entries(segmentMap)
+        .map(([segment, data]) => ({
+          segment,
+          leads: data.leads,
+          conversions: data.conversions,
+          conversionRate: data.leads > 0 ? (data.conversions / data.leads) * 100 : 0,
+          color: segmentColors[segment] || '#6B7280',
+        }))
+        .sort((a, b) => b.leads - a.leads);
+
+      return result;
+    },
+    staleTime: 60000,
+  });
+}
