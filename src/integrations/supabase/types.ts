@@ -2975,6 +2975,16 @@ export type Database = {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
       }
+      get_agent_counts: {
+        Args: {
+          p_channel_id?: string
+          p_date_filter?: string
+          p_department_id?: string
+          p_origin?: string
+          p_timezone?: string
+        }
+        Returns: Json
+      }
       get_agent_distribution_advanced: {
         Args: {
           p_conversion_status_names?: string[]
@@ -2995,6 +3005,29 @@ export type Database = {
           organic_count: number
           other_count: number
         }[]
+      }
+      get_all_conversation_counts: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_date_filter?: string
+          p_department_id?: string
+          p_origin?: string
+          p_status_filter?: string
+          p_timezone?: string
+          p_user_id?: string
+        }
+        Returns: Json
+      }
+      get_channel_counts: {
+        Args: {
+          p_agent_id?: string
+          p_date_filter?: string
+          p_department_id?: string
+          p_origin?: string
+          p_timezone?: string
+        }
+        Returns: Json
       }
       get_contact_filter_counts: { Args: never; Returns: Json }
       get_contacts_by_tag_filter: {
@@ -3039,6 +3072,27 @@ export type Database = {
           date_day: string
           new_leads: number
         }[]
+      }
+      get_date_filter_counts: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_department_id?: string
+          p_origin?: string
+          p_status_filter?: string
+          p_timezone?: string
+        }
+        Returns: Json
+      }
+      get_department_counts: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_date_filter?: string
+          p_origin?: string
+          p_timezone?: string
+        }
+        Returns: Json
       }
       get_lead_alerts: {
         Args: {
@@ -3096,6 +3150,16 @@ export type Database = {
           origin: string
           total: number
         }[]
+      }
+      get_origin_counts: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_date_filter?: string
+          p_department_id?: string
+          p_timezone?: string
+        }
+        Returns: Json
       }
       get_origin_timeline: {
         Args: {
