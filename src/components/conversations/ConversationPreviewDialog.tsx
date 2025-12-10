@@ -10,19 +10,17 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   MessageCircle,
-  X,
   ExternalLink,
   Phone,
   Loader2,
-  Image as ImageIcon,
-  FileText,
-  Mic,
-  Video,
   Lock,
   ChevronUp,
 } from 'lucide-react';
-import { formatDistanceToNow, format } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { ImagePreviewDialog } from './ImagePreviewDialog';
+import { DocumentPreview } from './DocumentPreview';
+import { MediaDownloadButton } from './MediaDownloadButton';
 
 interface ConversationPreviewDialogProps {
   conversationId: string | null;
@@ -57,6 +55,30 @@ interface ConversationData {
   } | null;
 }
 
+// Function to make URLs clickable
+const linkifyText = (text: string) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  
+  return parts.map((part, index) => {
+    if (part.match(urlRegex)) {
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:opacity-80 break-all"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+};
+
 export function ConversationPreviewDialog({
   conversationId,
   isOpen,
@@ -65,6 +87,7 @@ export function ConversationPreviewDialog({
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // Fetch conversation details
   const { data: conversation, isLoading: conversationLoading } = useQuery({
@@ -148,68 +171,91 @@ export function ConversationPreviewDialog({
 
   const isLoading = conversationLoading || messagesLoading;
 
-  const getMessageIcon = (type: string | null) => {
-    switch (type) {
-      case 'image':
-        return <ImageIcon size={14} className="text-muted-foreground" />;
-      case 'document':
-        return <FileText size={14} className="text-muted-foreground" />;
-      case 'audio':
-      case 'ptt':
-        return <Mic size={14} className="text-muted-foreground" />;
-      case 'video':
-        return <Video size={14} className="text-muted-foreground" />;
-      default:
-        return null;
-    }
-  };
-
   const renderMessageContent = (message: PreviewMessage) => {
-    const icon = getMessageIcon(message.message_type);
-    
+    // Image with click to expand
     if (message.message_type === 'image' && message.media_url) {
       return (
         <div className="space-y-1">
-          <img 
-            src={message.media_url} 
-            alt="Imagem" 
-            className="max-w-[200px] rounded-lg"
-          />
+          <div className="relative group/media">
+            <img 
+              src={message.media_url} 
+              alt="Imagem" 
+              className="max-w-[200px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => setPreviewImage(message.media_url)}
+            />
+            <MediaDownloadButton url={message.media_url} fileName="imagem" />
+          </div>
           {message.content && (
-            <p className="text-sm">{message.content}</p>
+            <p className="text-sm whitespace-pre-wrap break-words">{linkifyText(message.content)}</p>
           )}
         </div>
       );
     }
 
-    if (message.message_type === 'audio' || message.message_type === 'ptt') {
+    // Audio player
+    if ((message.message_type === 'audio' || message.message_type === 'ptt') && message.media_url) {
       return (
-        <div className="flex items-center gap-2">
-          {icon}
-          <span className="text-sm italic">Mensagem de áudio</span>
+        <div className="relative group/media flex items-center gap-2 min-w-[200px]">
+          <audio 
+            src={message.media_url} 
+            controls 
+            className="flex-1 h-10"
+            preload="metadata"
+          />
+          <MediaDownloadButton url={message.media_url} fileName="audio" />
         </div>
       );
     }
 
-    if (message.message_type === 'video') {
+    // Video player
+    if (message.message_type === 'video' && message.media_url) {
       return (
-        <div className="flex items-center gap-2">
-          {icon}
-          <span className="text-sm italic">Vídeo</span>
+        <div className="space-y-1">
+          <div className="relative group/media">
+            <video 
+              src={message.media_url} 
+              controls 
+              className="rounded-lg max-h-64 max-w-[280px] bg-black"
+              preload="metadata"
+            />
+            <MediaDownloadButton url={message.media_url} fileName="video" />
+          </div>
+          {message.content && (
+            <p className="text-sm whitespace-pre-wrap break-words">{linkifyText(message.content)}</p>
+          )}
         </div>
       );
     }
 
-    if (message.message_type === 'document') {
+    // Document/PDF
+    if (message.message_type === 'document' && message.media_url) {
       return (
-        <div className="flex items-center gap-2">
-          {icon}
-          <span className="text-sm">{message.content || 'Documento'}</span>
-        </div>
+        <DocumentPreview 
+          url={message.media_url} 
+          fileName={message.content || 'Documento'} 
+          isMe={!!message.is_from_me}
+        />
       );
     }
 
-    return <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>;
+    // Sticker
+    if (message.message_type === 'sticker' && message.media_url) {
+      return (
+        <img 
+          src={message.media_url} 
+          alt="Sticker" 
+          className="max-h-32 w-auto object-contain"
+          loading="lazy"
+        />
+      );
+    }
+
+    // Text message with linkify
+    if (message.content) {
+      return <p className="text-sm whitespace-pre-wrap break-words">{linkifyText(message.content)}</p>;
+    }
+
+    return null;
   };
 
   const formatMessageTime = (dateStr: string) => {
@@ -242,16 +288,16 @@ export function ConversationPreviewDialog({
   }, {} as Record<string, PreviewMessage[]>);
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl w-[95vw] h-[80vh] p-0 overflow-hidden flex flex-col gap-0">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b bg-card">
-          <div className="flex items-center gap-3">
+    <>
+      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="max-w-2xl w-[95vw] h-[80vh] p-0 overflow-hidden flex flex-col gap-0">
+          {/* Header - removed duplicate X button, using DialogContent's native close */}
+          <div className="flex items-center gap-3 p-4 border-b bg-card">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold">
               {conversation?.contact?.full_name?.charAt(0)?.toUpperCase() || '?'}
             </div>
-            <div>
-              <h3 className="font-semibold text-foreground">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-foreground truncate">
                 {conversation?.contact?.full_name || 'Carregando...'}
               </h3>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -275,102 +321,107 @@ export function ConversationPreviewDialog({
               </div>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X size={18} />
-          </Button>
-        </div>
 
-        {/* Messages Area */}
-        <div className="flex-1 relative overflow-hidden bg-muted/30">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-              <MessageCircle size={48} className="mb-4 opacity-50" />
-              <p>Nenhuma mensagem encontrada</p>
-            </div>
-          ) : (
-            <ScrollArea 
-              ref={scrollRef} 
-              className="h-full"
-              onScrollCapture={handleScroll}
-            >
-              <div className="p-4 space-y-4">
-                {Object.entries(groupedMessages).map(([date, dateMessages]) => (
-                  <div key={date}>
-                    {/* Date separator */}
-                    <div className="flex items-center justify-center my-4">
-                      <span className="px-3 py-1 bg-muted text-muted-foreground text-xs rounded-full">
-                        {date}
-                      </span>
-                    </div>
-
-                    {/* Messages */}
-                    <div className="space-y-2">
-                      {dateMessages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`flex ${message.is_from_me ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div
-                            className={`max-w-[75%] px-3 py-2 rounded-2xl ${
-                              message.is_from_me
-                                ? 'bg-primary text-primary-foreground rounded-br-md'
-                                : 'bg-card text-foreground rounded-bl-md border border-border'
-                            }`}
-                          >
-                            {renderMessageContent(message)}
-                            <div className={`flex items-center gap-1 mt-1 ${
-                              message.is_from_me ? 'justify-end' : 'justify-start'
-                            }`}>
-                              <span className={`text-[10px] ${
-                                message.is_from_me ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                              }`}>
-                                {formatMessageTime(message.created_at)}
-                              </span>
-                            </div>
-                            {message.reactions && message.reactions.length > 0 && (
-                              <div className="flex gap-1 mt-1">
-                                {message.reactions.map((reaction, idx) => (
-                                  <span key={idx} className="text-sm">{reaction.emoji}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+          {/* Messages Area */}
+          <div className="flex-1 relative overflow-hidden bg-muted/30">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-            </ScrollArea>
-          )}
+            ) : messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                <MessageCircle size={48} className="mb-4 opacity-50" />
+                <p>Nenhuma mensagem encontrada</p>
+              </div>
+            ) : (
+              <ScrollArea 
+                ref={scrollRef} 
+                className="h-full"
+                onScrollCapture={handleScroll}
+              >
+                <div className="p-4 space-y-4">
+                  {Object.entries(groupedMessages).map(([date, dateMessages]) => (
+                    <div key={date}>
+                      {/* Date separator */}
+                      <div className="flex items-center justify-center my-4">
+                        <span className="px-3 py-1 bg-muted text-muted-foreground text-xs rounded-full">
+                          {date}
+                        </span>
+                      </div>
 
-          {/* Scroll to top button */}
-          {showScrollTop && (
-            <button
-              onClick={scrollToTop}
-              className="absolute top-4 left-1/2 -translate-x-1/2 p-2 bg-card border border-border rounded-full shadow-lg hover:bg-muted transition-colors"
-            >
-              <ChevronUp size={16} />
-            </button>
-          )}
-        </div>
+                      {/* Messages */}
+                      <div className="space-y-2">
+                        {dateMessages.map((message) => (
+                          <div
+                            key={message.id}
+                            className={`flex ${message.is_from_me ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`max-w-[75%] px-3 py-2 rounded-2xl ${
+                                message.is_from_me
+                                  ? 'bg-primary text-primary-foreground rounded-br-md'
+                                  : 'bg-card text-foreground rounded-bl-md border border-border'
+                              }`}
+                            >
+                              {renderMessageContent(message)}
+                              <div className={`flex items-center gap-1 mt-1 ${
+                                message.is_from_me ? 'justify-end' : 'justify-start'
+                              }`}>
+                                <span className={`text-[10px] ${
+                                  message.is_from_me ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                                }`}>
+                                  {formatMessageTime(message.created_at)}
+                                </span>
+                              </div>
+                              {message.reactions && message.reactions.length > 0 && (
+                                <div className="flex gap-1 mt-1">
+                                  {message.reactions.map((reaction, idx) => (
+                                    <span key={idx} className="text-sm">{reaction.emoji}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
 
-        {/* Footer */}
-        <div className="p-4 border-t bg-card flex items-center justify-between">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <Lock size={14} />
-            <span>Modo somente visualização</span>
+            {/* Scroll to top button */}
+            {showScrollTop && (
+              <button
+                onClick={scrollToTop}
+                className="absolute top-4 left-1/2 -translate-x-1/2 p-2 bg-card border border-border rounded-full shadow-lg hover:bg-muted transition-colors"
+              >
+                <ChevronUp size={16} />
+              </button>
+            )}
           </div>
-          <Button onClick={handleGoToConversation} className="gap-2">
-            <ExternalLink size={16} />
-            Ir para conversa
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+
+          {/* Footer */}
+          <div className="p-4 border-t bg-card flex items-center justify-between">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <Lock size={14} />
+              <span>Modo somente visualização</span>
+            </div>
+            <Button onClick={handleGoToConversation} className="gap-2">
+              <ExternalLink size={16} />
+              Ir para conversa
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Image Preview Dialog */}
+      <ImagePreviewDialog
+        open={!!previewImage}
+        onOpenChange={() => setPreviewImage(null)}
+        imageUrl={previewImage || ''}
+        imageName="imagem"
+      />
+    </>
   );
 }
