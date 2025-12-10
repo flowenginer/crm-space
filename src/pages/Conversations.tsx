@@ -1251,7 +1251,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   }, [messageInput, resizeTextarea]);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
-const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePermissions();
+const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAllConversations } = usePermissions();
   const { profile: authProfile, user } = useAuth();
   const { setProfile } = useUserStore();
   
@@ -1272,8 +1272,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
     refreshProfile();
   }, [user?.id, setProfile]);
   
-  // Supervisor e admin têm acesso total a todas as conversas e contatos
-  const canAccessAllConversations = isAdmin || isSupervisor;
+  // Acesso total: admin, supervisor, ou usuários com permissão especial (individual ou do departamento)
+  const canAccessAllConversations = canViewAllConversations;
   
   // Permissão para ver conversas não atribuídas (admins, supervisores ou com permissão específica)
   const canViewUnassigned = canAccessAllConversations || hasPermission('conversations', 'view_unassigned');
