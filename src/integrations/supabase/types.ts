@@ -3166,6 +3166,23 @@ export type Database = {
         }
         Returns: Json
       }
+      get_kanban_contacts_optimized: {
+        Args: { _limit_per_status?: number; _user_id?: string }
+        Returns: {
+          assigned_to: string
+          assignee_avatar: string
+          assignee_id: string
+          assignee_name: string
+          avatar_url: string
+          contact_id: string
+          email: string
+          full_name: string
+          lead_status: string
+          negotiated_value: number
+          phone: string
+          updated_at: string
+        }[]
+      }
       get_lead_alerts: {
         Args: {
           p_agent_id?: string
