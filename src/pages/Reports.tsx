@@ -28,7 +28,9 @@ import {
   GitCompare,
   Facebook,
   ExternalLink,
+  ArrowLeftRight,
 } from 'lucide-react';
+import { TransferHistoryPanel } from '@/components/reports/TransferHistoryPanel';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -450,6 +452,13 @@ export default function Reports() {
           >
             <Users size={18} />
             Performance
+          </TabsTrigger>
+          <TabsTrigger
+            value="transfers"
+            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+          >
+            <ArrowLeftRight size={18} />
+            Transferências
           </TabsTrigger>
         </TabsList>
 
@@ -1170,6 +1179,11 @@ export default function Reports() {
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        {/* TAB 6: Transfers Report */}
+        <TabsContent value="transfers" className="space-y-6">
+          <TransferHistoryPanel />
         </TabsContent>
       </Tabs>
     </div>

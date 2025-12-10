@@ -3543,6 +3543,40 @@ export type Database = {
           new_leads: number
         }[]
       }
+      get_transfer_history: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_from_department_id?: string
+          p_from_user_id?: string
+          p_limit?: number
+          p_offset?: number
+          p_to_department_id?: string
+          p_to_user_id?: string
+          p_transfer_type?: string
+        }
+        Returns: {
+          actor_id: string
+          actor_name: string
+          contact_id: string
+          contact_name: string
+          contact_phone: string
+          conversation_id: string
+          from_department_id: string
+          from_department_name: string
+          from_user_id: string
+          from_user_name: string
+          id: string
+          is_return: boolean
+          to_department_id: string
+          to_department_name: string
+          to_user_id: string
+          to_user_name: string
+          total_count: number
+          transfer_note: string
+          transferred_at: string
+        }[]
+      }
       get_user_accessible_departments: {
         Args: { _user_id: string }
         Returns: string[]
