@@ -976,6 +976,8 @@ export type Database = {
       }
       departments: {
         Row: {
+          can_transfer_freely: boolean | null
+          can_view_all_conversations: boolean | null
           color: string | null
           created_at: string
           description: string | null
@@ -985,6 +987,8 @@ export type Database = {
           name: string
         }
         Insert: {
+          can_transfer_freely?: boolean | null
+          can_view_all_conversations?: boolean | null
           color?: string | null
           created_at?: string
           description?: string | null
@@ -994,6 +998,8 @@ export type Database = {
           name: string
         }
         Update: {
+          can_transfer_freely?: boolean | null
+          can_view_all_conversations?: boolean | null
           color?: string | null
           created_at?: string
           description?: string | null
@@ -2150,6 +2156,8 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          can_transfer_freely: boolean | null
+          can_view_all_conversations: boolean | null
           created_at: string
           current_conversations: number | null
           department_id: string | null
@@ -2173,6 +2181,8 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          can_transfer_freely?: boolean | null
+          can_view_all_conversations?: boolean | null
           created_at?: string
           current_conversations?: number | null
           department_id?: string | null
@@ -2196,6 +2206,8 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          can_transfer_freely?: boolean | null
+          can_view_all_conversations?: boolean | null
           created_at?: string
           current_conversations?: number | null
           department_id?: string | null
@@ -3043,6 +3055,7 @@ export type Database = {
         Args: { p_contact_id: string; p_user_id: string }
         Returns: boolean
       }
+      can_transfer_freely: { Args: { _user_id: string }; Returns: boolean }
       can_view_all_data: { Args: { _user_id: string }; Returns: boolean }
       check_user_permission: {
         Args: { permission_key: string; user_id: string }
