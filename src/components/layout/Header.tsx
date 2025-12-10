@@ -296,12 +296,12 @@ export function Header({ title, onMenuClick }: HeaderProps) {
 
       setIsSearching(true);
       try {
-        // Search contacts
+        // Search contacts using unaccent function for accent-insensitive search
         const { data: contacts, error: contactsError } = await supabase
-          .from('contacts')
-          .select('id, full_name, phone')
-          .or(`full_name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`)
-          .limit(5);
+          .rpc('search_contacts_unaccent', {
+            p_search_query: searchQuery,
+            p_limit: 5
+          });
 
         if (contactsError) throw contactsError;
 
