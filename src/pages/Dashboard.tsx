@@ -49,7 +49,7 @@ export default function Dashboard() {
 
   // Data queries
   const { data: originData = [], isLoading: loadingOrigin } = useLeadsByOrigin(filters);
-  const { data: journeyMetrics, isLoading: loadingMetrics } = useLeadJourneyMetrics(filters);
+  const { data: journeyMetrics, isLoading: loadingMetrics } = useLeadJourneyMetrics(filters, selectedOrigin || undefined);
   const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentDistributionAdvanced(filters);
   const { data: statusFunnel = [], isLoading: loadingFunnel } = useStatusFunnel(filters);
   const { data: leadAlerts = [], isLoading: loadingAlerts } = useLeadAlerts(filters);
