@@ -8,7 +8,6 @@ import {
   useLeadJourneyMetrics,
   useAgentDistributionAdvanced,
   useStatusFunnel,
-  useStatusFunnelHistorical,
   useLeadAlerts,
   type DashboardFilters as JourneyFilters
 } from '@/hooks/useLeadJourneyDashboard';
@@ -17,7 +16,6 @@ import { useAgentsForFilter, useDepartmentsForFilter, useInteractionTimeline } f
 // Components
 import { JourneyKPICards } from '@/components/dashboard/JourneyKPICards';
 import { OriginBreakdownChart } from '@/components/dashboard/OriginBreakdownChart';
-import { StatusFunnelHistorical } from '@/components/dashboard/StatusFunnelHistorical';
 import { StatusFunnelRealtime } from '@/components/dashboard/StatusFunnelRealtime';
 import { StatusDurationChart } from '@/components/dashboard/StatusDurationChart';
 import { AgentPerformanceTableAdvanced } from '@/components/dashboard/AgentPerformanceTableAdvanced';
@@ -54,7 +52,6 @@ export default function Dashboard() {
   const { data: journeyMetrics, isLoading: loadingMetrics } = useLeadJourneyMetrics(filters, selectedOrigin || undefined);
   const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentDistributionAdvanced(filters);
   const { data: statusFunnelRealtime = [], isLoading: loadingFunnelRealtime } = useStatusFunnel(filters);
-  const { data: statusFunnelHistorical = [], isLoading: loadingFunnelHistorical } = useStatusFunnelHistorical(filters, selectedOrigin || undefined);
   const { data: leadAlerts = [], isLoading: loadingAlerts } = useLeadAlerts(filters);
   const { data: interactionData = [], isLoading: loadingInteraction } = useInteractionTimeline(filters);
   
@@ -96,22 +93,13 @@ export default function Dashboard() {
         <JourneyKPICards metrics={journeyMetrics} isLoading={loadingMetrics} />
       </div>
 
-      {/* Charts Row 1: Origin Breakdown */}
-      <div className="animate-fade-in">
+      {/* Charts Row 1: Origin Breakdown + Status Funnel side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
         <OriginBreakdownChart 
           data={originData} 
           isLoading={loadingOrigin}
           selectedOrigin={selectedOrigin}
           onOriginClick={setSelectedOrigin}
-        />
-      </div>
-
-      {/* Charts Row 2: Two Status Funnels side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
-        <StatusFunnelHistorical 
-          data={statusFunnelHistorical} 
-          isLoading={loadingFunnelHistorical}
-          selectedOrigin={selectedOrigin}
         />
         <StatusFunnelRealtime 
           data={statusFunnelRealtime} 
