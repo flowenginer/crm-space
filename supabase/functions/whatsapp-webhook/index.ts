@@ -1499,8 +1499,43 @@ serve(async (req) => {
         };
       } else {
         // No existing conversation - create new one
-        const conversationReferralSource = normalizedMessage.referralData ? "meta_ads" : null;
-        const conversationReferralData = normalizedMessage.referralData || null;
+        let conversationReferralSource: string | null = null;
+        let conversationReferralData: Record<string, unknown> | null = normalizedMessage.referralData ? { ...normalizedMessage.referralData } : null;
+        let originDetectionMethod: string | null = null;
+        
+        // Priority 1: referralData from Evolution API (100% reliable when present)
+        if (normalizedMessage.referralData) {
+          conversationReferralSource = "meta_ads";
+          originDetectionMethod = "referral_api";
+          console.log(`[Webhook] 📣 Origin detected via referral_api (Evolution API)`);
+        } else {
+          // Priority 2: Check message pattern against ad_message_patterns table
+          const messageContent = normalizedMessage.content || "";
+          if (messageContent.length > 0) {
+            console.log(`[Webhook] 🔍 Checking message pattern for origin detection: "${messageContent.substring(0, 100)}..."`);
+            
+            const { data: patternMatch, error: patternError } = await supabase
+              .rpc('detect_origin_by_message_pattern', { p_message: messageContent });
+            
+            if (!patternError && patternMatch && patternMatch.length > 0) {
+              const match = patternMatch[0];
+              conversationReferralSource = match.source === 'meta_ads' ? 'meta_ads' : match.source;
+              originDetectionMethod = "message_pattern";
+              
+              // Store pattern info in referral_data for auditing
+              conversationReferralData = {
+                detected_by: "message_pattern",
+                pattern_id: match.pattern_id,
+                source: match.source,
+                campaign_name: match.campaign_name,
+              };
+              
+              console.log(`[Webhook] 📣 Origin detected via message_pattern: ${match.source} (pattern_id: ${match.pattern_id})`);
+            } else if (patternError) {
+              console.error(`[Webhook] Error detecting origin pattern:`, patternError);
+            }
+          }
+        }
         
         // For new conversations, assign to owner agent if available
         const initialAssignedTo = ownerAgentEnabled && ownerAgentId ? ownerAgentId : null;
@@ -1521,6 +1556,7 @@ serve(async (req) => {
             last_message_preview: normalizedMessage.content.substring(0, 100),
             referral_source: conversationReferralSource,
             referral_data: conversationReferralData,
+            origin_detection_method: originDetectionMethod,
             assigned_to: initialAssignedTo,
           })
           .select("id, status, assigned_to, close_reason, last_message_at, department_id")
@@ -1533,7 +1569,7 @@ serve(async (req) => {
         conversation = newConversation;
         
         if (conversationReferralSource) {
-          console.log(`[Webhook] 📣 New conversation from Meta Ads!`);
+          console.log(`[Webhook] 📣 New conversation from ${conversationReferralSource}! (detected via ${originDetectionMethod})`);
         }
         if (initialAssignedTo) {
           console.log(`[Webhook] 👤 New conversation assigned to owner agent: ${initialAssignedTo}`);
