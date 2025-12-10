@@ -21,6 +21,7 @@ interface Filters {
   name: string;
   phone: string;
   leadStatus: string[];
+  conversationStatus: string[];
   channel: string[];
   agent: string[];
   department: string[];
@@ -33,11 +34,19 @@ const initialFilters: Filters = {
   name: '',
   phone: '',
   leadStatus: [],
+  conversationStatus: [],
   channel: [],
   agent: [],
   department: [],
   tag: [],
 };
+
+// Static options for conversation status filter
+const conversationStatusOptions = [
+  { value: 'open', label: 'Ativo' },
+  { value: 'pending', label: 'Pendente' },
+  { value: 'closed', label: 'Fechado' },
+];
 
 export default function ConversationReportPage() {
   const queryClient = useQueryClient();
@@ -156,6 +165,7 @@ export default function ConversationReportPage() {
         p_agent_ids: appliedFilters.agent.length > 0 ? appliedFilters.agent : null,
         p_department_ids: appliedFilters.department.length > 0 ? appliedFilters.department : null,
         p_tag_ids: appliedFilters.tag.length > 0 ? appliedFilters.tag : null,
+        p_conversation_status: appliedFilters.conversationStatus.length > 0 ? appliedFilters.conversationStatus : null,
         p_page: page,
         p_page_size: pageSize
       });
@@ -342,8 +352,14 @@ export default function ConversationReportPage() {
 
   // Convert options for MultiSelect
   const channelOptions = channels.map(ch => ({ value: ch.id, label: ch.name }));
-  const agentOptions = agents.map(a => ({ value: a.id, label: a.full_name || '' }));
-  const departmentOptions = departments.map(d => ({ value: d.id, label: d.name }));
+  const agentOptions = [
+    { value: 'no_agent', label: '⚠️ Sem agente' },
+    ...agents.map(a => ({ value: a.id, label: a.full_name || '' }))
+  ];
+  const departmentOptions = [
+    { value: 'no_department', label: '⚠️ Sem departamento' },
+    ...departments.map(d => ({ value: d.id, label: d.name }))
+  ];
   const tagOptions = tags.map(t => ({ value: t.id, label: t.name }));
   const leadStatusOptions = leadStatuses.map(ls => ({ value: ls.name, label: ls.name }));
 
@@ -415,7 +431,7 @@ export default function ConversationReportPage() {
           </div>
 
           {/* Row 2 - Other Filters */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Status do Lead</label>
               <MultiSelect
@@ -425,6 +441,16 @@ export default function ConversationReportPage() {
                 placeholder="Todos"
                 searchable
                 searchPlaceholder="Pesquisar status..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Status Conversa</label>
+              <MultiSelect
+                options={conversationStatusOptions}
+                value={filters.conversationStatus}
+                onChange={(value) => setFilters(prev => ({ ...prev, conversationStatus: value }))}
+                placeholder="Todos"
               />
             </div>
 
