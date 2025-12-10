@@ -41,7 +41,8 @@ import { OwnerAgentSettings } from '@/components/settings/OwnerAgentSettings';
 import { CloseReasonManagement } from '@/components/settings/CloseReasonManagement';
 import { MetricsSettings } from '@/components/settings/MetricsSettings';
 import { ActiveSessions } from '@/components/settings/ActiveSessions';
-import { Facebook, UserCheck } from 'lucide-react';
+import { AccessPermissionsSettings } from '@/components/settings/AccessPermissionsSettings';
+import { Facebook, UserCheck, Unlock } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
@@ -101,6 +102,7 @@ interface SettingsTab {
 const SETTINGS_TABS: SettingsTab[] = [
   { value: 'team', label: 'Equipe', icon: Users, permission: ['settings', 'users'] },
   { value: 'roles', label: 'Perfis', icon: Shield, permission: null, adminOnly: true },
+  { value: 'access-permissions', label: 'Acesso Especial', icon: Unlock, permission: null, adminOnly: true },
   { value: 'departments', label: 'Departamentos', icon: Building2, permission: ['settings', 'departments'] },
   { value: 'channels', label: 'Canais', icon: MessageSquare, permission: ['settings', 'channels'] },
   { value: 'fields', label: 'Campos', icon: Database, permission: ['settings', 'fields'] },
@@ -532,6 +534,13 @@ export default function Settings() {
         {isTabAvailable('roles') && (
           <TabsContent value="roles" className="space-y-6">
             <RoleManagement />
+          </TabsContent>
+        )}
+
+        {/* TAB: Access Permissions */}
+        {isTabAvailable('access-permissions') && (
+          <TabsContent value="access-permissions" className="space-y-6">
+            <AccessPermissionsSettings />
           </TabsContent>
         )}
 
