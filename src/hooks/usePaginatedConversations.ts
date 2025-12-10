@@ -57,6 +57,9 @@ export interface ConversationFilters {
   searchQuery?: string;
   // Filtro de status da conversa
   statusFilter?: StatusFilter;
+  // Permissões - para filtrar conversas quando assignment é 'all'
+  canViewPending?: boolean;
+  canViewUnassigned?: boolean;
 }
 
 // Helper para obter início/fim do dia no timezone local convertido para UTC
@@ -316,6 +319,55 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
             };
           }
         }
+      } else if (assignment === 'all' && user) {
+        // When assignment is 'all', apply permission-based filtering
+        const canSeePending = filters.canViewPending ?? true;
+        const canSeeUnassigned = filters.canViewUnassigned ?? true;
+        
+        if (!canSeePending && !canSeeUnassigned) {
+          // User can only see their own conversations
+          query = query.eq('assigned_to', user.id);
+        } else if (!canSeePending && canSeeUnassigned) {
+          // Can see unassigned (no department) but not pending (has department)
+          // Show: assigned to user OR (not assigned AND no department)
+          query = query.or(`assigned_to.eq.${user.id},and(assigned_to.is.null,department_id.is.null)`);
+        } else if (canSeePending && !canSeeUnassigned) {
+          // Can see pending (has department) but not unassigned (no department)
+          // Show: assigned to user OR (not assigned AND has department in user's departments)
+          const { data: userProfile } = await supabase
+            .from('profiles')
+            .select('department_id, role')
+            .eq('id', user.id)
+            .single();
+          
+          const isAdminOrSupervisor = userProfile?.role === 'admin' || userProfile?.role === 'supervisor';
+          
+          if (isAdminOrSupervisor) {
+            // Admin/Supervisor: show assigned OR has department (not completely unassigned)
+            query = query.or(`assigned_to.not.is.null,department_id.not.is.null`);
+          } else {
+            // Regular user: show assigned to them OR pending in their departments
+            const { data: userDepts } = await supabase
+              .from('user_departments')
+              .select('department_id')
+              .eq('user_id', user.id);
+            
+            const departmentIds = [
+              ...(userDepts?.map(ud => ud.department_id) || []),
+              userProfile?.department_id
+            ].filter(Boolean) as string[];
+            
+            if (departmentIds.length > 0) {
+              // Show: assigned to me OR (not assigned AND department in my departments)
+              const deptFilter = departmentIds.map(d => `department_id.eq.${d}`).join(',');
+              query = query.or(`assigned_to.eq.${user.id},and(assigned_to.is.null,or(${deptFilter}))`);
+            } else {
+              // No departments, only show conversations assigned to user
+              query = query.eq('assigned_to', user.id);
+            }
+          }
+        }
+        // If both canSeePending and canSeeUnassigned are true, no additional filter needed (show all)
       }
 
       // Apply channel filter

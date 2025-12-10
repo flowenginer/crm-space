@@ -1329,7 +1329,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     searchQuery: debouncedSearchQuery || undefined,
     // Filtro de status da conversa
     statusFilter: statusFilter,
-  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter]);
+    // Permissões - para filtrar conversas quando assignment é 'all'
+    canViewPending,
+    canViewUnassigned,
+  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter, canViewPending, canViewUnassigned]);
 
   // Fetch real conversations from database with filter (PAGINATED + SERVER SORTED)
   const { 
