@@ -3507,6 +3507,47 @@ export type Database = {
         }
         Returns: Json
       }
+      search_contacts_paginated: {
+        Args: {
+          p_assigned_to?: string
+          p_department_id?: string
+          p_limit?: number
+          p_offset?: number
+          p_search_query?: string
+          p_state_filter?: string
+          p_status_filter?: string
+        }
+        Returns: {
+          assigned_to: string
+          avatar_url: string
+          birth_date: string
+          city: string
+          complement: string
+          country: string
+          cpf_cnpj: string
+          created_at: string
+          custom_fields: Json
+          department_id: string
+          email: string
+          first_contact_at: string
+          full_name: string
+          id: string
+          is_online: boolean
+          last_interaction_at: string
+          lead_status: string
+          neighborhood: string
+          notes: string
+          number: string
+          origin: string
+          person_type: string
+          phone: string
+          state: string
+          street: string
+          total_count: number
+          updated_at: string
+          zip_code: string
+        }[]
+      }
       search_contacts_unaccent: {
         Args: { p_limit?: number; p_search_query: string }
         Returns: {
