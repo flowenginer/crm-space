@@ -3119,6 +3119,13 @@ export type Database = {
           source: string
         }[]
       }
+      fix_historical_origin_detection: {
+        Args: never
+        Returns: {
+          source_breakdown: Json
+          updated_count: number
+        }[]
+      }
       get_agent_counts: {
         Args: {
           p_channel_id?: string

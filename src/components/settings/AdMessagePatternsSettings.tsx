@@ -10,8 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Plus, Pencil, Trash2, MessageSquare, Instagram, Facebook, Globe, Link2, Megaphone } from 'lucide-react';
+import { Plus, Pencil, Trash2, MessageSquare, Instagram, Facebook, Globe, Link2, Megaphone, History, Loader2 } from 'lucide-react';
 import { useAdMessagePatterns, useCreateAdMessagePattern, useUpdateAdMessagePattern, useDeleteAdMessagePattern, AdMessagePattern, CreateAdMessagePattern } from '@/hooks/useAdMessagePatterns';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const SOURCE_OPTIONS = [
   { value: 'meta_ads', label: 'Meta Ads', icon: Megaphone, color: 'bg-blue-500' },
@@ -62,6 +64,35 @@ export function AdMessagePatternsSettings() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPattern, setEditingPattern] = useState<AdMessagePattern | null>(null);
   const [formData, setFormData] = useState<PatternFormData>(defaultFormData);
+  const [isFixingHistorical, setIsFixingHistorical] = useState(false);
+
+  const handleFixHistorical = async () => {
+    setIsFixingHistorical(true);
+    try {
+      const { data, error } = await supabase.rpc('fix_historical_origin_detection');
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const result = data[0];
+        const count = result.updated_count || 0;
+        if (count > 0) {
+          toast.success(`${count} conversas foram corrigidas!`, {
+            description: `Breakdown: ${JSON.stringify(result.source_breakdown || {})}`
+          });
+        } else {
+          toast.info('Nenhuma conversa precisava de correção');
+        }
+      } else {
+        toast.info('Nenhuma conversa precisava de correção');
+      }
+    } catch (error) {
+      console.error('Error fixing historical:', error);
+      toast.error('Erro ao corrigir dados históricos');
+    } finally {
+      setIsFixingHistorical(false);
+    }
+  };
 
   const handleOpenDialog = (pattern?: AdMessagePattern) => {
     if (pattern) {
@@ -136,11 +167,24 @@ export function AdMessagePatternsSettings() {
               Configure mensagens padrão para identificar automaticamente a origem dos leads (Meta Ads, Linktree, Site, etc.)
             </CardDescription>
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => handleOpenDialog()}>
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Padrão
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={handleFixHistorical}
+              disabled={isFixingHistorical}
+            >
+              {isFixingHistorical ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <History className="h-4 w-4 mr-2" />
+              )}
+              Corrigir Histórico
+            </Button>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={() => handleOpenDialog()}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Padrão
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[600px]">
@@ -269,6 +313,7 @@ export function AdMessagePatternsSettings() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
