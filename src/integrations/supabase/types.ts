@@ -3047,8 +3047,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_access_contact: {
+        Args: { _contact_id: string; _user_id: string }
+        Returns: boolean
+      }
       can_access_conversation: {
         Args: { conv_id: string; user_id: string }
+        Returns: boolean
+      }
+      can_access_conversation_fast: {
+        Args: { _conversation_id: string; _user_id: string }
         Returns: boolean
       }
       can_create_conversation_for_contact: {
@@ -3383,6 +3391,10 @@ export type Database = {
           date: string
           new_leads: number
         }[]
+      }
+      get_user_accessible_departments: {
+        Args: { _user_id: string }
+        Returns: string[]
       }
       get_user_department_ids: { Args: { _user_id: string }; Returns: string[] }
       has_role: {
