@@ -543,7 +543,8 @@ serve(async (req) => {
       'contacts.set', 'contacts.upsert', 'contacts.update',
       'groups.upsert', 'groups.update', 'group.participants',
       'labels.edit', 'labels.association',
-      'call', 'blocklist'
+      'blocklist'
+      // NOTE: 'call' removido para permitir notificações de chamadas
     ];
     
     // Verificar se deve pular o log
@@ -586,6 +587,15 @@ serve(async (req) => {
       console.log(`[Webhook] Processing connection event for instance: ${instanceId}`);
       await handleConnectionEvent(supabase, provider, instanceId, payload);
       return new Response(JSON.stringify({ success: true, message: "Connection event processed" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Handle incoming call events - notify agents in real-time
+    if (isCallEvent(provider, payload)) {
+      console.log(`[Webhook] 📞 Processing incoming call event for instance: ${instanceId}`);
+      await handleCallEvent(supabase, provider, instanceId, payload);
+      return new Response(JSON.stringify({ success: true, message: "Call event processed" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -1781,6 +1791,133 @@ async function handleConnectionEvent(
   } else {
     console.log(`[Webhook] Channel ${channel.name} status updated to ${newStatus}`);
   }
+}
+
+// =====================================================
+// CALL EVENTS - Notificar agentes sobre chamadas recebidas
+// =====================================================
+
+function isCallEvent(provider: WhatsAppProvider, payload: any): boolean {
+  const eventType = (payload.event || "").toLowerCase();
+  
+  switch (provider) {
+    case "evolution":
+      return eventType === "call" || eventType === "calls";
+    case "zapi":
+      return payload.type === "ReceivedCallback" || 
+             payload.call !== undefined ||
+             eventType === "call";
+    case "uazapi":
+      return eventType === "call" || payload.type === "call";
+    default:
+      return false;
+  }
+}
+
+async function handleCallEvent(
+  supabase: any,
+  provider: WhatsAppProvider,
+  instanceId: string,
+  payload: any
+): Promise<void> {
+  console.log(`[Webhook] 📞 Processing call event from ${provider}:`, JSON.stringify(payload).substring(0, 500));
+  
+  // Extrair dados da chamada baseado no provider
+  const callData = payload.data || payload;
+  const status = callData.status || callData.callStatus || 'offer';
+  
+  // Só notificar para chamadas entrando (offer/ringing)
+  // Ignorar: hangUp, missed, declined, timeout, pickUp
+  const isIncomingCall = ['offer', 'ringing', 'incoming'].includes(status?.toLowerCase());
+  if (!isIncomingCall) {
+    console.log(`[Webhook] 📞 Call status "${status}" is not incoming, skipping notification`);
+    return;
+  }
+  
+  // Extrair telefone de quem está ligando
+  const fromJid = callData.from || callData.remoteJid || callData.chatId || '';
+  const fromPhone = cleanWhatsAppJid(fromJid).replace(/\D/g, '');
+  
+  if (!fromPhone || !isValidBrazilianPhone(fromPhone)) {
+    console.log(`[Webhook] 📞 Invalid phone for call: ${fromPhone}`);
+    return;
+  }
+  
+  // Buscar canal
+  const { data: channel, error: channelError } = await supabase
+    .from("whatsapp_channels")
+    .select("id, name, department_id")
+    .eq("instance_id", instanceId)
+    .eq("is_deleted", false)
+    .single();
+  
+  if (channelError || !channel) {
+    console.log(`[Webhook] 📞 Channel not found for call event: ${instanceId}`);
+    return;
+  }
+  
+  // Gerar variações do telefone para busca
+  const phoneVariations = [fromPhone];
+  if (fromPhone.length === 13 && fromPhone.startsWith('55')) {
+    phoneVariations.push(fromPhone.slice(0, 4) + fromPhone.slice(5));
+  } else if (fromPhone.length === 12 && fromPhone.startsWith('55')) {
+    const ddd = fromPhone.slice(2, 4);
+    phoneVariations.push('55' + ddd + '9' + fromPhone.slice(4));
+  }
+  
+  // Buscar contato
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("id, full_name, phone")
+    .in("phone", phoneVariations)
+    .limit(1)
+    .single();
+  
+  // Buscar conversa ativa (se existir)
+  let conversation = null;
+  if (contact) {
+    const { data: conv } = await supabase
+      .from("conversations")
+      .select("id, assigned_to, department_id")
+      .eq("contact_id", contact.id)
+      .eq("channel_id", channel.id)
+      .in("status", ["open", "pending"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    conversation = conv;
+  }
+  
+  // Preparar payload para broadcast
+  const broadcastPayload = {
+    callId: callData.id || `call_${Date.now()}`,
+    phone: fromPhone,
+    contactName: contact?.full_name || `+${fromPhone}`,
+    contactId: contact?.id || null,
+    conversationId: conversation?.id || null,
+    assignedTo: conversation?.assigned_to || null,
+    channelId: channel.id,
+    channelName: channel.name,
+    departmentId: conversation?.department_id || channel.department_id || null,
+    isVideo: callData.isVideo === true || callData.video === true,
+    timestamp: new Date().toISOString()
+  };
+  
+  console.log(`[Webhook] 📞 Broadcasting incoming call notification:`, JSON.stringify(broadcastPayload));
+  
+  // Enviar broadcast via Supabase Realtime
+  const broadcastChannel = supabase.channel('incoming-calls');
+  
+  await broadcastChannel.send({
+    type: 'broadcast',
+    event: 'incoming_call',
+    payload: broadcastPayload
+  });
+  
+  // Cleanup: unsubscribe from the channel
+  await supabase.removeChannel(broadcastChannel);
+  
+  console.log(`[Webhook] 📞 Incoming call notification sent for: ${fromPhone}`);
 }
 
 // =====================================================

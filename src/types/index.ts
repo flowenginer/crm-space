@@ -5,6 +5,16 @@ export interface Profile {
   avatar_url: string | null;
   signature_name: string | null;
   signature_enabled: boolean | null;
+  role: string | null;
+  department_id: string | null;
+  is_active: boolean | null;
+  is_available: boolean | null;
+  is_online: boolean | null;
+  phone: string | null;
+  max_conversations: number | null;
+  current_conversations: number | null;
+  can_view_all_conversations: boolean | null;
+  can_transfer_freely: boolean | null;
   created_at: string;
   updated_at: string;
 }
