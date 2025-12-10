@@ -3602,18 +3602,25 @@ export type Database = {
           zip_code: string
         }[]
       }
-      search_contacts_unaccent: {
-        Args: { p_limit?: number; p_search_query: string }
-        Returns: {
-          assigned_to: string
-          avatar_url: string
-          email: string
-          full_name: string
-          id: string
-          lead_status: string
-          phone: string
-        }[]
-      }
+      search_contacts_unaccent:
+        | {
+            Args: { p_limit?: number; p_search_query: string }
+            Returns: {
+              assigned_to: string
+              avatar_url: string
+              email: string
+              full_name: string
+              id: string
+              lead_status: string
+              phone: string
+            }[]
+          }
+        | {
+            Args: { p_search_term: string }
+            Returns: {
+              id: string
+            }[]
+          }
       search_conversations_report: {
         Args: {
           p_agent_ids?: string[]
