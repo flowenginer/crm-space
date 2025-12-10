@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, endOfDay } from 'date-fns';
-import { useConversionStatusIds } from './useCompanySettings';
+import { useConversionStatusNames } from './useConversionStatusNames';
 
 const STALE_TIME = 30000; // 30 seconds
 const REFETCH_INTERVAL = 60000; // 1 minute
@@ -36,21 +36,13 @@ const ORIGIN_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 export function useLeadsByOrigin(filters: DashboardFilters) {
-  const { conversionStatusIds } = useConversionStatusIds();
+  const { data: conversionStatusNames = [] } = useConversionStatusNames();
 
   return useQuery({
-    queryKey: ['leads_by_origin_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusIds],
+    queryKey: ['leads_by_origin_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames],
     queryFn: async (): Promise<LeadOriginData[]> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
-
-      // Get conversion status names
-      const { data: conversionStatuses } = await supabase
-        .from('lead_statuses')
-        .select('name')
-        .in('id', conversionStatusIds);
-      
-      const conversionStatusNames = conversionStatuses?.map(s => s.name) || [];
 
       const { data, error } = await supabase.rpc('get_leads_by_origin', {
         p_date_from: dateFrom,
@@ -102,21 +94,13 @@ export interface LeadJourneyMetrics {
 }
 
 export function useLeadJourneyMetrics(filters: DashboardFilters) {
-  const { conversionStatusIds } = useConversionStatusIds();
+  const { data: conversionStatusNames = [] } = useConversionStatusNames();
 
   return useQuery({
-    queryKey: ['lead_journey_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusIds],
+    queryKey: ['lead_journey_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames],
     queryFn: async (): Promise<LeadJourneyMetrics> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
-
-      // Get conversion status names
-      const { data: conversionStatuses } = await supabase
-        .from('lead_statuses')
-        .select('name')
-        .in('id', conversionStatusIds);
-      
-      const conversionStatusNames = conversionStatuses?.map(s => s.name) || [];
 
       const { data, error } = await supabase.rpc('get_lead_journey_metrics', {
         p_date_from: dateFrom,
@@ -190,21 +174,13 @@ export interface AgentDistribution {
 }
 
 export function useAgentDistributionAdvanced(filters: DashboardFilters) {
-  const { conversionStatusIds } = useConversionStatusIds();
+  const { data: conversionStatusNames = [] } = useConversionStatusNames();
 
   return useQuery({
-    queryKey: ['agent_distribution_advanced_rpc', filters.dateFrom, filters.dateTo, filters.departmentId, conversionStatusIds],
+    queryKey: ['agent_distribution_advanced_rpc', filters.dateFrom, filters.dateTo, filters.departmentId, conversionStatusNames],
     queryFn: async (): Promise<AgentDistribution[]> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
-
-      // Get conversion status names
-      const { data: conversionStatuses } = await supabase
-        .from('lead_statuses')
-        .select('name')
-        .in('id', conversionStatusIds);
-      
-      const conversionStatusNames = conversionStatuses?.map(s => s.name) || [];
 
       const { data, error } = await supabase.rpc('get_agent_distribution_advanced', {
         p_date_from: dateFrom,
@@ -405,21 +381,13 @@ export interface ConversionTimelineData {
 }
 
 export function useConversionTimeline(filters: DashboardFilters) {
-  const { conversionStatusIds } = useConversionStatusIds();
+  const { data: conversionStatusNames = [] } = useConversionStatusNames();
 
   return useQuery({
-    queryKey: ['conversion_timeline_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusIds],
+    queryKey: ['conversion_timeline_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames],
     queryFn: async (): Promise<ConversionTimelineData[]> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
-
-      // Get conversion status names
-      const { data: conversionStatuses } = await supabase
-        .from('lead_statuses')
-        .select('name')
-        .in('id', conversionStatusIds);
-      
-      const conversionStatusNames = conversionStatuses?.map(s => s.name) || [];
 
       const { data, error } = await supabase.rpc('get_conversion_timeline', {
         p_date_from: dateFrom,

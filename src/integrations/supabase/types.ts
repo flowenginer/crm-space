@@ -3157,6 +3157,23 @@ export type Database = {
         }
         Returns: Json
       }
+      get_conversations_by_tags: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_department_id?: string
+          p_exclude_no_tags?: boolean
+          p_limit?: number
+          p_offset?: number
+          p_origin?: string
+          p_tag_ids: string[]
+        }
+        Returns: {
+          contact_id: string
+          conversation_id: string
+          total_count: number
+        }[]
+      }
       get_conversion_status_names: { Args: never; Returns: string[] }
       get_conversion_timeline: {
         Args: {
@@ -3200,6 +3217,21 @@ export type Database = {
           p_timezone?: string
         }
         Returns: Json
+      }
+      get_funnel_data_batch: {
+        Args: {
+          p_agent_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          avg_duration_seconds: number
+          count: number
+          order_position: number
+          stage_color: string
+          stage_name: string
+        }[]
       }
       get_kanban_contacts_optimized: {
         Args: { _limit_per_status?: number; _user_id?: string }
@@ -3275,6 +3307,21 @@ export type Database = {
           total: number
         }[]
       }
+      get_leads_by_status_batch: {
+        Args: {
+          p_agent_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          count: number
+          order_position: number
+          status_color: string
+          status_id: string
+          status_name: string
+        }[]
+      }
       get_no_tag_conversation_count: {
         Args: {
           p_agent_id?: string
@@ -3321,6 +3368,20 @@ export type Database = {
           order_position: number
           status_count: number
           status_name: string
+        }[]
+      }
+      get_timeline_data_batch: {
+        Args: {
+          p_agent_id?: string
+          p_conversion_status_names?: string[]
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          conversions: number
+          date: string
+          new_leads: number
         }[]
       }
       get_user_department_ids: { Args: { _user_id: string }; Returns: string[] }
