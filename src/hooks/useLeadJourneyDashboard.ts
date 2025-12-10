@@ -1,10 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, endOfDay } from 'date-fns';
 import { useConversionStatusNames } from './useConversionStatusNames';
+import { useEffect } from 'react';
 
 const STALE_TIME = 30000; // 30 seconds
 const REFETCH_INTERVAL = 60000; // 1 minute
+const REALTIME_REFETCH_INTERVAL = 30000; // 30 seconds for realtime
 
 export interface DashboardFilters {
   dateFrom: Date;
@@ -265,26 +267,60 @@ export function useStatusFunnel(filters: DashboardFilters) {
 }
 
 // =====================================================
-// 2.4b - useStatusFunnelHistorical (leads que PASSARAM por cada status)
+// 2.4b - useStatusFunnelRealtime (snapshot atual com Realtime updates)
 // =====================================================
 
-export function useStatusFunnelHistorical(filters: DashboardFilters, origin?: string) {
-  return useQuery({
-    queryKey: ['status_funnel_historical_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, origin],
-    queryFn: async (): Promise<StatusFunnelData[]> => {
-      const dateFrom = startOfDay(filters.dateFrom).toISOString();
-      const dateTo = endOfDay(filters.dateTo).toISOString();
+export function useStatusFunnelRealtime(agentId?: string, departmentId?: string) {
+  const queryClient = useQueryClient();
+  const queryKey = ['status_funnel_realtime_rpc', agentId, departmentId];
 
-      const { data, error } = await supabase.rpc('get_status_funnel_historical', {
-        p_date_from: dateFrom,
-        p_date_to: dateTo,
-        p_agent_id: filters.agentId || null,
-        p_department_id: filters.departmentId || null,
-        p_origin: origin || null,
+  // Realtime subscription para atualizar quando um contato mudar de status
+  useEffect(() => {
+    const channel = supabase
+      .channel('contacts-status-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'contacts',
+        },
+        (payload) => {
+          // Se o lead_status mudou, invalida a query
+          if (payload.old && payload.new && payload.old.lead_status !== payload.new.lead_status) {
+            queryClient.invalidateQueries({ queryKey });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'contacts',
+        },
+        () => {
+          // Novo contato criado, invalida a query
+          queryClient.invalidateQueries({ queryKey });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient, agentId, departmentId]);
+
+  return useQuery({
+    queryKey,
+    queryFn: async (): Promise<StatusFunnelData[]> => {
+      const { data, error } = await supabase.rpc('get_status_funnel_realtime', {
+        p_agent_id: agentId || null,
+        p_department_id: departmentId || null,
       });
 
       if (error) {
-        console.error('Error fetching historical status funnel:', error);
+        console.error('Error fetching realtime status funnel:', error);
         return [];
       }
 
@@ -296,8 +332,8 @@ export function useStatusFunnelHistorical(filters: DashboardFilters, origin?: st
         order: row.status_order,
       }));
     },
-    staleTime: STALE_TIME,
-    refetchInterval: REFETCH_INTERVAL,
+    staleTime: REALTIME_REFETCH_INTERVAL,
+    refetchInterval: REALTIME_REFETCH_INTERVAL,
   });
 }
 
