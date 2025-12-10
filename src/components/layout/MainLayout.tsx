@@ -6,6 +6,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
+import { useIncomingCalls } from '@/hooks/useIncomingCalls';
+import { IncomingCallNotification } from '@/components/calls/IncomingCallNotification';
 
 // Map routes to page titles
 const pageTitles: Record<string, string> = {
@@ -24,6 +26,7 @@ export function MainLayout() {
   const location = useLocation();
   const { session, isLoading } = useAuth();
   const isMobile = useIsMobile();
+  const { incomingCall, dismissCall } = useIncomingCalls();
 
   // Auto-collapse sidebar on mobile
   useEffect(() => {
@@ -101,6 +104,14 @@ export function MainLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Incoming call notification */}
+      {incomingCall && (
+        <IncomingCallNotification 
+          call={incomingCall} 
+          onDismiss={dismissCall} 
+        />
+      )}
     </div>
   );
 }
