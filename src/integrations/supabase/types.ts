@@ -3160,6 +3160,19 @@ export type Database = {
           other_count: number
         }[]
       }
+      get_agent_waiting_conversations: {
+        Args: { p_agent_id: string }
+        Returns: {
+          contact_avatar: string
+          contact_id: string
+          contact_name: string
+          contact_phone: string
+          conversation_id: string
+          last_message_preview: string
+          waiting_minutes: number
+          waiting_since: string
+        }[]
+      }
       get_agents_response_history: {
         Args: { p_days?: number }
         Returns: {

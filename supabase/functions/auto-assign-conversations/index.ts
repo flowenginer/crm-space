@@ -93,11 +93,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Buscar todos os usuários ativos para criar o mapeamento dinâmico
+    // Buscar todos os usuários ativos E disponíveis para criar o mapeamento dinâmico
     const { data: users, error: usersError } = await supabase
       .from('profiles')
       .select('id, full_name, department_id')
       .eq('is_active', true)
+      .eq('is_available', true)
       .not('full_name', 'is', null);
 
     if (usersError) {

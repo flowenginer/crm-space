@@ -43,6 +43,7 @@ import {
   AgentStatus 
 } from '@/hooks/useAgentMonitor';
 import { ResponseTimeChart } from './ResponseTimeChart';
+import { WaitingConversationsModal } from './WaitingConversationsModal';
 
 export function AgentMonitorPanel() {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -257,6 +258,8 @@ function AgentCard({
   getAlertColor,
   getCardBorderColor
 }: AgentCardProps) {
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <TooltipProvider>
       <Card className={`relative transition-all ${getCardBorderColor(alertLevel)}`}>
@@ -292,18 +295,29 @@ function AgentCard({
 
           {/* Metrics */}
           <div className="space-y-2 text-xs">
-            {/* Waiting Response */}
+            {/* Waiting Response - Clickable */}
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground flex items-center gap-1">
                 <Clock size={12} />
                 Aguardando
               </span>
-              <Badge 
-                variant="secondary" 
-                className={agent.waiting_response > 0 ? getAlertColor(alertLevel) : ''}
-              >
-                {agent.waiting_response}
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge 
+                    variant="secondary" 
+                    className={`cursor-pointer hover:opacity-80 transition-opacity ${agent.waiting_response > 0 ? getAlertColor(alertLevel) : ''}`}
+                    onClick={() => agent.waiting_response > 0 && setModalOpen(true)}
+                  >
+                    {agent.waiting_response}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {agent.waiting_response > 0 
+                    ? 'Clique para ver conversas aguardando resposta'
+                    : 'Nenhuma conversa aguardando'
+                  }
+                </TooltipContent>
+              </Tooltip>
             </div>
 
             {/* Oldest Waiting */}
@@ -369,6 +383,15 @@ function AgentCard({
           </div>
         </CardContent>
       </Card>
+
+      {/* Waiting Conversations Modal */}
+      <WaitingConversationsModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        agentId={agent.agent_id}
+        agentName={agent.agent_name || 'Vendedor'}
+        alertMinutes={alertMinutes}
+      />
     </TooltipProvider>
   );
 }
