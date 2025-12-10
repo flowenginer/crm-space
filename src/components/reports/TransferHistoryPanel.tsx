@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -12,11 +12,11 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
-  Download,
   TrendingUp,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -38,6 +38,7 @@ import { DateRangePicker } from '@/components/reports/DateRangePicker';
 import { useTransferHistory, useTransferHistoryKPIs } from '@/hooks/useTransferHistory';
 import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface TransferHistoryPanelProps {
   initialStartDate?: string;
@@ -62,30 +63,31 @@ export function TransferHistoryPanel({
   const [fromDepartmentId, setFromDepartmentId] = useState<string | null>(null);
   const [toDepartmentId, setToDepartmentId] = useState<string | null>(null);
   const [transferType, setTransferType] = useState<'all' | 'transfer' | 'return'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
-  const dateFrom = useMemo(() => startOfDay(new Date(startDate)), [startDate]);
-  const dateTo = useMemo(() => endOfDay(new Date(endDate)), [endDate]);
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const { data: team } = useTeam();
   const { data: departments } = useDepartments();
 
   const { data: transferData, isLoading } = useTransferHistory({
-    dateFrom,
-    dateTo,
+    startDate,
+    endDate,
     fromUserId,
     toUserId,
     fromDepartmentId,
     toDepartmentId,
     transferType,
+    searchQuery: debouncedSearchQuery,
     page,
     pageSize,
   });
 
   const { data: kpis, isLoading: isLoadingKPIs } = useTransferHistoryKPIs({
-    dateFrom,
-    dateTo,
+    startDate,
+    endDate,
   });
 
   const handleViewConversation = (conversationId: string) => {
@@ -98,10 +100,11 @@ export function TransferHistoryPanel({
     setFromDepartmentId(null);
     setToDepartmentId(null);
     setTransferType('all');
+    setSearchQuery('');
     setPage(1);
   };
 
-  const hasFilters = fromUserId || toUserId || fromDepartmentId || toDepartmentId || transferType !== 'all';
+  const hasFilters = fromUserId || toUserId || fromDepartmentId || toDepartmentId || transferType !== 'all' || searchQuery;
 
   return (
     <div className="space-y-6">
@@ -118,7 +121,19 @@ export function TransferHistoryPanel({
           )}
         </div>
         
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
+          <div className="lg:col-span-2">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome ou telefone do cliente..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+                className="pl-9"
+              />
+            </div>
+          </div>
+
           <DateRangePicker
             startDate={startDate}
             endDate={endDate}
