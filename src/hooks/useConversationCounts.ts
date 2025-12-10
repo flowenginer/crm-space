@@ -432,3 +432,29 @@ export function useSortFilterCounts(filters?: CountFilters) {
     refetchOnWindowFocus: false,
   });
 }
+
+/**
+ * Hook para buscar contagem de conversas sem etiqueta
+ */
+export function useNoTagCount(filters?: CountFilters) {
+  return useQuery({
+    queryKey: ['no-tag-count', filters],
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await supabase.rpc('get_no_tag_conversation_count', {
+        p_department_id: filters?.departmentId || null,
+        p_agent_id: filters?.agentId || null,
+        p_channel_id: filters?.channelId && filters.channelId !== 'no_channel' ? filters.channelId : null,
+        p_origin: filters?.origin && filters.origin !== 'all' ? filters.origin : null,
+      });
+
+      if (error) {
+        console.error('Error fetching no tag count:', error);
+        throw error;
+      }
+      return (data as number) || 0;
+    },
+    staleTime: 30000,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: false,
+  });
+}

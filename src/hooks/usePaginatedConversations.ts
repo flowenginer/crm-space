@@ -345,23 +345,70 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
 
       // *** FILTRO POR TAGS - SERVIDOR ***
       if (tagIds && tagIds.length > 0) {
-        // Buscar contact_ids que têm essas tags
-        const { data: taggedContacts } = await supabase
-          .from('contact_tags')
-          .select('contact_id')
-          .in('tag_id', tagIds);
+        const hasNoTagFilter = tagIds.includes('no_tag');
+        const realTagIds = tagIds.filter(id => id !== 'no_tag');
         
-        if (taggedContacts && taggedContacts.length > 0) {
-          // Pegar contact_ids únicos
-          const contactIds = [...new Set(taggedContacts.map(tc => tc.contact_id))];
-          query = query.in('contact_id', contactIds);
+        if (hasNoTagFilter && realTagIds.length === 0) {
+          // APENAS "sem etiqueta" selecionado - buscar contatos SEM tags
+          const { data: contactsWithTags } = await supabase
+            .from('contact_tags')
+            .select('contact_id');
+          
+          const contactIdsWithTags = [...new Set(contactsWithTags?.map(ct => ct.contact_id) || [])];
+          
+          if (contactIdsWithTags.length > 0) {
+            // Buscar conversas cujo contact_id NÃO está na lista de contatos com tags
+            query = query.not('contact_id', 'in', `(${contactIdsWithTags.join(',')})`);
+          }
+          // Se não há contatos com tags, não precisa filtrar (todos são "sem etiqueta")
+          
+        } else if (hasNoTagFilter && realTagIds.length > 0) {
+          // "Sem etiqueta" E outras tags selecionadas - buscar ambos (união)
+          const { data: taggedContacts } = await supabase
+            .from('contact_tags')
+            .select('contact_id')
+            .in('tag_id', realTagIds);
+          
+          const { data: allTaggedContacts } = await supabase
+            .from('contact_tags')
+            .select('contact_id');
+          
+          const contactIdsWithSelectedTags = [...new Set(taggedContacts?.map(tc => tc.contact_id) || [])];
+          const allContactIdsWithTags = new Set(allTaggedContacts?.map(tc => tc.contact_id) || []);
+          
+          // Buscar todos os contact_ids de conversas ativas
+          const { data: allConvContacts } = await supabase
+            .from('conversations')
+            .select('contact_id')
+            .in('status', ['open', 'pending']);
+          
+          // Contatos sem tags = contatos de conversas que NÃO estão em allContactIdsWithTags
+          const noTagContactIds = (allConvContacts || [])
+            .map(c => c.contact_id)
+            .filter(id => !allContactIdsWithTags.has(id));
+          
+          // União: contatos com as tags selecionadas OU sem nenhuma tag
+          const unionContactIds = [...new Set([...contactIdsWithSelectedTags, ...noTagContactIds])];
+          
+          if (unionContactIds.length > 0) {
+            query = query.in('contact_id', unionContactIds);
+          } else {
+            return { conversations: [] as Conversation[], nextPage: undefined, pageParam: 0 };
+          }
+          
         } else {
-          // Nenhum contato com essas tags = retornar vazio
-          return {
-            conversations: [] as Conversation[],
-            nextPage: undefined,
-            pageParam: 0,
-          };
+          // Apenas tags específicas (comportamento atual)
+          const { data: taggedContacts } = await supabase
+            .from('contact_tags')
+            .select('contact_id')
+            .in('tag_id', tagIds);
+          
+          if (taggedContacts && taggedContacts.length > 0) {
+            const contactIds = [...new Set(taggedContacts.map(tc => tc.contact_id))];
+            query = query.in('contact_id', contactIds);
+          } else {
+            return { conversations: [] as Conversation[], nextPage: undefined, pageParam: 0 };
+          }
         }
       }
 
