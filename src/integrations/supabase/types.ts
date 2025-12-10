@@ -3441,21 +3441,38 @@ export type Database = {
           other_count: number
         }[]
       }
-      get_status_funnel: {
-        Args: {
-          p_agent_id?: string
-          p_date_from: string
-          p_date_to: string
-          p_department_id?: string
-        }
-        Returns: {
-          avg_duration: number
-          color: string
-          order_position: number
-          status_count: number
-          status_name: string
-        }[]
-      }
+      get_status_funnel:
+        | {
+            Args: {
+              p_agent_id?: string
+              p_date_from?: string
+              p_date_to?: string
+              p_department_id?: string
+              p_origin?: string
+            }
+            Returns: {
+              avg_duration_seconds: number
+              lead_count: number
+              status_color: string
+              status_name: string
+              status_order: number
+            }[]
+          }
+        | {
+            Args: {
+              p_agent_id?: string
+              p_date_from: string
+              p_date_to: string
+              p_department_id?: string
+            }
+            Returns: {
+              avg_duration: number
+              color: string
+              order_position: number
+              status_count: number
+              status_name: string
+            }[]
+          }
       get_status_funnel_historical: {
         Args: {
           p_agent_id?: string
