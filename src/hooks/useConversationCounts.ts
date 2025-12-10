@@ -261,8 +261,8 @@ export function useConversationTotalCounts(filters?: CountFilters) {
         pending: pendingCount,
       };
     },
-    staleTime: 60000, // 1 min - contagem principal precisa ser mais atualizada
-    refetchInterval: 120000, // 2 min
+    staleTime: 120000, // 2 min - aumentado para reduzir carga no banco
+    refetchInterval: 180000, // 3 min
     refetchOnWindowFocus: false,
   });
 }
