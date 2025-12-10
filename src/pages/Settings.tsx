@@ -28,6 +28,7 @@ import {
   Plug,
   Target,
   Wrench,
+  Radar,
   LucideIcon,
 } from 'lucide-react';
 import { UserManagement } from '@/components/settings/UserManagement';
@@ -40,6 +41,7 @@ import { ToolsSettings } from '@/components/settings/ToolsSettings';
 import { OwnerAgentSettings } from '@/components/settings/OwnerAgentSettings';
 import { CloseReasonManagement } from '@/components/settings/CloseReasonManagement';
 import { MetricsSettings } from '@/components/settings/MetricsSettings';
+import { AdMessagePatternsSettings } from '@/components/settings/AdMessagePatternsSettings';
 import { ActiveSessions } from '@/components/settings/ActiveSessions';
 import { AccessPermissionsSettings } from '@/components/settings/AccessPermissionsSettings';
 import { Facebook, UserCheck, Unlock } from 'lucide-react';
@@ -113,6 +115,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   { value: 'security', label: 'Segurança', icon: Key, permission: null }, // Todos podem trocar sua senha
   { value: 'integrations', label: 'Integrações', icon: Plug, permission: ['settings', 'integrations'] },
   { value: 'meta-ads', label: 'Meta Ads', icon: Facebook, permission: ['marketing', 'manage'] },
+  { value: 'origin-patterns', label: 'Padrões de Origem', icon: Radar, permission: ['settings', 'update'] },
   { value: 'general', label: 'Geral', icon: Palette, permission: ['settings', 'update'] },
   { value: 'tools', label: 'Ferramentas', icon: Wrench, permission: ['settings', 'update'] },
   { value: 'metrics', label: 'Métricas', icon: Target, permission: ['settings', 'update'] },
@@ -582,6 +585,13 @@ export default function Settings() {
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
               <MetricsSettings />
             </div>
+          </TabsContent>
+        )}
+
+        {/* TAB: Origin Patterns Settings */}
+        {isTabAvailable('origin-patterns') && (
+          <TabsContent value="origin-patterns" className="space-y-6">
+            <AdMessagePatternsSettings />
           </TabsContent>
         )}
 

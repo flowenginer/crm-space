@@ -64,6 +64,45 @@ export type Database = {
           },
         ]
       }
+      ad_message_patterns: {
+        Row: {
+          campaign_name: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          match_type: string
+          pattern: string
+          priority: number
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_name?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          match_type?: string
+          pattern: string
+          priority?: number
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_name?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          match_type?: string
+          pattern?: string
+          priority?: number
+          source?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       chatbot_flows: {
         Row: {
           channel_ids: string[] | null
@@ -573,6 +612,7 @@ export type Database = {
           last_message_is_from_me: boolean | null
           last_message_preview: string | null
           lead_status: string | null
+          origin_detection_method: string | null
           previous_close_reason: string | null
           previous_closed_at: string | null
           previous_closed_by: string | null
@@ -608,6 +648,7 @@ export type Database = {
           last_message_is_from_me?: boolean | null
           last_message_preview?: string | null
           lead_status?: string | null
+          origin_detection_method?: string | null
           previous_close_reason?: string | null
           previous_closed_at?: string | null
           previous_closed_by?: string | null
@@ -643,6 +684,7 @@ export type Database = {
           last_message_is_from_me?: boolean | null
           last_message_preview?: string | null
           lead_status?: string | null
+          origin_detection_method?: string | null
           previous_close_reason?: string | null
           previous_closed_at?: string | null
           previous_closed_by?: string | null
@@ -3068,6 +3110,14 @@ export type Database = {
       check_user_permission: {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
+      }
+      detect_origin_by_message_pattern: {
+        Args: { p_message: string }
+        Returns: {
+          campaign_name: string
+          pattern_id: string
+          source: string
+        }[]
       }
       get_agent_counts: {
         Args: {
