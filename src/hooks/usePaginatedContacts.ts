@@ -151,54 +151,54 @@ export function usePaginatedContacts(filters: ContactFilters, pagination: Pagina
         };
       }
 
-      // Query normal sem filtro de tags
-      let query = supabase
+      // Query usando RPC com unaccent para busca insensível a acentos
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        'search_contacts_paginated',
+        {
+          p_search_query: searchQuery || null,
+          p_state_filter: stateFilter || null,
+          p_status_filter: statusFilter || null,
+          p_assigned_to: assignedTo || null,
+          p_department_id: departmentId || null,
+          p_offset: offset,
+          p_limit: perPage,
+        }
+      );
+
+      if (rpcError) {
+        console.error('[usePaginatedContacts] RPC Error:', rpcError);
+        throw rpcError;
+      }
+
+      if (!rpcData || rpcData.length === 0) {
+        return {
+          contacts: [] as Contact[],
+          totalCount: 0,
+        };
+      }
+
+      // Pega o total_count da primeira linha
+      const totalCount = rpcData[0]?.total_count || 0;
+      const contactIds = rpcData.map((r: { id: string }) => r.id);
+
+      // Buscar dados relacionados (assignee e department)
+      const { data: relatedData } = await supabase
         .from('contacts')
         .select(`
-          ${CONTACT_FIELDS},
+          id,
           assignee:profiles!contacts_assigned_to_fkey(id, full_name),
           department:departments(id, name)
-        `);
+        `)
+        .in('id', contactIds);
 
-      // BUSCA NO SERVIDOR - por nome, telefone ou email
-      if (searchQuery && searchQuery.length >= 2) {
-        query = query.or(
-          `full_name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`
-        );
-      }
-
-      // FILTRO POR ESTADO
-      if (stateFilter) {
-        query = query.eq('state', stateFilter);
-      }
-
-      // FILTRO POR STATUS DO LEAD
-      if (statusFilter) {
-        query = query.eq('lead_status', statusFilter);
-      }
-
-      // FILTRO POR RESPONSÁVEL
-      if (assignedTo) {
-        query = query.eq('assigned_to', assignedTo);
-      }
-
-      // FILTRO POR DEPARTAMENTO
-      if (departmentId) {
-        query = query.eq('department_id', departmentId);
-      }
-
-      // Ordenação e paginação direta no servidor
-      query = query
-        .order('created_at', { ascending: false })
-        .range(offset, offset + perPage - 1);
-
-      const { data, error } = await query;
-
-      if (error) throw error;
+      // Criar mapa de dados relacionados
+      const relatedMap: Record<string, { assignee: any; department: any }> = {};
+      relatedData?.forEach(r => {
+        relatedMap[r.id] = { assignee: r.assignee, department: r.department };
+      });
 
       // Buscar tags dos contatos retornados
-      const contactIds = data?.map(c => c.id) || [];
-      let contactsWithTags = data || [];
+      let contactsWithTags = rpcData;
 
       if (contactIds.length > 0) {
         const { data: contactTags } = await supabase
@@ -212,16 +212,19 @@ export function usePaginatedContacts(filters: ContactFilters, pagination: Pagina
           if (ct.tag) tagMap[ct.contact_id].push(ct.tag as { id: string; name: string; color: string | null });
         });
 
-        contactsWithTags = data?.map(contact => ({
+        contactsWithTags = rpcData.map((contact: any) => ({
           ...contact,
+          assignee: relatedMap[contact.id]?.assignee || null,
+          department: relatedMap[contact.id]?.department || null,
           tags: tagMap[contact.id] || []
-        })) || [];
+        }));
       }
+
+      console.log(`[usePaginatedContacts] Retornando ${contactsWithTags.length} contatos, total: ${totalCount}`);
 
       return {
         contacts: contactsWithTags as Contact[],
-        // Total count será buscado pelo hook useFilteredContactsCount
-        totalCount: undefined,
+        totalCount: Number(totalCount),
       };
     },
     staleTime: 30000,
@@ -303,37 +306,33 @@ export function useFilteredContactsCount(filters: ContactFilters) {
         return Number(taggedContactIds[0]?.total_count || 0);
       }
 
-      // Query normal para contagem
-      let query = supabase
-        .from('contacts')
-        .select('id', { count: 'exact', head: true });
+      // Usa a mesma RPC com limit 1 para pegar o total
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        'search_contacts_paginated',
+        {
+          p_search_query: searchQuery || null,
+          p_state_filter: stateFilter || null,
+          p_status_filter: statusFilter || null,
+          p_assigned_to: assignedTo || null,
+          p_department_id: departmentId || null,
+          p_offset: 0,
+          p_limit: 1,
+        }
+      );
 
-      if (searchQuery && searchQuery.length >= 2) {
-        query = query.or(
-          `full_name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`
-        );
+      if (rpcError) throw rpcError;
+
+      if (!rpcData || rpcData.length === 0) {
+        // Se não retornou resultados, precisa contar de outra forma
+        const { count, error } = await supabase
+          .from('contacts')
+          .select('id', { count: 'exact', head: true });
+        
+        if (error) throw error;
+        return count || 0;
       }
-
-      if (stateFilter) {
-        query = query.eq('state', stateFilter);
-      }
-
-      if (statusFilter) {
-        query = query.eq('lead_status', statusFilter);
-      }
-
-      if (assignedTo) {
-        query = query.eq('assigned_to', assignedTo);
-      }
-
-      if (departmentId) {
-        query = query.eq('department_id', departmentId);
-      }
-
-      const { count, error } = await query;
-
-      if (error) throw error;
-      return count || 0;
+      
+      return Number(rpcData[0]?.total_count || 0);
     },
     staleTime: 30000,
   });
