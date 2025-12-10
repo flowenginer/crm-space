@@ -25,6 +25,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
+import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 import {
   Dialog,
   DialogContent,
@@ -79,6 +80,9 @@ const { isAdmin, isSupervisor, profile } = usePermissions();
   const [blockedContact, setBlockedContact] = useState<Contact | null>(null);
   const [blockedByAgent, setBlockedByAgent] = useState<{ id: string; full_name: string | null; avatar_url: string | null } | null>(null);
   const [blockedConversationId, setBlockedConversationId] = useState<string | null>(null);
+  
+  // Preview de conversa
+  const [previewConversationId, setPreviewConversationId] = useState<string | null>(null);
   
   // Estados de filtro
   const [searchQuery, setSearchQuery] = useState('');
@@ -453,6 +457,30 @@ const { isAdmin, isSupervisor, profile } = usePermissions();
       toast.error('Erro ao abrir conversa');
     } finally {
       setIsOpeningChat(false);
+    }
+  };
+
+  // Função para abrir preview da conversa (sem navegar)
+  const handlePreviewChat = async (contact: Contact) => {
+    try {
+      // Buscar conversa existente
+      const { data: existingConversation } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_id', contact.id)
+        .in('status', ['open', 'pending', 'closed'])
+        .order('last_message_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingConversation) {
+        setPreviewConversationId(existingConversation.id);
+      } else {
+        toast.info('Nenhuma conversa encontrada para este contato');
+      }
+    } catch (error) {
+      console.error('Error fetching conversation for preview:', error);
+      toast.error('Erro ao buscar conversa');
     }
   };
 
@@ -954,9 +982,9 @@ const { isAdmin, isSupervisor, profile } = usePermissions();
                       <td className="px-4 py-4">
                         <div className="flex items-center justify-center gap-1">
                           <button
-                            onClick={() => handleOpenChat(contact)}
+                            onClick={() => handlePreviewChat(contact)}
                             className="p-2 hover:bg-green-500/10 rounded-lg transition-colors"
-                            title="Abrir conversa"
+                            title="Visualizar conversa"
                           >
                             <MessageCircle size={18} className="text-green-600" />
                           </button>
@@ -1643,6 +1671,13 @@ const { isAdmin, isSupervisor, profile } = usePermissions();
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Conversation Preview Dialog */}
+      <ConversationPreviewDialog
+        conversationId={previewConversationId}
+        isOpen={!!previewConversationId}
+        onClose={() => setPreviewConversationId(null)}
+      />
 
       {/* Click outside to close tags dropdown */}
       {showTagsDropdown && (

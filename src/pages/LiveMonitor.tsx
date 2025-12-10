@@ -6,12 +6,13 @@ import { Input } from '@/components/ui/input';
 import {
   Radio, Users, MessageSquare, Clock, Search,
   ExternalLink, AlertTriangle, ChevronDown, ChevronUp,
-  RefreshCw, Building2, Loader2
+  RefreshCw, Building2, Loader2, Eye
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
+import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 
 interface ConversationContact {
   id: string;
@@ -57,6 +58,7 @@ export default function LiveMonitorPage() {
   const [viewMode, setViewMode] = useState<'users' | 'departments'>('users');
   const [search, setSearch] = useState('');
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
+  const [previewConversationId, setPreviewConversationId] = useState<string | null>(null);
   
   const navigate = useNavigate();
   const { isAdmin, role } = usePermissions();
@@ -202,9 +204,9 @@ export default function LiveMonitorPage() {
     );
   }) || [];
 
-  // Navigate to conversation
-  const openConversation = (conversationId: string) => {
-    navigate(`/conversations?id=${conversationId}`);
+  // Open conversation preview
+  const openConversationPreview = (conversationId: string) => {
+    setPreviewConversationId(conversationId);
   };
 
   // Format time ago
@@ -336,13 +338,20 @@ export default function LiveMonitorPage() {
                 agent={agent}
                 isExpanded={expandedAgents.has(agent.id)}
                 onToggle={() => toggleAgent(agent.id)}
-                onOpenConversation={openConversation}
+                onOpenConversation={openConversationPreview}
                 formatTimeAgo={formatTimeAgo}
               />
             ))
           )}
         </div>
       </div>
+
+      {/* Conversation Preview Dialog */}
+      <ConversationPreviewDialog
+        conversationId={previewConversationId}
+        isOpen={!!previewConversationId}
+        onClose={() => setPreviewConversationId(null)}
+      />
     </div>
   );
 }
@@ -532,10 +541,10 @@ function ConversationCard({ conversation, onOpen, formatTimeAgo }: ConversationC
             e.stopPropagation();
             onOpen();
           }}
-          className="p-1.5 hover:bg-muted rounded transition-colors flex-shrink-0"
-          title="Abrir conversa"
+          className="p-1.5 hover:bg-primary/10 rounded transition-colors flex-shrink-0"
+          title="Visualizar conversa"
         >
-          <ExternalLink size={14} className="text-muted-foreground" />
+          <Eye size={14} className="text-primary" />
         </button>
       </div>
     </div>
