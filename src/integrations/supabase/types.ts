@@ -213,6 +213,7 @@ export type Database = {
           owner_agent_on_reopen: boolean | null
           owner_agent_reopen_reasons: string[] | null
           phone: string | null
+          response_alert_minutes: number | null
           sla_first_response_minutes: number | null
           sla_resolution_minutes: number | null
           state: string | null
@@ -238,6 +239,7 @@ export type Database = {
           owner_agent_on_reopen?: boolean | null
           owner_agent_reopen_reasons?: string[] | null
           phone?: string | null
+          response_alert_minutes?: number | null
           sla_first_response_minutes?: number | null
           sla_resolution_minutes?: number | null
           state?: string | null
@@ -263,6 +265,7 @@ export type Database = {
           owner_agent_on_reopen?: boolean | null
           owner_agent_reopen_reasons?: string[] | null
           phone?: string | null
+          response_alert_minutes?: number | null
           sla_first_response_minutes?: number | null
           sla_resolution_minutes?: number | null
           state?: string | null
@@ -3155,6 +3158,30 @@ export type Database = {
           meta_ads_count: number
           organic_count: number
           other_count: number
+        }[]
+      }
+      get_agents_response_history: {
+        Args: { p_days?: number }
+        Returns: {
+          agent_id: string
+          agent_name: string
+          avg_response_minutes: number
+          report_date: string
+          total_conversations: number
+        }[]
+      }
+      get_agents_response_status: {
+        Args: never
+        Returns: {
+          agent_id: string
+          agent_name: string
+          avatar_url: string
+          department_name: string
+          is_available: boolean
+          is_online: boolean
+          oldest_waiting_minutes: number
+          open_conversations: number
+          waiting_response: number
         }[]
       }
       get_all_conversation_counts: {

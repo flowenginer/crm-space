@@ -13,6 +13,7 @@ import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
+import { AgentMonitorPanel } from '@/components/live-monitor/AgentMonitorPanel';
 
 interface ConversationContact {
   id: string;
@@ -316,8 +317,13 @@ export default function LiveMonitorPage() {
         </div>
       </div>
 
+      {/* Agent Monitor Panel */}
+      <div className="px-6 pt-6">
+        <AgentMonitorPanel />
+      </div>
+
       {/* Kanban Board */}
-      <div className="p-6">
+      <div className="p-6 pt-0">
         <div className="flex flex-wrap gap-4">
           {isLoading ? (
             Array.from({ length: 5 }).map((_, i) => (
