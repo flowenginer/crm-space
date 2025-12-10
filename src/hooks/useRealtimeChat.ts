@@ -75,31 +75,23 @@ export function useRealtimeConversations() {
 
   useEffect(() => {
     // Invalidação imediata para mudanças críticas (transferências, fechamentos)
+    // OTIMIZAÇÃO: Reduzido de 6 queries para 3 essenciais
     const invalidateImmediately = () => {
-      console.log('🔄 [Realtime] Invalidating ALL conversation queries immediately');
+      console.log('🔄 [Realtime] Invalidating essential conversation queries immediately');
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['channel-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
     };
 
-    // Debounced invalidation para outras mudanças (150ms - mais responsivo)
+    // Debounced invalidation para outras mudanças (500ms - otimizado para performance)
+    // OTIMIZAÇÃO: Reduzido de 11 queries para 3 essenciais
+    // As contagens de filtros (tags, channels, etc) usam staleTime de 5min e não precisam invalidar em tempo real
     const invalidateConversations = debounce(() => {
-      console.log('📨 [Realtime] Debounced invalidation triggered');
+      console.log('📨 [Realtime] Debounced invalidation triggered (optimized - 3 queries)');
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
-      queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['last-messages'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['channel-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['date-filter-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['department-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['origin-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['tag-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
-    }, 150);
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    }, 500);
 
     // Helper para obter o ID do usuário atual
     const getCurrentUserId = async () => {
