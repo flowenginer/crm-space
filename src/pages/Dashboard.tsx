@@ -43,6 +43,9 @@ export default function Dashboard() {
     departmentId: undefined,
     channelId: undefined,
   });
+  
+  // Selected origin for filtering
+  const [selectedOrigin, setSelectedOrigin] = useState<string | null>(null);
 
   // Data queries
   const { data: originData = [], isLoading: loadingOrigin } = useLeadsByOrigin(filters);
@@ -92,7 +95,12 @@ export default function Dashboard() {
 
       {/* Charts Row 1: Origin Breakdown + Status Funnel */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
-        <OriginBreakdownChart data={originData} isLoading={loadingOrigin} />
+        <OriginBreakdownChart 
+          data={originData} 
+          isLoading={loadingOrigin}
+          selectedOrigin={selectedOrigin}
+          onOriginClick={setSelectedOrigin}
+        />
         <StatusFunnelChart data={statusFunnel} isLoading={loadingFunnel} />
       </div>
 
