@@ -84,9 +84,44 @@ function getTimezoneAdjustedDate(date: Date, timezone: string, isEnd: boolean = 
   return new Date(targetDate.getTime() + offsetMs);
 }
 
-// Helper para calcular datas do filtro COM TIMEZONE
-async function getDateRangeWithTimezone(dateFilter: string, customFrom?: Date, customTo?: Date): Promise<{ start: Date; end: Date } | null> {
-  // Buscar timezone da empresa
+// OTIMIZAÇÃO: Cache de timezone em sessionStorage para evitar queries repetidas
+const TIMEZONE_CACHE_KEY = 'app_timezone';
+const TIMEZONE_CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
+interface TimezoneCache {
+  value: string;
+  timestamp: number;
+}
+
+function getCachedTimezone(): string | null {
+  try {
+    const cached = sessionStorage.getItem(TIMEZONE_CACHE_KEY);
+    if (!cached) return null;
+    
+    const { value, timestamp }: TimezoneCache = JSON.parse(cached);
+    if (Date.now() - timestamp > TIMEZONE_CACHE_DURATION) {
+      sessionStorage.removeItem(TIMEZONE_CACHE_KEY);
+      return null;
+    }
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedTimezone(timezone: string): void {
+  try {
+    const cache: TimezoneCache = { value: timezone, timestamp: Date.now() };
+    sessionStorage.setItem(TIMEZONE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+async function getTimezoneWithCache(): Promise<string> {
+  const cached = getCachedTimezone();
+  if (cached) return cached;
+  
   const { data: settings } = await supabase
     .from('company_settings')
     .select('timezone')
@@ -94,6 +129,14 @@ async function getDateRangeWithTimezone(dateFilter: string, customFrom?: Date, c
     .single();
   
   const timezone = settings?.timezone || 'America/Sao_Paulo';
+  setCachedTimezone(timezone);
+  return timezone;
+}
+
+// Helper para calcular datas do filtro COM TIMEZONE
+async function getDateRangeWithTimezone(dateFilter: string, customFrom?: Date, customTo?: Date): Promise<{ start: Date; end: Date } | null> {
+  // OTIMIZAÇÃO: Usar cache de timezone
+  const timezone = await getTimezoneWithCache();
   const now = new Date();
   
   switch (dateFilter) {

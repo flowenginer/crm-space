@@ -64,15 +64,52 @@ interface AllConversationCounts {
   };
 }
 
-// Helper to get timezone
+// OTIMIZAÇÃO: Cache de timezone em sessionStorage
+const TIMEZONE_CACHE_KEY = 'app_timezone';
+const TIMEZONE_CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
+interface TimezoneCache {
+  value: string;
+  timestamp: number;
+}
+
 async function getTimezone(): Promise<string> {
+  // Tentar obter do cache primeiro
+  try {
+    const cached = sessionStorage.getItem(TIMEZONE_CACHE_KEY);
+    if (cached) {
+      const { value, timestamp }: TimezoneCache = JSON.parse(cached);
+      if (Date.now() - timestamp < TIMEZONE_CACHE_DURATION) {
+        return value;
+      }
+    }
+  } catch {
+    // Ignore cache errors
+  }
+  
   const { data: settings } = await supabase
     .from('company_settings')
     .select('timezone')
     .limit(1)
     .maybeSingle();
-  return settings?.timezone || 'America/Sao_Paulo';
+  
+  const timezone = settings?.timezone || 'America/Sao_Paulo';
+  
+  // Salvar no cache
+  try {
+    const cache: TimezoneCache = { value: timezone, timestamp: Date.now() };
+    sessionStorage.setItem(TIMEZONE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore storage errors
+  }
+  
+  return timezone;
 }
+
+// OTIMIZAÇÃO: staleTime e refetchInterval aumentados para 5 minutos
+// Contagens de filtros não precisam de atualização em tempo real
+const FILTER_COUNTS_STALE_TIME = 5 * 60 * 1000; // 5 minutos
+const FILTER_COUNTS_REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutos
 
 /**
  * Hook OTIMIZADO que busca todas as contagens em UMA única chamada RPC
@@ -124,8 +161,8 @@ export function useAllConversationCounts(filters?: CountFilters) {
         },
       };
     },
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: FILTER_COUNTS_STALE_TIME,
+    refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
     refetchOnWindowFocus: false,
   });
 }
@@ -224,8 +261,8 @@ export function useConversationTotalCounts(filters?: CountFilters) {
         pending: pendingCount,
       };
     },
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: 60000, // 1 min - contagem principal precisa ser mais atualizada
+    refetchInterval: 120000, // 2 min
     refetchOnWindowFocus: false,
   });
 }
@@ -250,8 +287,8 @@ export function useChannelCounts(filters?: CountFilters) {
       if (error) throw error;
       return (data as ChannelCounts) || {};
     },
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: FILTER_COUNTS_STALE_TIME,
+    refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
     refetchOnWindowFocus: false,
   });
 }
@@ -285,8 +322,8 @@ export function useDateFilterCounts(filters?: CountFilters) {
         last_month: result?.last_month || 0,
       };
     },
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: FILTER_COUNTS_STALE_TIME,
+    refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
     refetchOnWindowFocus: false,
   });
 }
@@ -311,8 +348,8 @@ export function useDepartmentCounts(filters?: CountFilters) {
       if (error) throw error;
       return (data as DepartmentCounts) || {};
     },
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: FILTER_COUNTS_STALE_TIME,
+    refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
     refetchOnWindowFocus: false,
   });
 }
@@ -341,8 +378,8 @@ export function useOriginCounts(filters?: CountFilters) {
         organic: result?.organic || 0 
       };
     },
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: FILTER_COUNTS_STALE_TIME,
+    refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
     refetchOnWindowFocus: false,
   });
 }
@@ -368,8 +405,8 @@ export function useTagCounts(filters?: CountFilters) {
       
       return (data as Record<string, number>) || {};
     },
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: FILTER_COUNTS_STALE_TIME,
+    refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
     refetchOnWindowFocus: false,
   });
 }
@@ -394,8 +431,8 @@ export function useAgentCounts(filters?: CountFilters) {
       if (error) throw error;
       return (data as Record<string, number>) || {};
     },
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: FILTER_COUNTS_STALE_TIME,
+    refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
     refetchOnWindowFocus: false,
   });
 }
@@ -427,8 +464,8 @@ export function useSortFilterCounts(filters?: CountFilters) {
         client_not_replied: 0,
       };
     },
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: FILTER_COUNTS_STALE_TIME,
+    refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
     refetchOnWindowFocus: false,
   });
 }
@@ -453,8 +490,8 @@ export function useNoTagCount(filters?: CountFilters) {
       }
       return (data as number) || 0;
     },
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: FILTER_COUNTS_STALE_TIME,
+    refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
     refetchOnWindowFocus: false,
   });
 }
