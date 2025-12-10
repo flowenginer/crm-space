@@ -1,32 +1,17 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 import { Loader2, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatusFunnelData, formatDuration } from '@/hooks/useLeadJourneyDashboard';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface StatusFunnelRealtimeProps {
   data: StatusFunnelData[];
   isLoading?: boolean;
 }
-
-const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div className="bg-popover border border-border rounded-lg p-3 shadow-lg">
-        <p className="font-medium text-foreground">{data.status}</p>
-        <p className="text-sm text-muted-foreground">
-          Leads: <span className="font-semibold text-foreground">{data.count}</span>
-        </p>
-        {data.avgDuration > 0 && (
-          <p className="text-sm text-muted-foreground">
-            Tempo médio: <span className="font-semibold text-primary">{formatDuration(data.avgDuration)}</span>
-          </p>
-        )}
-      </div>
-    );
-  }
-  return null;
-};
 
 export function StatusFunnelRealtime({ data, isLoading }: StatusFunnelRealtimeProps) {
   if (isLoading) {
@@ -61,13 +46,15 @@ export function StatusFunnelRealtime({ data, isLoading }: StatusFunnelRealtimePr
     );
   }
 
-  // Truncate long status names
-  const chartData = data.map(d => ({
-    ...d,
-    shortName: d.status.length > 15 ? d.status.slice(0, 15) + '...' : d.status,
-  }));
+  const maxCount = Math.max(...data.map(d => d.count));
+  const totalCount = data.reduce((sum, d) => sum + d.count, 0);
+  const totalItems = data.length;
 
-  const maxCount = Math.max(...data.map(d => d.count), 1);
+  const getWidthPercent = (index: number, count: number) => {
+    const baseWidth = 100 - (index * (70 / totalItems));
+    const countFactor = maxCount > 0 ? (count / maxCount) : 0;
+    return Math.max(baseWidth * 0.7 + countFactor * 30, 15);
+  };
 
   return (
     <Card className="h-full">
@@ -81,44 +68,82 @@ export function StatusFunnelRealtime({ data, isLoading }: StatusFunnelRealtimePr
         </p>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart
-            data={chartData}
-            layout="vertical"
-            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-          >
-            <XAxis 
-              type="number" 
-              domain={[0, maxCount * 1.1]}
-              tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
-              axisLine={{ stroke: 'hsl(var(--border))' }}
-            />
-            <YAxis 
-              type="category" 
-              dataKey="shortName"
-              width={100}
-              tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-              axisLine={{ stroke: 'hsl(var(--border))' }}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Bar 
-              dataKey="count" 
-              radius={[0, 4, 4, 0]}
-              maxBarSize={24}
-            >
-              {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
-              ))}
-              <LabelList 
-                dataKey="count" 
-                position="right" 
-                fill="hsl(var(--foreground))"
-                fontSize={12}
-                fontWeight={600}
-              />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        <TooltipProvider>
+          <div className="space-y-0 py-4">
+            {data.map((item, index) => {
+              const currentWidth = getWidthPercent(index, item.count);
+              const nextWidth = index < data.length - 1 
+                ? getWidthPercent(index + 1, data[index + 1].count) 
+                : currentWidth * 0.7;
+              
+              const isLast = index === data.length - 1;
+              const percentage = totalCount > 0 ? (item.count / totalCount) * 100 : 0;
+
+              const topLeftOffset = (100 - currentWidth) / 2;
+              const topRightOffset = (100 + currentWidth) / 2;
+              const bottomLeftOffset = (100 - nextWidth) / 2;
+              const bottomRightOffset = (100 + nextWidth) / 2;
+
+              const clipPath = isLast
+                ? `polygon(${topLeftOffset}% 0%, ${topRightOffset}% 0%, 50% 100%, 50% 100%)`
+                : `polygon(${topLeftOffset}% 0%, ${topRightOffset}% 0%, ${bottomRightOffset}% 100%, ${bottomLeftOffset}% 100%)`;
+
+              return (
+                <Tooltip key={item.status}>
+                  <TooltipTrigger asChild>
+                    <div className="w-full transition-all duration-200 group hover:scale-[1.01]">
+                      <div className="flex items-center gap-4">
+                        {/* Left: Status Name */}
+                        <div className="w-[120px] flex-shrink-0 text-right pr-2">
+                          <span className="text-sm font-medium truncate text-foreground">
+                            {item.status.length > 12 ? item.status.slice(0, 12) + '...' : item.status}
+                          </span>
+                        </div>
+
+                        {/* Center: Funnel Trapezoid */}
+                        <div className="flex-1 relative flex justify-center">
+                          <div 
+                            className="relative transition-all duration-300 group-hover:brightness-105"
+                            style={{
+                              width: '100%',
+                              height: isLast ? '32px' : '40px',
+                              clipPath,
+                              backgroundColor: item.color,
+                            }}
+                          >
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <span className={`font-bold text-white drop-shadow-md ${
+                                isLast ? 'text-sm' : 'text-base'
+                              }`}>
+                                {item.count}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Right: Percentage */}
+                        <div className="w-[70px] flex-shrink-0 text-left pl-2">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            {percentage.toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="text-sm">
+                      <p className="font-medium">{item.status}</p>
+                      <p>Leads: <span className="font-semibold">{item.count}</span></p>
+                      {item.avgDuration > 0 && (
+                        <p>Tempo médio: <span className="font-semibold text-primary">{formatDuration(item.avgDuration)}</span></p>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </div>
+        </TooltipProvider>
       </CardContent>
     </Card>
   );
