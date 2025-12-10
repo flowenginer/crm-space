@@ -766,6 +766,7 @@ serve(async (req) => {
             full_name: contactName,
             first_contact_at: new Date().toISOString(),
             origin: "whatsapp",
+            department_id: channel.department_id || null,
           })
           .select("id")
           .single();
@@ -805,6 +806,7 @@ serve(async (req) => {
           .insert({
             contact_id: contact.id,
             channel_id: channel.id,
+            department_id: channel.department_id || null,
             status: "open",
             is_unread: false, // Mensagem enviada por nós, não é unread
             unread_count: 0,
