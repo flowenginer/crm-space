@@ -415,18 +415,14 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
           .lte('contact.first_contact_at', endISO);
       }
 
-      // *** BUSCA POR TELEFONE OU NOME - SERVIDOR ***
+      // *** BUSCA POR TELEFONE OU NOME - SERVIDOR (com busca sem acentos) ***
       if (searchQuery && searchQuery.length >= 3) {
-        // Busca direta no banco por telefone ou nome do contato
-        // Primeiro buscamos os contact_ids que correspondem
+        // Busca usando função RPC que ignora acentos
         const { data: matchingContacts } = await supabase
-          .from('contacts')
-          .select('id')
-          .or(`phone.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`)
-          .limit(100);
+          .rpc('search_contacts_unaccent', { p_search_term: searchQuery.trim() });
         
         if (matchingContacts && matchingContacts.length > 0) {
-          const contactIds = matchingContacts.map(c => c.id);
+          const contactIds = matchingContacts.map((c: { id: string }) => c.id);
           query = query.in('contact_id', contactIds);
         } else {
           // Nenhum contato encontrado, retornar vazio
