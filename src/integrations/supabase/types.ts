@@ -3461,6 +3461,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      immutable_unaccent: { Args: { "": string }; Returns: string }
       increment_unread: { Args: { conv_id: string }; Returns: undefined }
       increment_webhook_stats: {
         Args: {
@@ -3505,6 +3506,18 @@ export type Database = {
           p_whatsapp_message_id?: string
         }
         Returns: Json
+      }
+      search_contacts_unaccent: {
+        Args: { p_limit?: number; p_search_query: string }
+        Returns: {
+          assigned_to: string
+          avatar_url: string
+          email: string
+          full_name: string
+          id: string
+          lead_status: string
+          phone: string
+        }[]
       }
       search_conversations_report: {
         Args: {
@@ -3554,6 +3567,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      unaccent: { Args: { "": string }; Returns: string }
       update_message_whatsapp_id: {
         Args: {
           p_content: string
