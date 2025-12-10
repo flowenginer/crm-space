@@ -4585,8 +4585,25 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
                     department_id: newTagVisibility === 'department' ? newTagDepartmentId : null,
                   },
                   {
-                    onSuccess: () => {
-                      toast.success('Etiqueta criada com sucesso!');
+                    onSuccess: (newTag) => {
+                      // Automatically apply the tag to the current contact
+                      if (selectedConversation?.contact?.id && newTag?.id) {
+                        addTagToContact.mutate(
+                          { contactId: selectedConversation.contact.id, tagId: newTag.id },
+                          {
+                            onSuccess: () => {
+                              refetchContactTags();
+                              toast.success('Etiqueta criada e aplicada!');
+                            },
+                            onError: () => {
+                              toast.success('Etiqueta criada!');
+                              toast.error('Erro ao aplicar etiqueta ao contato');
+                            },
+                          }
+                        );
+                      } else {
+                        toast.success('Etiqueta criada com sucesso!');
+                      }
                       setShowCreateTagModal(false);
                       setNewTagName('');
                       setNewTagColor('#8B5CF6');
