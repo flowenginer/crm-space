@@ -23,6 +23,8 @@ interface UserProfile {
   permissions: Record<string, Record<string, boolean>> | null;
   department_id: string | null;
   is_active: boolean | null;
+  can_view_all_conversations: boolean | null;
+  can_transfer_freely: boolean | null;
 }
 
 export function usePermissions() {
@@ -38,12 +40,35 @@ export function usePermissions() {
       
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, role, permissions, department_id, is_active')
+        .select('id, role, permissions, department_id, is_active, can_view_all_conversations, can_transfer_freely')
         .eq('id', user.id)
         .maybeSingle();
       
       if (error) throw error;
       return data as UserProfile | null;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Fetch special access via SQL functions (includes department-level permissions)
+  const { data: canViewAllData } = useQuery({
+    queryKey: ['can-view-all-data', user?.id],
+    staleTime: 30000,
+    queryFn: async () => {
+      if (!user?.id) return false;
+      const { data } = await supabase.rpc('can_view_all_data', { _user_id: user.id });
+      return data ?? false;
+    },
+    enabled: !!user?.id,
+  });
+
+  const { data: canTransferFreelyData } = useQuery({
+    queryKey: ['can-transfer-freely', user?.id],
+    staleTime: 30000,
+    queryFn: async () => {
+      if (!user?.id) return false;
+      const { data } = await supabase.rpc('can_transfer_freely', { _user_id: user.id });
+      return data ?? false;
     },
     enabled: !!user?.id,
   });
@@ -149,18 +174,27 @@ export function usePermissions() {
     manageQueues: () => hasPermission('queues', 'manage_agents'),
   };
 
+  // Computed special access flags
+  const isAdmin = profile?.role === 'admin';
+  const isSupervisor = profile?.role === 'supervisor';
+  const canViewAllConversations = canViewAllData || isAdmin || isSupervisor;
+  const canTransferFreely = canTransferFreelyData || isAdmin || isSupervisor;
+
   return {
     profile,
     roleDefinition,
     hasPermission,
     can,
-    isAdmin: profile?.role === 'admin',
-    isSupervisor: profile?.role === 'supervisor',
+    isAdmin,
+    isSupervisor,
     isVendedor: profile?.role === 'vendedor',
     isDesigner: profile?.role === 'designer',
     role: profile?.role,
     isLoading: profileLoading || roleLoading,
-    isFullyLoaded, // NEW: indicates when it's safe to check permissions
+    isFullyLoaded,
+    // Special access flags (using SQL functions that check user + department permissions)
+    canViewAllConversations,
+    canTransferFreely,
   };
 }
 

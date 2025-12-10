@@ -72,8 +72,8 @@ const getTagColorClass = (color: string | null) => {
 export default function Contacts() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-const { isAdmin, isSupervisor, profile } = usePermissions();
-  const canAccessAllContacts = isAdmin || isSupervisor;
+const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissions();
+  const canAccessAllContacts = canViewAllConversations;
   
   // Modal de solicitação de acesso
   const [showContactRequestModal, setShowContactRequestModal] = useState(false);
