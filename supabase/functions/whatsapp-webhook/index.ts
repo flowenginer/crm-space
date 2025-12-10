@@ -1277,6 +1277,7 @@ serve(async (req) => {
         : `55${normalizedMessage.from.replace(/\D/g, '')}`;
       
       // Usar upsert para evitar duplicatas por race condition
+      // department_id vem do canal configurado (zero queries extras!)
       const { data: upsertedContact, error: contactError } = await supabase
         .from("contacts")
         .upsert({
@@ -1286,6 +1287,7 @@ serve(async (req) => {
           origin_campaign: originCampaign,
           referral_data: referralDataJson,
           first_contact_at: new Date().toISOString(),
+          department_id: channel.department_id || null,
         }, {
           onConflict: 'phone',
           ignoreDuplicates: false
