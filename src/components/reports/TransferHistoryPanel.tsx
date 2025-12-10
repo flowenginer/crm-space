@@ -14,7 +14,6 @@ import {
   ChevronRight,
   TrendingUp,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -35,6 +34,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DateRangePicker } from '@/components/reports/DateRangePicker';
+import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 import { useTransferHistory, useTransferHistoryKPIs } from '@/hooks/useTransferHistory';
 import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
@@ -49,7 +49,6 @@ export function TransferHistoryPanel({
   initialStartDate,
   initialEndDate,
 }: TransferHistoryPanelProps) {
-  const navigate = useNavigate();
   const today = new Date();
   
   const [startDate, setStartDate] = useState(
@@ -66,6 +65,10 @@ export function TransferHistoryPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 20;
+
+  // Preview dialog state
+  const [previewConversationId, setPreviewConversationId] = useState<string | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
@@ -91,7 +94,8 @@ export function TransferHistoryPanel({
   });
 
   const handleViewConversation = (conversationId: string) => {
-    navigate(`/conversas?id=${conversationId}`);
+    setPreviewConversationId(conversationId);
+    setIsPreviewOpen(true);
   };
 
   const clearFilters = () => {
@@ -431,6 +435,15 @@ export function TransferHistoryPanel({
           </div>
         )}
       </div>
+
+      <ConversationPreviewDialog
+        conversationId={previewConversationId}
+        isOpen={isPreviewOpen}
+        onClose={() => {
+          setIsPreviewOpen(false);
+          setPreviewConversationId(null);
+        }}
+      />
     </div>
   );
 }
