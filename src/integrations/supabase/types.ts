@@ -3105,6 +3105,18 @@ export type Database = {
         }
         Returns: Json
       }
+      get_channel_by_instance: {
+        Args: { p_instance_id: string }
+        Returns: {
+          department_id: string
+          id: string
+          instance_id: string
+          name: string
+          provider_admin_token: string
+          provider_base_url: string
+          provider_code: string
+        }[]
+      }
       get_channel_counts: {
         Args: {
           p_agent_id?: string
@@ -3145,6 +3157,7 @@ export type Database = {
         }
         Returns: Json
       }
+      get_conversion_status_names: { Args: never; Returns: string[] }
       get_conversion_timeline: {
         Args: {
           p_agent_id?: string
@@ -3158,6 +3171,15 @@ export type Database = {
           date_day: string
           new_leads: number
         }[]
+      }
+      get_dashboard_metrics_aggregated: {
+        Args: {
+          p_agent_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: Json
       }
       get_date_filter_counts: {
         Args: {
@@ -3336,6 +3358,24 @@ export type Database = {
         }
         Returns: undefined
       }
+      process_incoming_message: {
+        Args: {
+          p_channel_department_id: string
+          p_channel_id: string
+          p_contact_name: string
+          p_is_from_me?: boolean
+          p_media_mime_type?: string
+          p_media_url?: string
+          p_message_content: string
+          p_message_type: string
+          p_origin?: string
+          p_phone: string
+          p_referral_data?: Json
+          p_referral_source?: string
+          p_whatsapp_message_id?: string
+        }
+        Returns: Json
+      }
       search_conversations_report: {
         Args: {
           p_agent_ids?: string[]
@@ -3383,6 +3423,16 @@ export type Database = {
           p_to_user_id: string
         }
         Returns: boolean
+      }
+      update_message_whatsapp_id: {
+        Args: {
+          p_content: string
+          p_conversation_id: string
+          p_media_url?: string
+          p_message_type: string
+          p_whatsapp_message_id: string
+        }
+        Returns: Json
       }
       user_has_department: {
         Args: { _department_id: string; _user_id: string }
