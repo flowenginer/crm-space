@@ -3223,6 +3223,15 @@ export type Database = {
           total: number
         }[]
       }
+      get_no_tag_conversation_count: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_department_id?: string
+          p_origin?: string
+        }
+        Returns: number
+      }
       get_origin_counts: {
         Args: {
           p_agent_id?: string

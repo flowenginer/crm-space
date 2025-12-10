@@ -83,7 +83,7 @@ import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessage
 import { QuickTemplatesPopover } from '@/components/conversations/QuickTemplatesPopover';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { usePaginatedConversations, useSortFilterCounts, type SortFilter, type ConversationFilters, type StatusFilter } from '@/hooks/usePaginatedConversations';
-import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, type CountFilters } from '@/hooks/useConversationCounts';
+import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, useNoTagCount, type CountFilters } from '@/hooks/useConversationCounts';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
@@ -1361,6 +1361,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
   const { data: originCountsData } = useOriginCounts(originCountFilters);
   const { data: tagCountsData } = useTagCounts(tagCountFilters);
   const { data: absoluteTagCountsData } = useTagCounts(); // Contagens absolutas sem filtros para o modal
+  const { data: noTagCount } = useNoTagCount(tagCountFilters); // Contagem de conversas sem etiqueta
   const { data: agentCountsData } = useAgentCounts(agentCountFilters);
   const { data: sortFilterCountsFromDb } = useSortFilterCounts(statusFilter); // Real counts for not_replied and client_not_replied
   
@@ -4214,6 +4215,25 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission } = usePerm
               
               {/* Container com scroll - Lista vertical com checkboxes */}
               <div className="max-h-[200px] overflow-y-auto space-y-1">
+                {/* Opção "Sem etiqueta" - sempre no topo */}
+                <label className="flex items-center gap-2 p-2 hover:bg-muted rounded-lg cursor-pointer transition-colors border-b border-border pb-2 mb-2">
+                  <Checkbox
+                    checked={advancedFilters.tagIds.includes('no_tag')}
+                    onCheckedChange={() => {
+                      setAdvancedFilters(prev => ({
+                        ...prev,
+                        tagIds: prev.tagIds.includes('no_tag')
+                          ? prev.tagIds.filter(id => id !== 'no_tag')
+                          : [...prev.tagIds, 'no_tag']
+                      }));
+                    }}
+                  />
+                  <span className="w-3 h-3 rounded-full flex-shrink-0 bg-muted-foreground/30" />
+                  <span className="flex-1 text-sm text-foreground">⚠️ Sem etiqueta</span>
+                  <span className="text-xs text-muted-foreground">{noTagCount || 0}</span>
+                </label>
+
+                {/* Tags existentes */}
                 {(() => {
                   const filteredTags = filterTagSearchQuery.trim()
                     ? tags.filter(tag => tag.name.toLowerCase().includes(filterTagSearchQuery.toLowerCase()))
