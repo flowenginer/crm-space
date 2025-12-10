@@ -113,8 +113,9 @@ export function TransferHistoryPanel({
   return (
     <div className="space-y-6">
       {/* Filters */}
-      <div className="bg-card rounded-2xl border border-border p-4 shadow-sm">
-        <div className="flex items-center gap-2 mb-4">
+      <div className="bg-card rounded-2xl border border-border p-4 shadow-sm space-y-4">
+        {/* Header */}
+        <div className="flex items-center gap-2">
           <Filter size={18} className="text-muted-foreground" />
           <span className="font-medium text-foreground">Filtros</span>
           {hasFilters && (
@@ -125,31 +126,33 @@ export function TransferHistoryPanel({
           )}
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-          <div className="lg:col-span-2">
+        {/* Linha 1: Filtros de Data */}
+        <DateRangePicker
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={(d) => { setStartDate(d); setPage(1); }}
+          onEndDateChange={(d) => { setEndDate(d); setPage(1); }}
+        />
+
+        {/* Linha 2: Outros Filtros */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+          <div className="lg:col-span-1">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome ou telefone do cliente..."
+                placeholder="Buscar cliente..."
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-                className="pl-9"
+                className="pl-9 h-9"
               />
             </div>
           </div>
 
-          <DateRangePicker
-            startDate={startDate}
-            endDate={endDate}
-            onStartDateChange={(d) => { setStartDate(d); setPage(1); }}
-            onEndDateChange={(d) => { setEndDate(d); setPage(1); }}
-          />
-          
           <Select 
             value={fromUserId || 'all'} 
             onValueChange={(v) => { setFromUserId(v === 'all' ? null : v); setPage(1); }}
           >
-            <SelectTrigger>
+            <SelectTrigger className="h-9">
               <User size={14} className="mr-2 text-muted-foreground" />
               <SelectValue placeholder="De (usuário)" />
             </SelectTrigger>
@@ -167,7 +170,7 @@ export function TransferHistoryPanel({
             value={toUserId || 'all'} 
             onValueChange={(v) => { setToUserId(v === 'all' ? null : v); setPage(1); }}
           >
-            <SelectTrigger>
+            <SelectTrigger className="h-9">
               <User size={14} className="mr-2 text-muted-foreground" />
               <SelectValue placeholder="Para (usuário)" />
             </SelectTrigger>
@@ -185,7 +188,7 @@ export function TransferHistoryPanel({
             value={fromDepartmentId || 'all'} 
             onValueChange={(v) => { setFromDepartmentId(v === 'all' ? null : v); setPage(1); }}
           >
-            <SelectTrigger>
+            <SelectTrigger className="h-9">
               <Building2 size={14} className="mr-2 text-muted-foreground" />
               <SelectValue placeholder="Depto origem" />
             </SelectTrigger>
@@ -203,7 +206,7 @@ export function TransferHistoryPanel({
             value={toDepartmentId || 'all'} 
             onValueChange={(v) => { setToDepartmentId(v === 'all' ? null : v); setPage(1); }}
           >
-            <SelectTrigger>
+            <SelectTrigger className="h-9">
               <Building2 size={14} className="mr-2 text-muted-foreground" />
               <SelectValue placeholder="Depto destino" />
             </SelectTrigger>
@@ -221,7 +224,7 @@ export function TransferHistoryPanel({
             value={transferType} 
             onValueChange={(v: 'all' | 'transfer' | 'return') => { setTransferType(v); setPage(1); }}
           >
-            <SelectTrigger>
+            <SelectTrigger className="h-9">
               <ArrowLeftRight size={14} className="mr-2 text-muted-foreground" />
               <SelectValue placeholder="Tipo" />
             </SelectTrigger>

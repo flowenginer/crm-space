@@ -94,100 +94,90 @@ export function DateRangePicker({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
       {/* Quick Range Buttons */}
-      <div className="flex flex-wrap gap-1.5">
-        {quickRanges.map((range) => (
-          <Button
-            key={range.label}
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2"
-            onClick={() => handleQuickRange(range)}
-          >
-            {range.label}
-          </Button>
-        ))}
-      </div>
+      {quickRanges.map((range) => (
+        <Button
+          key={range.label}
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs px-3"
+          onClick={() => handleQuickRange(range)}
+        >
+          {range.label}
+        </Button>
+      ))}
 
       {/* Date Pickers */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Start Date */}
-        <div>
-          <label className="block text-xs text-muted-foreground mb-1">De</label>
-          <Popover open={startOpen} onOpenChange={setStartOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  'w-full justify-start text-left font-normal',
-                  !startDate && 'text-muted-foreground'
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {parsedStartDate ? (
-                  format(parsedStartDate, 'dd/MM/yyyy', { locale: ptBR })
-                ) : (
-                  <span>Selecione</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={parsedStartDate}
-                onSelect={(date) => {
-                  if (date) {
-                    onStartDateChange(format(date, 'yyyy-MM-dd'));
-                  }
-                  setStartOpen(false);
-                }}
-                initialFocus
-                locale={ptBR}
-                className="pointer-events-auto"
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
+      <Popover open={startOpen} onOpenChange={setStartOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(
+              'h-8 justify-start text-left font-normal text-xs px-3',
+              !startDate && 'text-muted-foreground'
+            )}
+          >
+            <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+            {parsedStartDate ? (
+              format(parsedStartDate, 'dd/MM/yyyy', { locale: ptBR })
+            ) : (
+              <span>De</span>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={parsedStartDate}
+            onSelect={(date) => {
+              if (date) {
+                onStartDateChange(format(date, 'yyyy-MM-dd'));
+              }
+              setStartOpen(false);
+            }}
+            initialFocus
+            locale={ptBR}
+            className="pointer-events-auto"
+          />
+        </PopoverContent>
+      </Popover>
 
-        {/* End Date */}
-        <div>
-          <label className="block text-xs text-muted-foreground mb-1">Até</label>
-          <Popover open={endOpen} onOpenChange={setEndOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  'w-full justify-start text-left font-normal',
-                  !endDate && 'text-muted-foreground'
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {parsedEndDate ? (
-                  format(parsedEndDate, 'dd/MM/yyyy', { locale: ptBR })
-                ) : (
-                  <span>Selecione</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={parsedEndDate}
-                onSelect={(date) => {
-                  if (date) {
-                    onEndDateChange(format(date, 'yyyy-MM-dd'));
-                  }
-                  setEndOpen(false);
-                }}
-                initialFocus
-                locale={ptBR}
-                className="pointer-events-auto"
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
+      <Popover open={endOpen} onOpenChange={setEndOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(
+              'h-8 justify-start text-left font-normal text-xs px-3',
+              !endDate && 'text-muted-foreground'
+            )}
+          >
+            <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+            {parsedEndDate ? (
+              format(parsedEndDate, 'dd/MM/yyyy', { locale: ptBR })
+            ) : (
+              <span>Até</span>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={parsedEndDate}
+            onSelect={(date) => {
+              if (date) {
+                onEndDateChange(format(date, 'yyyy-MM-dd'));
+              }
+              setEndOpen(false);
+            }}
+            initialFocus
+            locale={ptBR}
+            className="pointer-events-auto"
+          />
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
