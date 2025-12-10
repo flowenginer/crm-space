@@ -7,6 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { generateGradientColors } from '@/lib/utils';
 
 interface StatusFunnelRealtimeProps {
   data: StatusFunnelData[];
@@ -49,6 +50,7 @@ export function StatusFunnelRealtime({ data, isLoading }: StatusFunnelRealtimePr
   const maxCount = Math.max(...data.map(d => d.count));
   const totalCount = data.reduce((sum, d) => sum + d.count, 0);
   const totalItems = data.length;
+  const gradientColors = generateGradientColors(totalItems);
 
   const getWidthPercent = (index: number, count: number) => {
     const baseWidth = 100 - (index * (70 / totalItems));
@@ -102,13 +104,13 @@ export function StatusFunnelRealtime({ data, isLoading }: StatusFunnelRealtimePr
 
                         {/* Center: Funnel Trapezoid */}
                         <div className="flex-1 relative flex justify-center">
-                          <div 
+                        <div 
                             className="relative transition-all duration-300 group-hover:brightness-105"
                             style={{
                               width: '100%',
                               height: isLast ? '32px' : '40px',
                               clipPath,
-                              backgroundColor: item.color,
+                              backgroundColor: gradientColors[index],
                             }}
                           >
                             <div className="absolute inset-0 flex items-center justify-center">

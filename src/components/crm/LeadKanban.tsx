@@ -46,7 +46,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
+import { cn, generateGradientColors } from '@/lib/utils';
 import {
   useLeadStatuses,
   useLeadStatusSummary,
@@ -60,11 +60,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
-const DEFAULT_COLORS = [
-  '#FEF3C7', '#DDD6FE', '#DBEAFE', '#D1FAE5', '#FED7AA', '#BBF7D0',
-  '#FECACA', '#E0E7FF', '#CCFBF1', '#86EFAC', '#A78BFA', '#F87171',
-  '#93C5FD', '#34D399'
-];
+// Vibrant gradient colors for new statuses (lilac → pink)
+const DEFAULT_COLORS = generateGradientColors(14);
 
 interface LeadKanbanProps {
   searchQuery?: string;
@@ -160,6 +157,9 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
 
   const isLoading = statusesLoading || summaryLoading || contactsLoading;
 
+  // Generate gradient colors for all statuses
+  const gradientColors = generateGradientColors((leadStatuses?.length || 0) + 1); // +1 for "no status"
+
   // Get summary for "no status"
   const noStatusSummary = summaryMap?.['__no_status__'];
   const hasNoStatusContacts = noStatusSummary && noStatusSummary.contact_count > 0;
@@ -186,7 +186,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
             {/* Sem Status column */}
             {hasNoStatusContacts && (
               <LeadKanbanColumn
-                status={{ id: 'no-status', name: 'Sem Status', order_position: -1, color: '#9CA3AF', is_active: true, created_at: '' }}
+                status={{ id: 'no-status', name: 'Sem Status', order_position: -1, color: gradientColors[0], is_active: true, created_at: '' }}
                 statusKey="__no_status__"
                 count={noStatusSummary.contact_count}
                 totalValue={noStatusSummary.total_value}
@@ -194,11 +194,13 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
                 onOpenConversation={handleOpenConversation}
                 canDelete={false}
                 searchQuery={searchQuery}
+                gradientColor={gradientColors[0]}
               />
             )}
 
-            {leadStatuses.map((status) => {
+            {leadStatuses.map((status, index) => {
               const summary = summaryMap?.[status.name];
+              const colorIndex = hasNoStatusContacts ? index + 1 : index;
               return (
                 <LeadKanbanColumn
                   key={status.id}
@@ -210,6 +212,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
                   onOpenConversation={handleOpenConversation}
                   canDelete={true}
                   searchQuery={searchQuery}
+                  gradientColor={gradientColors[colorIndex]}
                 />
               );
             })}
@@ -251,6 +254,7 @@ function LeadKanbanColumn({
   onOpenConversation,
   canDelete,
   searchQuery,
+  gradientColor,
 }: {
   status: LeadStatus;
   statusKey: string;
@@ -260,6 +264,7 @@ function LeadKanbanColumn({
   onOpenConversation: (contact: ContactForKanban) => void;
   canDelete: boolean;
   searchQuery: string;
+  gradientColor: string;
 }) {
   const { setNodeRef } = useSortable({ id: status.id });
   const deleteStatus = useDeleteLeadStatus();
@@ -303,8 +308,8 @@ function LeadKanbanColumn({
       <div
         className="rounded-t-2xl p-3 border-b-4"
         style={{
-          backgroundColor: status.color || '#DDD6FE',
-          borderBottomColor: `${status.color || '#DDD6FE'}CC`,
+          backgroundColor: gradientColor,
+          borderBottomColor: gradientColor,
         }}
       >
         <div className="flex items-center justify-between mb-1">
