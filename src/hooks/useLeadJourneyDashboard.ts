@@ -265,6 +265,43 @@ export function useStatusFunnel(filters: DashboardFilters) {
 }
 
 // =====================================================
+// 2.4b - useStatusFunnelHistorical (leads que PASSARAM por cada status)
+// =====================================================
+
+export function useStatusFunnelHistorical(filters: DashboardFilters, origin?: string) {
+  return useQuery({
+    queryKey: ['status_funnel_historical_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, origin],
+    queryFn: async (): Promise<StatusFunnelData[]> => {
+      const dateFrom = startOfDay(filters.dateFrom).toISOString();
+      const dateTo = endOfDay(filters.dateTo).toISOString();
+
+      const { data, error } = await supabase.rpc('get_status_funnel_historical', {
+        p_date_from: dateFrom,
+        p_date_to: dateTo,
+        p_agent_id: filters.agentId || null,
+        p_department_id: filters.departmentId || null,
+        p_origin: origin || null,
+      });
+
+      if (error) {
+        console.error('Error fetching historical status funnel:', error);
+        return [];
+      }
+
+      return (data || []).map((row: any) => ({
+        status: row.status_name,
+        count: Number(row.lead_count) || 0,
+        avgDuration: Number(row.avg_duration_seconds) || 0,
+        color: row.status_color || '#8B5CF6',
+        order: row.status_order,
+      }));
+    },
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
+  });
+}
+
+// =====================================================
 // 2.5 - useLeadAlerts (usando RPC)
 // =====================================================
 

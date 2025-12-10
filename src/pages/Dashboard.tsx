@@ -8,6 +8,7 @@ import {
   useLeadJourneyMetrics,
   useAgentDistributionAdvanced,
   useStatusFunnel,
+  useStatusFunnelHistorical,
   useLeadAlerts,
   type DashboardFilters as JourneyFilters
 } from '@/hooks/useLeadJourneyDashboard';
@@ -16,7 +17,8 @@ import { useAgentsForFilter, useDepartmentsForFilter, useInteractionTimeline } f
 // Components
 import { JourneyKPICards } from '@/components/dashboard/JourneyKPICards';
 import { OriginBreakdownChart } from '@/components/dashboard/OriginBreakdownChart';
-import { StatusFunnelChart } from '@/components/dashboard/StatusFunnelChart';
+import { StatusFunnelHistorical } from '@/components/dashboard/StatusFunnelHistorical';
+import { StatusFunnelRealtime } from '@/components/dashboard/StatusFunnelRealtime';
 import { StatusDurationChart } from '@/components/dashboard/StatusDurationChart';
 import { AgentPerformanceTableAdvanced } from '@/components/dashboard/AgentPerformanceTableAdvanced';
 import { LeadAlertsPanel } from '@/components/dashboard/LeadAlertsPanel';
@@ -51,7 +53,8 @@ export default function Dashboard() {
   const { data: originData = [], isLoading: loadingOrigin } = useLeadsByOrigin(filters);
   const { data: journeyMetrics, isLoading: loadingMetrics } = useLeadJourneyMetrics(filters, selectedOrigin || undefined);
   const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentDistributionAdvanced(filters);
-  const { data: statusFunnel = [], isLoading: loadingFunnel } = useStatusFunnel(filters);
+  const { data: statusFunnelRealtime = [], isLoading: loadingFunnelRealtime } = useStatusFunnel(filters);
+  const { data: statusFunnelHistorical = [], isLoading: loadingFunnelHistorical } = useStatusFunnelHistorical(filters, selectedOrigin || undefined);
   const { data: leadAlerts = [], isLoading: loadingAlerts } = useLeadAlerts(filters);
   const { data: interactionData = [], isLoading: loadingInteraction } = useInteractionTimeline(filters);
   
@@ -93,18 +96,30 @@ export default function Dashboard() {
         <JourneyKPICards metrics={journeyMetrics} isLoading={loadingMetrics} />
       </div>
 
-      {/* Charts Row 1: Origin Breakdown + Status Funnel */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
+      {/* Charts Row 1: Origin Breakdown */}
+      <div className="animate-fade-in">
         <OriginBreakdownChart 
           data={originData} 
           isLoading={loadingOrigin}
           selectedOrigin={selectedOrigin}
           onOriginClick={setSelectedOrigin}
         />
-        <StatusFunnelChart data={statusFunnel} isLoading={loadingFunnel} />
       </div>
 
-      {/* Charts Row 2: Interaction Timeline */}
+      {/* Charts Row 2: Two Status Funnels side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
+        <StatusFunnelHistorical 
+          data={statusFunnelHistorical} 
+          isLoading={loadingFunnelHistorical}
+          selectedOrigin={selectedOrigin}
+        />
+        <StatusFunnelRealtime 
+          data={statusFunnelRealtime} 
+          isLoading={loadingFunnelRealtime} 
+        />
+      </div>
+
+      {/* Charts Row 3: Interaction Timeline */}
       <div className="animate-fade-in">
         <InteractionChart 
           data={interactionData} 
@@ -113,9 +128,9 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Charts Row 3: Status Duration */}
+      {/* Charts Row 4: Status Duration */}
       <div className="animate-fade-in">
-        <StatusDurationChart data={statusFunnel} isLoading={loadingFunnel} />
+        <StatusDurationChart data={statusFunnelRealtime} isLoading={loadingFunnelRealtime} />
       </div>
 
       {/* Bottom Section: Agent Performance + Lead Alerts */}
