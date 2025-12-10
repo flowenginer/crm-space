@@ -7,7 +7,7 @@ import {
   useLeadsByOrigin,
   useLeadJourneyMetrics,
   useAgentDistributionAdvanced,
-  useStatusFunnel,
+  useStatusFunnelRealtime,
   useLeadAlerts,
   type DashboardFilters as JourneyFilters
 } from '@/hooks/useLeadJourneyDashboard';
@@ -51,7 +51,7 @@ export default function Dashboard() {
   const { data: originData = [], isLoading: loadingOrigin } = useLeadsByOrigin(filters);
   const { data: journeyMetrics, isLoading: loadingMetrics } = useLeadJourneyMetrics(filters, selectedOrigin || undefined);
   const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentDistributionAdvanced(filters);
-  const { data: statusFunnelRealtime = [], isLoading: loadingFunnelRealtime } = useStatusFunnel(filters);
+  const { data: statusFunnelRealtime = [], isLoading: loadingFunnelRealtime } = useStatusFunnelRealtime(filters.agentId, filters.departmentId);
   const { data: leadAlerts = [], isLoading: loadingAlerts } = useLeadAlerts(filters);
   const { data: interactionData = [], isLoading: loadingInteraction } = useInteractionTimeline(filters);
   

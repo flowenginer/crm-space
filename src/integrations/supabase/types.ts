@@ -3529,6 +3529,16 @@ export type Database = {
           status_order: number
         }[]
       }
+      get_status_funnel_realtime: {
+        Args: { p_agent_id?: string; p_department_id?: string }
+        Returns: {
+          avg_duration_seconds: number
+          lead_count: number
+          status_color: string
+          status_name: string
+          status_order: number
+        }[]
+      }
       get_timeline_data_batch: {
         Args: {
           p_agent_id?: string
