@@ -3551,6 +3551,7 @@ export type Database = {
           p_from_user_id?: string
           p_limit?: number
           p_offset?: number
+          p_search_query?: string
           p_to_department_id?: string
           p_to_user_id?: string
           p_transfer_type?: string

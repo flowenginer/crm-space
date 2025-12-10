@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { startOfDay, endOfDay } from 'date-fns';
 
 export interface TransferRecord {
   id: string;
@@ -24,25 +25,27 @@ export interface TransferRecord {
 }
 
 interface UseTransferHistoryParams {
-  dateFrom: Date;
-  dateTo: Date;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
   fromUserId?: string | null;
   toUserId?: string | null;
   fromDepartmentId?: string | null;
   toDepartmentId?: string | null;
   transferType?: 'all' | 'transfer' | 'return';
+  searchQuery?: string;
   page?: number;
   pageSize?: number;
 }
 
 export function useTransferHistory({
-  dateFrom,
-  dateTo,
+  startDate,
+  endDate,
   fromUserId,
   toUserId,
   fromDepartmentId,
   toDepartmentId,
   transferType = 'all',
+  searchQuery,
   page = 1,
   pageSize = 50,
 }: UseTransferHistoryParams) {
@@ -51,17 +54,22 @@ export function useTransferHistory({
   return useQuery({
     queryKey: [
       'transfer-history',
-      dateFrom.toISOString(),
-      dateTo.toISOString(),
+      startDate,
+      endDate,
       fromUserId,
       toUserId,
       fromDepartmentId,
       toDepartmentId,
       transferType,
+      searchQuery,
       page,
       pageSize,
     ],
     queryFn: async () => {
+      // Criar datas locais sem conversão de timezone
+      const dateFrom = startOfDay(new Date(startDate + 'T00:00:00'));
+      const dateTo = endOfDay(new Date(endDate + 'T23:59:59'));
+
       const { data, error } = await supabase.rpc('get_transfer_history', {
         p_date_from: dateFrom.toISOString(),
         p_date_to: dateTo.toISOString(),
@@ -70,6 +78,7 @@ export function useTransferHistory({
         p_from_department_id: fromDepartmentId || null,
         p_to_department_id: toDepartmentId || null,
         p_transfer_type: transferType,
+        p_search_query: searchQuery || null,
         p_limit: pageSize,
         p_offset: offset,
       });
@@ -91,15 +100,19 @@ export function useTransferHistory({
 }
 
 export function useTransferHistoryKPIs({
-  dateFrom,
-  dateTo,
+  startDate,
+  endDate,
 }: {
-  dateFrom: Date;
-  dateTo: Date;
+  startDate: string;
+  endDate: string;
 }) {
   return useQuery({
-    queryKey: ['transfer-history-kpis', dateFrom.toISOString(), dateTo.toISOString()],
+    queryKey: ['transfer-history-kpis', startDate, endDate],
     queryFn: async () => {
+      // Criar datas locais sem conversão de timezone
+      const dateFrom = startOfDay(new Date(startDate + 'T00:00:00'));
+      const dateTo = endOfDay(new Date(endDate + 'T23:59:59'));
+
       // Buscar todos os registros para calcular KPIs
       const { data, error } = await supabase.rpc('get_transfer_history', {
         p_date_from: dateFrom.toISOString(),
@@ -109,6 +122,7 @@ export function useTransferHistoryKPIs({
         p_from_department_id: null,
         p_to_department_id: null,
         p_transfer_type: 'all',
+        p_search_query: null,
         p_limit: 10000,
         p_offset: 0,
       });
