@@ -644,15 +644,33 @@ serve(async (req) => {
       });
     }
 
-    const { data: channel, error: channelError } = await supabase
-      .from("whatsapp_channels")
-      .select(`
-        id, name, instance_id, department_id,
-        provider:whatsapp_providers!inner(code, base_url, admin_token)
-      `)
-      .eq("instance_id", instanceId)
-      .eq("is_deleted", false)
+    // Usar RPC otimizada para buscar canal (evita JOIN complexo)
+    const { data: channelData, error: channelError } = await supabase
+      .rpc("get_channel_by_instance", { p_instance_id: instanceId })
       .single();
+    
+    // Mapear resultado para formato esperado
+    const channelRow = channelData as {
+      id: string;
+      name: string;
+      instance_id: string;
+      department_id: string | null;
+      provider_code: string;
+      provider_base_url: string;
+      provider_admin_token: string;
+    } | null;
+    
+    const channel = channelRow ? {
+      id: channelRow.id,
+      name: channelRow.name,
+      instance_id: channelRow.instance_id,
+      department_id: channelRow.department_id,
+      provider: {
+        code: channelRow.provider_code,
+        base_url: channelRow.provider_base_url,
+        admin_token: channelRow.provider_admin_token
+      }
+    } : null;
 
     if (channelError || !channel) {
       console.log(`[Webhook] Channel not found for instance: ${instanceId}`);
