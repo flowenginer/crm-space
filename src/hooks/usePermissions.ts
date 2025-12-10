@@ -139,6 +139,7 @@ export function usePermissions() {
     closeConversations: () => hasPermission('conversations', 'close'),
     viewAllConversations: () => hasPermission('conversations', 'view_all'),
     viewUnassignedConversations: () => hasPermission('conversations', 'view_unassigned'),
+    viewPendingConversations: () => hasPermission('conversations', 'view_pending'),
     
     // Deals
     createDeals: () => hasPermission('deals', 'create'),

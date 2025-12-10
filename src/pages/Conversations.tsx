@@ -1278,13 +1278,23 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   // Permissão para ver conversas não atribuídas (admins, supervisores ou com permissão específica)
   const canViewUnassigned = canAccessAllConversations || hasPermission('conversations', 'view_unassigned');
   
-  // Filtros disponíveis baseados na permissão
+  // Permissão para ver conversas pendentes do departamento
+  const canViewPending = canAccessAllConversations || hasPermission('conversations', 'view_pending');
+  
+  // Filtros disponíveis baseados nas permissões
   const availableQuickFilters = useMemo(() => {
-    if (canViewUnassigned) {
-      return ['all', 'pinned', 'mine', 'pending', 'unassigned'] as const;
+    const filters: ('all' | 'pinned' | 'mine' | 'pending' | 'unassigned')[] = ['all', 'pinned', 'mine'];
+    
+    if (canViewPending) {
+      filters.push('pending');
     }
-    return ['all', 'pinned', 'mine', 'pending'] as const;
-  }, [canViewUnassigned]);
+    
+    if (canViewUnassigned) {
+      filters.push('unassigned');
+    }
+    
+    return filters;
+  }, [canViewPending, canViewUnassigned]);
 
   // Modal de solicitação de acesso
   const [showContactRequestModal, setShowContactRequestModal] = useState(false);

@@ -77,6 +77,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
       { key: 'conversations.view', name: 'Ver Conversas', description: 'Visualizar suas conversas' },
       { key: 'conversations.view_all', name: 'Ver Todas as Conversas', description: 'Ver conversas de todos os atendentes' },
       { key: 'conversations.view_unassigned', name: 'Ver Não Atribuídas', description: 'Visualizar conversas não atribuídas' },
+      { key: 'conversations.view_pending', name: 'Ver Pendentes do Departamento', description: 'Visualizar conversas pendentes de atribuição no departamento' },
       { key: 'conversations.create', name: 'Iniciar Conversa', description: 'Iniciar nova conversa com contato' },
       { key: 'conversations.respond', name: 'Responder Mensagens', description: 'Enviar mensagens nas conversas' },
       { key: 'conversations.transfer', name: 'Transferir Conversa', description: 'Transferir para outro atendente/departamento' },
