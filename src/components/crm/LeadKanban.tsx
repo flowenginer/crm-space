@@ -50,7 +50,7 @@ import { cn } from '@/lib/utils';
 import {
   useLeadStatuses,
   useLeadStatusSummary,
-  useContactsByLeadStatus,
+  useAllKanbanContacts,
   useUpdateContactLeadStatus,
   useCreateLeadStatus,
   useDeleteLeadStatus,
@@ -80,6 +80,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
 
   const { data: leadStatuses, isLoading: statusesLoading } = useLeadStatuses();
   const { data: summaryMap, isLoading: summaryLoading } = useLeadStatusSummary();
+  const { data: allContacts, isLoading: contactsLoading } = useAllKanbanContacts(20);
   const updateLeadStatus = useUpdateContactLeadStatus();
 
   const sensors = useSensors(
@@ -157,7 +158,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
     }
   };
 
-  const isLoading = statusesLoading || summaryLoading;
+  const isLoading = statusesLoading || summaryLoading || contactsLoading;
 
   // Get summary for "no status"
   const noStatusSummary = summaryMap?.['__no_status__'];
@@ -189,6 +190,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
                 statusKey="__no_status__"
                 count={noStatusSummary.contact_count}
                 totalValue={noStatusSummary.total_value}
+                contacts={allContacts?.['__no_status__'] || []}
                 onOpenConversation={handleOpenConversation}
                 canDelete={false}
                 searchQuery={searchQuery}
@@ -204,6 +206,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
                   statusKey={status.name}
                   count={summary?.contact_count || 0}
                   totalValue={summary?.total_value || 0}
+                  contacts={allContacts?.[status.name] || []}
                   onOpenConversation={handleOpenConversation}
                   canDelete={true}
                   searchQuery={searchQuery}
@@ -238,14 +241,13 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
   );
 }
 
-// Kanban Column Component - Now loads its own contacts
-const CONTACTS_LIMIT = 20;
-
+// Kanban Column Component - Now receives contacts from parent
 function LeadKanbanColumn({
   status,
   statusKey,
   count,
   totalValue,
+  contacts,
   onOpenConversation,
   canDelete,
   searchQuery,
@@ -254,18 +256,15 @@ function LeadKanbanColumn({
   statusKey: string;
   count: number;
   totalValue: number;
+  contacts: ContactForKanban[];
   onOpenConversation: (contact: ContactForKanban) => void;
   canDelete: boolean;
   searchQuery: string;
 }) {
-  const [showAll, setShowAll] = useState(false);
   const { setNodeRef } = useSortable({ id: status.id });
   const deleteStatus = useDeleteLeadStatus();
 
-  // Load contacts for this specific status
-  const { data: contacts, isLoading } = useContactsByLeadStatus(statusKey, showAll ? 100 : CONTACTS_LIMIT);
-
-  // Filter contacts by search query (client-side for loaded contacts)
+  // Filter contacts by search query (client-side)
   const filteredContacts = useMemo(() => {
     if (!contacts) return [];
     if (!searchQuery) return contacts;
@@ -297,7 +296,7 @@ function LeadKanbanColumn({
   };
 
   const visibleContacts = filteredContacts;
-  const hasMore = count > filteredContacts.length && !showAll;
+  const hasMore = count > filteredContacts.length;
 
   return (
     <div ref={setNodeRef} className="flex-shrink-0 w-72">
@@ -330,11 +329,9 @@ function LeadKanbanColumn({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Real count from database */}
           <span className="text-xs text-gray-700 font-medium bg-white/50 px-1.5 py-0.5 rounded">
             👤 {count.toLocaleString('pt-BR')}
           </span>
-          {/* Real value from database */}
           <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-800 px-1.5 py-0.5 rounded flex items-center gap-0.5">
             <DollarSign size={10} />
             R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -344,44 +341,26 @@ function LeadKanbanColumn({
 
       <div className="bg-muted/30 rounded-b-2xl border border-t-0 border-border max-h-[400px] overflow-y-auto">
         <div className="p-3 space-y-2">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <>
-              <SortableContext items={visibleContacts.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-                {visibleContacts.map((contact) => (
-                  <ContactCard
-                    key={contact.id}
-                    contact={contact}
-                    onClick={() => onOpenConversation(contact)}
-                  />
-                ))}
-              </SortableContext>
-              
-              {/* Ver mais button */}
-              {hasMore && (
-                <button
-                  onClick={() => setShowAll(true)}
-                  className="w-full py-2 text-xs text-primary hover:text-primary/80 font-medium transition-colors flex items-center justify-center gap-1"
-                >
-                  <Plus size={12} />
-                  Ver mais ({count - filteredContacts.length} restantes)
-                </button>
-              )}
-              
-              {/* Show fewer button */}
-              {showAll && count > CONTACTS_LIMIT && (
-                <button
-                  onClick={() => setShowAll(false)}
-                  className="w-full py-2 text-xs text-muted-foreground hover:text-foreground font-medium transition-colors flex items-center justify-center gap-1"
-                >
-                  <X size={12} />
-                  Ver menos
-                </button>
-              )}
-            </>
+          <SortableContext items={visibleContacts.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+            {visibleContacts.map((contact) => (
+              <ContactCard
+                key={contact.id}
+                contact={contact}
+                onClick={() => onOpenConversation(contact)}
+              />
+            ))}
+          </SortableContext>
+          
+          {visibleContacts.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-4">
+              Nenhum contato
+            </p>
+          )}
+          
+          {hasMore && (
+            <p className="text-xs text-muted-foreground text-center py-2">
+              +{count - filteredContacts.length} contatos
+            </p>
           )}
         </div>
       </div>

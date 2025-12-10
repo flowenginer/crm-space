@@ -144,85 +144,60 @@ export function useDeleteLeadStatus() {
   });
 }
 
-// Helper to check if user can view all data (admin/supervisor)
-async function canViewAllData(): Promise<{ canViewAll: boolean; userId: string | null }> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { canViewAll: false, userId: null };
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  const canViewAll = profile?.role === 'admin' || profile?.role === 'supervisor';
-  return { canViewAll, userId: user.id };
-}
-
-// Fetch contacts for a specific lead status with limit (filtered by user permission)
-// Somente retorna contatos que têm pelo menos uma conversa ativa (open/pending)
-export function useContactsByLeadStatus(statusName?: string | null, limit = 20) {
+// NEW: Optimized hook to fetch ALL kanban contacts at once
+export function useAllKanbanContacts(limitPerStatus = 20) {
   return useQuery({
-    queryKey: ['contacts-for-kanban', statusName, limit],
+    queryKey: ['all-kanban-contacts', limitPerStatus],
     queryFn: async () => {
-      const { canViewAll, userId } = await canViewAllData();
-
-      // Primeiro buscar IDs de contatos com conversas ativas
-      let conversationsQuery = supabase
-        .from('conversations')
-        .select('contact_id')
-        .in('status', ['open', 'pending']);
+      const { data: { user } } = await supabase.auth.getUser();
       
-      const { data: activeConversations, error: convError } = await conversationsQuery;
-      if (convError) throw convError;
+      const { data, error } = await supabase.rpc('get_kanban_contacts_optimized', {
+        _user_id: user?.id,
+        _limit_per_status: limitPerStatus
+      });
       
-      // Extrair IDs únicos de contatos com conversas ativas
-      const activeContactIds = [...new Set(activeConversations?.map(c => c.contact_id) || [])];
-      
-      // Se não há contatos com conversas ativas, retornar array vazio
-      if (activeContactIds.length === 0) {
-        return [] as ContactForKanban[];
-      }
-
-      let query = supabase
-        .from('contacts')
-        .select(`
-          id,
-          full_name,
-          phone,
-          email,
-          avatar_url,
-          lead_status,
-          assigned_to,
-          updated_at,
-          negotiated_value,
-          assignee:profiles!contacts_assigned_to_fkey(
-            id,
-            full_name,
-            avatar_url
-          )
-        `)
-        .in('id', activeContactIds) // Só contatos com conversas ativas
-        .order('updated_at', { ascending: false })
-        .limit(limit);
-
-      // Filter by assigned_to for non-admin users
-      if (!canViewAll && userId) {
-        query = query.eq('assigned_to', userId);
-      }
-
-      // Handle the special "__no_status__" case
-      if (statusName === '__no_status__') {
-        query = query.is('lead_status', null);
-      } else if (statusName) {
-        query = query.eq('lead_status', statusName);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
-      return data as ContactForKanban[];
+      
+      // Group contacts by lead_status
+      const grouped: Record<string, ContactForKanban[]> = {};
+      
+      (data || []).forEach((row: {
+        contact_id: string;
+        full_name: string;
+        phone: string;
+        email: string | null;
+        avatar_url: string | null;
+        lead_status: string;
+        assigned_to: string | null;
+        updated_at: string;
+        negotiated_value: number | null;
+        assignee_id: string | null;
+        assignee_name: string | null;
+        assignee_avatar: string | null;
+      }) => {
+        const status = row.lead_status || '__no_status__';
+        if (!grouped[status]) grouped[status] = [];
+        
+        grouped[status].push({
+          id: row.contact_id,
+          full_name: row.full_name,
+          phone: row.phone,
+          email: row.email,
+          avatar_url: row.avatar_url,
+          lead_status: row.lead_status === '__no_status__' ? null : row.lead_status,
+          assigned_to: row.assigned_to,
+          updated_at: row.updated_at,
+          negotiated_value: row.negotiated_value,
+          assignee: row.assignee_id ? {
+            id: row.assignee_id,
+            full_name: row.assignee_name,
+            avatar_url: row.assignee_avatar
+          } : null
+        });
+      });
+      
+      return grouped;
     },
-    enabled: statusName !== undefined,
     staleTime: 30000,
   });
 }
@@ -236,7 +211,7 @@ export function useUpdateContactLeadStatus() {
       const { error } = await supabase
         .from('contacts')
         .update({ 
-          lead_status: leadStatus,
+          lead_status: leadStatus || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', contactId);
@@ -244,7 +219,7 @@ export function useUpdateContactLeadStatus() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
+      queryClient.invalidateQueries({ queryKey: ['all-kanban-contacts'] });
       queryClient.invalidateQueries({ queryKey: ['lead-status-summary'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-details'] });
