@@ -97,11 +97,11 @@ export interface LeadJourneyMetrics {
   conversionRate: number;
 }
 
-export function useLeadJourneyMetrics(filters: DashboardFilters) {
+export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string) {
   const { data: conversionStatusNames = [] } = useConversionStatusNames();
 
   return useQuery({
-    queryKey: ['lead_journey_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames],
+    queryKey: ['lead_journey_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames, origin],
     queryFn: async (): Promise<LeadJourneyMetrics> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
@@ -112,6 +112,7 @@ export function useLeadJourneyMetrics(filters: DashboardFilters) {
         p_agent_id: filters.agentId || null,
         p_department_id: filters.departmentId || null,
         p_conversion_status_names: conversionStatusNames,
+        p_origin: origin || null,
       });
 
       if (error) {
