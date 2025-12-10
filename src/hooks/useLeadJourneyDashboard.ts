@@ -29,11 +29,11 @@ export interface LeadOriginData {
 
 const ORIGIN_CONFIG: Record<string, { label: string; color: string }> = {
   meta_ads: { label: 'Meta Ads', color: '#1877F2' },
-  linktree: { label: 'Linktree', color: '#39E09B' },
-  site: { label: 'Site', color: '#F59E0B' },
+  linktree: { label: 'Orgânico Linktree', color: '#39E09B' },
+  site: { label: 'Orgânico Site', color: '#F59E0B' },
   referral: { label: 'Indicação', color: '#EC4899' },
   manual: { label: 'Manual', color: '#8B5CF6' },
-  organic_unknown: { label: 'Orgânico (Outros)', color: '#6B7280' },
+  organic_unknown: { label: 'Orgânico Outros', color: '#6B7280' },
   other: { label: 'Outros', color: '#94A3B8' },
 };
 
