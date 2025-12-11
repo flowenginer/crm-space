@@ -118,14 +118,14 @@ export function OriginBreakdownChart({ data, isLoading, selectedOrigin, onOrigin
         )}
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" height={280}>
           <PieChart>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={45}
-              outerRadius={75}
+              innerRadius={70}
+              outerRadius={120}
               paddingAngle={3}
               dataKey="total"
               nameKey="label"
