@@ -24,6 +24,7 @@ import {
   Workflow,
   Link2,
   GitPullRequest,
+  MessagesSquare,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -35,6 +36,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { usePendingRequestsCount, useContactRequestsRealtime } from '@/hooks/useContactRequests';
+import { useInternalChatUnreadCount } from '@/hooks/useInternalChat';
 
 
 interface NavItem {
@@ -52,6 +54,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard, permission: 'dashboard.view' },
   { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.view' },
+  { title: 'Chat Interno', href: '/internal-chat', icon: MessagesSquare },
   { title: 'Requisições', href: '/conversations/requests', icon: GitPullRequest, permission: 'conversations.requests' },
   { title: 'Ao Vivo', href: '/ao-vivo', icon: Radio, permission: 'live.view' },
   { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.view' },
@@ -84,6 +87,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const isDark = theme === 'dark';
   const { hasPermission, isAdmin, role: userRole, isFullyLoaded } = usePermissions();
   const { data: pendingRequestsCount = 0 } = usePendingRequestsCount();
+  const { data: internalChatUnreadCount = 0 } = useInternalChatUnreadCount();
   
   // Ativar listener de realtime para requisições
   useContactRequestsRealtime();
@@ -265,6 +269,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             const showBadge = item.href === '/agendamentos' && pendingCount && pendingCount > 0;
             const showLiveBadge = item.href === '/ao-vivo';
             const showRequestsBadge = item.href === '/conversations/requests' && pendingRequestsCount > 0;
+            const showInternalChatBadge = item.href === '/internal-chat' && internalChatUnreadCount > 0;
 
             return (
               <NavLink
@@ -301,6 +306,11 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                     {showRequestsBadge && (
                       <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-white">
                         {pendingRequestsCount > 99 ? '99+' : pendingRequestsCount}
+                      </span>
+                    )}
+                    {showInternalChatBadge && (
+                      <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                        {internalChatUnreadCount > 99 ? '99+' : internalChatUnreadCount}
                       </span>
                     )}
                     {showLiveBadge && (
