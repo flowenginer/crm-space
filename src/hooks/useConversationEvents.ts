@@ -154,11 +154,15 @@ export function useTransferConversation() {
       toDepartmentId,
       note,
     }: TransferConversationParams) => {
+      console.log('[Transfer] Starting transfer:', { conversationId, toUserId, toDepartmentId, note });
+      
       // Obter dados do usuário atual ANTES da transferência
       const { data: { user } } = await supabase.auth.getUser();
       const fromUserId = user?.id;
+      console.log('[Transfer] Current user:', fromUserId);
 
       // Usar a função RPC SECURITY DEFINER para transferência
+      console.log('[Transfer] Calling RPC transfer_conversation...');
       const { data, error } = await supabase.rpc('transfer_conversation', {
         p_conversation_id: conversationId,
         p_to_user_id: toUserId || null,
@@ -166,9 +170,19 @@ export function useTransferConversation() {
         p_note: note || null,
       });
 
+      console.log('[Transfer] RPC result:', { data, error });
+
       if (error) {
         console.error('[Transfer] RPC error:', error);
         throw new Error(error.message || 'Falha ao transferir conversa');
+      }
+
+      // Verificar se a função retornou JSONB com sucesso
+      if (data && typeof data === 'object' && 'success' in data) {
+        if (!data.success) {
+          console.error('[Transfer] RPC returned failure:', data);
+          throw new Error(data.message || 'Falha ao transferir conversa');
+        }
       }
 
       // BROADCAST: Enviar notificação instantânea para o destinatário
