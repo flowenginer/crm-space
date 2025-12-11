@@ -15,6 +15,7 @@ import {
   Loader2,
   Lock,
   ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -87,6 +88,7 @@ export function ConversationPreviewDialog({
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // Fetch conversation details
@@ -144,21 +146,38 @@ export function ConversationPreviewDialog({
     if (messages.length > 0 && scrollRef.current) {
       const scrollElement = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
+        // Immediate scroll
         scrollElement.scrollTop = scrollElement.scrollHeight;
+        // Retry after short delays for content still loading
+        setTimeout(() => {
+          scrollElement.scrollTop = scrollElement.scrollHeight;
+        }, 150);
+        setTimeout(() => {
+          scrollElement.scrollTop = scrollElement.scrollHeight;
+        }, 400);
       }
     }
   }, [messages]);
 
-  // Handle scroll to show "scroll to top" button
+  // Handle scroll to show "scroll to top/bottom" buttons
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.target as HTMLDivElement;
+    const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
     setShowScrollTop(target.scrollTop > 300);
+    setShowScrollBottom(distanceFromBottom > 200);
   };
 
   const scrollToTop = () => {
     const scrollElement = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
     if (scrollElement) {
       scrollElement.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const scrollToBottom = () => {
+    const scrollElement = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (scrollElement) {
+      scrollElement.scrollTo({ top: scrollElement.scrollHeight, behavior: 'smooth' });
     }
   };
 
@@ -394,9 +413,21 @@ export function ConversationPreviewDialog({
             {showScrollTop && (
               <button
                 onClick={scrollToTop}
-                className="absolute top-4 left-1/2 -translate-x-1/2 p-2 bg-card border border-border rounded-full shadow-lg hover:bg-muted transition-colors"
+                className="absolute top-4 left-1/2 -translate-x-1/2 p-2 bg-card border border-border rounded-full shadow-lg hover:bg-muted transition-colors z-10"
+                title="Ir para o início"
               >
                 <ChevronUp size={16} />
+              </button>
+            )}
+
+            {/* Scroll to bottom button */}
+            {showScrollBottom && (
+              <button
+                onClick={scrollToBottom}
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 p-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-colors z-10"
+                title="Ir para o final"
+              >
+                <ChevronDown size={16} />
               </button>
             )}
           </div>

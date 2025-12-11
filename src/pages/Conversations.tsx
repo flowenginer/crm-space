@@ -18,6 +18,7 @@ import {
   X,
   Mail,
   ChevronLeft,
+  ChevronDown,
   Loader2,
   Calendar,
   StickyNote,
@@ -1828,8 +1829,30 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const prevMessagesLengthRef = useRef(0);
   const isLoadingOlderRef = useRef(false);
   
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // State to show/hide scroll to bottom button
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+
+  const scrollToBottom = useCallback((force?: boolean) => {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      // Fallback to scrollIntoView
+      messagesEndRef.current?.scrollIntoView({ behavior: force ? 'auto' : 'smooth' });
+      return;
+    }
+    
+    const doScroll = () => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: force ? 'auto' : 'smooth'
+      });
+    };
+    
+    // Immediate scroll
+    doScroll();
+    
+    // Retry after short delay (for content still rendering)
+    setTimeout(doScroll, 150);
+    setTimeout(doScroll, 400);
   }, []);
 
   useEffect(() => {
@@ -1864,6 +1887,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   // Infinite scroll handler for messages (load older on scroll up)
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.target as HTMLDivElement;
+    
+    // Show/hide scroll to bottom button based on distance from bottom
+    const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    setShowScrollToBottom(distanceFromBottom > 200);
     
     // Load more when near top (within 100px)
     if (target.scrollTop < 100 && hasMoreMessages && !isFetchingMoreMessages) {
@@ -3823,6 +3850,17 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   })}
                   <div ref={messagesEndRef} />
                 </>
+              )}
+              
+              {/* Floating Scroll to Bottom Button */}
+              {showScrollToBottom && (
+                <button
+                  onClick={() => scrollToBottom()}
+                  className="absolute bottom-4 right-4 z-40 p-3 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-all hover:scale-105 active:scale-95"
+                  title="Ir para o final"
+                >
+                  <ChevronDown size={20} />
+                </button>
               )}
             </div>
 
