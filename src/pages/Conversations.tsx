@@ -104,6 +104,7 @@ import { useTags, useAddTagToContact, useRemoveTagFromContact, useCreateTag, Tag
 import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
+import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds } from '@/hooks/useSharedConversations';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/store/userStore';
@@ -1186,7 +1187,7 @@ export default function Conversations() {
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
   const [sortFilter, setSortFilter] = useState<SortFilter>('newest');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned' | 'pending'>('all');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned' | 'pending' | 'shared'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1283,7 +1284,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   
   // Filtros disponíveis baseados nas permissões
   const availableQuickFilters = useMemo(() => {
-    const filters: ('all' | 'pinned' | 'mine' | 'pending' | 'unassigned')[] = ['all', 'pinned', 'mine'];
+    const filters: ('all' | 'pinned' | 'shared' | 'mine' | 'pending' | 'unassigned')[] = ['all', 'pinned', 'shared', 'mine'];
     
     if (canViewPending) {
       filters.push('pending');
@@ -1312,7 +1313,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
   // Build filters for server-side filtering and sorting
   const conversationFilters: ConversationFilters = useMemo(() => ({
-    assignment: quickFilter === 'pinned' ? 'all' : quickFilter === 'pending' ? 'pending' : quickFilter,
+    assignment: (quickFilter === 'pinned' || quickFilter === 'shared') ? 'all' : quickFilter === 'pending' ? 'pending' : quickFilter,
     sortBy: (sortFilter === 'newest' || sortFilter === 'oldest' || sortFilter === 'unread') ? sortFilter : 'newest',
     channelId: channelFilter !== 'all' ? channelFilter : undefined,
     isUnread: sortFilter === 'unread' ? true : undefined,
@@ -1408,6 +1409,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const { data: channels = [] } = useChannels();
   const { data: pinnedConversations = [] } = usePinnedConversations();
   const { isPinned, togglePin } = useTogglePinConversation();
+  const { data: sharedConversations = [] } = useSharedConversations();
+  const { data: sharedCounts } = useSharedConversationCounts();
+  const sharedConversationIds = useSharedConversationIds();
   const sendMessage = useSendMessage();
   const deleteMessage = useDeleteMessage();
   const editMessage = useEditMessage();
@@ -1870,6 +1874,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           // On "Fixadas" tab: only show pinned conversations
           // Even selected conversation must be pinned to appear here
           if (!isPinnedConv) return false;
+        } else if (quickFilter === 'shared') {
+          // On "Compartilhadas" tab: only show shared conversations
+          const sharedIds = new Set(sharedConversationIds);
+          if (!sharedIds.has(conv.id)) return false;
         } else {
           // On other tabs: show selected conversation regardless of pinned status
           if (selectedConversationId && conv.id === selectedConversationId) {
@@ -1911,7 +1919,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       });
     
     return filtered;
-  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery]);
+  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery, sharedConversationIds]);
 
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
@@ -1924,9 +1932,15 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     ).length;
   }, [conversations, pinnedConversations, quickFilter, selectedConversationId]);
 
+  // Calculate unread count for shared conversations (for notification badge)
+  const sharedUnreadCount = useMemo(() => {
+    return sharedCounts?.unread ?? 0;
+  }, [sharedCounts]);
+
   // Calculate filter counts - USE REAL COUNTS FROM DATABASE
   const filterCounts = useMemo(() => {
     const pinnedCount = pinnedConversations.length;
+    const sharedCount = sharedCounts?.total ?? 0;
     
     // Count pending conversations (assigned_to = null AND department_id is not null for user's departments)
     const pendingCount = totalCounts?.pending ?? 0;
@@ -1936,6 +1950,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       return { 
         all: (totalCounts?.mine ?? 0) + pinnedCount, // Todas = minhas + fixadas
         pinned: pinnedCount, 
+        shared: sharedCount,
         mine: totalCounts?.mine ?? 0,
         pending: pendingCount,
         unassigned: 0 // Não mostrado, mas evita erro de tipo
@@ -1946,11 +1961,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     return { 
       all: totalCounts?.all ?? conversations.length, 
       pinned: pinnedCount, 
+      shared: sharedCount,
       mine: totalCounts?.mine ?? 0, 
       pending: pendingCount,
       unassigned: totalCounts?.unassigned ?? 0 
     };
-  }, [totalCounts, conversations.length, pinnedConversations, canViewUnassigned]);
+  }, [totalCounts, conversations.length, pinnedConversations, sharedCounts, canViewUnassigned]);
 
   // Calculate date filter counts - USE REAL COUNTS FROM DATABASE
   const dateFilterCounts = useMemo(() => {
@@ -3062,12 +3078,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                     : 'text-muted-foreground hover:bg-muted'
                 )}
               >
-                <span className="text-xs whitespace-nowrap">{filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'mine' ? 'Minhas' : filter === 'pending' ? 'Pendentes' : 'Não atribuídas'}</span>
+                <span className="text-xs whitespace-nowrap">{filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'shared' ? 'Compartilhadas' : filter === 'mine' ? 'Minhas' : filter === 'pending' ? 'Pendentes' : 'Não atribuídas'}</span>
                 <AnimatedCounter value={filterCounts[filter]} className="text-xs opacity-70" />
                 {/* Red notification badge for pinned conversations with unread messages */}
                 {filter === 'pinned' && quickFilter !== 'pinned' && pinnedUnreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
                     {pinnedUnreadCount > 9 ? '9+' : pinnedUnreadCount}
+                  </span>
+                )}
+                {/* Red notification badge for shared conversations with unread messages */}
+                {filter === 'shared' && quickFilter !== 'shared' && sharedUnreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                    {sharedUnreadCount > 9 ? '9+' : sharedUnreadCount}
                   </span>
                 )}
               </button>

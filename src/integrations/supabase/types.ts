@@ -2515,6 +2515,65 @@ export type Database = {
           },
         ]
       }
+      shared_conversations: {
+        Row: {
+          conversation_id: string
+          department_id: string | null
+          id: string
+          note: string | null
+          shared_at: string
+          shared_by: string
+          shared_with: string | null
+        }
+        Insert: {
+          conversation_id: string
+          department_id?: string | null
+          id?: string
+          note?: string | null
+          shared_at?: string
+          shared_by: string
+          shared_with?: string | null
+        }
+        Update: {
+          conversation_id?: string
+          department_id?: string | null
+          id?: string
+          note?: string | null
+          shared_at?: string
+          shared_by?: string
+          shared_with?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shared_conversations_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shared_conversations_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shared_conversations_shared_by_fkey"
+            columns: ["shared_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shared_conversations_shared_with_fkey"
+            columns: ["shared_with"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       space_memory: {
         Row: {
           id: number
@@ -3490,6 +3549,13 @@ export type Database = {
           meta_ads_count: number
           organic_count: number
           other_count: number
+        }[]
+      }
+      get_shared_conversation_count: {
+        Args: { p_user_id: string }
+        Returns: {
+          total: number
+          unread: number
         }[]
       }
       get_status_funnel:
