@@ -9,14 +9,16 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, Users, ArrowUpDown, Percent, RotateCcw, GripVertical, AlertCircle, Check } from 'lucide-react';
+import { Loader2, Users, ArrowUpDown, Percent, RotateCcw, GripVertical, AlertCircle, Check, PauseCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDepartments } from '@/hooks/useDepartments';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   useLeadDistribution,
   useUpdateLeadDistribution,
   useResetDistributionCounters,
   useDepartmentAgents,
+  useToggleAgentDistribution,
   DistributionAgent,
 } from '@/hooks/useLeadDistribution';
 
@@ -25,6 +27,7 @@ export function LeadDistributionSettings() {
   const { data: departments = [], isLoading: loadingDepts } = useDepartments();
   const updateConfig = useUpdateLeadDistribution();
   const resetCounters = useResetDistributionCounters();
+  const toggleAgentDistribution = useToggleAgentDistribution();
 
   const [enabled, setEnabled] = useState(false);
   const [distributionType, setDistributionType] = useState<'sequential' | 'percentage'>('sequential');
@@ -113,10 +116,18 @@ export function LeadDistributionSettings() {
     }
   };
 
-  const handleAgentToggle = (userId: string, isActive: boolean) => {
+  const handleAgentToggle = async (userId: string, isActive: boolean) => {
+    // Update local state
     setAgents(prev => prev.map(a => 
       a.user_id === userId ? { ...a, is_active: isActive } : a
     ));
+    
+    // Sync with profiles.is_available (bidirectional)
+    try {
+      await toggleAgentDistribution.mutateAsync({ userId, isAvailable: isActive });
+    } catch (error) {
+      console.error('Error syncing agent availability:', error);
+    }
   };
 
   const handlePercentageChange = (userId: string, percentage: number) => {
@@ -381,14 +392,34 @@ export function LeadDistributionSettings() {
                               </div>
                             )}
 
-                            {/* Active Toggle */}
-                            <Checkbox
-                              checked={agent.is_active}
-                              onCheckedChange={(checked) => handleAgentToggle(agent.user_id, !!checked)}
-                            />
+                            {/* Active Toggle with Tooltip */}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="relative">
+                                    <Checkbox
+                                      checked={agent.is_active && info.is_available}
+                                      onCheckedChange={(checked) => handleAgentToggle(agent.user_id, !!checked)}
+                                      disabled={toggleAgentDistribution.isPending}
+                                    />
+                                    {!info.is_available && agent.is_active && (
+                                      <PauseCircle className="h-3 w-3 text-amber-500 absolute -top-1 -right-1" />
+                                    )}
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {!info.is_available 
+                                    ? 'Agente pausado no Monitor Ao Vivo' 
+                                    : agent.is_active 
+                                      ? 'Clique para desativar' 
+                                      : 'Clique para ativar'
+                                  }
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
 
                             {/* Avatar */}
-                            <Avatar className="h-8 w-8">
+                            <Avatar className={`h-8 w-8 ${!info.is_available ? 'opacity-50' : ''}`}>
                               <AvatarImage src={info.avatar_url || undefined} />
                               <AvatarFallback className="text-xs">
                                 {info.full_name?.substring(0, 2).toUpperCase()}
@@ -398,14 +429,17 @@ export function LeadDistributionSettings() {
                             {/* Name & Status */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="font-medium truncate">{info.full_name}</span>
-                                {isNext && (
+                                <span className={`font-medium truncate ${!info.is_available ? 'text-muted-foreground' : ''}`}>
+                                  {info.full_name}
+                                </span>
+                                {isNext && info.is_available && (
                                   <Badge variant="default" className="text-[10px] px-1.5 py-0">
                                     Próximo
                                   </Badge>
                                 )}
                                 {!info.is_available && (
-                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500 text-amber-600">
+                                    <PauseCircle className="h-2.5 w-2.5 mr-1" />
                                     Pausado
                                   </Badge>
                                 )}

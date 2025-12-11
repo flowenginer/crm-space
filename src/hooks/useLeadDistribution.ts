@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -133,6 +134,31 @@ export function useResetDistributionCounters() {
 }
 
 export function useDepartmentAgents(departmentId: string | null) {
+  const queryClient = useQueryClient();
+
+  // Real-time subscription for profile availability changes
+  useEffect(() => {
+    if (!departmentId) return;
+
+    const channel = supabase
+      .channel('dept-agents-availability')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles' },
+        (payload) => {
+          // Only invalidate if is_available changed
+          if (payload.old && payload.new && payload.old.is_available !== payload.new.is_available) {
+            queryClient.invalidateQueries({ queryKey: ['department_agents', departmentId] });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [departmentId, queryClient]);
+
   return useQuery({
     queryKey: ['department_agents', departmentId],
     queryFn: async () => {
@@ -147,6 +173,7 @@ export function useDepartmentAgents(departmentId: string | null) {
             full_name,
             is_active,
             is_available,
+            unavailable_until,
             role,
             avatar_url
           )
@@ -166,6 +193,7 @@ export function useDepartmentAgents(departmentId: string | null) {
             id: profile.id,
             full_name: profile.full_name,
             is_available: profile.is_available ?? true,
+            unavailable_until: profile.unavailable_until,
             role: profile.role,
             avatar_url: profile.avatar_url,
           };
@@ -173,5 +201,27 @@ export function useDepartmentAgents(departmentId: string | null) {
     },
     enabled: !!departmentId,
     staleTime: 30000,
+  });
+}
+
+export function useToggleAgentDistribution() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ userId, isAvailable }: { userId: string; isAvailable: boolean }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          is_available: isAvailable,
+          unavailable_until: null // Clear any timer when manually toggling
+        })
+        .eq('id', userId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['department_agents'] });
+      queryClient.invalidateQueries({ queryKey: ['agent_monitor_status'] });
+    },
   });
 }
