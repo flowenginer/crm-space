@@ -2141,30 +2141,58 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
   const handleCloseConversation = () => {
     if (selectedConversationId) {
-      // Remoção otimista do cache para atualização imediata da UI
-      queryClient.setQueryData(
-        ['conversations-paginated', statusFilter, conversationFilters, sortFilter],
+      const conversationIdToClose = selectedConversationId;
+      
+      // 1. Limpar seleção ANTES da remoção para evitar estado inconsistente
+      navigate('/conversations', { replace: true });
+      
+      // 2. Remoção otimista de TODAS as queries de conversas paginadas (usando predicate)
+      queryClient.setQueriesData(
+        { 
+          predicate: (query) => 
+            Array.isArray(query.queryKey) && 
+            query.queryKey[0] === 'conversations-paginated' 
+        },
         (oldData: any) => {
           if (!oldData?.pages) return oldData;
           return {
             ...oldData,
             pages: oldData.pages.map((page: any) => ({
               ...page,
-              data: page.data.filter((c: any) => c.id !== selectedConversationId),
+              conversations: (page.conversations || []).filter(
+                (c: any) => c.id !== conversationIdToClose
+              ),
             })),
           };
         }
       );
       
-      // Atualiza no banco
+      // 3. Também remover de queries não-paginadas
+      queryClient.setQueriesData(
+        { 
+          predicate: (query) => 
+            Array.isArray(query.queryKey) && 
+            query.queryKey[0] === 'conversations' &&
+            query.queryKey[0] !== 'conversations-paginated'
+        },
+        (oldData: any) => {
+          if (!Array.isArray(oldData)) return oldData;
+          return oldData.filter((c: any) => c.id !== conversationIdToClose);
+        }
+      );
+      
+      // 4. Atualiza no banco
       updateConversation.mutate({ 
-        id: selectedConversationId, 
+        id: conversationIdToClose, 
         status: 'closed',
         closed_at: new Date().toISOString(),
       });
       
-      // Limpar seleção e navegar
-      navigate('/conversations', { replace: true });
+      // 5. Invalidar contagens para refletir a mudança
+      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['all-conversation-counts'] });
+      
       toast.success('Conversa fechada');
     }
   };
