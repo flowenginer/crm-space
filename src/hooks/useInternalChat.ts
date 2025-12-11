@@ -305,6 +305,36 @@ export function useMarkThreadAsRead() {
   });
 }
 
+// Hook para deletar mensagem (soft delete)
+export function useDeleteInternalMessage() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ messageId, threadId }: { messageId: string; threadId: string }) => {
+      const { error } = await supabase
+        .from('internal_chat_messages')
+        .update({ 
+          is_deleted: true,
+          deleted_at: new Date().toISOString()
+        })
+        .eq('id', messageId)
+        .eq('sender_id', user!.id); // Só pode deletar próprias mensagens
+
+      if (error) throw error;
+      return { messageId, threadId };
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['internal-chat-messages', variables.threadId] });
+      queryClient.invalidateQueries({ queryKey: ['internal-chat-threads'] });
+      toast.success('Mensagem apagada');
+    },
+    onError: () => {
+      toast.error('Erro ao apagar mensagem');
+    }
+  });
+}
+
 // Hook para realtime de mensagens - OTIMIZADO
 export function useInternalChatRealtime(threadId: string | null) {
   const queryClient = useQueryClient();

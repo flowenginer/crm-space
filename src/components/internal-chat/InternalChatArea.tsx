@@ -109,6 +109,7 @@ export function InternalChatArea({ threadId, otherUserId, onThreadCreated }: Int
                     showAvatar={showAvatar}
                     showDate={showDate}
                     onReply={() => setReplyingTo(message)}
+                    threadId={threadId!}
                   />
                 );
               })}
