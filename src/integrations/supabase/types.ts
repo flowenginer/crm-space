@@ -3682,7 +3682,7 @@ export type Database = {
         Returns: number
       }
       get_kanban_contacts_optimized: {
-        Args: { _limit_per_status?: number; _user_id?: string }
+        Args: { _limit_per_status?: number; _user_id: string }
         Returns: {
           assigned_to: string
           assignee_avatar: string
@@ -3690,11 +3690,13 @@ export type Database = {
           assignee_name: string
           avatar_url: string
           contact_id: string
+          conversation_id: string
           email: string
           full_name: string
           lead_status: string
           negotiated_value: number
           phone: string
+          unread_count: number
           updated_at: string
         }[]
       }
