@@ -46,8 +46,8 @@ export const DocumentPreviewDialog = ({
     onOpenChange(newOpen);
   };
 
-  const isPDF = documentName.toLowerCase().endsWith('.pdf') || 
-                documentUrl.toLowerCase().includes('.pdf');
+  // Use Google Docs Viewer as it handles Content-Disposition headers properly
+  const googleDocsViewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(documentUrl)}&embedded=true`;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -89,7 +89,7 @@ export const DocumentPreviewDialog = ({
           </div>
         </div>
 
-        {/* Document Preview */}
+        {/* Document Preview using Google Docs Viewer */}
         <div className="flex-1 h-[calc(90vh-57px)] bg-muted/30">
           {loadError ? (
             <div className="flex flex-col items-center justify-center h-full gap-4">
@@ -108,30 +108,13 @@ export const DocumentPreviewDialog = ({
                 </Button>
               </div>
             </div>
-          ) : isPDF ? (
+          ) : (
             <iframe
-              src={`${documentUrl}#toolbar=1&navpanes=0`}
+              src={googleDocsViewerUrl}
               className="w-full h-full border-0"
               title={documentName}
               onError={() => setLoadError(true)}
             />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full gap-4">
-              <FileText size={64} className="text-muted-foreground" />
-              <p className="text-muted-foreground text-center">
-                Visualização não disponível para este tipo de arquivo.
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={handleOpenInNewTab}>
-                  <ExternalLink size={16} className="mr-2" />
-                  Abrir em nova aba
-                </Button>
-                <Button onClick={handleDownload}>
-                  <Download size={16} className="mr-2" />
-                  Baixar
-                </Button>
-              </div>
-            </div>
           )}
         </div>
       </DialogContent>
