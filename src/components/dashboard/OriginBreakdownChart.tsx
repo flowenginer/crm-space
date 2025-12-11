@@ -211,10 +211,10 @@ export function OriginBreakdownChart({
           </div>
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-6">
         {/* Layout com grid: pizza à esquerda, painel à direita quando selecionado */}
         <div className={cn(
-          "grid gap-4 transition-all duration-300",
+          "grid gap-4 transition-all duration-300 items-end",
           showAgentPanel ? "grid-cols-2" : "grid-cols-1"
         )}>
           {/* Coluna do Gráfico de Pizza */}

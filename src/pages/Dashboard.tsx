@@ -22,6 +22,7 @@ import { AgentPerformanceTableAdvanced } from '@/components/dashboard/AgentPerfo
 import { LeadAlertsPanel } from '@/components/dashboard/LeadAlertsPanel';
 import { AdvancedFilters } from '@/components/dashboard/AdvancedFilters';
 import { InteractionChart } from '@/components/dashboard/InteractionChart';
+import { DashboardGrid, DashboardCardConfig } from '@/components/dashboard/DashboardGrid';
 
 export default function Dashboard() {
   const { profile } = useAuth();
@@ -66,6 +67,69 @@ export default function Dashboard() {
     return agent?.full_name?.split(' ')[0]; // First name only
   }, [filters.agentId, agents]);
 
+  // Dashboard cards configuration
+  const dashboardCards: DashboardCardConfig[] = useMemo(() => [
+    {
+      id: 'kpi-cards',
+      colSpan: 3,
+      component: <JourneyKPICards metrics={journeyMetrics} isLoading={loadingMetrics} />,
+    },
+    {
+      id: 'origin-breakdown',
+      component: (
+        <OriginBreakdownChart 
+          data={originData} 
+          isLoading={loadingOrigin}
+          selectedOrigin={selectedOrigin}
+          onOriginClick={setSelectedOrigin}
+          dateFrom={filters.dateFrom}
+          dateTo={filters.dateTo}
+        />
+      ),
+    },
+    {
+      id: 'status-funnel',
+      component: (
+        <StatusFunnelRealtime 
+          data={statusFunnelRealtime} 
+          isLoading={loadingFunnelRealtime} 
+        />
+      ),
+    },
+    {
+      id: 'interaction-chart',
+      colSpan: 3,
+      component: (
+        <InteractionChart 
+          data={interactionData} 
+          isLoading={loadingInteraction}
+          agentName={selectedAgentName}
+        />
+      ),
+    },
+    {
+      id: 'status-duration',
+      colSpan: 3,
+      component: <StatusDurationChart data={statusFunnelRealtime} isLoading={loadingFunnelRealtime} />,
+    },
+    {
+      id: 'agent-performance',
+      colSpan: 2,
+      component: <AgentPerformanceTableAdvanced data={agentPerformance} isLoading={loadingAgents} />,
+    },
+    {
+      id: 'lead-alerts',
+      component: <LeadAlertsPanel data={leadAlerts} isLoading={loadingAlerts} />,
+    },
+  ], [
+    journeyMetrics, loadingMetrics,
+    originData, loadingOrigin, selectedOrigin, filters.dateFrom, filters.dateTo,
+    statusFunnelRealtime, loadingFunnelRealtime,
+    interactionData, loadingInteraction, selectedAgentName,
+    agentPerformance, loadingAgents,
+    leadAlerts, loadingAlerts
+  ]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -88,51 +152,11 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* KPI Cards */}
-      <div className="animate-fade-in">
-        <JourneyKPICards metrics={journeyMetrics} isLoading={loadingMetrics} />
-      </div>
-
-      {/* Charts Row 1: Origin Breakdown + Status Funnel side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
-        <OriginBreakdownChart 
-          data={originData} 
-          isLoading={loadingOrigin}
-          selectedOrigin={selectedOrigin}
-          onOriginClick={setSelectedOrigin}
-          dateFrom={filters.dateFrom}
-          dateTo={filters.dateTo}
-        />
-        <StatusFunnelRealtime 
-          data={statusFunnelRealtime} 
-          isLoading={loadingFunnelRealtime} 
-        />
-      </div>
-
-      {/* Charts Row 3: Interaction Timeline */}
-      <div className="animate-fade-in">
-        <InteractionChart 
-          data={interactionData} 
-          isLoading={loadingInteraction}
-          agentName={selectedAgentName}
-        />
-      </div>
-
-      {/* Charts Row 4: Status Duration */}
-      <div className="animate-fade-in">
-        <StatusDurationChart data={statusFunnelRealtime} isLoading={loadingFunnelRealtime} />
-      </div>
-
-      {/* Bottom Section: Agent Performance + Lead Alerts */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 animate-slide-up">
-          <AgentPerformanceTableAdvanced data={agentPerformance} isLoading={loadingAgents} />
-        </div>
-        
-        <div className="xl:col-span-1 animate-slide-up" style={{ animationDelay: '100ms' }}>
-          <LeadAlertsPanel data={leadAlerts} isLoading={loadingAlerts} />
-        </div>
-      </div>
+      {/* Draggable Dashboard Grid */}
+      <DashboardGrid 
+        cards={dashboardCards}
+        className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6"
+      />
     </div>
   );
 }
