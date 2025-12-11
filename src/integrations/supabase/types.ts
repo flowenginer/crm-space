@@ -313,6 +313,11 @@ export type Database = {
           created_at: string | null
           email: string | null
           id: string
+          lead_distribution_agents: Json | null
+          lead_distribution_department_id: string | null
+          lead_distribution_enabled: boolean | null
+          lead_distribution_position: number | null
+          lead_distribution_type: string | null
           logo_url: string | null
           max_conversations_per_agent: number | null
           owner_agent_enabled: boolean | null
@@ -339,6 +344,11 @@ export type Database = {
           created_at?: string | null
           email?: string | null
           id?: string
+          lead_distribution_agents?: Json | null
+          lead_distribution_department_id?: string | null
+          lead_distribution_enabled?: boolean | null
+          lead_distribution_position?: number | null
+          lead_distribution_type?: string | null
           logo_url?: string | null
           max_conversations_per_agent?: number | null
           owner_agent_enabled?: boolean | null
@@ -365,6 +375,11 @@ export type Database = {
           created_at?: string | null
           email?: string | null
           id?: string
+          lead_distribution_agents?: Json | null
+          lead_distribution_department_id?: string | null
+          lead_distribution_enabled?: boolean | null
+          lead_distribution_position?: number | null
+          lead_distribution_type?: string | null
           logo_url?: string | null
           max_conversations_per_agent?: number | null
           owner_agent_enabled?: boolean | null
@@ -381,7 +396,15 @@ export type Database = {
           website?: string | null
           zip_code?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "company_settings_lead_distribution_department_id_fkey"
+            columns: ["lead_distribution_department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       contact_requests: {
         Row: {
