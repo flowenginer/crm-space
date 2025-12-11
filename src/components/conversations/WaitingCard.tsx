@@ -128,7 +128,7 @@ export function WaitingCard() {
 
       {/* Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-2xl md:max-w-3xl">
+        <DialogContent className="w-[95vw] max-w-4xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-primary" />
@@ -153,67 +153,67 @@ export function WaitingCard() {
                   return (
                     <div
                       key={conv.conversation_id}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
+                      className="flex items-center gap-2 p-2 sm:p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
                     >
                       {/* Indicator */}
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${getIndicatorColor(level)} ${level === 'critical' ? 'animate-pulse' : ''}`} />
+                      <div className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full flex-shrink-0 ${getIndicatorColor(level)} ${level === 'critical' ? 'animate-pulse' : ''}`} />
 
                       {/* Avatar */}
-                      <Avatar className="h-10 w-10 flex-shrink-0">
+                      <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
                         <AvatarImage src={conv.contact_avatar || undefined} />
-                        <AvatarFallback className="bg-primary/10 text-primary">
-                          {conv.contact_name?.charAt(0)?.toUpperCase() || <User size={16} />}
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
+                          {conv.contact_name?.charAt(0)?.toUpperCase() || <User size={14} />}
                         </AvatarFallback>
                       </Avatar>
 
-                      {/* Content */}
-                      <div className="flex-1 min-w-0 overflow-hidden">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium text-sm truncate">
+                      {/* Content - com largura máxima para garantir espaço dos botões */}
+                      <div className="flex-1 min-w-0 max-w-[calc(100%-180px)]">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-xs sm:text-sm truncate">
                             {conv.contact_name || 'Sem nome'}
                           </span>
-                          <span className={`text-xs flex-shrink-0 ${getTextColor(level)}`}>
+                          <span className={`text-[10px] sm:text-xs flex-shrink-0 ${getTextColor(level)}`}>
                             {formatTime(conv.waiting_minutes)}
                           </span>
                         </div>
                         {conv.last_message_preview && (
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          <p className="text-[10px] sm:text-xs text-muted-foreground truncate mt-0.5">
                             {conv.last_message_preview}
                           </p>
                         )}
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
                           {conv.contact_phone}
                         </p>
                       </div>
 
-                      {/* Action Buttons */}
-                      <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                      {/* Action Buttons - SEMPRE visíveis com espaço garantido */}
+                      <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0 ml-auto">
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-8 w-8"
+                          className="h-7 w-7 sm:h-8 sm:w-8"
                           onClick={() => setPreviewConversationId(conv.conversation_id)}
                           title="Visualizar"
                         >
-                          <Eye size={16} />
+                          <Eye size={14} className="sm:w-4 sm:h-4" />
                         </Button>
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-8 w-8"
+                          className="h-7 w-7 sm:h-8 sm:w-8"
                           onClick={() => handleTransfer(conv)}
                           title="Transferir"
                         >
-                          <ArrowRightLeft size={16} />
+                          <ArrowRightLeft size={14} className="sm:w-4 sm:h-4" />
                         </Button>
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-8 w-8"
+                          className="h-7 w-7 sm:h-8 sm:w-8"
                           onClick={() => handleOpenConversation(conv.conversation_id)}
                           title="Abrir"
                         >
-                          <ExternalLink size={16} />
+                          <ExternalLink size={14} className="sm:w-4 sm:h-4" />
                         </Button>
                       </div>
                     </div>
