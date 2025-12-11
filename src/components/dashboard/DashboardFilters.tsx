@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Calendar, ChevronDown, RotateCcw, User, Building2 } from 'lucide-react';
+import { Calendar, ChevronDown, RotateCcw, User, Building2, History, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import {
   Select,
   SelectContent,
@@ -36,6 +38,33 @@ const presetRanges = [
 
 export function DashboardFilters({ filters, onFiltersChange, agents, departments }: DashboardFiltersProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [isFixingHistorical, setIsFixingHistorical] = useState(false);
+
+  const handleFixHistorical = async () => {
+    setIsFixingHistorical(true);
+    try {
+      const { data, error } = await supabase.rpc('fix_historical_origin_detection');
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const result = data[0];
+        const count = result.updated_count || 0;
+        if (count > 0) {
+          toast.success(`${count} conversas foram corrigidas!`);
+        } else {
+          toast.info('Nenhuma conversa precisava de correção');
+        }
+      } else {
+        toast.info('Nenhuma conversa precisava de correção');
+      }
+    } catch (error) {
+      console.error('Error fixing historical:', error);
+      toast.error('Erro ao corrigir dados históricos');
+    } finally {
+      setIsFixingHistorical(false);
+    }
+  };
 
   const handlePresetClick = (getValue: () => { from: Date; to: Date }) => {
     const range = getValue();
@@ -146,6 +175,21 @@ export function DashboardFilters({ filters, onFiltersChange, agents, departments
       >
         <RotateCcw className="h-4 w-4 mr-2" />
         Restaurar
+      </Button>
+
+      {/* Fix Historical Button */}
+      <Button 
+        variant="outline" 
+        className="h-10 px-4 rounded-xl border-border/50 bg-card hover:bg-muted transition-all ml-auto"
+        onClick={handleFixHistorical}
+        disabled={isFixingHistorical}
+      >
+        {isFixingHistorical ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : (
+          <History className="h-4 w-4 mr-2" />
+        )}
+        Corrigir Histórico
       </Button>
     </div>
   );
