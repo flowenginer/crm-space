@@ -327,11 +327,23 @@ export function useRealtimeConversations() {
 }
 
 // Hook para escutar eventos de conversa em tempo real (transferências, fechamentos)
+// OTIMIZADO: Reduzido de 3 invalidações para 1 essencial
 export function useRealtimeConversationEvents(conversationId: string | null) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!conversationId) return;
+
+    // Debounce para evitar invalidações em rajada
+    let debounceTimeout: NodeJS.Timeout | null = null;
+    const debouncedInvalidate = () => {
+      if (debounceTimeout) clearTimeout(debounceTimeout);
+      debounceTimeout = setTimeout(() => {
+        // OTIMIZAÇÃO: Apenas invalidar eventos da conversa específica
+        // As outras queries (conversations-paginated, counts) são invalidadas pelo useRealtimeConversations
+        queryClient.invalidateQueries({ queryKey: ['conversation-events', conversationId] });
+      }, 300);
+    };
 
     const channel = supabase
       .channel(`conv-events:${conversationId}`)
@@ -343,16 +355,12 @@ export function useRealtimeConversationEvents(conversationId: string | null) {
           table: 'conversation_events',
           filter: `conversation_id=eq.${conversationId}`,
         },
-        () => {
-          // Invalidar imediatamente quando há novo evento
-          queryClient.invalidateQueries({ queryKey: ['conversation-events', conversationId] });
-          queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
-          queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
-        }
+        debouncedInvalidate
       )
       .subscribe();
 
     return () => {
+      if (debounceTimeout) clearTimeout(debounceTimeout);
       supabase.removeChannel(channel);
     };
   }, [conversationId, queryClient]);
