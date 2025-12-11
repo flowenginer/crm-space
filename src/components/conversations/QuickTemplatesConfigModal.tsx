@@ -79,7 +79,7 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg bg-background border shadow-lg">
+      <DialogContent className="max-w-md bg-background border shadow-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Star className="w-5 h-5 text-amber-500" />
@@ -94,8 +94,8 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
           </p>
 
           {/* Slots grid */}
-          <div className="p-4 rounded-lg bg-card border">
-            <div className="grid grid-cols-5 gap-2">
+          <div className="p-3 rounded-lg bg-card border">
+            <div className="flex justify-center gap-2">
               {SLOT_POSITIONS.map((position) => {
                 const qt = slotTemplates.get(position);
                 const isSelected = selectedSlot === position;
@@ -104,7 +104,7 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
                   <div
                     key={position}
                     className={cn(
-                      'relative aspect-square rounded-lg border-2 border-dashed transition-all cursor-pointer group',
+                      'relative w-16 h-16 rounded-lg border-2 border-dashed transition-all cursor-pointer group flex-shrink-0',
                       qt 
                         ? 'border-primary/50 bg-primary/10' 
                         : 'border-muted-foreground/30 hover:border-primary/50 bg-background',
@@ -118,8 +118,8 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
                   >
                     {qt ? (
                       <>
-                        <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-1">
-                          <span className="text-[10px] font-medium text-foreground line-clamp-2 leading-tight">
+                        <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-0.5 overflow-hidden">
+                          <span className="text-[9px] font-medium text-foreground line-clamp-3 leading-tight">
                             {qt.template?.title}
                           </span>
                         </div>
@@ -128,20 +128,20 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
                             e.stopPropagation();
                             handleRemoveFromSlot(position);
                           }}
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                          <X size={12} />
+                          <X size={10} />
                         </button>
                       </>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <Plus size={20} className={cn(
+                        <Plus size={16} className={cn(
                           'text-muted-foreground',
                           isSelected && 'text-primary'
                         )} />
                       </div>
                     )}
-                    <span className="absolute bottom-0.5 right-1 text-[9px] text-muted-foreground font-medium">
+                    <span className="absolute bottom-0.5 right-1 text-[8px] text-muted-foreground font-medium">
                       {position}
                     </span>
                   </div>
@@ -176,7 +176,7 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
                 />
               </div>
 
-              <ScrollArea className="h-[200px]">
+              <ScrollArea className="h-[160px]">
                 <div className="space-y-1 pr-3">
                   {templatesLoading ? (
                     <div className="text-center py-4 text-muted-foreground text-sm">
