@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -30,10 +30,12 @@ import {
   ExternalLink,
   ArrowLeftRight,
   Phone,
+  Lock,
 } from 'lucide-react';
 import { TransferHistoryPanel } from '@/components/reports/TransferHistoryPanel';
 import { CallHistoryPanel } from '@/components/reports/CallHistoryPanel';
 import { useNavigate } from 'react-router-dom';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardGrid, DashboardCardConfig } from '@/components/dashboard/DashboardGrid';
 import {
@@ -241,6 +243,7 @@ const datePresets = [
 
 export default function Reports() {
   const navigate = useNavigate();
+  const { hasPermission, isAdmin, isLoading: permissionsLoading } = usePermissions();
   const [selectedAgent, setSelectedAgent] = useState('Diego');
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 6),
@@ -250,6 +253,24 @@ export default function Reports() {
   const [showComparison, setShowComparison] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isComparePickerOpen, setIsComparePickerOpen] = useState(false);
+
+  // Define tabs with permissions
+  const availableTabs = useMemo(() => {
+    const tabs = [
+      { value: 'sla', label: 'SLA', icon: Clock, permission: 'reports.view_sla' },
+      { value: 'attendance', label: 'Atendimentos', icon: MessageSquare, permission: 'reports.view_attendance' },
+      { value: 'sales', label: 'Vendas', icon: DollarSign, permission: 'reports.view_sales' },
+      { value: 'satisfaction', label: 'Satisfação', icon: Smile, permission: 'reports.view_satisfaction' },
+      { value: 'performance', label: 'Performance', icon: Users, permission: 'reports.view_performance' },
+      { value: 'transfers', label: 'Transferências', icon: ArrowLeftRight, permission: 'reports.view_transfers' },
+      { value: 'calls', label: 'Ligações', icon: Phone, permission: 'reports.view_calls' },
+    ];
+
+    return tabs.filter(tab => isAdmin || hasPermission('reports', tab.permission.split('.')[1]));
+  }, [isAdmin, hasPermission]);
+
+  const canExport = isAdmin || hasPermission('reports', 'export');
+  const defaultTab = availableTabs.length > 0 ? availableTabs[0].value : 'sla';
 
   const formatDateRange = (range: DateRange | undefined) => {
     if (!range?.from) return 'Selecionar período';
@@ -375,29 +396,31 @@ export default function Reports() {
           )}
 
           {/* Export Button */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all">
-                <Download size={18} />
-                Exportar
-                <ChevronDown size={16} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem className="flex items-center gap-2">
-                <FileText size={16} />
-                Exportar PDF
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex items-center gap-2">
-                <FileText size={16} />
-                Exportar Excel
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex items-center gap-2">
-                <FileText size={16} />
-                Exportar CSV
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {canExport && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all">
+                  <Download size={18} />
+                  Exportar
+                  <ChevronDown size={16} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem className="flex items-center gap-2">
+                  <FileText size={16} />
+                  Exportar PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem className="flex items-center gap-2">
+                  <FileText size={16} />
+                  Exportar Excel
+                </DropdownMenuItem>
+                <DropdownMenuItem className="flex items-center gap-2">
+                  <FileText size={16} />
+                  Exportar CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -419,57 +442,32 @@ export default function Reports() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="sla" className="w-full">
-        <TabsList className="bg-card border border-border rounded-xl p-1 shadow-sm w-full flex mb-6">
-          <TabsTrigger
-            value="sla"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
-          >
-            <Clock size={18} />
-            SLA
-          </TabsTrigger>
-          <TabsTrigger
-            value="attendance"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
-          >
-            <MessageSquare size={18} />
-            Atendimentos
-          </TabsTrigger>
-          <TabsTrigger
-            value="sales"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
-          >
-            <DollarSign size={18} />
-            Vendas
-          </TabsTrigger>
-          <TabsTrigger
-            value="satisfaction"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
-          >
-            <Smile size={18} />
-            Satisfação
-          </TabsTrigger>
-          <TabsTrigger
-            value="performance"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
-          >
-            <Users size={18} />
-            Performance
-          </TabsTrigger>
-          <TabsTrigger
-            value="transfers"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
-          >
-            <ArrowLeftRight size={18} />
-            Transferências
-          </TabsTrigger>
-          <TabsTrigger
-            value="calls"
-            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
-          >
-            <Phone size={18} />
-            Ligações
-          </TabsTrigger>
+      {availableTabs.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="p-4 bg-muted rounded-full mb-4">
+            <Lock size={32} className="text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-medium text-foreground mb-2">Sem permissão</h3>
+          <p className="text-muted-foreground max-w-md">
+            Você não tem permissão para visualizar nenhum relatório. Entre em contato com o administrador para solicitar acesso.
+          </p>
+        </div>
+      ) : (
+        <Tabs defaultValue={defaultTab} className="w-full">
+          <TabsList className="bg-card border border-border rounded-xl p-1 shadow-sm w-full flex mb-6">
+            {availableTabs.map((tab) => {
+              const IconComponent = tab.icon;
+              return (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+                >
+                  <IconComponent size={18} />
+                  {tab.label}
+                </TabsTrigger>
+              );
+            })}
         </TabsList>
 
         {/* TAB 1: SLA Report */}
@@ -1234,7 +1232,8 @@ export default function Reports() {
         <TabsContent value="calls" className="space-y-6">
           <CallHistoryPanel dateRange={dateRange} />
         </TabsContent>
-      </Tabs>
+        </Tabs>
+      )}
     </div>
   );
 }
