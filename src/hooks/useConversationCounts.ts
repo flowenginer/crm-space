@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser, useCurrentUserProfile, useCurrentUserDepartments, useIsAdminOrSupervisor } from './useCurrentUser';
 
 // Filters interface for contextual counts
 export interface CountFilters {
@@ -116,10 +117,11 @@ const FILTER_COUNTS_REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutos
  * Agora suporta todos os filtros!
  */
 export function useAllConversationCounts(filters?: CountFilters) {
+  const { data: user } = useCurrentUser();
+  
   return useQuery({
-    queryKey: ['all-conversation-counts', filters],
+    queryKey: ['all-conversation-counts', filters, user?.id],
     queryFn: async (): Promise<AllConversationCounts> => {
-      const { data: { user } } = await supabase.auth.getUser();
       const timezone = await getTimezone();
       
       // Chamar função RPC com todos os filtros
@@ -161,6 +163,7 @@ export function useAllConversationCounts(filters?: CountFilters) {
         },
       };
     },
+    enabled: !!user?.id,
     staleTime: FILTER_COUNTS_STALE_TIME,
     refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
     refetchOnWindowFocus: false,
@@ -171,40 +174,23 @@ export function useAllConversationCounts(filters?: CountFilters) {
  * Hook para buscar contagens REAIS de conversas - OTIMIZADO
  * Usa a função RPC com todos os filtros
  */
+/**
+ * Hook para buscar contagens REAIS de conversas - OTIMIZADO
+ * MELHORIA: Usa hooks centralizados para user/profile/departments
+ * Evita chamadas duplicadas ao auth.getUser() e queries de profile
+ */
 export function useConversationTotalCounts(filters?: CountFilters) {
+  const { data: user } = useCurrentUser();
+  const { data: profile } = useCurrentUserProfile();
+  const { data: userDepartments } = useCurrentUserDepartments();
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'supervisor';
+  
   return useQuery({
-    queryKey: ['conversation-total-counts', filters],
+    queryKey: ['conversation-total-counts', filters, user?.id, isAdmin, userDepartments],
     queryFn: async (): Promise<ConversationCounts> => {
-      const { data: { user } } = await supabase.auth.getUser();
       const timezone = await getTimezone();
       
-      // Get user's profile for pending count
-      let userDepartmentIds: string[] = [];
-      let isAdminOrSupervisor = false;
-      
-      if (user) {
-        const { data: userProfile } = await supabase
-          .from('profiles')
-          .select('department_id, role')
-          .eq('id', user.id)
-          .single();
-        
-        isAdminOrSupervisor = userProfile?.role === 'admin' || userProfile?.role === 'supervisor';
-        
-        if (!isAdminOrSupervisor) {
-          const { data: userDepts } = await supabase
-            .from('user_departments')
-            .select('department_id')
-            .eq('user_id', user.id);
-          
-          userDepartmentIds = [
-            ...(userDepts?.map(ud => ud.department_id) || []),
-            userProfile?.department_id
-          ].filter(Boolean) as string[];
-        }
-      }
-      
-      // Usar a função RPC com todos os filtros
+      // Usar a função RPC com todos os filtros - inclui pending count
       const { data, error } = await (supabase.rpc as any)('get_all_conversation_counts', {
         p_user_id: user?.id || null,
         p_timezone: timezone,
@@ -220,39 +206,42 @@ export function useConversationTotalCounts(filters?: CountFilters) {
       
       const result = data as any;
       
-      // Calculate pending count separately with same filters
-      let pendingCount = 0;
-      let pendingQuery = supabase
-        .from('conversations')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['open', 'pending'])
-        .is('assigned_to', null)
-        .not('department_id', 'is', null);
+      // OTIMIZAÇÃO: Usar pending do RPC se disponível, senão calcular
+      // A função get_all_conversation_counts já retorna pending baseado no usuário
+      let pendingCount = result?.totals?.pending || 0;
       
-      // Apply same filters to pending
-      if (filters?.departmentId) {
-        pendingQuery = pendingQuery.eq('department_id', filters.departmentId);
-      }
-      if (filters?.channelId && filters.channelId !== 'no_channel') {
-        pendingQuery = pendingQuery.eq('channel_id', filters.channelId);
-      } else if (filters?.channelId === 'no_channel') {
-        pendingQuery = pendingQuery.is('channel_id', null);
-      }
-      if (filters?.origin === 'meta_ads') {
-        pendingQuery = pendingQuery.eq('referral_source', 'meta_ads');
-      } else if (filters?.origin === 'organic') {
-        pendingQuery = pendingQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
+      // Se não vier do RPC, calcular (fallback para RPCs antigos)
+      if (pendingCount === 0 && (isAdmin || (userDepartments && userDepartments.length > 0))) {
+        let pendingQuery = supabase
+          .from('conversations')
+          .select('*', { count: 'exact', head: true })
+          .in('status', ['open', 'pending'])
+          .is('assigned_to', null)
+          .not('department_id', 'is', null);
+        
+        if (filters?.departmentId) {
+          pendingQuery = pendingQuery.eq('department_id', filters.departmentId);
+        }
+        if (filters?.channelId && filters.channelId !== 'no_channel') {
+          pendingQuery = pendingQuery.eq('channel_id', filters.channelId);
+        } else if (filters?.channelId === 'no_channel') {
+          pendingQuery = pendingQuery.is('channel_id', null);
+        }
+        if (filters?.origin === 'meta_ads') {
+          pendingQuery = pendingQuery.eq('referral_source', 'meta_ads');
+        } else if (filters?.origin === 'organic') {
+          pendingQuery = pendingQuery.or('referral_source.is.null,referral_source.neq.meta_ads');
+        }
+        
+        if (isAdmin) {
+          const { count } = await pendingQuery;
+          pendingCount = count || 0;
+        } else if (userDepartments && userDepartments.length > 0) {
+          const { count } = await pendingQuery.in('department_id', userDepartments);
+          pendingCount = count || 0;
+        }
       }
       
-      if (isAdminOrSupervisor) {
-        const { count } = await pendingQuery;
-        pendingCount = count || 0;
-      } else if (userDepartmentIds.length > 0) {
-        const { count } = await pendingQuery.in('department_id', userDepartmentIds);
-        pendingCount = count || 0;
-      }
-      
-      // Mapeamento correto: banco retorna { totals: {...}, ... }
       return {
         all: result?.totals?.all || 0,
         mine: result?.totals?.mine || 0,
@@ -261,7 +250,8 @@ export function useConversationTotalCounts(filters?: CountFilters) {
         pending: pendingCount,
       };
     },
-    staleTime: 120000, // 2 min - aumentado para reduzir carga no banco
+    enabled: !!user?.id,
+    staleTime: 120000, // 2 min
     refetchInterval: 180000, // 3 min
     refetchOnWindowFocus: false,
   });

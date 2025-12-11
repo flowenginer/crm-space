@@ -36,28 +36,43 @@ export function useAgentMonitorStatus() {
     refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
 
-  // Real-time subscription
+  // Real-time subscription - OTIMIZADO
+  // Antes: event: '*' em messages e conversations (muito broad, causava invalidações excessivas)
+  // Agora: apenas eventos específicos que afetam o monitor
   useEffect(() => {
+    // Debounce para evitar invalidações excessivas
+    let debounceTimeout: NodeJS.Timeout | null = null;
+    const debouncedInvalidate = () => {
+      if (debounceTimeout) clearTimeout(debounceTimeout);
+      debounceTimeout = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['agent-monitor-status'] });
+      }, 500);
+    };
+
     const channel = supabase
       .channel('agent-monitor-realtime')
+      // Conversas: apenas UPDATE (mudança de assigned_to, status)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'conversations' },
-        () => queryClient.invalidateQueries({ queryKey: ['agent-monitor-status'] })
+        { event: 'UPDATE', schema: 'public', table: 'conversations' },
+        debouncedInvalidate
       )
+      // Conversas: INSERT (nova conversa)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'messages' },
-        () => queryClient.invalidateQueries({ queryKey: ['agent-monitor-status'] })
+        { event: 'INSERT', schema: 'public', table: 'conversations' },
+        debouncedInvalidate
       )
+      // Profiles: apenas UPDATE (mudança de is_available)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'profiles' },
-        () => queryClient.invalidateQueries({ queryKey: ['agent-monitor-status'] })
+        debouncedInvalidate
       )
       .subscribe();
 
     return () => {
+      if (debounceTimeout) clearTimeout(debounceTimeout);
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
