@@ -28,8 +28,9 @@ import {
 import { MetaConnect } from '@/components/meta/MetaConnect';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
-  BarChart, Bar, PieChart, Pie, Cell, Tooltip, Legend
+  PieChart, Pie, Cell, Tooltip
 } from 'recharts';
+import { DashboardGrid, DashboardCardConfig } from '@/components/dashboard/DashboardGrid';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
@@ -335,231 +336,245 @@ export default function MetaAdsManager() {
           </Card>
         )}
 
-        {/* Stats Cards */}
+        {/* Dashboard Grid */}
         {selectedAccountId && (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-            {insightsLoading ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <Card key={i}>
-                  <CardHeader className="pb-2">
-                    <Skeleton className="h-4 w-20" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-8 w-24" />
-                  </CardContent>
-                </Card>
-              ))
-            ) : insights ? (
-              <>
-                <StatCard
-                  title="Gasto Total"
-                  value={formatCurrency(insights.totalSpend)}
-                  icon={DollarSign}
-                  description="No período selecionado"
-                />
-                <StatCard
-                  title="Impressões"
-                  value={formatNumber(insights.totalImpressions)}
-                  icon={Eye}
-                />
-                <StatCard
-                  title="Cliques"
-                  value={formatNumber(insights.totalClicks)}
-                  icon={MousePointer}
-                />
-                <StatCard
-                  title="CTR"
-                  value={formatPercent(insights.avgCtr)}
-                  icon={TrendingUp}
-                  description="Taxa de cliques"
-                />
-                <StatCard
-                  title="Leads CTWA"
-                  value={formatNumber(insights.ctwLeads)}
-                  icon={Users}
-                  description="Via WhatsApp"
-                />
-                <StatCard
-                  title="CPL Real"
-                  value={insights.realCpl ? formatCurrency(insights.realCpl) : '-'}
-                  icon={Target}
-                  description="Custo por lead real"
-                />
-              </>
-            ) : null}
-          </div>
-        )}
-
-        {/* Charts */}
-        {selectedAccountId && (
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Daily Performance Chart */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance Diária</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {dailyLoading ? (
-                  <Skeleton className="h-[300px] w-full" />
-                ) : chartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="date" className="text-xs" />
-                      <YAxis className="text-xs" />
-                      <Tooltip 
-                        formatter={(value: number, name: string) => [
-                          name === 'spend' ? formatCurrency(value) : formatNumber(value),
-                          name === 'spend' ? 'Gasto' : 'Cliques'
-                        ]} 
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="spend" 
-                        stroke="#3b82f6" 
-                        fill="#3b82f6" 
-                        fillOpacity={0.2}
-                        name="spend"
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="clicks" 
-                        stroke="#10b981" 
-                        fill="#10b981" 
-                        fillOpacity={0.2}
-                        name="clicks"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                    Nenhum dado disponível
+          <DashboardGrid 
+            storageKey="meta-ads-card-order"
+            cards={[
+              {
+                id: 'stats-cards',
+                fullWidth: true,
+                component: (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                    {insightsLoading ? (
+                      Array.from({ length: 6 }).map((_, i) => (
+                        <Card key={i}>
+                          <CardHeader className="pb-2">
+                            <Skeleton className="h-4 w-20" />
+                          </CardHeader>
+                          <CardContent>
+                            <Skeleton className="h-8 w-24" />
+                          </CardContent>
+                        </Card>
+                      ))
+                    ) : insights ? (
+                      <>
+                        <StatCard
+                          title="Gasto Total"
+                          value={formatCurrency(insights.totalSpend)}
+                          icon={DollarSign}
+                          description="No período selecionado"
+                        />
+                        <StatCard
+                          title="Impressões"
+                          value={formatNumber(insights.totalImpressions)}
+                          icon={Eye}
+                        />
+                        <StatCard
+                          title="Cliques"
+                          value={formatNumber(insights.totalClicks)}
+                          icon={MousePointer}
+                        />
+                        <StatCard
+                          title="CTR"
+                          value={formatPercent(insights.avgCtr)}
+                          icon={TrendingUp}
+                          description="Taxa de cliques"
+                        />
+                        <StatCard
+                          title="Leads CTWA"
+                          value={formatNumber(insights.ctwLeads)}
+                          icon={Users}
+                          description="Via WhatsApp"
+                        />
+                        <StatCard
+                          title="CPL Real"
+                          value={insights.realCpl ? formatCurrency(insights.realCpl) : '-'}
+                          icon={Target}
+                          description="Custo por lead real"
+                        />
+                      </>
+                    ) : null}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Spend Distribution */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Distribuição de Gastos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {campaignsLoading ? (
-                  <Skeleton className="h-[300px] w-full" />
-                ) : pieData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                    Nenhum dado disponível
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Campaigns Table */}
-        {selectedAccountId && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Campanhas</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {campaignsLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : filteredAndSortedCampaigns.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <SortableHeader sortKey="name">Campanha</SortableHeader>
-                        <SortableHeader sortKey="status">Status</SortableHeader>
-                        <SortableHeader sortKey="objective">Objetivo</SortableHeader>
-                        <SortableHeader sortKey="impressions" className="text-right">Impressões</SortableHeader>
-                        <SortableHeader sortKey="clicks" className="text-right">Cliques</SortableHeader>
-                        <SortableHeader sortKey="ctr" className="text-right">CTR</SortableHeader>
-                        <SortableHeader sortKey="spend" className="text-right">Gasto</SortableHeader>
-                        <SortableHeader sortKey="cpc" className="text-right">CPC</SortableHeader>
-                        <SortableHeader sortKey="ctwLeads" className="text-right">Leads CTWA</SortableHeader>
-                        <SortableHeader sortKey="realCpl" className="text-right">CPL Real</SortableHeader>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredAndSortedCampaigns.map((campaign) => (
-                        <TableRow key={campaign.id}>
-                          <TableCell className="font-medium max-w-[200px] truncate">
-                            {campaign.name}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={campaign.status === 'ACTIVE' ? 'default' : 'secondary'}>
-                              {campaign.status === 'ACTIVE' ? 'Ativa' : 
-                               campaign.status === 'PAUSED' ? 'Pausada' : campaign.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground text-sm">
-                            {campaign.objective?.replace(/_/g, ' ') || '-'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatNumber(campaign.insights?.impressions || 0)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatNumber(campaign.insights?.clicks || 0)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatPercent(campaign.insights?.ctr || 0)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatCurrency(campaign.insights?.spend || 0)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {campaign.insights?.cpc ? formatCurrency(campaign.insights.cpc) : '-'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {campaign.ctwLeads || 0}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {campaign.realCpl ? (
-                              <span className={campaign.realCpl < 50 ? 'text-green-600' : campaign.realCpl > 100 ? 'text-red-600' : ''}>
-                                {formatCurrency(campaign.realCpl)}
-                              </span>
-                            ) : '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>Nenhuma campanha encontrada.</p>
-                  <p className="text-sm">Clique em "Sincronizar" para buscar campanhas.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                ),
+              },
+              {
+                id: 'daily-performance',
+                component: (
+                  <Card className="h-full">
+                    <CardHeader>
+                      <CardTitle>Performance Diária</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {dailyLoading ? (
+                        <Skeleton className="h-[300px] w-full" />
+                      ) : chartData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                          <AreaChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                            <XAxis dataKey="date" className="text-xs" />
+                            <YAxis className="text-xs" />
+                            <Tooltip 
+                              formatter={(value: number, name: string) => [
+                                name === 'spend' ? formatCurrency(value) : formatNumber(value),
+                                name === 'spend' ? 'Gasto' : 'Cliques'
+                              ]} 
+                            />
+                            <Area 
+                              type="monotone" 
+                              dataKey="spend" 
+                              stroke="#3b82f6" 
+                              fill="#3b82f6" 
+                              fillOpacity={0.2}
+                              name="spend"
+                            />
+                            <Area 
+                              type="monotone" 
+                              dataKey="clicks" 
+                              stroke="#10b981" 
+                              fill="#10b981" 
+                              fillOpacity={0.2}
+                              name="clicks"
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                          Nenhum dado disponível
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ),
+              },
+              {
+                id: 'spend-distribution',
+                component: (
+                  <Card className="h-full">
+                    <CardHeader>
+                      <CardTitle>Distribuição de Gastos</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {campaignsLoading ? (
+                        <Skeleton className="h-[300px] w-full" />
+                      ) : pieData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <Pie
+                              data={pieData}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              outerRadius={100}
+                              fill="#8884d8"
+                              dataKey="value"
+                              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            >
+                              {pieData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                          Nenhum dado disponível
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ),
+              },
+              {
+                id: 'campaigns-table',
+                fullWidth: true,
+                component: (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Campanhas</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {campaignsLoading ? (
+                        <div className="space-y-3">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Skeleton key={i} className="h-12 w-full" />
+                          ))}
+                        </div>
+                      ) : filteredAndSortedCampaigns.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <SortableHeader sortKey="name">Campanha</SortableHeader>
+                                <SortableHeader sortKey="status">Status</SortableHeader>
+                                <SortableHeader sortKey="objective">Objetivo</SortableHeader>
+                                <SortableHeader sortKey="impressions" className="text-right">Impressões</SortableHeader>
+                                <SortableHeader sortKey="clicks" className="text-right">Cliques</SortableHeader>
+                                <SortableHeader sortKey="ctr" className="text-right">CTR</SortableHeader>
+                                <SortableHeader sortKey="spend" className="text-right">Gasto</SortableHeader>
+                                <SortableHeader sortKey="cpc" className="text-right">CPC</SortableHeader>
+                                <SortableHeader sortKey="ctwLeads" className="text-right">Leads CTWA</SortableHeader>
+                                <SortableHeader sortKey="realCpl" className="text-right">CPL Real</SortableHeader>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {filteredAndSortedCampaigns.map((campaign) => (
+                                <TableRow key={campaign.id}>
+                                  <TableCell className="font-medium max-w-[200px] truncate">
+                                    {campaign.name}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={campaign.status === 'ACTIVE' ? 'default' : 'secondary'}>
+                                      {campaign.status === 'ACTIVE' ? 'Ativa' : 
+                                       campaign.status === 'PAUSED' ? 'Pausada' : campaign.status}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground text-sm">
+                                    {campaign.objective?.replace(/_/g, ' ') || '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {formatNumber(campaign.insights?.impressions || 0)}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {formatNumber(campaign.insights?.clicks || 0)}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {formatPercent(campaign.insights?.ctr || 0)}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {formatCurrency(campaign.insights?.spend || 0)}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {campaign.insights?.cpc ? formatCurrency(campaign.insights.cpc) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {campaign.ctwLeads || 0}
+                                  </TableCell>
+                                  <TableCell className="text-right font-medium">
+                                    {campaign.realCpl ? (
+                                      <span className={campaign.realCpl < 50 ? 'text-green-600' : campaign.realCpl > 100 ? 'text-red-600' : ''}>
+                                        {formatCurrency(campaign.realCpl)}
+                                      </span>
+                                    ) : '-'}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <p>Nenhuma campanha encontrada.</p>
+                          <p className="text-sm">Clique em "Sincronizar" para buscar campanhas.</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ),
+              },
+            ] as DashboardCardConfig[]}
+          />
         )}
 
         {/* Account Actions */}

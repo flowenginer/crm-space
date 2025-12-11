@@ -18,28 +18,27 @@ import {
 } from '@dnd-kit/sortable';
 import { DraggableDashboardCard } from './DraggableDashboardCard';
 
-const STORAGE_KEY = 'dashboard-card-order';
+const DEFAULT_STORAGE_KEY = 'dashboard-card-order';
 
 export interface DashboardCardConfig {
   id: string;
   component: ReactNode;
-  fullWidth?: boolean; // Card should always occupy 100% width
+  fullWidth?: boolean;
 }
 
 interface DashboardGridProps {
   cards: DashboardCardConfig[];
+  storageKey?: string;
 }
 
-export function DashboardGrid({ cards }: DashboardGridProps) {
+export function DashboardGrid({ cards, storageKey = DEFAULT_STORAGE_KEY }: DashboardGridProps) {
   const [orderedCardIds, setOrderedCardIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(storageKey);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Validate that all card IDs exist
         const currentIds = cards.map(c => c.id);
         const validOrder = parsed.filter((id: string) => currentIds.includes(id));
-        // Add any new cards that aren't in saved order
         const newCards = currentIds.filter(id => !validOrder.includes(id));
         return [...validOrder, ...newCards];
       } catch {
@@ -77,8 +76,8 @@ export function DashboardGrid({ cards }: DashboardGridProps) {
 
   // Save order to localStorage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(orderedCardIds));
-  }, [orderedCardIds]);
+    localStorage.setItem(storageKey, JSON.stringify(orderedCardIds));
+  }, [orderedCardIds, storageKey]);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
