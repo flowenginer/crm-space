@@ -107,6 +107,7 @@ import { toast } from 'sonner';
 import { useTeam } from '@/hooks/useTeam';
 import { useTags, useAddTagToContact, useRemoveTagFromContact, useCreateTag, TagVisibility } from '@/hooks/useTags';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useUserDepartments } from '@/hooks/useUserDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
 import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds, useAllSharedConversationIds, useMySharePermission } from '@/hooks/useSharedConversations';
@@ -1432,6 +1433,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const removeTagFromContact = useRemoveTagFromContact();
   const createTag = useCreateTag();
   const { data: departments = [] } = useDepartments();
+  const { data: userDepartmentsData = [] } = useUserDepartments(profile?.id);
   const { data: channels = [] } = useChannels();
   const { data: pinnedConversations = [] } = usePinnedConversations();
   const { isPinned, togglePin } = useTogglePinConversation();
@@ -1448,6 +1450,20 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const createInternalNote = useCreateInternalNote();
   const updateInternalNote = useUpdateInternalNote();
   const updateConversation = useUpdateConversation();
+
+  // Departamentos visíveis baseado no perfil do usuário
+  // Vendedores só veem os departamentos que têm acesso, Admin/Supervisor veem todos
+  const userDepartmentIds = useMemo(() => {
+    return userDepartmentsData.map(ud => ud.department_id);
+  }, [userDepartmentsData]);
+
+  const visibleDepartments = useMemo(() => {
+    if (isAdmin || isSupervisor) {
+      return departments; // Admin/Supervisor vê todos
+    }
+    // Vendedor vê apenas departamentos onde está cadastrado
+    return departments.filter(dept => userDepartmentIds.includes(dept.id));
+  }, [departments, userDepartmentIds, isAdmin, isSupervisor]);
 
   // Get current user for filter counts
   const { data: currentUser } = useQuery({
@@ -4399,27 +4415,61 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Filtrar por agente
-              </label>
-              <Select 
-                value={advancedFilters.agentId} 
-                onValueChange={(v) => setAdvancedFilters(prev => ({ ...prev, agentId: v }))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {teamMembers.map((member) => (
-                    <SelectItem key={member.id} value={member.id}>
-                      {member.full_name || 'Sem nome'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Filtrar por Agente - Apenas para admin/supervisor em formato de botões */}
+            {(isAdmin || isSupervisor) ? (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Filtrar por agente
+                </label>
+                <div className="flex flex-wrap gap-2 max-h-[160px] overflow-y-auto">
+                  <button
+                    onClick={() => setAdvancedFilters(prev => ({ ...prev, agentId: 'all' }))}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                      advancedFilters.agentId === 'all' 
+                        ? 'bg-primary text-primary-foreground' 
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    )}
+                  >
+                    Todos
+                  </button>
+                  {teamMembers.map((member) => {
+                    const count = agentCountsData?.[member.id] || 0;
+                    const isSelected = advancedFilters.agentId === member.id;
+                    return (
+                      <button
+                        key={member.id}
+                        onClick={() => setAdvancedFilters(prev => ({ 
+                          ...prev, 
+                          agentId: prev.agentId === member.id ? 'all' : member.id 
+                        }))}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                          isSelected 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                        )}
+                      >
+                        {member.full_name || 'Sem nome'} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              // Para vendedores - mostrar informativo fixo
+              <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border border-border">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <span className="text-sm font-semibold text-primary">
+                    {authProfile?.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground">Visualizando conversas de</p>
+                  <p className="text-sm font-medium text-foreground">{authProfile?.full_name || 'Usuário'}</p>
+                </div>
+              </div>
+            )}
 
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -4527,7 +4577,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 Departamento
               </label>
               <div className="flex flex-wrap gap-2">
-                {departments.length > 0 ? departments.map((dept) => {
+                {visibleDepartments.length > 0 ? visibleDepartments.map((dept) => {
                   const count = departmentCountMap.get(dept.id) || 0;
                   const isSelected = advancedFilters.departmentId === dept.id;
                   return (
@@ -4550,7 +4600,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                     </button>
                   );
                 }) : (
-                  <p className="text-sm text-muted-foreground">Nenhum departamento cadastrado</p>
+                  <p className="text-sm text-muted-foreground">
+                    {!isAdmin && !isSupervisor && departments.length > 0 
+                      ? 'Você não está vinculado a nenhum departamento' 
+                      : 'Nenhum departamento cadastrado'}
+                  </p>
                 )}
               </div>
             </div>
