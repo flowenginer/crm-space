@@ -33,6 +33,7 @@ import {
 import { TransferHistoryPanel } from '@/components/reports/TransferHistoryPanel';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DashboardGrid, DashboardCardConfig } from '@/components/dashboard/DashboardGrid';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -463,285 +464,319 @@ export default function Reports() {
         </TabsList>
 
         {/* TAB 1: SLA Report */}
-        <TabsContent value="sla" className="space-y-6">
-          {/* SLA Metric Cards */}
-          <div className="grid grid-cols-4 gap-6">
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-muted-foreground font-medium">SLA Bom</span>
-                <div className="p-2 bg-status-success/10 rounded-lg">
-                  <CheckCircle size={20} className="text-status-success" />
-                </div>
-              </div>
-              <div className="text-3xl font-bold text-status-success mb-1">9.372</div>
-              <div className="text-sm text-muted-foreground">atendimentos</div>
-            </div>
-
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-muted-foreground font-medium">SLA Regular</span>
-                <div className="p-2 bg-status-warning/10 rounded-lg">
-                  <AlertTriangle size={20} className="text-status-warning" />
-                </div>
-              </div>
-              <div className="text-3xl font-bold text-status-warning mb-1">3.032</div>
-              <div className="text-sm text-muted-foreground">atendimentos</div>
-            </div>
-
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-muted-foreground font-medium">SLA Crítico</span>
-                <div className="p-2 bg-status-error/10 rounded-lg">
-                  <XCircle size={20} className="text-status-error" />
-                </div>
-              </div>
-              <div className="text-3xl font-bold text-status-error mb-1">21.633</div>
-              <div className="text-sm text-muted-foreground">atendimentos</div>
-            </div>
-
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-muted-foreground font-medium">TMA Geral</span>
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Clock size={20} className="text-primary" />
-                </div>
-              </div>
-              <div className="text-3xl font-bold text-foreground mb-1">12.199</div>
-              <div className="text-sm text-muted-foreground">minutos</div>
-            </div>
-          </div>
-
-          {/* Charts Row */}
-          <div className="grid grid-cols-2 gap-6">
-            {/* TMA by Department */}
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-foreground mb-6">TMA por Departamento</h3>
-              <div className="space-y-4">
-                {departmentTMAData.map((dept, idx) => (
-                  <div key={dept.name}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-foreground">{dept.name}</span>
-                      <span className="text-sm font-bold text-foreground">{dept.value.toLocaleString()} min</span>
+        <TabsContent value="sla">
+          <DashboardGrid
+            storageKey="reports-sla-card-order"
+            cards={[
+              {
+                id: 'sla-metrics',
+                fullWidth: true,
+                component: (
+                  <div className="grid grid-cols-4 gap-6">
+                    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm text-muted-foreground font-medium">SLA Bom</span>
+                        <div className="p-2 bg-status-success/10 rounded-lg">
+                          <CheckCircle size={20} className="text-status-success" />
+                        </div>
+                      </div>
+                      <div className="text-3xl font-bold text-status-success mb-1">9.372</div>
+                      <div className="text-sm text-muted-foreground">atendimentos</div>
                     </div>
-                    <div className="h-3 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${dept.percentage}%`, backgroundColor: COLORS[idx % COLORS.length] }}
-                      />
+
+                    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm text-muted-foreground font-medium">SLA Regular</span>
+                        <div className="p-2 bg-status-warning/10 rounded-lg">
+                          <AlertTriangle size={20} className="text-status-warning" />
+                        </div>
+                      </div>
+                      <div className="text-3xl font-bold text-status-warning mb-1">3.032</div>
+                      <div className="text-sm text-muted-foreground">atendimentos</div>
+                    </div>
+
+                    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm text-muted-foreground font-medium">SLA Crítico</span>
+                        <div className="p-2 bg-status-error/10 rounded-lg">
+                          <XCircle size={20} className="text-status-error" />
+                        </div>
+                      </div>
+                      <div className="text-3xl font-bold text-status-error mb-1">21.633</div>
+                      <div className="text-sm text-muted-foreground">atendimentos</div>
+                    </div>
+
+                    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm text-muted-foreground font-medium">TMA Geral</span>
+                        <div className="p-2 bg-primary/10 rounded-lg">
+                          <Clock size={20} className="text-primary" />
+                        </div>
+                      </div>
+                      <div className="text-3xl font-bold text-foreground mb-1">12.199</div>
+                      <div className="text-sm text-muted-foreground">minutos</div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* SLA Distribution Pie */}
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-foreground mb-6">Distribuição de SLA</h3>
-              <div className="flex items-center justify-center">
-                <ResponsiveContainer width={250} height={250}>
-                  <PieChart>
-                    <Pie
-                      data={slaPieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {slaPieData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex justify-center gap-6 mt-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-status-success rounded-full"></div>
-                  <span className="text-sm text-muted-foreground">Bom (27.5%)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-status-warning rounded-full"></div>
-                  <span className="text-sm text-muted-foreground">Regular (8.9%)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-status-error rounded-full"></div>
-                  <span className="text-sm text-muted-foreground">Crítico (63.6%)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* SLA Timeline */}
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-foreground mb-6">Evolução do SLA</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={slaTimelineData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                <Tooltip />
-                <Legend />
-                <Area type="monotone" dataKey="critico" stackId="1" stroke="#EF4444" fill="#FEE2E2" name="Crítico" />
-                <Area type="monotone" dataKey="regular" stackId="1" stroke="#F59E0B" fill="#FEF3C7" name="Regular" />
-                <Area type="monotone" dataKey="bom" stackId="1" stroke="#10B981" fill="#D1FAE5" name="Bom" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* SLA Detailed Table */}
-          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-border">
-              <h3 className="text-lg font-semibold text-foreground">Detalhamento por Atendente</h3>
-            </div>
-            <table className="w-full">
-              <thead>
-                <tr className="bg-muted/50 border-b border-border">
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Atendente</th>
-                  <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total</th>
-                  <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Bom</th>
-                  <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Regular</th>
-                  <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Crítico</th>
-                  <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">TMA</th>
-                  <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">% SLA Bom</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {slaAgentData.map((agent) => (
-                  <tr key={agent.name} className="hover:bg-muted/30">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white text-sm font-semibold">
-                          {agent.name.charAt(0)}
+                ),
+              },
+              {
+                id: 'tma-department',
+                component: (
+                  <div className="bg-card rounded-2xl border border-border p-6 shadow-sm h-full">
+                    <h3 className="text-lg font-semibold text-foreground mb-6">TMA por Departamento</h3>
+                    <div className="space-y-4">
+                      {departmentTMAData.map((dept, idx) => (
+                        <div key={dept.name}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-foreground">{dept.name}</span>
+                            <span className="text-sm font-bold text-foreground">{dept.value.toLocaleString()} min</span>
+                          </div>
+                          <div className="h-3 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${dept.percentage}%`, backgroundColor: COLORS[idx % COLORS.length] }}
+                            />
+                          </div>
                         </div>
-                        <span className="font-medium text-foreground">{agent.name}</span>
+                      ))}
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                id: 'sla-distribution',
+                component: (
+                  <div className="bg-card rounded-2xl border border-border p-6 shadow-sm h-full">
+                    <h3 className="text-lg font-semibold text-foreground mb-6">Distribuição de SLA</h3>
+                    <div className="flex items-center justify-center">
+                      <ResponsiveContainer width={250} height={250}>
+                        <PieChart>
+                          <Pie
+                            data={slaPieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={100}
+                            paddingAngle={2}
+                            dataKey="value"
+                          >
+                            {slaPieData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex justify-center gap-6 mt-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-status-success rounded-full"></div>
+                        <span className="text-sm text-muted-foreground">Bom (27.5%)</span>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-center text-foreground font-medium">{agent.total}</td>
-                    <td className="px-6 py-4 text-center text-status-success font-medium">{agent.bom}</td>
-                    <td className="px-6 py-4 text-center text-status-warning font-medium">{agent.regular}</td>
-                    <td className="px-6 py-4 text-center text-status-error font-medium">{agent.critico}</td>
-                    <td className="px-6 py-4 text-center text-foreground">{agent.tma} min</td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                        agent.slaGood >= 70 ? 'bg-status-success/10 text-status-success' :
-                        agent.slaGood >= 50 ? 'bg-status-warning/10 text-status-warning' :
-                        'bg-status-error/10 text-status-error'
-                      }`}>
-                        {agent.slaGood}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-status-warning rounded-full"></div>
+                        <span className="text-sm text-muted-foreground">Regular (8.9%)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-status-error rounded-full"></div>
+                        <span className="text-sm text-muted-foreground">Crítico (63.6%)</span>
+                      </div>
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                id: 'sla-timeline',
+                fullWidth: true,
+                component: (
+                  <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                    <h3 className="text-lg font-semibold text-foreground mb-6">Evolução do SLA</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <AreaChart data={slaTimelineData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                        <Tooltip />
+                        <Legend />
+                        <Area type="monotone" dataKey="critico" stackId="1" stroke="#EF4444" fill="#FEE2E2" name="Crítico" />
+                        <Area type="monotone" dataKey="regular" stackId="1" stroke="#F59E0B" fill="#FEF3C7" name="Regular" />
+                        <Area type="monotone" dataKey="bom" stackId="1" stroke="#10B981" fill="#D1FAE5" name="Bom" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                ),
+              },
+              {
+                id: 'sla-table',
+                fullWidth: true,
+                component: (
+                  <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+                    <div className="p-6 border-b border-border">
+                      <h3 className="text-lg font-semibold text-foreground">Detalhamento por Atendente</h3>
+                    </div>
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-muted/50 border-b border-border">
+                          <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Atendente</th>
+                          <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total</th>
+                          <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Bom</th>
+                          <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Regular</th>
+                          <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Crítico</th>
+                          <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">TMA</th>
+                          <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">% SLA Bom</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {slaAgentData.map((agent) => (
+                          <tr key={agent.name} className="hover:bg-muted/30">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white text-sm font-semibold">
+                                  {agent.name.charAt(0)}
+                                </div>
+                                <span className="font-medium text-foreground">{agent.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-center text-foreground font-medium">{agent.total}</td>
+                            <td className="px-6 py-4 text-center text-status-success font-medium">{agent.bom}</td>
+                            <td className="px-6 py-4 text-center text-status-warning font-medium">{agent.regular}</td>
+                            <td className="px-6 py-4 text-center text-status-error font-medium">{agent.critico}</td>
+                            <td className="px-6 py-4 text-center text-foreground">{agent.tma} min</td>
+                            <td className="px-6 py-4 text-center">
+                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                agent.slaGood >= 70 ? 'bg-status-success/10 text-status-success' :
+                                agent.slaGood >= 50 ? 'bg-status-warning/10 text-status-warning' :
+                                'bg-status-error/10 text-status-error'
+                              }`}>
+                                {agent.slaGood}%
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ),
+              },
+            ] as DashboardCardConfig[]}
+          />
         </TabsContent>
 
         {/* TAB 2: Attendance Report */}
-        <TabsContent value="attendance" className="space-y-6">
-          {/* Attendance Metric Cards */}
-          <div className="grid grid-cols-5 gap-6">
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-muted-foreground font-medium">Total</span>
-                <MessageSquare size={20} className="text-primary" />
-              </div>
-              <div className="text-3xl font-bold text-foreground">572</div>
-              <div className="text-sm text-status-success font-medium mt-1">+12% vs anterior</div>
-            </div>
-
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-muted-foreground font-medium">Receptivos</span>
-                <PhoneIncoming size={20} className="text-status-info" />
-              </div>
-              <div className="text-3xl font-bold text-foreground">521</div>
-              <div className="text-sm text-muted-foreground mt-1">91% do total</div>
-            </div>
-
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-muted-foreground font-medium">Ativos</span>
-                <PhoneOutgoing size={20} className="text-status-success" />
-              </div>
-              <div className="text-3xl font-bold text-foreground">51</div>
-              <div className="text-sm text-muted-foreground mt-1">9% do total</div>
-            </div>
-
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-muted-foreground font-medium">Pendentes</span>
-                <Clock size={20} className="text-status-warning" />
-              </div>
-              <div className="text-3xl font-bold text-status-warning">257</div>
-              <div className="text-sm text-muted-foreground mt-1">aguardando</div>
-            </div>
-
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-muted-foreground font-medium">Finalizados</span>
-                <CheckCircle size={20} className="text-status-success" />
-              </div>
-              <div className="text-3xl font-bold text-status-success">315</div>
-              <div className="text-sm text-muted-foreground mt-1">55% do total</div>
-            </div>
-          </div>
-
-          {/* Charts Row */}
-          <div className="grid grid-cols-2 gap-6">
-            {/* By Channel */}
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-foreground mb-6">Atendimentos por Canal</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={channelData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <YAxis type="category" dataKey="channel" stroke="hsl(var(--muted-foreground))" fontSize={12} width={80} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 8, 8, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* By Hour */}
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-foreground mb-6">Atendimentos por Hora</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <AreaChart data={hourlyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="hour" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary)/0.2)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* By Department */}
-          <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-foreground mb-6">Atendimentos por Departamento</h3>
-            <div className="grid grid-cols-5 gap-4">
-              {[
-                { name: 'Vendas', value: 234, Icon: ShoppingCart, bgColor: 'bg-primary/10', iconColor: 'text-primary' },
-                { name: 'Pós-Vendas', value: 156, Icon: Package, bgColor: 'bg-status-info/10', iconColor: 'text-status-info' },
-                { name: 'Suporte', value: 89, Icon: Headphones, bgColor: 'bg-status-success/10', iconColor: 'text-status-success' },
-                { name: 'Financeiro', value: 54, Icon: DollarSign, bgColor: 'bg-status-warning/10', iconColor: 'text-status-warning' },
-                { name: 'Expedição', value: 39, Icon: Truck, bgColor: 'bg-status-error/10', iconColor: 'text-status-error' },
-              ].map((dept) => (
-                <div key={dept.name} className={`${dept.bgColor} rounded-xl p-4 text-center`}>
-                  <div className={`w-12 h-12 ${dept.bgColor} rounded-full flex items-center justify-center mx-auto mb-3`}>
-                    <dept.Icon size={24} className={dept.iconColor} />
+        <TabsContent value="attendance">
+          <DashboardGrid
+            storageKey="reports-attendance-card-order"
+            cards={[
+              {
+                id: 'attendance-metrics',
+                fullWidth: true,
+                component: (
+                  <div className="grid grid-cols-5 gap-6">
+                    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm text-muted-foreground font-medium">Total</span>
+                        <MessageSquare size={20} className="text-primary" />
+                      </div>
+                      <div className="text-3xl font-bold text-foreground">572</div>
+                      <div className="text-sm text-status-success font-medium mt-1">+12% vs anterior</div>
+                    </div>
+                    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm text-muted-foreground font-medium">Receptivos</span>
+                        <PhoneIncoming size={20} className="text-status-info" />
+                      </div>
+                      <div className="text-3xl font-bold text-foreground">521</div>
+                      <div className="text-sm text-muted-foreground mt-1">91% do total</div>
+                    </div>
+                    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm text-muted-foreground font-medium">Ativos</span>
+                        <PhoneOutgoing size={20} className="text-status-success" />
+                      </div>
+                      <div className="text-3xl font-bold text-foreground">51</div>
+                      <div className="text-sm text-muted-foreground mt-1">9% do total</div>
+                    </div>
+                    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm text-muted-foreground font-medium">Pendentes</span>
+                        <Clock size={20} className="text-status-warning" />
+                      </div>
+                      <div className="text-3xl font-bold text-status-warning">257</div>
+                      <div className="text-sm text-muted-foreground mt-1">aguardando</div>
+                    </div>
+                    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm text-muted-foreground font-medium">Finalizados</span>
+                        <CheckCircle size={20} className="text-status-success" />
+                      </div>
+                      <div className="text-3xl font-bold text-status-success">315</div>
+                      <div className="text-sm text-muted-foreground mt-1">55% do total</div>
+                    </div>
                   </div>
-                  <div className="text-2xl font-bold text-foreground mb-1">{dept.value}</div>
-                  <div className="text-sm text-muted-foreground">{dept.name}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+                ),
+              },
+              {
+                id: 'channel-chart',
+                component: (
+                  <div className="bg-card rounded-2xl border border-border p-6 shadow-sm h-full">
+                    <h3 className="text-lg font-semibold text-foreground mb-6">Atendimentos por Canal</h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={channelData} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                        <YAxis type="category" dataKey="channel" stroke="hsl(var(--muted-foreground))" fontSize={12} width={80} />
+                        <Tooltip />
+                        <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 8, 8, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ),
+              },
+              {
+                id: 'hourly-chart',
+                component: (
+                  <div className="bg-card rounded-2xl border border-border p-6 shadow-sm h-full">
+                    <h3 className="text-lg font-semibold text-foreground mb-6">Atendimentos por Hora</h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <AreaChart data={hourlyData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis dataKey="hour" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary)/0.2)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                ),
+              },
+              {
+                id: 'department-chart',
+                fullWidth: true,
+                component: (
+                  <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                    <h3 className="text-lg font-semibold text-foreground mb-6">Atendimentos por Departamento</h3>
+                    <div className="grid grid-cols-5 gap-4">
+                      {[
+                        { name: 'Vendas', value: 234, Icon: ShoppingCart, bgColor: 'bg-primary/10', iconColor: 'text-primary' },
+                        { name: 'Pós-Vendas', value: 156, Icon: Package, bgColor: 'bg-status-info/10', iconColor: 'text-status-info' },
+                        { name: 'Suporte', value: 89, Icon: Headphones, bgColor: 'bg-status-success/10', iconColor: 'text-status-success' },
+                        { name: 'Financeiro', value: 54, Icon: DollarSign, bgColor: 'bg-status-warning/10', iconColor: 'text-status-warning' },
+                        { name: 'Expedição', value: 39, Icon: Truck, bgColor: 'bg-status-error/10', iconColor: 'text-status-error' },
+                      ].map((dept) => (
+                        <div key={dept.name} className={`${dept.bgColor} rounded-xl p-4 text-center`}>
+                          <div className={`w-12 h-12 ${dept.bgColor} rounded-full flex items-center justify-center mx-auto mb-3`}>
+                            <dept.Icon size={24} className={dept.iconColor} />
+                          </div>
+                          <div className="text-2xl font-bold text-foreground mb-1">{dept.value}</div>
+                          <div className="text-sm text-muted-foreground">{dept.name}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ),
+              },
+            ] as DashboardCardConfig[]}
+          />
         </TabsContent>
 
         {/* TAB 3: Sales Report */}
