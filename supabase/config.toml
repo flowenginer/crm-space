@@ -41,3 +41,6 @@ verify_jwt = true
 
 [functions.register-session]
 verify_jwt = false
+
+[functions.distribute-lead]
+verify_jwt = false

@@ -29,6 +29,7 @@ import {
   Target,
   Wrench,
   Radar,
+  Share2,
   LucideIcon,
 } from 'lucide-react';
 import { UserManagement } from '@/components/settings/UserManagement';
@@ -44,6 +45,7 @@ import { MetricsSettings } from '@/components/settings/MetricsSettings';
 import { AdMessagePatternsSettings } from '@/components/settings/AdMessagePatternsSettings';
 import { ActiveSessions } from '@/components/settings/ActiveSessions';
 import { AccessPermissionsSettings } from '@/components/settings/AccessPermissionsSettings';
+import { LeadDistributionSettings } from '@/components/settings/LeadDistributionSettings';
 import { Facebook, UserCheck, Unlock } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -111,6 +113,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   { value: 'tags', label: 'Etiquetas', icon: Tag, permission: ['settings', 'tags'] },
   { value: 'owner-agent', label: 'Responsável', icon: UserCheck, permission: ['settings', 'update'] },
   { value: 'close-reasons', label: 'Fechamento', icon: X, permission: ['settings', 'close_reasons'] },
+  { value: 'lead-distribution', label: 'Distribuição', icon: Share2, permission: ['settings', 'update'] },
   { value: 'notifications', label: 'Notificações', icon: Bell, permission: null }, // Todos podem configurar suas notificações
   { value: 'security', label: 'Segurança', icon: Key, permission: null }, // Todos podem trocar sua senha
   { value: 'integrations', label: 'Integrações', icon: Plug, permission: ['settings', 'integrations'] },
@@ -576,6 +579,13 @@ export default function Settings() {
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
               <CloseReasonManagement />
             </div>
+          </TabsContent>
+        )}
+
+        {/* TAB: Lead Distribution Settings */}
+        {isTabAvailable('lead-distribution') && (
+          <TabsContent value="lead-distribution" className="space-y-6">
+            <LeadDistributionSettings />
           </TabsContent>
         )}
 
