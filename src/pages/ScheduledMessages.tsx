@@ -6,15 +6,18 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   CalendarClock, Search, Trash2, Edit3, Eye, Send,
   Clock, User, CheckCircle, XCircle,
   AlertCircle, Loader2, Calendar, ChevronLeft, ChevronRight,
-  RefreshCw, Mic, Paperclip, FileText
+  RefreshCw, Mic, Paperclip, FileText, Phone, MessageSquare, PhoneCall
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, isToday, isTomorrow, isPast } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { usePendingCallbacks, usePendingCallbacksCount, useMarkCallbackComplete, useDeleteCallback, PendingCallback } from '@/hooks/useCallbackReminders';
+import { useNavigate } from 'react-router-dom';
 
 // Status configuration
 const statusConfig = {
@@ -39,11 +42,19 @@ interface ScheduledMessage {
 }
 
 export default function ScheduledMessagesPage() {
-  // Filters
+  // Tab state
+  const [activeTab, setActiveTab] = useState('messages');
+  
+  // Filters for messages
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [agentFilter, setAgentFilter] = useState<string>('all');
+  
+  // Filters for callbacks
+  const [callbackSearch, setCallbackSearch] = useState('');
+  const [callbackStatusFilter, setCallbackStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'today'>('all');
+  const [callbackAgentFilter, setCallbackAgentFilter] = useState<string>('all');
   
   // Pagination
   const [page, setPage] = useState(1);
@@ -55,6 +66,7 @@ export default function ScheduledMessagesPage() {
   const [selectedMessage, setSelectedMessage] = useState<ScheduledMessage | null>(null);
   
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Realtime subscription for automatic updates
   useEffect(() => {
@@ -252,6 +264,16 @@ export default function ScheduledMessagesPage() {
     }
   });
 
+  // Callbacks hooks
+  const { data: callbacks = [], isLoading: isLoadingCallbacks, refetch: refetchCallbacks } = usePendingCallbacks({
+    statusFilter: callbackStatusFilter,
+    agentFilter: callbackAgentFilter,
+    search: callbackSearch
+  });
+  const { data: callbacksCount } = usePendingCallbacksCount();
+  const markComplete = useMarkCallbackComplete();
+  const deleteCallback = useDeleteCallback();
+
   // Format helpers
   const formatScheduledDate = (date: string) => {
     const d = new Date(date);
@@ -279,6 +301,18 @@ export default function ScheduledMessagesPage() {
     return msg.length > length ? msg.slice(0, length) + '...' : msg;
   };
 
+  const getCallbackStatus = (followupDate: string) => {
+    const date = new Date(followupDate);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (date < now) return { label: 'Atrasado', color: 'text-red-500', bgColor: 'bg-red-500/10' };
+    if (date >= today && date < tomorrow) return { label: 'Hoje', color: 'text-amber-500', bgColor: 'bg-amber-500/10' };
+    return { label: 'Pendente', color: 'text-blue-500', bgColor: 'bg-blue-500/10' };
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
@@ -287,25 +321,36 @@ export default function ScheduledMessagesPage() {
           <div className="flex items-center gap-3">
             <CalendarClock size={28} className="text-primary" />
             <div>
-              <h1 className="text-2xl font-bold">Mensagens Agendadas</h1>
+              <h1 className="text-2xl font-bold">Agendamentos</h1>
               <p className="text-sm text-muted-foreground">
-                Gerencie todos os agendamentos de mensagens
+                Gerencie mensagens agendadas e retornos de ligação
               </p>
             </div>
           </div>
           
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-4 py-2 bg-primary/20 rounded-xl">
-              <Clock size={18} className="text-primary" />
+              <MessageSquare size={18} className="text-primary" />
               <span className="text-primary font-semibold">
-                {stats?.scheduled || 0} pendentes
+                {stats?.scheduled || 0} msg
               </span>
             </div>
+            {callbacksCount && callbacksCount.total > 0 && (
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${callbacksCount.overdue > 0 ? 'bg-red-500/20' : 'bg-amber-500/20'}`}>
+                <Phone size={18} className={callbacksCount.overdue > 0 ? 'text-red-500' : 'text-amber-500'} />
+                <span className={`font-semibold ${callbacksCount.overdue > 0 ? 'text-red-500' : 'text-amber-500'}`}>
+                  {callbacksCount.total} retornos
+                </span>
+              </div>
+            )}
             
             <Button
               variant="outline"
               size="icon"
-              onClick={() => refetch()}
+              onClick={() => {
+                refetch();
+                refetchCallbacks();
+              }}
             >
               <RefreshCw size={18} />
             </Button>
@@ -313,129 +358,156 @@ export default function ScheduledMessagesPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="px-6 py-4">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-card rounded-xl p-4 border border-border">
-            <div className="text-2xl font-bold">{stats?.total || 0}</div>
-            <div className="text-sm text-muted-foreground">Total</div>
-          </div>
-          <div 
-            className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
-              statusFilter === 'scheduled' ? 'border-amber-500' : 'border-border hover:border-muted-foreground'
-            }`}
-            onClick={() => setStatusFilter(statusFilter === 'scheduled' ? 'all' : 'scheduled')}
-          >
-            <div className="flex items-center gap-2">
-              <div className="text-2xl font-bold text-amber-500">{stats?.scheduled || 0}</div>
-              <Clock size={20} className="text-amber-500" />
-            </div>
-            <div className="text-sm text-muted-foreground">Pendentes</div>
-          </div>
-          <div 
-            className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
-              statusFilter === 'sent' ? 'border-green-500' : 'border-border hover:border-muted-foreground'
-            }`}
-            onClick={() => setStatusFilter(statusFilter === 'sent' ? 'all' : 'sent')}
-          >
-            <div className="flex items-center gap-2">
-              <div className="text-2xl font-bold text-green-500">{stats?.sent || 0}</div>
-              <CheckCircle size={20} className="text-green-500" />
-            </div>
-            <div className="text-sm text-muted-foreground">Enviadas</div>
-          </div>
-          <div 
-            className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
-              statusFilter === 'failed' ? 'border-red-500' : 'border-border hover:border-muted-foreground'
-            }`}
-            onClick={() => setStatusFilter(statusFilter === 'failed' ? 'all' : 'failed')}
-          >
-            <div className="flex items-center gap-2">
-              <div className="text-2xl font-bold text-red-500">{stats?.failed || 0}</div>
-              <AlertCircle size={20} className="text-red-500" />
-            </div>
-            <div className="text-sm text-muted-foreground">Falharam</div>
-          </div>
-          <div 
-            className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
-              statusFilter === 'cancelled' ? 'border-muted-foreground' : 'border-border hover:border-muted-foreground'
-            }`}
-            onClick={() => setStatusFilter(statusFilter === 'cancelled' ? 'all' : 'cancelled')}
-          >
-            <div className="flex items-center gap-2">
-              <div className="text-2xl font-bold text-muted-foreground">{stats?.cancelled || 0}</div>
-              <XCircle size={20} className="text-muted-foreground" />
-            </div>
-            <div className="text-sm text-muted-foreground">Canceladas</div>
-          </div>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <div className="px-6 pt-4">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="messages" className="flex items-center gap-2">
+              <MessageSquare size={16} />
+              Mensagens
+              {stats && stats.scheduled > 0 && (
+                <span className="ml-1 text-xs bg-amber-500 text-white px-1.5 py-0.5 rounded-full">
+                  {stats.scheduled}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="callbacks" className="flex items-center gap-2">
+              <Phone size={16} />
+              Retornos de Ligação
+              {callbacksCount && callbacksCount.total > 0 && (
+                <span className={`ml-1 text-xs text-white px-1.5 py-0.5 rounded-full ${callbacksCount.overdue > 0 ? 'bg-red-500' : 'bg-amber-500'}`}>
+                  {callbacksCount.total}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
         </div>
-      </div>
 
-      {/* Filters */}
-      <div className="px-6 py-4 border-b border-border">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="relative flex-1 min-w-[250px] max-w-md">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por contato ou mensagem..."
-              className="pl-10"
-            />
+        {/* Messages Tab */}
+        <TabsContent value="messages" className="mt-0">
+          {/* Stats Cards */}
+          <div className="px-6 py-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="bg-card rounded-xl p-4 border border-border">
+                <div className="text-2xl font-bold">{stats?.total || 0}</div>
+                <div className="text-sm text-muted-foreground">Total</div>
+              </div>
+              <div 
+                className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
+                  statusFilter === 'scheduled' ? 'border-amber-500' : 'border-border hover:border-muted-foreground'
+                }`}
+                onClick={() => setStatusFilter(statusFilter === 'scheduled' ? 'all' : 'scheduled')}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="text-2xl font-bold text-amber-500">{stats?.scheduled || 0}</div>
+                  <Clock size={20} className="text-amber-500" />
+                </div>
+                <div className="text-sm text-muted-foreground">Pendentes</div>
+              </div>
+              <div 
+                className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
+                  statusFilter === 'sent' ? 'border-green-500' : 'border-border hover:border-muted-foreground'
+                }`}
+                onClick={() => setStatusFilter(statusFilter === 'sent' ? 'all' : 'sent')}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="text-2xl font-bold text-green-500">{stats?.sent || 0}</div>
+                  <CheckCircle size={20} className="text-green-500" />
+                </div>
+                <div className="text-sm text-muted-foreground">Enviadas</div>
+              </div>
+              <div 
+                className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
+                  statusFilter === 'failed' ? 'border-red-500' : 'border-border hover:border-muted-foreground'
+                }`}
+                onClick={() => setStatusFilter(statusFilter === 'failed' ? 'all' : 'failed')}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="text-2xl font-bold text-red-500">{stats?.failed || 0}</div>
+                  <AlertCircle size={20} className="text-red-500" />
+                </div>
+                <div className="text-sm text-muted-foreground">Falharam</div>
+              </div>
+              <div 
+                className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
+                  statusFilter === 'cancelled' ? 'border-muted-foreground' : 'border-border hover:border-muted-foreground'
+                }`}
+                onClick={() => setStatusFilter(statusFilter === 'cancelled' ? 'all' : 'cancelled')}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="text-2xl font-bold text-muted-foreground">{stats?.cancelled || 0}</div>
+                  <XCircle size={20} className="text-muted-foreground" />
+                </div>
+                <div className="text-sm text-muted-foreground">Canceladas</div>
+              </div>
+            </div>
           </div>
 
-          <Select value={dateFilter} onValueChange={setDateFilter}>
-            <SelectTrigger className="w-40">
-              <Calendar size={16} className="mr-2 text-muted-foreground" />
-              <SelectValue placeholder="Data" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as datas</SelectItem>
-              <SelectItem value="today">Hoje</SelectItem>
-              <SelectItem value="tomorrow">Amanhã</SelectItem>
-              <SelectItem value="week">Esta semana</SelectItem>
-              <SelectItem value="past">Passadas</SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Filters */}
+          <div className="px-6 py-4 border-b border-border">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="relative flex-1 min-w-[250px] max-w-md">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar por contato ou mensagem..."
+                  className="pl-10"
+                />
+              </div>
 
-          <Select value={agentFilter} onValueChange={setAgentFilter}>
-            <SelectTrigger className="w-48">
-              <User size={16} className="mr-2 text-muted-foreground" />
-              <SelectValue placeholder="Atendente" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os atendentes</SelectItem>
-              {teamMembers.map((member) => (
-                <SelectItem key={member.id} value={member.id}>
-                  {member.full_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              <Select value={dateFilter} onValueChange={setDateFilter}>
+                <SelectTrigger className="w-40">
+                  <Calendar size={16} className="mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Data" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as datas</SelectItem>
+                  <SelectItem value="today">Hoje</SelectItem>
+                  <SelectItem value="tomorrow">Amanhã</SelectItem>
+                  <SelectItem value="week">Esta semana</SelectItem>
+                  <SelectItem value="past">Passadas</SelectItem>
+                </SelectContent>
+              </Select>
 
-          {(statusFilter !== 'all' || dateFilter !== 'all' || agentFilter !== 'all' || search) && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setStatusFilter('all');
-                setDateFilter('all');
-                setAgentFilter('all');
-                setSearch('');
-              }}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              Limpar filtros
-            </Button>
-          )}
-        </div>
-      </div>
+              <Select value={agentFilter} onValueChange={setAgentFilter}>
+                <SelectTrigger className="w-48">
+                  <User size={16} className="mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Atendente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os atendentes</SelectItem>
+                  {teamMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-      {/* Table */}
-      <div className="px-6 py-4">
-        <div className="bg-card rounded-xl border border-border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
+              {(statusFilter !== 'all' || dateFilter !== 'all' || agentFilter !== 'all' || search) && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setStatusFilter('all');
+                    setDateFilter('all');
+                    setAgentFilter('all');
+                    setSearch('');
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  Limpar filtros
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="px-6 py-4">
+            <div className="bg-card rounded-xl border border-border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
                 <tr className="bg-muted/50 border-b border-border">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">
                     Data
@@ -603,41 +675,279 @@ export default function ScheduledMessagesPage() {
                     );
                   })
                 )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {data && data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-              <div className="text-sm text-muted-foreground">
-                Mostrando {((page - 1) * pageSize) + 1} - {Math.min(page * pageSize, data.total)} de {data.total}
+                  </tbody>
+                </table>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                >
-                  <ChevronLeft size={16} />
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Página {page} de {data.totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
-                  disabled={page === data.totalPages}
-                >
-                  <ChevronRight size={16} />
-                </Button>
+
+              {/* Pagination */}
+              {data && data.totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                  <div className="text-sm text-muted-foreground">
+                    Mostrando {((page - 1) * pageSize) + 1} - {Math.min(page * pageSize, data.total)} de {data.total}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                    >
+                      <ChevronLeft size={16} />
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      Página {page} de {data.totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
+                      disabled={page === data.totalPages}
+                    >
+                      <ChevronRight size={16} />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Callbacks Tab */}
+        <TabsContent value="callbacks" className="mt-0">
+          {/* Callbacks Stats */}
+          <div className="px-6 py-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-card rounded-xl p-4 border border-border">
+                <div className="text-2xl font-bold">{callbacksCount?.total || 0}</div>
+                <div className="text-sm text-muted-foreground">Total</div>
+              </div>
+              <div 
+                className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
+                  callbackStatusFilter === 'overdue' ? 'border-red-500' : 'border-border hover:border-muted-foreground'
+                }`}
+                onClick={() => setCallbackStatusFilter(callbackStatusFilter === 'overdue' ? 'all' : 'overdue')}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="text-2xl font-bold text-red-500">{callbacksCount?.overdue || 0}</div>
+                  <AlertCircle size={20} className="text-red-500" />
+                </div>
+                <div className="text-sm text-muted-foreground">Atrasados</div>
+              </div>
+              <div 
+                className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
+                  callbackStatusFilter === 'today' ? 'border-amber-500' : 'border-border hover:border-muted-foreground'
+                }`}
+                onClick={() => setCallbackStatusFilter(callbackStatusFilter === 'today' ? 'all' : 'today')}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="text-2xl font-bold text-amber-500">
+                    {callbacks.filter(cb => {
+                      const date = new Date(cb.followup_date);
+                      const today = new Date();
+                      return date.toDateString() === today.toDateString();
+                    }).length}
+                  </div>
+                  <Clock size={20} className="text-amber-500" />
+                </div>
+                <div className="text-sm text-muted-foreground">Hoje</div>
+              </div>
+              <div 
+                className={`bg-card rounded-xl p-4 border cursor-pointer transition-colors ${
+                  callbackStatusFilter === 'pending' ? 'border-blue-500' : 'border-border hover:border-muted-foreground'
+                }`}
+                onClick={() => setCallbackStatusFilter(callbackStatusFilter === 'pending' ? 'all' : 'pending')}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="text-2xl font-bold text-blue-500">{callbacksCount?.pending || 0}</div>
+                  <PhoneCall size={20} className="text-blue-500" />
+                </div>
+                <div className="text-sm text-muted-foreground">Pendentes</div>
               </div>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+
+          {/* Callbacks Filters */}
+          <div className="px-6 py-4 border-b border-border">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="relative flex-1 min-w-[250px] max-w-md">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={callbackSearch}
+                  onChange={(e) => setCallbackSearch(e.target.value)}
+                  placeholder="Buscar por contato ou observação..."
+                  className="pl-10"
+                />
+              </div>
+
+              <Select value={callbackAgentFilter} onValueChange={setCallbackAgentFilter}>
+                <SelectTrigger className="w-48">
+                  <User size={16} className="mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Atendente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os atendentes</SelectItem>
+                  {teamMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {(callbackStatusFilter !== 'all' || callbackAgentFilter !== 'all' || callbackSearch) && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setCallbackStatusFilter('all');
+                    setCallbackAgentFilter('all');
+                    setCallbackSearch('');
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  Limpar filtros
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Callbacks Table */}
+          <div className="px-6 py-4">
+            <div className="bg-card rounded-xl border border-border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-muted/50 border-b border-border">
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">
+                        Data Retorno
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">
+                        Contato
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">
+                        Telefone
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">
+                        Agente
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">
+                        Status
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">
+                        Observação
+                      </th>
+                      <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">
+                        Ações
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {isLoadingCallbacks ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-12 text-center">
+                          <Loader2 size={24} className="animate-spin mx-auto text-primary" />
+                        </td>
+                      </tr>
+                    ) : callbacks.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                          <Phone size={40} className="mx-auto mb-3 opacity-50" />
+                          <p>Nenhum retorno de ligação agendado</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      callbacks.map((cb) => {
+                        const status = getCallbackStatus(cb.followup_date);
+
+                        return (
+                          <tr key={cb.id} className="hover:bg-muted/50 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="text-sm">
+                                {formatScheduledDate(cb.followup_date)}
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3">
+                              <div className="text-sm font-medium">
+                                {cb.contact?.full_name || 'Desconhecido'}
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3">
+                              <div className="text-sm text-muted-foreground">
+                                {formatPhone(cb.contact?.phone)}
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3">
+                              <div className="text-sm text-muted-foreground">
+                                {cb.user?.full_name || '-'}
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3">
+                              <span className={`
+                                inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
+                                ${status.color} ${status.bgColor}
+                              `}>
+                                {status.label === 'Atrasado' && <AlertCircle size={12} />}
+                                {status.label === 'Hoje' && <Clock size={12} />}
+                                {status.label === 'Pendente' && <PhoneCall size={12} />}
+                                {status.label}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3 max-w-xs">
+                              <span className="text-sm text-muted-foreground truncate block">
+                                {cb.followup_message || cb.notes || '-'}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => {
+                                    markComplete.mutate({ callLogId: cb.id, contactId: cb.contact_id });
+                                    toast.success('Retorno marcado como concluído');
+                                  }}
+                                  className="p-2 hover:bg-green-500/20 rounded-lg transition-colors"
+                                  title="Marcar como concluído"
+                                >
+                                  <CheckCircle size={16} className="text-green-500" />
+                                </button>
+
+                                <button
+                                  onClick={() => navigate(`/conversations?contact=${cb.contact_id}`)}
+                                  className="p-2 hover:bg-primary/20 rounded-lg transition-colors"
+                                  title="Abrir conversa"
+                                >
+                                  <MessageSquare size={16} className="text-primary" />
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    if (confirm('Cancelar este retorno de ligação?')) {
+                                      deleteCallback.mutate(cb.id);
+                                      toast.success('Retorno cancelado');
+                                    }
+                                  }}
+                                  className="p-2 hover:bg-destructive/20 rounded-lg transition-colors"
+                                  title="Cancelar retorno"
+                                >
+                                  <Trash2 size={16} className="text-destructive" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* View Modal */}
       <ViewMessageModal

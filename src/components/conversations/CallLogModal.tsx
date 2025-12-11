@@ -91,6 +91,7 @@ export function CallLogModal({ open, onOpenChange, contact, conversationId }: Ca
   const [newResultId, setNewResultId] = useState<string>('');
   const [scheduleFollowup, setScheduleFollowup] = useState(false);
   const [followupDate, setFollowupDate] = useState<Date | undefined>();
+  const [followupTime, setFollowupTime] = useState<string>('09:00');
   const [followupMessage, setFollowupMessage] = useState('');
 
   const { data: callLogs = [], isLoading } = useCallLogs(contact?.id || null);
@@ -109,11 +110,21 @@ export function CallLogModal({ open, onOpenChange, contact, conversationId }: Ca
     setNewResultId('');
     setScheduleFollowup(false);
     setFollowupDate(undefined);
+    setFollowupTime('09:00');
     setFollowupMessage('');
   };
 
   const handleSaveNew = async () => {
     if (!contact) return;
+
+    // Combine date and time for followup
+    let combinedFollowupDate: string | null = null;
+    if (followupDate && scheduleFollowup) {
+      const [hours, minutes] = followupTime.split(':').map(Number);
+      const combined = new Date(followupDate);
+      combined.setHours(hours, minutes, 0, 0);
+      combinedFollowupDate = combined.toISOString();
+    }
 
     await createCallLog.mutateAsync({
       contact_id: contact.id,
@@ -121,7 +132,7 @@ export function CallLogModal({ open, onOpenChange, contact, conversationId }: Ca
       result_id: newResultId || null,
       notes: newNote || undefined,
       schedule_followup: scheduleFollowup,
-      followup_date: followupDate?.toISOString() || null,
+      followup_date: combinedFollowupDate,
       followup_message: followupMessage || null,
     });
 
@@ -130,6 +141,7 @@ export function CallLogModal({ open, onOpenChange, contact, conversationId }: Ca
     setNewResultId('');
     setScheduleFollowup(false);
     setFollowupDate(undefined);
+    setFollowupTime('09:00');
     setFollowupMessage('');
   };
 
@@ -138,19 +150,35 @@ export function CallLogModal({ open, onOpenChange, contact, conversationId }: Ca
     setNewResultId(log.result_id || '');
     setNewNote(log.notes || '');
     setScheduleFollowup(log.schedule_followup);
-    setFollowupDate(log.followup_date ? new Date(log.followup_date) : undefined);
+    if (log.followup_date) {
+      const date = new Date(log.followup_date);
+      setFollowupDate(date);
+      setFollowupTime(format(date, 'HH:mm'));
+    } else {
+      setFollowupDate(undefined);
+      setFollowupTime('09:00');
+    }
     setFollowupMessage(log.followup_message || '');
   };
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
 
+    // Combine date and time for followup
+    let combinedFollowupDate: string | null = null;
+    if (followupDate && scheduleFollowup) {
+      const [hours, minutes] = followupTime.split(':').map(Number);
+      const combined = new Date(followupDate);
+      combined.setHours(hours, minutes, 0, 0);
+      combinedFollowupDate = combined.toISOString();
+    }
+
     await updateCallLog.mutateAsync({
       id: editingId,
       result_id: newResultId || null,
       notes: newNote || null,
       schedule_followup: scheduleFollowup,
-      followup_date: followupDate?.toISOString() || null,
+      followup_date: combinedFollowupDate,
       followup_message: followupMessage || null,
     });
 
@@ -159,6 +187,7 @@ export function CallLogModal({ open, onOpenChange, contact, conversationId }: Ca
     setNewResultId('');
     setScheduleFollowup(false);
     setFollowupDate(undefined);
+    setFollowupTime('09:00');
     setFollowupMessage('');
   };
 
@@ -310,16 +339,25 @@ export function CallLogModal({ open, onOpenChange, contact, conversationId }: Ca
                           <Popover>
                             <PopoverTrigger asChild>
                               <Button variant="outline" size="sm" className="h-6 text-xs">
-                                {followupDate ? format(followupDate, 'dd/MM HH:mm') : 'Data'}
+                                {followupDate ? `${format(followupDate, 'dd/MM')} ${followupTime}` : 'Data/Hora'}
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
+                            <PopoverContent className="w-auto p-0" align="start">
                               <CalendarComponent
                                 mode="single"
                                 selected={followupDate}
                                 onSelect={setFollowupDate}
                                 locale={ptBR}
                               />
+                              <div className="border-t p-3 flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-muted-foreground" />
+                                <Input
+                                  type="time"
+                                  value={followupTime}
+                                  onChange={(e) => setFollowupTime(e.target.value)}
+                                  className="w-24 h-8"
+                                />
+                              </div>
                             </PopoverContent>
                           </Popover>
                         )}
