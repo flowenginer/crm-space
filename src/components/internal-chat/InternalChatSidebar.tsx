@@ -138,30 +138,31 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
                         <span className="font-medium text-sm truncate">
                           {thread.other_user.full_name || 'Usuário'}
                         </span>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {thread.last_message_at && (
-                            <span className="text-[10px] text-muted-foreground">
-                              {formatDistanceToNow(new Date(thread.last_message_at), { 
-                                addSuffix: false,
-                                locale: ptBR 
-                              })}
-                            </span>
-                          )}
-                          {thread.unread_count > 0 && (
-                            <Badge variant="default" className="h-4 min-w-[16px] px-1 text-[9px]">
-                              {thread.unread_count > 99 ? '99+' : thread.unread_count}
-                            </Badge>
-                          )}
-                        </div>
+                        {thread.last_message_at && (
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {formatDistanceToNow(new Date(thread.last_message_at), { 
+                              addSuffix: false,
+                              locale: ptBR 
+                            })}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <p className="text-xs text-muted-foreground truncate">
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-xs text-muted-foreground truncate flex-1 min-w-0">
                           {thread.last_message_preview || 'Nova conversa'}
                         </p>
                         <DepartmentBadge 
                           name={thread.other_user.department_name} 
                           color={thread.other_user.department_color}
                         />
+                        {thread.unread_count > 0 && (
+                          <Badge 
+                            variant="default" 
+                            className="h-4 min-w-[16px] px-1 text-[9px] bg-green-500 hover:bg-green-600 shrink-0"
+                          >
+                            {thread.unread_count > 99 ? '99+' : thread.unread_count}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </button>
