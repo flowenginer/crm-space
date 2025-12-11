@@ -603,10 +603,27 @@ export function useConversationCounts(statusFilter: StatusFilter = 'active') {
 }
 
 // Hook to get real counts for sort filters from database
-export function useSortFilterCounts(statusFilter: StatusFilter = 'active') {
+export function useSortFilterCounts(
+  statusFilter: StatusFilter = 'active',
+  assignmentFilter?: AssignmentFilterExtended
+) {
   return useQuery({
-    queryKey: ['sort-filter-counts', statusFilter],
+    queryKey: ['sort-filter-counts', statusFilter, assignmentFilter],
     queryFn: async () => {
+      // Get current user for filtering
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Check if user is admin/supervisor
+      let isAdmin = false;
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        isAdmin = profile?.role === 'admin' || profile?.role === 'supervisor';
+      }
+      
       // Build status condition
       const statusCondition = statusFilter === 'active' 
         ? 'status.in.(open,pending)' 
@@ -614,20 +631,36 @@ export function useSortFilterCounts(statusFilter: StatusFilter = 'active') {
           ? undefined 
           : `status.eq.${statusFilter}`;
       
+      // Build base queries
+      let notRepliedQuery = supabase
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('last_message_is_from_me', false);
+      
+      let clientNotRepliedQuery = supabase
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('last_message_is_from_me', true);
+      
+      // Apply status filter
+      if (statusCondition) {
+        notRepliedQuery = notRepliedQuery.or(statusCondition);
+        clientNotRepliedQuery = clientNotRepliedQuery.or(statusCondition);
+      } else {
+        notRepliedQuery = notRepliedQuery.or('status.in.(open,pending,closed)');
+        clientNotRepliedQuery = clientNotRepliedQuery.or('status.in.(open,pending,closed)');
+      }
+      
+      // Apply assignment filter - for non-admin users with 'mine' filter
+      if (!isAdmin && assignmentFilter === 'mine' && user) {
+        notRepliedQuery = notRepliedQuery.eq('assigned_to', user.id);
+        clientNotRepliedQuery = clientNotRepliedQuery.eq('assigned_to', user.id);
+      }
+      
       // Fetch counts in parallel
       const [notRepliedResult, clientNotRepliedResult] = await Promise.all([
-        // Not replied: last_message_is_from_me = false
-        supabase
-          .from('conversations')
-          .select('id', { count: 'exact', head: true })
-          .eq('last_message_is_from_me', false)
-          .or(statusCondition || 'status.in.(open,pending,closed)'),
-        // Client not replied: last_message_is_from_me = true
-        supabase
-          .from('conversations')
-          .select('id', { count: 'exact', head: true })
-          .eq('last_message_is_from_me', true)
-          .or(statusCondition || 'status.in.(open,pending,closed)'),
+        notRepliedQuery,
+        clientNotRepliedQuery,
       ]);
 
       return {

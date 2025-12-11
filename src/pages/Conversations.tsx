@@ -85,7 +85,7 @@ import { ConversationSidebar } from '@/components/conversations/ConversationSide
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { QuickTemplatesPopover } from '@/components/conversations/QuickTemplatesPopover';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
-import { usePaginatedConversations, useSortFilterCounts, type SortFilter, type ConversationFilters, type StatusFilter } from '@/hooks/usePaginatedConversations';
+import { usePaginatedConversations, useSortFilterCounts, type SortFilter, type ConversationFilters, type StatusFilter, type AssignmentFilterExtended } from '@/hooks/usePaginatedConversations';
 import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, useNoTagCount, type CountFilters } from '@/hooks/useConversationCounts';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
@@ -1389,7 +1389,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const { data: absoluteTagCountsData } = useTagCounts(); // Contagens absolutas sem filtros para o modal
   const { data: noTagCount } = useNoTagCount(tagCountFilters); // Contagem de conversas sem etiqueta
   const { data: agentCountsData } = useAgentCounts(agentCountFilters);
-  const { data: sortFilterCountsFromDb } = useSortFilterCounts(statusFilter); // Real counts for not_replied and client_not_replied
+  const { data: sortFilterCountsFromDb } = useSortFilterCounts(statusFilter, conversationFilters.assignment); // Real counts for not_replied and client_not_replied (filtered by assignment)
   
   // Flatten paginated conversations
   const paginatedConversations = useMemo(() => {
