@@ -1,9 +1,12 @@
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { Loader2, TrendingUp, X } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { Loader2, TrendingUp, X, User, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LeadOriginData, ORIGIN_CONFIG } from '@/hooks/useLeadJourneyDashboard';
+import { LeadOriginData } from '@/hooks/useLeadJourneyDashboard';
+import { useLeadsDistributionByAgent, AgentLeadDistribution } from '@/hooks/useLeadsDistributionByAgent';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
 interface OriginBreakdownChartProps {
@@ -11,6 +14,8 @@ interface OriginBreakdownChartProps {
   isLoading?: boolean;
   selectedOrigin?: string | null;
   onOriginClick?: (origin: string | null) => void;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
 const CustomTooltip = ({ active, payload }: any) => {
@@ -34,7 +39,98 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-export function OriginBreakdownChart({ data, isLoading, selectedOrigin, onOriginClick }: OriginBreakdownChartProps) {
+function AgentDistributionPanel({ 
+  agents, 
+  isLoading, 
+  selectedOriginLabel,
+  selectedOriginColor,
+  totalLeads
+}: { 
+  agents: AgentLeadDistribution[];
+  isLoading: boolean;
+  selectedOriginLabel: string;
+  selectedOriginColor: string;
+  totalLeads: number;
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (agents.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+        <Users className="h-8 w-8 mb-2 opacity-50" />
+        <p className="text-sm">Nenhum lead atribuído</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
+        <div 
+          className="w-3 h-3 rounded-full"
+          style={{ backgroundColor: selectedOriginColor }}
+        />
+        <span className="font-medium text-sm">{selectedOriginLabel}</span>
+        <Badge variant="secondary" className="ml-auto text-xs">
+          {totalLeads} leads
+        </Badge>
+      </div>
+      
+      <ScrollArea className="flex-1 -mr-2 pr-2">
+        <div className="space-y-2">
+          {agents.map((agent) => (
+            <div 
+              key={agent.agent_id}
+              className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+            >
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={agent.agent_avatar || undefined} />
+                <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                  {agent.agent_name?.slice(0, 2).toUpperCase() || <User className="h-3 w-3" />}
+                </AvatarFallback>
+              </Avatar>
+              
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{agent.agent_name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {agent.converted_count} conv. ({agent.conversion_rate}%)
+                </p>
+              </div>
+              
+              <div className="text-right">
+                <p className="text-lg font-bold">{agent.lead_count}</p>
+                <p className="text-[10px] text-muted-foreground">leads</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+export function OriginBreakdownChart({ 
+  data, 
+  isLoading, 
+  selectedOrigin, 
+  onOriginClick,
+  dateFrom,
+  dateTo
+}: OriginBreakdownChartProps) {
+  // Buscar distribuição por agente quando uma origem é selecionada
+  const { data: agentDistribution, isLoading: isLoadingAgents } = useLeadsDistributionByAgent({
+    dateFrom: dateFrom || new Date(),
+    dateTo: dateTo || new Date(),
+    origin: selectedOrigin,
+    enabled: !!selectedOrigin && !!dateFrom && !!dateTo
+  });
+
   if (isLoading) {
     return (
       <Card className="h-full">
@@ -69,10 +165,10 @@ export function OriginBreakdownChart({ data, isLoading, selectedOrigin, onOrigin
 
   const total = data.reduce((sum, d) => sum + d.total, 0);
   const selectedData = selectedOrigin ? data.find(d => d.origin === selectedOrigin) : null;
+  const showAgentPanel = !!selectedOrigin && !!selectedData;
 
   const handlePieClick = (entry: LeadOriginData) => {
     if (onOriginClick) {
-      // Toggle: if already selected, deselect
       if (selectedOrigin === entry.origin) {
         onOriginClick(null);
       } else {
@@ -92,7 +188,6 @@ export function OriginBreakdownChart({ data, isLoading, selectedOrigin, onOrigin
           <span className="text-2xl font-bold text-foreground">{total}</span>
         </CardTitle>
         
-        {/* Selected Origin Badge */}
         {selectedOrigin && selectedData && (
           <div className="flex items-center gap-2 mt-2">
             <Badge 
@@ -118,69 +213,99 @@ export function OriginBreakdownChart({ data, isLoading, selectedOrigin, onOrigin
         )}
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={280}>
-          <PieChart>
-            <Pie
-              data={data}
-              cx="50%"
-              cy="50%"
-              innerRadius={70}
-              outerRadius={120}
-              paddingAngle={3}
-              dataKey="total"
-              nameKey="label"
-              onClick={(_, index) => handlePieClick(data[index])}
-              style={{ cursor: 'pointer' }}
-            >
-              {data.map((entry, index) => (
-                <Cell 
-                  key={`cell-${index}`} 
-                  fill={entry.color}
-                  opacity={selectedOrigin && selectedOrigin !== entry.origin ? 0.3 : 1}
-                  className="transition-opacity duration-200"
-                  stroke={selectedOrigin === entry.origin ? entry.color : 'transparent'}
-                  strokeWidth={selectedOrigin === entry.origin ? 3 : 0}
-                />
-              ))}
-            </Pie>
-            <Tooltip content={<CustomTooltip />} />
-          </PieChart>
-        </ResponsiveContainer>
+        {/* Layout com grid: pizza à esquerda, painel à direita quando selecionado */}
+        <div className={cn(
+          "grid gap-4 transition-all duration-300",
+          showAgentPanel ? "grid-cols-2" : "grid-cols-1"
+        )}>
+          {/* Coluna do Gráfico de Pizza */}
+          <div className={cn(
+            "transition-all duration-300",
+            showAgentPanel && "flex flex-col"
+          )}>
+            <ResponsiveContainer width="100%" height={showAgentPanel ? 220 : 280}>
+              <PieChart>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={showAgentPanel ? 50 : 70}
+                  outerRadius={showAgentPanel ? 85 : 120}
+                  paddingAngle={3}
+                  dataKey="total"
+                  nameKey="label"
+                  onClick={(_, index) => handlePieClick(data[index])}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {data.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.color}
+                      opacity={selectedOrigin && selectedOrigin !== entry.origin ? 0.3 : 1}
+                      className="transition-opacity duration-200"
+                      stroke={selectedOrigin === entry.origin ? entry.color : 'transparent'}
+                      strokeWidth={selectedOrigin === entry.origin ? 3 : 0}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
 
-        {/* Origin Cards - Clickable */}
-        <div className="grid grid-cols-2 gap-2 mt-4">
-          {data.map((origin) => (
-            <button
-              key={origin.origin}
-              onClick={() => handlePieClick(origin)}
-              className={cn(
-                "flex flex-col p-2.5 rounded-lg border transition-all duration-200 text-left",
-                selectedOrigin === origin.origin
-                  ? "border-primary bg-primary/10 ring-1 ring-primary"
-                  : "border-border bg-muted/50 hover:bg-muted hover:border-muted-foreground/30",
-                selectedOrigin && selectedOrigin !== origin.origin && "opacity-50"
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div 
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ backgroundColor: origin.color }}
-                  />
-                  <span className="text-xs font-medium text-muted-foreground">{origin.label}</span>
-                </div>
-                <span className="text-sm font-bold">{origin.total}</span>
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-[10px] text-muted-foreground">Conversão</span>
-                <span className="text-xs font-semibold text-primary">{origin.conversionRate.toFixed(1)}%</span>
-              </div>
-            </button>
-          ))}
+            {/* Origin Cards */}
+            <div className={cn(
+              "grid gap-2 mt-2",
+              showAgentPanel ? "grid-cols-1" : "grid-cols-2"
+            )}>
+              {data.map((origin) => (
+                <button
+                  key={origin.origin}
+                  onClick={() => handlePieClick(origin)}
+                  className={cn(
+                    "flex flex-col p-2 rounded-lg border transition-all duration-200 text-left",
+                    selectedOrigin === origin.origin
+                      ? "border-primary bg-primary/10 ring-1 ring-primary"
+                      : "border-border bg-muted/50 hover:bg-muted hover:border-muted-foreground/30",
+                    selectedOrigin && selectedOrigin !== origin.origin && "opacity-50"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: origin.color }}
+                      />
+                      <span className="text-xs font-medium text-muted-foreground">{origin.label}</span>
+                    </div>
+                    <span className="text-sm font-bold">{origin.total}</span>
+                  </div>
+                  {!showAgentPanel && (
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-[10px] text-muted-foreground">Conversão</span>
+                      <span className="text-xs font-semibold text-primary">{origin.conversionRate.toFixed(1)}%</span>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Coluna do Painel de Agentes */}
+          {showAgentPanel && selectedData && (
+            <div className="border-l border-border pl-4 h-[340px]">
+              <AgentDistributionPanel 
+                agents={agentDistribution || []}
+                isLoading={isLoadingAgents}
+                selectedOriginLabel={selectedData.label}
+                selectedOriginColor={selectedData.color}
+                totalLeads={selectedData.total}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Selected Origin Details */}
-        {selectedData && (
+        {/* Detalhes da origem selecionada - mostrar apenas quando NÃO tiver painel de agentes */}
+        {selectedData && !showAgentPanel && (
           <div className="mt-4 p-3 rounded-lg border border-primary/30 bg-primary/5">
             <div className="flex items-center gap-2 mb-2">
               <div 
