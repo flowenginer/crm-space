@@ -145,9 +145,12 @@ export function TransferModal({
       }
       
       handleClose();
-    } catch (error) {
-      console.error('Error transferring conversation:', error);
-      toast.error('Erro ao transferir conversa');
+    } catch (error: any) {
+      console.error('[TransferModal] Error transferring conversation:', error);
+      const errorMessage = error?.message || 'Erro ao transferir conversa';
+      toast.error(errorMessage, {
+        description: 'Verifique se o atendente está disponível e tente novamente.',
+      });
     }
   };
 
