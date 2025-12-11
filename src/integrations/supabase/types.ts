@@ -2476,6 +2476,8 @@ export type Database = {
           role: string | null
           signature_enabled: boolean | null
           signature_name: string | null
+          unavailability_reason: string | null
+          unavailable_until: string | null
           updated_at: string
         }
         Insert: {
@@ -2501,6 +2503,8 @@ export type Database = {
           role?: string | null
           signature_enabled?: boolean | null
           signature_name?: string | null
+          unavailability_reason?: string | null
+          unavailable_until?: string | null
           updated_at?: string
         }
         Update: {
@@ -2526,6 +2530,8 @@ export type Database = {
           role?: string | null
           signature_enabled?: boolean | null
           signature_name?: string | null
+          unavailability_reason?: string | null
+          unavailable_until?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3514,6 +3520,8 @@ export type Database = {
           is_online: boolean
           oldest_waiting_minutes: number
           open_conversations: number
+          unavailability_reason: string
+          unavailable_until: string
           waiting_response: number
         }[]
       }

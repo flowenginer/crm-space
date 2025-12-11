@@ -250,11 +250,12 @@ export function AgentMonitorPanel() {
                       agent={agent}
                       alertLevel={getAlertLevel(agent.oldest_waiting_minutes)}
                       alertMinutes={alertMinutes}
-                      onToggleAvailability={() => handleToggleAvailability(agent)}
+                      onToggleClick={() => handleToggleClick(agent)}
                       isToggling={toggleAvailability.isPending}
                       formatTime={formatTime}
                       getAlertColor={getAlertColor}
                       getCardBorderColor={getCardBorderColor}
+                      canToggle={canToggleAvailability}
                     />
                   ))}
                 </div>
@@ -270,6 +271,14 @@ export function AgentMonitorPanel() {
           </CardContent>
         </CollapsibleContent>
       </Card>
+
+      {/* Timer Modal */}
+      <AvailabilityTimerModal
+        open={!!timerModalAgent}
+        onOpenChange={(open) => !open && setTimerModalAgent(null)}
+        agentName={timerModalAgent?.agent_name || ''}
+        onConfirm={handleDeactivateWithTimer}
+      />
     </Collapsible>
   );
 }
@@ -278,24 +287,60 @@ interface AgentCardProps {
   agent: AgentStatus;
   alertLevel: 'ok' | 'warning' | 'critical';
   alertMinutes: number;
-  onToggleAvailability: () => void;
+  onToggleClick: () => void;
   isToggling: boolean;
   formatTime: (minutes: number) => string;
   getAlertColor: (level: 'ok' | 'warning' | 'critical') => string;
   getCardBorderColor: (level: 'ok' | 'warning' | 'critical') => string;
+  canToggle: boolean;
 }
 
 function AgentCard({ 
   agent, 
   alertLevel, 
   alertMinutes,
-  onToggleAvailability, 
+  onToggleClick, 
   isToggling,
   formatTime,
   getAlertColor,
-  getCardBorderColor
+  getCardBorderColor,
+  canToggle
 }: AgentCardProps) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [remainingTime, setRemainingTime] = useState<string | null>(null);
+
+  // Calculate remaining time for unavailable_until
+  useEffect(() => {
+    if (!agent.unavailable_until) {
+      setRemainingTime(null);
+      return;
+    }
+
+    const calculateRemaining = () => {
+      const until = new Date(agent.unavailable_until!);
+      const now = new Date();
+      const diffMs = until.getTime() - now.getTime();
+
+      if (diffMs <= 0) {
+        setRemainingTime(null);
+        return;
+      }
+
+      const diffMins = Math.floor(diffMs / 60000);
+      if (diffMins < 60) {
+        setRemainingTime(`${diffMins}min`);
+      } else {
+        const hours = Math.floor(diffMins / 60);
+        const mins = diffMins % 60;
+        setRemainingTime(mins > 0 ? `${hours}h${mins}m` : `${hours}h`);
+      }
+    };
+
+    calculateRemaining();
+    const interval = setInterval(calculateRemaining, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, [agent.unavailable_until]);
 
   return (
     <TooltipProvider>
@@ -385,8 +430,8 @@ function AgentCard({
             <Tooltip>
               <TooltipTrigger asChild>
                 <div 
-                  className="flex items-center justify-between cursor-pointer"
-                  onClick={onToggleAvailability}
+                  className={`flex items-center justify-between ${canToggle ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                  onClick={canToggle ? onToggleClick : undefined}
                 >
                   <span className="text-xs flex items-center gap-1">
                     {agent.is_available ? (
@@ -397,24 +442,38 @@ function AgentCard({
                     ) : (
                       <>
                         <PowerOff size={12} className="text-muted-foreground" />
-                        <span className="text-muted-foreground">Parado</span>
+                        <span className="text-muted-foreground">
+                          {remainingTime ? (
+                            <span className="flex items-center gap-1">
+                              <Timer size={10} />
+                              Volta em {remainingTime}
+                            </span>
+                          ) : (
+                            'Parado'
+                          )}
+                        </span>
                       </>
                     )}
                   </span>
                   <Switch
                     checked={agent.is_available}
-                    disabled={isToggling}
+                    disabled={isToggling || !canToggle}
                     className="scale-75"
                   />
                 </div>
               </TooltipTrigger>
               <TooltipContent>
                 <p>
-                  {agent.is_available 
-                    ? 'Clique para pausar recebimento de novos leads'
-                    : 'Clique para ativar recebimento de novos leads'
+                  {!canToggle 
+                    ? 'Você não tem permissão para alterar disponibilidade'
+                    : agent.is_available 
+                      ? 'Clique para pausar recebimento de novos leads'
+                      : 'Clique para ativar recebimento de novos leads'
                   }
                 </p>
+                {agent.unavailability_reason && !agent.is_available && (
+                  <p className="text-xs mt-1 opacity-80">Motivo: {agent.unavailability_reason}</p>
+                )}
               </TooltipContent>
             </Tooltip>
           </div>
