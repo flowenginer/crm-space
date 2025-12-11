@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { 
   Send, 
   Paperclip, 
@@ -189,6 +189,36 @@ export function InternalChatInput({
     setEmojiOpen(false);
   };
 
+  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData || !clipboardData.items) return;
+
+    for (let i = 0; i < clipboardData.items.length; i++) {
+      const item = clipboardData.items[i];
+      
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          
+          const maxSize = 10 * 1024 * 1024;
+          if (file.size > maxSize) {
+            toast.error('Imagem muito grande. Máximo: 10MB');
+            return;
+          }
+          
+          const extension = item.type.split('/')[1] || 'png';
+          const fileName = `screenshot_${Date.now()}.${extension}`;
+          const renamedFile = new File([file], fileName, { type: file.type });
+          
+          toast.info('Enviando imagem...');
+          await handleFileUpload(renamedFile, 'image');
+          return;
+        }
+      }
+    }
+  }, [handleFileUpload]);
+
   return (
     <div className="border-t border-border bg-card p-4">
       {/* Reply preview */}
@@ -303,10 +333,11 @@ export function InternalChatInput({
 
         {/* Text input */}
         <Textarea
-          placeholder="Digite sua mensagem..."
+          placeholder="Digite sua mensagem... (Ctrl+V para colar imagens)"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           className="min-h-[44px] max-h-[120px] resize-none"
           rows={1}
         />
