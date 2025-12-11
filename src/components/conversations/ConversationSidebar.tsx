@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
-  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check
+  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2
 } from 'lucide-react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { toast } from 'sonner';
@@ -17,8 +17,10 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ScheduleMessageModal } from './ScheduleMessageModal';
 import { TransferModal } from './TransferModal';
+import { ShareModal } from './ShareModal';
 import { fetchContactProfile } from '@/lib/whatsapp/instance-creator';
 import { useLeadStatuses } from '@/hooks/useLeadKanban';
+import { useIsSharedWithMe, useUnshareConversation } from '@/hooks/useSharedConversations';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -32,6 +34,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [isFetchingPhoto, setIsFetchingPhoto] = useState(false);
   const [newConversationPhone, setNewConversationPhone] = useState('');
@@ -46,6 +49,10 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
 
   // Fetch dynamic lead statuses
   const { data: leadStatuses = [] } = useLeadStatuses();
+  
+  // Check if conversation is shared with me
+  const isSharedWithMe = useIsSharedWithMe(conversationId);
+  const unshareConversation = useUnshareConversation();
 
   // Fetch conversation with contact data - campos específicos para otimização
   const { data: conversation, isLoading: loadingConversation } = useQuery({
@@ -785,8 +792,55 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
         </DialogContent>
       </Dialog>
 
+      {/* Shared with me indicator */}
+      {isSharedWithMe && (
+        <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-border">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+              <Share2 size={12} />
+              Conversa compartilhada com você
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground hover:text-destructive h-7 px-2"
+              onClick={() => {
+                unshareConversation.mutate(
+                  { conversationId },
+                  {
+                    onSuccess: () => {
+                      toast.success('Você deixou de seguir esta conversa');
+                    },
+                    onError: () => {
+                      toast.error('Erro ao deixar de seguir');
+                    }
+                  }
+                );
+              }}
+              disabled={unshareConversation.isPending}
+            >
+              {unshareConversation.isPending ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                'Deixar de seguir'
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Action Buttons - Top */}
       <div className="flex gap-2 p-3 border-b border-border">
+        <Button
+          onClick={() => setShowShareModal(true)}
+          variant="outline"
+          size="sm"
+          className="flex-1 gap-2 h-9 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-900/20"
+        >
+          <Share2 size={14} />
+          Compartilhar
+        </Button>
+        
         <Button
           onClick={() => setShowTransferModal(true)}
           variant="outline"
@@ -1179,6 +1233,13 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
         conversationId={conversationId}
         currentAssignedTo={conversation?.assigned_to}
         currentDepartmentId={conversation?.department_id}
+      />
+      
+      <ShareModal
+        open={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        conversationId={conversationId}
+        contactName={contact?.full_name || 'Contato'}
       />
 
       {/* Channel Selector Modal */}

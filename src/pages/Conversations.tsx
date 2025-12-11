@@ -42,6 +42,7 @@ import {
   PenLine,
   CheckSquare,
   SquareCheck,
+  Link2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -91,6 +92,7 @@ import { useConversationEvents, useReturnConversation, type ConversationEvent } 
 import { TransferEventCard } from '@/components/conversations/TransferEventCard';
 import { ReopenEventCard } from '@/components/conversations/ReopenEventCard';
 import { CloseEventCard } from '@/components/conversations/CloseEventCard';
+import { ShareEventCard } from '@/components/conversations/ShareEventCard';
 import { useRealtimeMessages, useRealtimeConversations, useRealtimeConversationEvents, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
@@ -362,6 +364,7 @@ interface ConversationItemProps {
   conversation: Conversation;
   isSelected: boolean;
   isPinned: boolean;
+  isShared: boolean;
   isNewTransfer: boolean;
   onClick: () => void;
   onTogglePin: () => void;
@@ -370,7 +373,7 @@ interface ConversationItemProps {
   onToggleCheck?: () => void;
 }
 
-function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, onClick, onTogglePin, isSelectionMode, isChecked, onToggleCheck }: ConversationItemProps) {
+function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewTransfer, onClick, onTogglePin, isSelectionMode, isChecked, onToggleCheck }: ConversationItemProps) {
   const contactName = conversation.contact?.full_name || 'Contato';
   const isOnline = conversation.contact?.is_online || false;
   const isUnread = conversation.is_unread || false;
@@ -458,6 +461,9 @@ function ConversationItem({ conversation, isSelected, isPinned, isNewTransfer, o
             <div className="flex items-center gap-1.5 min-w-0">
               {isPinned && (
                 <Pin size={12} className="text-primary flex-shrink-0" />
+              )}
+              {isShared && (
+                <Link2 size={12} className="text-blue-500 flex-shrink-0" />
               )}
               <h3 className={cn(
                 'text-sm truncate',
@@ -3120,6 +3126,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   conversation={conv}
                   isSelected={selectedConversationId === conv.id}
                   isPinned={isPinned(conv.id)}
+                  isShared={sharedConversationIds.includes(conv.id)}
                   isNewTransfer={!!(conv as any).is_new_transfer && conv.assigned_to === profile?.id}
                   onClick={() => handleSelectConversation(conv)}
                   onTogglePin={() => {
@@ -3650,13 +3657,19 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                               key={`event-${item.id}`} 
                               event={item as ConversationEvent}
                             />
-                          ) : (item as ConversationEvent).event_type === 'close' ? (
+          ) : (item as ConversationEvent).event_type === 'close' ? (
                             <CloseEventCard 
                               key={`event-${item.id}`} 
                               event={item as ConversationEvent}
                             />
+                          ) : (item as ConversationEvent).event_type === 'share' ? (
+                            <ShareEventCard 
+                              key={`event-${item.id}`} 
+                              event={item as ConversationEvent}
+                              currentUserId={currentUser?.id}
+                            />
                           ) : (
-                            <TransferEventCard 
+                            <TransferEventCard
                               key={`event-${item.id}`} 
                               event={item as ConversationEvent}
                               currentUserId={currentUser?.id}
