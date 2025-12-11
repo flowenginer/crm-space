@@ -107,6 +107,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
 import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds } from '@/hooks/useSharedConversations';
+import { useSharedConversationsWithDetails } from '@/hooks/useSharedConversationsWithDetails';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/store/userStore';
@@ -1418,6 +1419,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const { data: sharedConversations = [] } = useSharedConversations();
   const { data: sharedCounts } = useSharedConversationCounts();
   const sharedConversationIds = useSharedConversationIds();
+  const { data: sharedConversationsData = [] } = useSharedConversationsWithDetails();
   const sendMessage = useSendMessage();
   const deleteMessage = useDeleteMessage();
   const editMessage = useEditMessage();
@@ -1620,8 +1622,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     staleTime: 30000, // 30 seconds cache
   });
 
-  // Merge paginated conversations with directly fetched selected conversation AND pinned conversations
-  // This ensures both selected and pinned conversations ALWAYS appear in the list
+  // Merge paginated conversations with directly fetched selected conversation, pinned conversations, AND shared conversations
+  // This ensures selected, pinned, and shared conversations ALWAYS appear in the list
   const conversations = useMemo(() => {
     // Start with paginated conversations
     let result = [...paginatedConversations];
@@ -1635,6 +1637,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       }
     }
     
+    // Add shared conversations that are not already in the list
+    for (const sharedConv of sharedConversationsData) {
+      if (!existingIds.has(sharedConv.id)) {
+        result.push(sharedConv);
+        existingIds.add(sharedConv.id);
+      }
+    }
+    
     // If we have a directly fetched conversation and it's not already in the list, append it (don't move to top)
     // The conversation will only move to the top naturally when a message is sent (due to last_message_at sorting)
     if (directSelectedConversation && !existingIds.has(directSelectedConversation.id)) {
@@ -1642,7 +1652,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
     
     return result;
-  }, [paginatedConversations, directSelectedConversation, pinnedConversationsData]);
+  }, [paginatedConversations, directSelectedConversation, pinnedConversationsData, sharedConversationsData]);
 
   // Find selected conversation from the merged list
   const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;

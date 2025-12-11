@@ -5,12 +5,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Share2, Loader2, Users, Building2 } from 'lucide-react';
+import { Share2, Loader2, Users, Building2, X, Link2 } from 'lucide-react';
 import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useAllUserDepartments } from '@/hooks/useUserDepartments';
-import { useShareConversation } from '@/hooks/useSharedConversations';
+import { useShareConversation, useMySharesForConversation, useRemoveShare } from '@/hooks/useSharedConversations';
 import { toast } from 'sonner';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface ShareModalProps {
   open: boolean;
@@ -18,7 +19,7 @@ interface ShareModalProps {
   onSuccess?: () => void;
   conversationId: string;
   contactName?: string;
-  conversationOwnerId?: string | null; // The assigned_to of the conversation
+  conversationOwnerId?: string | null;
 }
 
 type ShareType = 'user' | 'department';
@@ -33,7 +34,9 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
   const { data: departments = [] } = useDepartments();
   const { data: teamMembers = [] } = useTeam();
   const { data: userDepartments = [] } = useAllUserDepartments();
+  const { data: existingShares = [], isLoading: loadingShares } = useMySharesForConversation(conversationId);
   const shareMutation = useShareConversation();
+  const removeShareMutation = useRemoveShare();
 
   // Filter team members by selected department
   const teamInDepartment = useMemo(() => {
@@ -51,7 +54,6 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
 
     try {
       if (shareType === 'department' || shareWithEntireDepartment) {
-        // Share with entire department
         if (!selectedDepartmentId) {
           toast.error('Selecione um departamento');
           return;
@@ -62,7 +64,6 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
           note: note.trim() || undefined,
         });
       } else {
-        // Share with specific user
         if (!selectedUserId) {
           toast.error('Selecione um usuário');
           return;
@@ -75,14 +76,27 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
       }
 
       toast.success('Conversa compartilhada com sucesso!');
-      handleClose();
+      // Reset form but keep modal open to allow more shares
+      setSelectedUserId('');
+      setNote('');
       onSuccess?.();
     } catch (error: any) {
       if (error.code === '23505') {
         toast.error('Esta conversa já foi compartilhada com este destino');
+      } else if (error.message?.includes('responsável')) {
+        toast.error(error.message);
       } else {
         toast.error('Erro ao compartilhar conversa');
       }
+    }
+  };
+
+  const handleRemoveShare = async (shareId: string) => {
+    try {
+      await removeShareMutation.mutateAsync(shareId);
+      toast.success('Compartilhamento removido');
+    } catch (error) {
+      toast.error('Erro ao remover compartilhamento');
     }
   };
 
@@ -101,7 +115,7 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Share2 className="h-5 w-5 text-primary" />
@@ -115,6 +129,58 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Existing Shares Section */}
+          {existingShares.length > 0 && (
+            <div className="space-y-2 p-3 bg-muted/50 rounded-lg border border-border">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Link2 className="h-4 w-4 text-primary" />
+                Compartilhado com:
+              </div>
+              <div className="space-y-2">
+                {existingShares.map((share) => (
+                  <div
+                    key={share.id}
+                    className="flex items-center justify-between p-2 bg-background rounded-md border border-border"
+                  >
+                    <div className="flex items-center gap-2">
+                      {share.shared_with_profile ? (
+                        <>
+                          <Avatar className="h-7 w-7">
+                            <AvatarImage src={share.shared_with_profile.avatar_url || undefined} />
+                            <AvatarFallback className="text-xs">
+                              {share.shared_with_profile.full_name?.charAt(0) || '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm">{share.shared_with_profile.full_name}</span>
+                        </>
+                      ) : share.department ? (
+                        <>
+                          <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Building2 className="h-4 w-4 text-primary" />
+                          </div>
+                          <span className="text-sm">{share.department.name} (departamento)</span>
+                        </>
+                      ) : null}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleRemoveShare(share.id)}
+                      disabled={removeShareMutation.isPending}
+                    >
+                      {removeShareMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <X className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Share Type Selection */}
           <div className="space-y-2">
             <Label>Tipo de compartilhamento</Label>
@@ -226,7 +292,7 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={handleClose}>
-            Cancelar
+            Fechar
           </Button>
           <Button
             onClick={handleShare}
