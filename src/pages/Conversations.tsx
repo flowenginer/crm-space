@@ -2774,7 +2774,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
       {/* Column 1: Conversations List */}
       <div className={cn(
-        'w-full md:w-[480px] md:min-w-[480px] md:max-w-[480px] bg-card border-r border-border flex flex-col flex-shrink-0',
+        'w-full md:w-[500px] md:min-w-[500px] md:max-w-[500px] bg-card border-r border-border flex flex-col flex-shrink-0',
         isMobile && showMobileChat ? 'hidden' : 'flex'
       )}>
         {/* Header */}
