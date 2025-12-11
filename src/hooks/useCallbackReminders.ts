@@ -171,3 +171,30 @@ export function useDeleteCallback() {
     }
   });
 }
+
+export function useUpdateCallback() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ callLogId, followupDate, followupMessage }: { 
+      callLogId: string; 
+      followupDate: string;
+      followupMessage?: string | null;
+    }) => {
+      const { error } = await supabase
+        .from('call_logs')
+        .update({
+          followup_date: followupDate,
+          followup_message: followupMessage
+        })
+        .eq('id', callLogId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-callbacks'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-callbacks-count'] });
+      queryClient.invalidateQueries({ queryKey: ['call-logs'] });
+    }
+  });
+}

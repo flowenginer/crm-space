@@ -16,7 +16,7 @@ import {
 import { toast } from 'sonner';
 import { format, isToday, isTomorrow, isPast } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { usePendingCallbacks, usePendingCallbacksCount, useMarkCallbackComplete, useDeleteCallback, PendingCallback } from '@/hooks/useCallbackReminders';
+import { usePendingCallbacks, usePendingCallbacksCount, useMarkCallbackComplete, useDeleteCallback, useUpdateCallback, PendingCallback } from '@/hooks/useCallbackReminders';
 import { useNavigate } from 'react-router-dom';
 
 // Status configuration
@@ -64,6 +64,8 @@ export default function ScheduledMessagesPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<ScheduledMessage | null>(null);
+  const [showEditCallbackModal, setShowEditCallbackModal] = useState(false);
+  const [selectedCallback, setSelectedCallback] = useState<PendingCallback | null>(null);
   
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -273,6 +275,7 @@ export default function ScheduledMessagesPage() {
   const { data: callbacksCount } = usePendingCallbacksCount();
   const markComplete = useMarkCallbackComplete();
   const deleteCallback = useDeleteCallback();
+  const updateCallback = useUpdateCallback();
 
   // Format helpers
   const formatScheduledDate = (date: string) => {
@@ -916,6 +919,17 @@ export default function ScheduledMessagesPage() {
                                 </button>
 
                                 <button
+                                  onClick={() => {
+                                    setSelectedCallback(cb);
+                                    setShowEditCallbackModal(true);
+                                  }}
+                                  className="p-2 hover:bg-amber-500/20 rounded-lg transition-colors"
+                                  title="Editar agendamento"
+                                >
+                                  <Edit3 size={16} className="text-amber-500" />
+                                </button>
+
+                                <button
                                   onClick={() => navigate(`/conversations?contact=${cb.contact_id}`)}
                                   className="p-2 hover:bg-primary/20 rounded-lg transition-colors"
                                   title="Abrir conversa"
@@ -967,6 +981,17 @@ export default function ScheduledMessagesPage() {
           setSelectedMessage(null);
         }}
         message={selectedMessage}
+      />
+
+      {/* Edit Callback Modal */}
+      <EditCallbackModal
+        open={showEditCallbackModal}
+        onClose={() => {
+          setShowEditCallbackModal(false);
+          setSelectedCallback(null);
+        }}
+        callback={selectedCallback}
+        onSave={updateCallback.mutate}
       />
     </div>
   );
@@ -1149,6 +1174,122 @@ function EditScheduledMessageModal({ open, onClose, message }: { open: boolean; 
               value={content}
               onChange={(e) => setContent(e.target.value)}
               className="min-h-[100px]"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={isLoading}>
+            {isLoading ? <Loader2 className="animate-spin" size={16} /> : 'Salvar'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Edit Callback Modal
+function EditCallbackModal({ 
+  open, 
+  onClose, 
+  callback,
+  onSave
+}: { 
+  open: boolean; 
+  onClose: () => void; 
+  callback: PendingCallback | null;
+  onSave: (data: { callLogId: string; followupDate: string; followupMessage?: string | null }) => void;
+}) {
+  const [followupDate, setFollowupDate] = useState('');
+  const [followupTime, setFollowupTime] = useState('');
+  const [followupMessage, setFollowupMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (callback) {
+      const date = new Date(callback.followup_date);
+      setFollowupDate(format(date, 'yyyy-MM-dd'));
+      setFollowupTime(format(date, 'HH:mm'));
+      setFollowupMessage(callback.followup_message || callback.notes || '');
+    }
+  }, [callback]);
+
+  const handleSave = async () => {
+    if (!followupDate || !followupTime) {
+      toast.error('Selecione data e hora');
+      return;
+    }
+
+    if (!callback) return;
+
+    setIsLoading(true);
+    try {
+      const scheduledFor = new Date(`${followupDate}T${followupTime}`);
+      
+      onSave({
+        callLogId: callback.id,
+        followupDate: scheduledFor.toISOString(),
+        followupMessage: followupMessage || null
+      });
+
+      toast.success('Agendamento atualizado!');
+      onClose();
+    } catch (error) {
+      toast.error('Erro ao atualizar');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!callback) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Editar Retorno de Ligação</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold">
+              {callback.contact?.full_name?.charAt(0)?.toUpperCase() || '?'}
+            </div>
+            <div>
+              <div className="font-medium">{callback.contact?.full_name}</div>
+              <div className="text-sm text-muted-foreground">{callback.contact?.phone}</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Data</label>
+              <Input
+                type="date"
+                value={followupDate}
+                onChange={(e) => setFollowupDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Hora</label>
+              <Input
+                type="time"
+                value={followupTime}
+                onChange={(e) => setFollowupTime(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Observação</label>
+            <Textarea
+              value={followupMessage}
+              onChange={(e) => setFollowupMessage(e.target.value)}
+              className="min-h-[80px]"
+              placeholder="Observação sobre o retorno..."
             />
           </div>
         </div>
