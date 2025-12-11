@@ -3551,6 +3551,25 @@ export type Database = {
           stage_name: string
         }[]
       }
+      get_internal_chat_threads: {
+        Args: { p_user_id: string }
+        Returns: {
+          created_at: string
+          last_message_at: string
+          last_message_preview: string
+          last_message_sender_id: string
+          other_user_avatar: string
+          other_user_department_color: string
+          other_user_department_id: string
+          other_user_department_name: string
+          other_user_id: string
+          other_user_name: string
+          other_user_online: boolean
+          thread_id: string
+          unread_count: number
+          updated_at: string
+        }[]
+      }
       get_internal_chat_unread_count: {
         Args: { p_user_id: string }
         Returns: number
