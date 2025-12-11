@@ -43,6 +43,7 @@ import {
   CheckSquare,
   SquareCheck,
   Link2,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -106,7 +107,7 @@ import { useTags, useAddTagToContact, useRemoveTagFromContact, useCreateTag, Tag
 import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
-import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds } from '@/hooks/useSharedConversations';
+import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds, useMySharePermission } from '@/hooks/useSharedConversations';
 import { useSharedConversationsWithDetails } from '@/hooks/useSharedConversationsWithDetails';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
@@ -1420,6 +1421,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const { data: sharedCounts } = useSharedConversationCounts();
   const sharedConversationIds = useSharedConversationIds();
   const { data: sharedConversationsData = [] } = useSharedConversationsWithDetails();
+  const sharePermission = useMySharePermission(selectedConversationId);
   const sendMessage = useSendMessage();
   const deleteMessage = useDeleteMessage();
   const editMessage = useEditMessage();
@@ -3848,6 +3850,27 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             )}
 
             {/* Message Input */}
+            {(() => {
+              // Determine if user can send messages
+              const isOwner = selectedConversation?.assigned_to === profile?.id;
+              const isAdmin = canAccessAllConversations;
+              const canSendMessages = isOwner || isAdmin || sharePermission.canEdit || !sharePermission.isShared;
+
+              if (!canSendMessages) {
+                // View-only access - show disabled state
+                return (
+                  <div className="bg-card border-t border-border px-4 md:px-6 py-4">
+                    <div className="flex items-center justify-center gap-3 p-4 bg-muted/50 rounded-xl border border-border/50">
+                      <Eye size={20} className="text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        Você tem acesso apenas para visualização desta conversa
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
             <div className="bg-card border-t border-border px-4 md:px-6 py-4">
               {/* Hidden file input */}
               <input
@@ -4164,6 +4187,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 </div>
               )}
             </div>
+              );
+            })()}
 
             {/* Schedule Message Modal */}
             <ScheduleMessageModal
