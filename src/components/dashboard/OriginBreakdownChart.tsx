@@ -82,30 +82,28 @@ function AgentDistributionPanel({
         </Badge>
       </div>
       
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {agents.map((agent) => (
           <div 
             key={agent.agent_id}
-            className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+            className="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
           >
-            <Avatar className="h-8 w-8">
+            <Avatar className="h-6 w-6 shrink-0">
               <AvatarImage src={agent.agent_avatar || undefined} />
-              <AvatarFallback className="text-xs bg-primary/10 text-primary">
+              <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
                 {agent.agent_name?.slice(0, 2).toUpperCase() || <User className="h-3 w-3" />}
               </AvatarFallback>
             </Avatar>
             
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{agent.agent_name}</p>
-              <p className="text-xs text-muted-foreground">
-                {agent.converted_count} conv. ({agent.conversion_rate}%)
-              </p>
-            </div>
+            <span className="text-sm font-medium truncate flex-1 min-w-0">{agent.agent_name}</span>
             
-            <div className="text-right">
-              <p className="text-lg font-bold">{agent.lead_count}</p>
-              <p className="text-[10px] text-muted-foreground">leads</p>
-            </div>
+            <span className="text-xs text-muted-foreground shrink-0">
+              {agent.conversion_rate}%
+            </span>
+            
+            <span className="text-sm font-bold shrink-0 min-w-[32px] text-right">
+              {agent.lead_count}
+            </span>
           </div>
         ))}
       </div>
