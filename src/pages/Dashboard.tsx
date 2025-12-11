@@ -7,7 +7,7 @@ import {
   useLeadsByOrigin,
   useLeadJourneyMetrics,
   useAgentDistributionAdvanced,
-  useStatusFunnelRealtime,
+  useStatusFunnel,
   useLeadAlerts,
   type DashboardFilters as JourneyFilters
 } from '@/hooks/useLeadJourneyDashboard';
@@ -52,7 +52,7 @@ export default function Dashboard() {
   const { data: originData = [], isLoading: loadingOrigin } = useLeadsByOrigin(filters);
   const { data: journeyMetrics, isLoading: loadingMetrics } = useLeadJourneyMetrics(filters, selectedOrigin || undefined);
   const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentDistributionAdvanced(filters);
-  const { data: statusFunnelRealtime = [], isLoading: loadingFunnelRealtime } = useStatusFunnelRealtime(filters.agentId, filters.departmentId);
+  const { data: statusFunnelData = [], isLoading: loadingFunnel } = useStatusFunnel(filters);
   const { data: leadAlerts = [], isLoading: loadingAlerts } = useLeadAlerts(filters);
   const { data: interactionData = [], isLoading: loadingInteraction } = useInteractionTimeline(filters);
   
@@ -91,8 +91,8 @@ export default function Dashboard() {
       id: 'status-funnel',
       component: (
         <StatusFunnelRealtime 
-          data={statusFunnelRealtime} 
-          isLoading={loadingFunnelRealtime} 
+          data={statusFunnelData} 
+          isLoading={loadingFunnel} 
         />
       ),
     },
@@ -110,7 +110,7 @@ export default function Dashboard() {
     {
       id: 'status-duration',
       fullWidth: true,
-      component: <StatusDurationChart data={statusFunnelRealtime} isLoading={loadingFunnelRealtime} />,
+      component: <StatusDurationChart data={statusFunnelData} isLoading={loadingFunnel} />,
     },
     {
       id: 'agent-performance',
@@ -123,7 +123,7 @@ export default function Dashboard() {
   ], [
     journeyMetrics, loadingMetrics,
     originData, loadingOrigin, selectedOrigin, filters.dateFrom, filters.dateTo,
-    statusFunnelRealtime, loadingFunnelRealtime,
+    statusFunnelData, loadingFunnel,
     interactionData, loadingInteraction, selectedAgentName,
     agentPerformance, loadingAgents,
     leadAlerts, loadingAlerts

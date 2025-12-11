@@ -21,7 +21,7 @@ export function StatusFunnelRealtime({ data, isLoading }: StatusFunnelRealtimePr
         <CardHeader>
           <CardTitle className="text-base font-medium flex items-center gap-2">
             <Clock className="h-4 w-4 text-blue-500" />
-            Status Atual (Tempo Real)
+            Status Atual
           </CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-80">
@@ -37,7 +37,7 @@ export function StatusFunnelRealtime({ data, isLoading }: StatusFunnelRealtimePr
         <CardHeader>
           <CardTitle className="text-base font-medium flex items-center gap-2">
             <Clock className="h-4 w-4 text-blue-500" />
-            Status Atual (Tempo Real)
+            Status Atual
           </CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-80">
@@ -52,10 +52,13 @@ export function StatusFunnelRealtime({ data, isLoading }: StatusFunnelRealtimePr
   const totalItems = data.length;
   const gradientColors = generateGradientColors(totalItems);
 
-  const getWidthPercent = (index: number, count: number) => {
-    const baseWidth = 100 - (index * (70 / totalItems));
-    const countFactor = maxCount > 0 ? (count / maxCount) : 0;
-    return Math.max(baseWidth * 0.7 + countFactor * 30, 15);
+  // Largura 100% proporcional à quantidade de leads
+  const getWidthPercent = (count: number) => {
+    if (maxCount === 0) return 15;
+    // Item com mais leads = 100%, outros proporcionalmente
+    const proportionalWidth = (count / maxCount) * 100;
+    // Mínimo de 12% para ser visível
+    return Math.max(proportionalWidth, 12);
   };
 
   return (
@@ -63,19 +66,19 @@ export function StatusFunnelRealtime({ data, isLoading }: StatusFunnelRealtimePr
       <CardHeader className="pb-2">
         <CardTitle className="text-base font-medium flex items-center gap-2">
           <Clock className="h-4 w-4 text-blue-500" />
-          Status Atual (Tempo Real)
+          Status Atual
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Quantos leads estão em cada status agora
+          Distribuição de leads por status no período selecionado
         </p>
       </CardHeader>
       <CardContent>
         <TooltipProvider>
           <div className="space-y-0 py-4">
             {data.map((item, index) => {
-              const currentWidth = getWidthPercent(index, item.count);
+              const currentWidth = getWidthPercent(item.count);
               const nextWidth = index < data.length - 1 
-                ? getWidthPercent(index + 1, data[index + 1].count) 
+                ? getWidthPercent(data[index + 1].count) 
                 : currentWidth * 0.7;
               
               const isLast = index === data.length - 1;
