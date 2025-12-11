@@ -10,6 +10,7 @@ import { formatBrazilianPhone, normalizePhoneForStorage, getPhoneSearchVariation
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { ContactRequestModal } from './ContactRequestModal';
+import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
 
 interface StartConversationProps {
   onConversationCreated?: (conversationId: string) => void;
@@ -476,7 +477,10 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
             return;
           }
         } else {
-          // Create new contact with normalized phone - assign to current user
+          // *** CRITICAL: Buscar departamento primário do usuário antes de criar contato ***
+          const userDepartmentId = currentUser?.id ? await getUserPrimaryDepartment(currentUser.id) : null;
+
+          // Create new contact with normalized phone - assign to current user AND department
           const { data: newContact, error: contactError } = await supabase
             .from('contacts')
             .insert({
@@ -485,7 +489,8 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
               lead_status: 'new',
               origin: 'manual',
               first_contact_at: new Date().toISOString(),
-              assigned_to: currentUser?.id, // *** CRITICAL: Assign new contact to current user ***
+              assigned_to: currentUser?.id,
+              department_id: userDepartmentId, // *** CRITICAL: Assign department ***
             })
             .select()
             .single();
@@ -538,7 +543,10 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
         }
       }
 
-      // Create new conversation with selected channel
+      // *** CRITICAL: Buscar departamento primário para a conversa ***
+      const convDepartmentId = currentUser?.id ? await getUserPrimaryDepartment(currentUser.id) : null;
+
+      // Create new conversation with selected channel AND department
       const { data: newConversation, error: createError } = await supabase
         .from('conversations')
         .insert({
@@ -546,6 +554,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           channel_id: channelId,
           status: 'open',
           assigned_to: currentUser?.id,
+          department_id: convDepartmentId, // *** CRITICAL: Assign department ***
           is_unread: false,
           unread_count: 0,
           last_message_at: new Date().toISOString(),
@@ -556,10 +565,13 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
       if (createError) throw createError;
 
-      // Also update the contact's assigned_to if not already set
+      // Also update the contact's assigned_to and department_id if not already set
       await supabase
         .from('contacts')
-        .update({ assigned_to: currentUser?.id })
+        .update({ 
+          assigned_to: currentUser?.id,
+          department_id: convDepartmentId, // *** CRITICAL: Update department too ***
+        })
         .eq('id', contactId)
         .is('assigned_to', null);
 

@@ -345,6 +345,10 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
 
   // Função para criar conversa com canal selecionado
   const createConversationWithChannel = async (contact: Contact, channelId: string, userId: string | undefined) => {
+    // *** CRITICAL: Buscar departamento primário do usuário ***
+    const { getUserPrimaryDepartment } = await import('@/hooks/useUserPrimaryDepartment');
+    const userDepartmentId = userId ? await getUserPrimaryDepartment(userId) : null;
+
     const { data: newConversation, error: createError } = await supabase
       .from('conversations')
       .insert({
@@ -352,6 +356,7 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
         channel_id: channelId,
         status: 'open',
         assigned_to: userId,
+        department_id: userDepartmentId, // *** CRITICAL: Assign department ***
         is_unread: false,
         unread_count: 0,
         last_message_at: new Date().toISOString(),

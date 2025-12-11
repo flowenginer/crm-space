@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { normalizePhoneForStorage, getPhoneSearchVariations } from '@/utils/phone';
 import { getStateFromPhone } from '@/utils/ddd';
 import { toast } from 'sonner';
+import { getUserPrimaryDepartment } from './useUserPrimaryDepartment';
 
 export interface Contact {
   id: string;
@@ -166,6 +167,21 @@ export function useCreateContact() {
       // Detectar estado pelo DDD se não informado
       const detectedState = contact.state || getStateFromPhone(normalizedPhone);
 
+      // *** CRITICAL: Se não foi passado assigned_to ou department_id, atribuir ao usuário atual ***
+      let assignedTo = contact.assigned_to;
+      let departmentId = contact.department_id;
+
+      // Buscar usuário atual se não foi passado assigned_to
+      if (!assignedTo) {
+        const { data: { user } } = await supabase.auth.getUser();
+        assignedTo = user?.id || null;
+      }
+
+      // Buscar departamento primário do usuário se não foi passado department_id
+      if (!departmentId && assignedTo) {
+        departmentId = await getUserPrimaryDepartment(assignedTo);
+      }
+
       // Criar o contato com telefone normalizado
       const { data, error } = await supabase
         .from('contacts')
@@ -176,8 +192,8 @@ export function useCreateContact() {
           state: detectedState,
           city: contact.city,
           lead_status: contact.lead_status || 'new',
-          assigned_to: contact.assigned_to,
-          department_id: contact.department_id,
+          assigned_to: assignedTo,
+          department_id: departmentId,
           notes: contact.notes,
           cpf_cnpj: contact.cpf_cnpj,
           birth_date: contact.birth_date,

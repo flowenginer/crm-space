@@ -63,6 +63,7 @@ import {
 } from '@/hooks/useLeadKanban';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
 
 // Vibrant gradient colors for new statuses (lilac → pink)
 const DEFAULT_COLORS = generateGradientColors(14);
@@ -182,7 +183,14 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
         return;
       }
 
-      // Criar nova conversa
+      // Get current user
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const userId = currentUser?.id;
+      
+      // *** CRITICAL: Buscar departamento primário do usuário ***
+      const userDepartmentId = userId ? await getUserPrimaryDepartment(userId) : null;
+
+      // Criar nova conversa com assigned_to e department_id
       const { data: newConversation, error } = await supabase
         .from('conversations')
         .insert({
@@ -191,6 +199,8 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
           is_unread: false,
           unread_count: 0,
           lead_status: contact.lead_status || null,
+          assigned_to: userId, // *** CRITICAL: Assign to current user ***
+          department_id: userDepartmentId, // *** CRITICAL: Assign department ***
         })
         .select('id')
         .single();

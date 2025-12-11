@@ -22,6 +22,7 @@ import { fetchContactProfile } from '@/lib/whatsapp/instance-creator';
 import { useLeadStatuses } from '@/hooks/useLeadKanban';
 import { useIsSharedWithMe, useUnshareConversation, useMySharesForConversation, useRemoveShare } from '@/hooks/useSharedConversations';
 import { useAuth } from '@/hooks/useAuth';
+import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -629,6 +630,13 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
     try {
       let contactId = pendingContactForConversation.id;
 
+      // Get current user
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const userId = currentUser?.id;
+      
+      // *** CRITICAL: Buscar departamento primário do usuário ***
+      const userDepartmentId = userId ? await getUserPrimaryDepartment(userId) : null;
+
       // Create contact if doesn't exist
       if (!contactId) {
         const { data: newContact, error: contactError } = await supabase
@@ -636,6 +644,8 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
           .insert({
             phone: pendingContactForConversation.phone,
             full_name: `WhatsApp ${pendingContactForConversation.phone.slice(-4)}`,
+            assigned_to: userId, // *** CRITICAL: Assign to current user ***
+            department_id: userDepartmentId, // *** CRITICAL: Assign department ***
           })
           .select('id')
           .single();
@@ -644,13 +654,15 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
         contactId = newContact.id;
       }
 
-      // Create new conversation with selected channel
+      // Create new conversation with selected channel AND assign to user/department
       const { data: newConv, error: convError } = await supabase
         .from('conversations')
         .insert({
           contact_id: contactId,
           status: 'open',
           channel_id: channelId,
+          assigned_to: userId, // *** CRITICAL: Assign to current user ***
+          department_id: userDepartmentId, // *** CRITICAL: Assign department ***
         })
         .select('id')
         .single();
