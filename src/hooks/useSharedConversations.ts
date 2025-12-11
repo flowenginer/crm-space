@@ -76,10 +76,10 @@ export function useSharedConversations() {
       if (error) throw error;
       return data as SharedConversation[];
     },
-    staleTime: 60000, // 1 minute cache
+    staleTime: 30000, // 30 seconds cache (reduced for faster updates)
   });
 
-  // Realtime subscription with debounce
+  // Realtime subscription with faster debounce
   useEffect(() => {
     let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
     
@@ -100,7 +100,8 @@ export function useSharedConversations() {
             queryClient.invalidateQueries({ queryKey: ['my-shares'] });
             queryClient.invalidateQueries({ queryKey: ['my-all-shares'] });
             queryClient.invalidateQueries({ queryKey: ['shared-conversations-details'] });
-          }, 500);
+            queryClient.invalidateQueries({ queryKey: ['all-shared-conversation-ids'] });
+          }, 200); // Reduced from 500ms for faster response
         }
       )
       .subscribe();
@@ -140,9 +141,11 @@ export function useSharedConversationCounts() {
 }
 
 // Get shared conversation IDs for filtering (conversations shared WITH me)
+// Returns both the IDs and loading state for proper access control
 export function useSharedConversationIds() {
-  const { data: sharedConversations } = useSharedConversations();
-  return sharedConversations?.map(sc => sc.conversation_id) || [];
+  const { data: sharedConversations, isLoading } = useSharedConversations();
+  const ids = sharedConversations?.map(sc => sc.conversation_id) || [];
+  return { ids, isLoading };
 }
 
 // Fetch ALL conversation IDs shared BY current user (owner perspective)
@@ -168,10 +171,9 @@ export function useMyAllShares() {
 // Get ALL shared conversation IDs (both directions: shared WITH me + shared BY me)
 // This is used to move conversations from "Todas" to "Compartilhadas" for both users
 export function useAllSharedConversationIds() {
-  const { data: sharedConversations } = useSharedConversations(); // Shared WITH me
+  const { ids: idsWithMe } = useSharedConversationIds(); // Shared WITH me
   const { data: sharedByMe } = useMyAllShares(); // Shared BY me
   
-  const idsWithMe = sharedConversations?.map(sc => sc.conversation_id) || [];
   const idsByMe = sharedByMe || [];
   
   // Combine without duplicates

@@ -1422,7 +1422,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const { isPinned, togglePin } = useTogglePinConversation();
   const { data: sharedConversations = [] } = useSharedConversations();
   const { data: sharedCounts } = useSharedConversationCounts();
-  const sharedConversationIds = useSharedConversationIds(); // IDs shared WITH me (for badge)
+  const { ids: sharedConversationIds, isLoading: isLoadingSharedIds } = useSharedConversationIds(); // IDs shared WITH me (for badge)
   const allSharedConversationIds = useAllSharedConversationIds(); // All shared IDs (WITH me + BY me)
   const { data: sharedConversationsData = [] } = useSharedConversationsWithDetails();
   const sharePermission = useMySharePermission(selectedConversationId);
@@ -1667,8 +1667,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   // Bloquear acesso quando a conversa é carregada via URL e está atribuída a outro vendedor
   // EXCEÇÃO: Conversas compartilhadas com o usuário têm acesso permitido
   useEffect(() => {
-    // Aguardar permissões carregarem completamente
-    if (!isFullyLoaded || !selectedConversationId || !selectedConversation) return;
+    // Aguardar permissões E compartilhamentos carregarem completamente
+    // Se compartilhamentos ainda estão carregando, não bloquear (evita falso positivo)
+    if (!isFullyLoaded || !selectedConversationId || !selectedConversation || isLoadingSharedIds) return;
     
     // Admin e supervisor podem ver tudo
     if (canAccessAllConversations) return;
@@ -1710,7 +1711,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       // Limpar a URL para remover o ID da conversa bloqueada
       navigate('/conversations', { replace: true });
     }
-  }, [selectedConversationId, selectedConversation, canAccessAllConversations, profile?.id, isFullyLoaded, teamMembers, navigate, sharedConversationIds]);
+  }, [selectedConversationId, selectedConversation, canAccessAllConversations, profile?.id, isFullyLoaded, teamMembers, navigate, sharedConversationIds, isLoadingSharedIds]);
 
   // Note: last_message_is_from_me is now included directly in conversation data from the server
   // No need to fetch last messages separately anymore
@@ -2140,11 +2141,30 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
   const handleCloseConversation = () => {
     if (selectedConversationId) {
+      // Remoção otimista do cache para atualização imediata da UI
+      queryClient.setQueryData(
+        ['conversations-paginated', statusFilter, conversationFilters, sortFilter],
+        (oldData: any) => {
+          if (!oldData?.pages) return oldData;
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page: any) => ({
+              ...page,
+              data: page.data.filter((c: any) => c.id !== selectedConversationId),
+            })),
+          };
+        }
+      );
+      
+      // Atualiza no banco
       updateConversation.mutate({ 
         id: selectedConversationId, 
         status: 'closed',
         closed_at: new Date().toISOString(),
       });
+      
+      // Limpar seleção e navegar
+      navigate('/conversations', { replace: true });
       toast.success('Conversa fechada');
     }
   };
@@ -2194,24 +2214,29 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     // ============ VERIFICAÇÃO DE PERMISSÃO ============
     // Se NÃO for admin/supervisor, verificar se a conversa está atribuída a outro vendedor
     // EXCEÇÃO: Conversas compartilhadas com o usuário têm acesso permitido
+    // IMPORTANTE: Se compartilhamentos ainda estão carregando, permitir acesso (evita falso bloqueio)
     if (!canAccessAllConversations && conv.assigned_to && conv.assigned_to !== profile?.id) {
-      // EXCEÇÃO: Se a conversa foi compartilhada COM o usuário, permitir acesso
-      const isSharedWithUser = sharedConversationIds.includes(conv.id);
-      if (!isSharedWithUser) {
-        const assignedAgent = teamMembers.find(t => t.id === conv.assigned_to);
-        setBlockedContact({
-          id: conv.contact_id,
-          full_name: conv.contact?.full_name || 'Contato',
-          phone: conv.contact?.phone || '',
-        });
-        setBlockedByAgent({
-          id: conv.assigned_to,
-          full_name: assignedAgent?.full_name || conv.assignee?.full_name || null,
-          avatar_url: assignedAgent?.avatar_url || null,
-        });
-        setBlockedConversationId(conv.id);
-        setShowContactRequestModal(true);
-        return;
+      // Se ainda está carregando os compartilhamentos, permitir acesso temporariamente
+      // O useEffect de verificação via URL irá revalidar após carregar
+      if (!isLoadingSharedIds) {
+        // EXCEÇÃO: Se a conversa foi compartilhada COM o usuário, permitir acesso
+        const isSharedWithUser = sharedConversationIds.includes(conv.id);
+        if (!isSharedWithUser) {
+          const assignedAgent = teamMembers.find(t => t.id === conv.assigned_to);
+          setBlockedContact({
+            id: conv.contact_id,
+            full_name: conv.contact?.full_name || 'Contato',
+            phone: conv.contact?.phone || '',
+          });
+          setBlockedByAgent({
+            id: conv.assigned_to,
+            full_name: assignedAgent?.full_name || conv.assignee?.full_name || null,
+            avatar_url: assignedAgent?.avatar_url || null,
+          });
+          setBlockedConversationId(conv.id);
+          setShowContactRequestModal(true);
+          return;
+        }
       }
     }
     // ============ FIM DA VERIFICAÇÃO ============
@@ -2241,7 +2266,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     if (isMobile) {
       setShowMobileChat(true);
     }
-  }, [searchParams, navigate, isMobile, canAccessAllConversations, profile?.id, teamMembers, queryClient]);
+  }, [searchParams, navigate, isMobile, canAccessAllConversations, profile?.id, teamMembers, queryClient, sharedConversationIds, isLoadingSharedIds]);
 
   const handleBackToList = () => {
     setShowMobileChat(false);
