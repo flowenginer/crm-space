@@ -168,6 +168,7 @@ export function useTransferConversation() {
         p_to_user_id: toUserId || null,
         p_to_department_id: toDepartmentId || null,
         p_note: note || null,
+        p_force: false,
       });
 
       console.log('[Transfer] RPC result:', { data, error });
