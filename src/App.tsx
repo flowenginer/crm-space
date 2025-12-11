@@ -31,6 +31,7 @@ import Automations from "@/pages/Automations";
 import FlowEditor from "@/pages/FlowEditor";
 import Webhooks from "@/pages/Webhooks";
 import ContactRequests from "@/pages/ContactRequests";
+import InternalChat from "@/pages/InternalChat";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -57,6 +58,11 @@ const App = () => (
               <Route path="/conversations" element={
                 <ProtectedRoute permission="conversations.view">
                   <Conversations />
+                </ProtectedRoute>
+              } />
+              <Route path="/internal-chat" element={
+                <ProtectedRoute>
+                  <InternalChat />
                 </ProtectedRoute>
               } />
               <Route path="/conversations/requests" element={

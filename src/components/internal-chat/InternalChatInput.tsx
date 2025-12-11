@@ -1,0 +1,309 @@
+import { useState, useRef } from 'react';
+import { 
+  Send, 
+  Paperclip, 
+  Image, 
+  Mic, 
+  X, 
+  Smile,
+  FileText,
+  Video,
+  StopCircle
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { 
+  Popover, 
+  PopoverContent, 
+  PopoverTrigger 
+} from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import EmojiPicker, { Theme } from 'emoji-picker-react';
+import { useTheme } from '@/contexts/ThemeContext';
+import { cn } from '@/lib/utils';
+import { 
+  useSendInternalMessage, 
+  useUploadInternalChatMedia,
+  InternalChatMessage 
+} from '@/hooks/useInternalChat';
+import { toast } from 'sonner';
+
+interface InternalChatInputProps {
+  threadId: string | null;
+  replyingTo: InternalChatMessage | null;
+  onCancelReply: () => void;
+  onStartChat: () => Promise<string | null>;
+}
+
+export function InternalChatInput({ 
+  threadId, 
+  replyingTo, 
+  onCancelReply,
+  onStartChat 
+}: InternalChatInputProps) {
+  const [message, setMessage] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+
+  const { theme } = useTheme();
+  const sendMessage = useSendInternalMessage();
+  const uploadMedia = useUploadInternalChatMedia();
+
+  const handleSend = async () => {
+    if (!message.trim() && !replyingTo) return;
+
+    let currentThreadId = threadId;
+    if (!currentThreadId) {
+      currentThreadId = await onStartChat();
+      if (!currentThreadId) return;
+    }
+
+    await sendMessage.mutateAsync({
+      threadId: currentThreadId,
+      content: message.trim(),
+      messageType: 'text',
+      replyToMessageId: replyingTo?.id
+    });
+
+    setMessage('');
+    onCancelReply();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleFileUpload = async (file: File, type: 'image' | 'video' | 'document' | 'audio') => {
+    try {
+      let currentThreadId = threadId;
+      if (!currentThreadId) {
+        currentThreadId = await onStartChat();
+        if (!currentThreadId) return;
+      }
+
+      const result = await uploadMedia.mutateAsync(file);
+
+      await sendMessage.mutateAsync({
+        threadId: currentThreadId,
+        content: message.trim() || undefined,
+        messageType: type,
+        mediaUrl: result.url,
+        mediaName: result.name,
+        mediaMimeType: result.mimeType,
+        replyToMessageId: replyingTo?.id
+      });
+
+      setMessage('');
+      onCancelReply();
+    } catch (error) {
+      console.error('Upload error:', error);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
+        
+        stream.getTracks().forEach(track => track.stop());
+        
+        await handleFileUpload(audioFile, 'audio');
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      timerRef.current = setInterval(() => {
+        setRecordingTime(t => t + 1);
+      }, 1000);
+
+    } catch (error) {
+      toast.error('Erro ao acessar microfone');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleEmojiClick = (emojiData: any) => {
+    setMessage(prev => prev + emojiData.emoji);
+    setEmojiOpen(false);
+  };
+
+  return (
+    <div className="border-t border-border bg-card p-4">
+      {/* Reply preview */}
+      {replyingTo && (
+        <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-muted rounded-lg">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-primary">
+              Respondendo a {replyingTo.sender?.full_name}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {replyingTo.content || 'Mídia'}
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onCancelReply}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* Recording indicator */}
+      {isRecording && (
+        <div className="flex items-center gap-3 mb-2 px-3 py-2 bg-destructive/10 rounded-lg">
+          <div className="h-3 w-3 rounded-full bg-destructive animate-pulse" />
+          <span className="text-sm font-medium">Gravando... {formatTime(recordingTime)}</span>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-8 w-8 ml-auto text-destructive"
+            onClick={stopRecording}
+          >
+            <StopCircle className="h-5 w-5" />
+          </Button>
+        </div>
+      )}
+
+      {/* Input area */}
+      <div className="flex items-end gap-2">
+        {/* Attachment menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0">
+              <Paperclip className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
+              <Image className="h-4 w-4 mr-2" />
+              Imagem
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => videoInputRef.current?.click()}>
+              <Video className="h-4 w-4 mr-2" />
+              Vídeo
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+              <FileText className="h-4 w-4 mr-2" />
+              Documento
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Hidden file inputs */}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'image')}
+        />
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'video')}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.txt"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'document')}
+        />
+
+        {/* Emoji picker */}
+        <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0">
+              <Smile className="h-5 w-5" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <EmojiPicker 
+              onEmojiClick={handleEmojiClick}
+              theme={theme === 'dark' ? Theme.DARK : Theme.LIGHT}
+              width={320}
+              height={400}
+            />
+          </PopoverContent>
+        </Popover>
+
+        {/* Text input */}
+        <Textarea
+          placeholder="Digite sua mensagem..."
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="min-h-[44px] max-h-[120px] resize-none"
+          rows={1}
+        />
+
+        {/* Audio or Send button */}
+        {message.trim() ? (
+          <Button 
+            size="icon" 
+            className="h-10 w-10 shrink-0"
+            onClick={handleSend}
+            disabled={sendMessage.isPending}
+          >
+            <Send className="h-5 w-5" />
+          </Button>
+        ) : (
+          <Button 
+            variant="ghost"
+            size="icon" 
+            className={cn(
+              "h-10 w-10 shrink-0",
+              isRecording && "text-destructive"
+            )}
+            onClick={isRecording ? stopRecording : startRecording}
+          >
+            {isRecording ? <StopCircle className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}

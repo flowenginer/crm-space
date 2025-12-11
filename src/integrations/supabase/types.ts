@@ -1380,6 +1380,153 @@ export type Database = {
           },
         ]
       }
+      internal_chat_messages: {
+        Row: {
+          content: string | null
+          created_at: string
+          deleted_at: string | null
+          id: string
+          is_deleted: boolean
+          media_mime_type: string | null
+          media_name: string | null
+          media_url: string | null
+          message_type: string
+          reply_to_message_id: string | null
+          sender_id: string
+          thread_id: string
+          updated_at: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_deleted?: boolean
+          media_mime_type?: string | null
+          media_name?: string | null
+          media_url?: string | null
+          message_type?: string
+          reply_to_message_id?: string | null
+          sender_id: string
+          thread_id: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_deleted?: boolean
+          media_mime_type?: string | null
+          media_name?: string | null
+          media_url?: string | null
+          message_type?: string
+          reply_to_message_id?: string | null
+          sender_id?: string
+          thread_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_chat_messages_reply_to_message_id_fkey"
+            columns: ["reply_to_message_id"]
+            isOneToOne: false
+            referencedRelation: "internal_chat_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_chat_messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_chat_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "internal_chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      internal_chat_participants: {
+        Row: {
+          is_muted: boolean
+          joined_at: string
+          last_read_at: string | null
+          thread_id: string
+          unread_count: number
+          user_id: string
+        }
+        Insert: {
+          is_muted?: boolean
+          joined_at?: string
+          last_read_at?: string | null
+          thread_id: string
+          unread_count?: number
+          user_id: string
+        }
+        Update: {
+          is_muted?: boolean
+          joined_at?: string
+          last_read_at?: string | null
+          thread_id?: string
+          unread_count?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_chat_participants_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "internal_chat_threads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_chat_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      internal_chat_threads: {
+        Row: {
+          created_at: string
+          id: string
+          last_message_at: string | null
+          last_message_preview: string | null
+          last_message_sender_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_message_sender_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_message_sender_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_chat_threads_last_message_sender_id_fkey"
+            columns: ["last_message_sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       internal_notes: {
         Row: {
           author_id: string
@@ -3184,6 +3331,10 @@ export type Database = {
           source: string
         }[]
       }
+      find_or_create_direct_thread: {
+        Args: { p_other_user_id: string; p_user_id: string }
+        Returns: string
+      }
       fix_historical_origin_detection: {
         Args: never
         Returns: {
@@ -3399,6 +3550,10 @@ export type Database = {
           stage_color: string
           stage_name: string
         }[]
+      }
+      get_internal_chat_unread_count: {
+        Args: { p_user_id: string }
+        Returns: number
       }
       get_kanban_contacts_optimized: {
         Args: { _limit_per_status?: number; _user_id?: string }
