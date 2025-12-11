@@ -124,11 +124,14 @@ export function OriginBreakdownChart({
   dateTo
 }: OriginBreakdownChartProps) {
   // Buscar distribuição por agente quando uma origem é selecionada
+  // Só busca se tiver datas válidas e uma origem selecionada
+  const hasValidDates = !!dateFrom && !!dateTo;
+  
   const { data: agentDistribution, isLoading: isLoadingAgents } = useLeadsDistributionByAgent({
-    dateFrom: dateFrom || new Date(),
-    dateTo: dateTo || new Date(),
+    dateFrom: dateFrom ?? new Date(),
+    dateTo: dateTo ?? new Date(),
     origin: selectedOrigin,
-    enabled: !!selectedOrigin && !!dateFrom && !!dateTo
+    enabled: !!selectedOrigin && hasValidDates
   });
 
   if (isLoading) {
