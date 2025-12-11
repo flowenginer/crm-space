@@ -117,6 +117,7 @@ import { ContactRequestModal } from '@/components/conversations/ContactRequestMo
 import { ImagePreviewDialog } from '@/components/conversations/ImagePreviewDialog';
 import { MediaDownloadButton } from '@/components/conversations/MediaDownloadButton';
 import { DocumentPreview } from '@/components/conversations/DocumentPreview';
+import { CallLogModal } from '@/components/conversations/CallLogModal';
 import type { Profile } from '@/types';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
@@ -1200,6 +1201,7 @@ export default function Conversations() {
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showCallLogModal, setShowCallLogModal] = useState(false);
   const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -3425,7 +3427,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       <Search size={18} className="text-muted-foreground" />
                     </button>
                   )}
-                  <button className="p-2 hover:bg-muted rounded-lg transition-colors">
+                  <button 
+                    className="p-2 hover:bg-muted rounded-lg transition-colors"
+                    onClick={() => setShowCallLogModal(true)}
+                    title="Gestor de Ligações"
+                  >
                     <Phone size={18} className="text-muted-foreground" />
                   </button>
                   <button className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex">
@@ -4748,6 +4754,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Call Log Modal */}
+      <CallLogModal
+        open={showCallLogModal}
+        onOpenChange={setShowCallLogModal}
+        contact={selectedConversation?.contact ? {
+          id: selectedConversation.contact.id,
+          full_name: selectedConversation.contact.full_name,
+          phone: selectedConversation.contact.phone,
+        } : null}
+        conversationId={selectedConversation?.id}
+      />
     </div>
   );
 }
