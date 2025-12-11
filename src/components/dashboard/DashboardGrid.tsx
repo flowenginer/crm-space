@@ -23,27 +23,14 @@ const STORAGE_KEY = 'dashboard-card-order';
 export interface DashboardCardConfig {
   id: string;
   component: ReactNode;
-  colSpan?: number; // 1, 2, or 3 for xl:col-span-X
-  rowSpan?: number;
+  fullWidth?: boolean; // Card should always occupy 100% width
 }
 
 interface DashboardGridProps {
   cards: DashboardCardConfig[];
-  className?: string;
 }
 
-function getGridClassName(colSpan?: number): string {
-  switch (colSpan) {
-    case 2:
-      return 'xl:col-span-2';
-    case 3:
-      return 'xl:col-span-3';
-    default:
-      return '';
-  }
-}
-
-export function DashboardGrid({ cards, className }: DashboardGridProps) {
+export function DashboardGrid({ cards }: DashboardGridProps) {
   const [orderedCardIds, setOrderedCardIds] = useState<string[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -125,12 +112,12 @@ export function DashboardGrid({ cards, className }: DashboardGridProps) {
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={orderedCardIds} strategy={rectSortingStrategy}>
-        <div className={className}>
+        <div className="flex flex-wrap gap-6">
           {orderedCards.map((card) => (
             <DraggableDashboardCard
               key={card.id}
               id={card.id}
-              className={getGridClassName(card.colSpan)}
+              fullWidth={card.fullWidth}
             >
               {card.component}
             </DraggableDashboardCard>

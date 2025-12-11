@@ -6,10 +6,10 @@ import { cn } from '@/lib/utils';
 interface DraggableDashboardCardProps {
   id: string;
   children: React.ReactNode;
-  className?: string;
+  fullWidth?: boolean;
 }
 
-export function DraggableDashboardCard({ id, children, className }: DraggableDashboardCardProps) {
+export function DraggableDashboardCard({ id, children, fullWidth }: DraggableDashboardCardProps) {
   const {
     attributes,
     listeners,
@@ -31,7 +31,7 @@ export function DraggableDashboardCard({ id, children, className }: DraggableDas
       className={cn(
         "relative group",
         isDragging && "z-50 opacity-90 shadow-2xl scale-[1.02]",
-        className
+        fullWidth ? "w-full" : "flex-1 min-w-[350px]"
       )}
     >
       {/* Drag Handle */}

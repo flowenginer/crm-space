@@ -71,7 +71,7 @@ export default function Dashboard() {
   const dashboardCards: DashboardCardConfig[] = useMemo(() => [
     {
       id: 'kpi-cards',
-      colSpan: 3,
+      fullWidth: true,
       component: <JourneyKPICards metrics={journeyMetrics} isLoading={loadingMetrics} />,
     },
     {
@@ -98,7 +98,7 @@ export default function Dashboard() {
     },
     {
       id: 'interaction-chart',
-      colSpan: 3,
+      fullWidth: true,
       component: (
         <InteractionChart 
           data={interactionData} 
@@ -109,12 +109,11 @@ export default function Dashboard() {
     },
     {
       id: 'status-duration',
-      colSpan: 3,
+      fullWidth: true,
       component: <StatusDurationChart data={statusFunnelRealtime} isLoading={loadingFunnelRealtime} />,
     },
     {
       id: 'agent-performance',
-      colSpan: 2,
       component: <AgentPerformanceTableAdvanced data={agentPerformance} isLoading={loadingAgents} />,
     },
     {
@@ -153,10 +152,7 @@ export default function Dashboard() {
       </div>
 
       {/* Draggable Dashboard Grid */}
-      <DashboardGrid 
-        cards={dashboardCards}
-        className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6"
-      />
+      <DashboardGrid cards={dashboardCards} />
     </div>
   );
 }
