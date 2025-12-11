@@ -3041,6 +3041,38 @@ export type Database = {
           },
         ]
       }
+      user_quick_templates: {
+        Row: {
+          created_at: string | null
+          id: string
+          position: number
+          template_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          position: number
+          template_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          position?: number
+          template_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_quick_templates_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
