@@ -67,52 +67,54 @@ export function InternalChatArea({ threadId, otherUserId, onThreadCreated }: Int
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-background">
+    <div className="flex-1 flex flex-col bg-background min-h-0 overflow-hidden">
       {/* Header */}
       <InternalChatHeader otherUserId={otherUserId} />
 
       {/* Messages Area */}
-      <ScrollArea ref={scrollRef} className="flex-1 p-4">
-        {isLoading ? (
-          <div className="space-y-4">
-            {Array(5).fill(0).map((_, i) => (
-              <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
-                <div className="flex gap-2 max-w-[70%]">
-                  {i % 2 === 0 && <Skeleton className="h-8 w-8 rounded-full" />}
-                  <Skeleton className="h-16 w-48 rounded-lg" />
+      <ScrollArea ref={scrollRef} className="flex-1 min-h-0">
+        <div className="p-4">
+          {isLoading ? (
+            <div className="space-y-4">
+              {Array(5).fill(0).map((_, i) => (
+                <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
+                  <div className="flex gap-2 max-w-[70%]">
+                    {i % 2 === 0 && <Skeleton className="h-8 w-8 rounded-full" />}
+                    <Skeleton className="h-16 w-48 rounded-lg" />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : messages?.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <MessageSquare className="h-12 w-12 text-muted-foreground/50 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">
-                Nenhuma mensagem ainda. Inicie a conversa!
-              </p>
+              ))}
             </div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {messages?.map((message, index) => {
-              const prevMessage = messages[index - 1];
-              const showAvatar = !prevMessage || prevMessage.sender_id !== message.sender_id;
-              const showDate = !prevMessage || 
-                new Date(message.created_at).toDateString() !== new Date(prevMessage.created_at).toDateString();
+          ) : messages?.length === 0 ? (
+            <div className="h-full flex items-center justify-center py-20">
+              <div className="text-center">
+                <MessageSquare className="h-12 w-12 text-muted-foreground/50 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma mensagem ainda. Inicie a conversa!
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {messages?.map((message, index) => {
+                const prevMessage = messages[index - 1];
+                const showAvatar = !prevMessage || prevMessage.sender_id !== message.sender_id;
+                const showDate = !prevMessage || 
+                  new Date(message.created_at).toDateString() !== new Date(prevMessage.created_at).toDateString();
 
-              return (
-                <InternalChatMessageItem
-                  key={message.id}
-                  message={message}
-                  showAvatar={showAvatar}
-                  showDate={showDate}
-                  onReply={() => setReplyingTo(message)}
-                />
-              );
-            })}
-          </div>
-        )}
+                return (
+                  <InternalChatMessageItem
+                    key={message.id}
+                    message={message}
+                    showAvatar={showAvatar}
+                    showDate={showDate}
+                    onReply={() => setReplyingTo(message)}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
       </ScrollArea>
 
       {/* Input Area */}

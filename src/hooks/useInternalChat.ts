@@ -19,6 +19,7 @@ export interface InternalChatThread {
     is_online: boolean | null;
     department_id: string | null;
     department_name?: string | null;
+    department_color?: string | null;
   };
   unread_count: number;
 }
@@ -62,9 +63,10 @@ export interface TeamMember {
   is_available: boolean | null;
   department_id: string | null;
   department_name?: string | null;
+  department_color?: string | null;
 }
 
-// Hook para buscar threads do usuário
+// Hook para buscar threads do usuário - OTIMIZADO com RPC
 export function useInternalChatThreads() {
   const { user } = useAuth();
   
@@ -72,78 +74,34 @@ export function useInternalChatThreads() {
     queryKey: ['internal-chat-threads', user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
-      // Buscar participações do usuário
-      const { data: participations, error: partError } = await supabase
-        .from('internal_chat_participants')
-        .select(`
-          thread_id,
-          unread_count,
-          last_read_at
-        `)
-        .eq('user_id', user!.id);
+      const { data, error } = await supabase.rpc('get_internal_chat_threads', {
+        p_user_id: user!.id
+      });
 
-      if (partError) throw partError;
-      if (!participations?.length) return [];
+      if (error) throw error;
 
-      const threadIds = participations.map(p => p.thread_id);
-
-      // Buscar threads
-      const { data: threads, error: threadError } = await supabase
-        .from('internal_chat_threads')
-        .select('*')
-        .in('id', threadIds)
-        .order('last_message_at', { ascending: false, nullsFirst: false });
-
-      if (threadError) throw threadError;
-
-      // Para cada thread, buscar o outro participante
-      const threadsWithUsers: InternalChatThread[] = [];
-      
-      for (const thread of threads || []) {
-        // Buscar outros participantes
-        const { data: otherParticipants } = await supabase
-          .from('internal_chat_participants')
-          .select('user_id')
-          .eq('thread_id', thread.id)
-          .neq('user_id', user!.id);
-
-        if (otherParticipants?.length) {
-          const otherUserId = otherParticipants[0].user_id;
-          
-          // Buscar dados do outro usuário
-          const { data: otherUser } = await supabase
-            .from('profiles')
-            .select('id, full_name, avatar_url, is_online, department_id')
-            .eq('id', otherUserId)
-            .single();
-
-          // Buscar departamento
-          let departmentName = null;
-          if (otherUser?.department_id) {
-            const { data: dept } = await supabase
-              .from('departments')
-              .select('name')
-              .eq('id', otherUser.department_id)
-              .single();
-            departmentName = dept?.name;
-          }
-
-          const participation = participations.find(p => p.thread_id === thread.id);
-
-          threadsWithUsers.push({
-            ...thread,
-            other_user: {
-              ...otherUser!,
-              department_name: departmentName
-            },
-            unread_count: participation?.unread_count || 0
-          });
-        }
-      }
-
-      return threadsWithUsers;
+      // Map the RPC result to the expected format
+      return (data || []).map((row: any) => ({
+        id: row.thread_id,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        last_message_at: row.last_message_at,
+        last_message_preview: row.last_message_preview,
+        last_message_sender_id: row.last_message_sender_id,
+        other_user: {
+          id: row.other_user_id,
+          full_name: row.other_user_name,
+          avatar_url: row.other_user_avatar,
+          is_online: row.other_user_online,
+          department_id: row.other_user_department_id,
+          department_name: row.other_user_department_name,
+          department_color: row.other_user_department_color
+        },
+        unread_count: row.unread_count
+      })) as InternalChatThread[];
     },
-    refetchInterval: 30000
+    staleTime: 30000,
+    refetchInterval: 60000 // Reduzido de 30s para 60s, realtime vai atualizar
   });
 }
 
@@ -164,26 +122,33 @@ export function useInternalChatMessages(threadId: string | null) {
 
       if (error) throw error;
 
-      // Buscar reply messages
-      const messagesWithReplies = await Promise.all(
-        (data || []).map(async (msg) => {
-          if (msg.reply_to_message_id) {
-            const { data: replyMsg } = await supabase
-              .from('internal_chat_messages')
-              .select(`
-                id, content, message_type, sender_id,
-                sender:profiles!internal_chat_messages_sender_id_fkey(id, full_name)
-              `)
-              .eq('id', msg.reply_to_message_id)
-              .single();
-            return { ...msg, reply_to_message: replyMsg };
-          }
-          return { ...msg, reply_to_message: null };
-        })
-      );
+      // Buscar reply messages em batch
+      const messagesWithReplies = data || [];
+      const replyIds = messagesWithReplies
+        .filter(m => m.reply_to_message_id)
+        .map(m => m.reply_to_message_id);
 
-      return messagesWithReplies as unknown as InternalChatMessage[];
-    }
+      let replyMap = new Map();
+      if (replyIds.length > 0) {
+        const { data: replies } = await supabase
+          .from('internal_chat_messages')
+          .select(`
+            id, content, message_type, sender_id,
+            sender:profiles!internal_chat_messages_sender_id_fkey(id, full_name)
+          `)
+          .in('id', replyIds);
+        
+        if (replies) {
+          replyMap = new Map(replies.map(r => [r.id, r]));
+        }
+      }
+
+      return messagesWithReplies.map(msg => ({
+        ...msg,
+        reply_to_message: msg.reply_to_message_id ? replyMap.get(msg.reply_to_message_id) : null
+      })) as unknown as InternalChatMessage[];
+    },
+    staleTime: 10000
   });
 }
 
@@ -201,39 +166,42 @@ export function useInternalChatUnreadCount() {
       if (error) throw error;
       return data as number;
     },
-    refetchInterval: 10000
+    staleTime: 30000,
+    refetchInterval: 30000 // Aumentado de 10s para 30s
   });
 }
 
-// Hook para buscar todos os membros da equipe
+// Hook para buscar todos os membros da equipe - OTIMIZADO
 export function useTeamMembers() {
   const { user } = useAuth();
   
   return useQuery({
     queryKey: ['team-members-for-chat'],
     enabled: !!user?.id,
+    staleTime: 60000, // Cache por 1 minuto
     queryFn: async () => {
-      const { data: profiles, error } = await supabase
+      // Query única com JOIN
+      const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, avatar_url, is_online, is_available, department_id')
+        .select(`
+          id, full_name, avatar_url, is_online, is_available, department_id,
+          departments:department_id(name, color)
+        `)
         .eq('is_active', true)
         .neq('id', user!.id)
         .order('full_name');
 
       if (error) throw error;
 
-      // Buscar departamentos
-      const deptIds = [...new Set(profiles?.map(p => p.department_id).filter(Boolean))];
-      const { data: departments } = await supabase
-        .from('departments')
-        .select('id, name')
-        .in('id', deptIds as string[]);
-
-      const deptMap = new Map(departments?.map(d => [d.id, d.name]));
-
-      return (profiles || []).map(p => ({
-        ...p,
-        department_name: p.department_id ? deptMap.get(p.department_id) : null
+      return (data || []).map(p => ({
+        id: p.id,
+        full_name: p.full_name,
+        avatar_url: p.avatar_url,
+        is_online: p.is_online,
+        is_available: p.is_available,
+        department_id: p.department_id,
+        department_name: (p.departments as any)?.name || null,
+        department_color: (p.departments as any)?.color || null
       })) as TeamMember[];
     }
   });
@@ -284,7 +252,8 @@ export function useSendInternalMessage() {
       queryClient.invalidateQueries({ queryKey: ['internal-chat-messages', variables.threadId] });
       queryClient.invalidateQueries({ queryKey: ['internal-chat-threads'] });
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('Error sending message:', error);
       toast.error('Erro ao enviar mensagem');
     }
   });
@@ -336,13 +305,12 @@ export function useMarkThreadAsRead() {
   });
 }
 
-// Hook para realtime de mensagens
+// Hook para realtime de mensagens - OTIMIZADO
 export function useInternalChatRealtime(threadId: string | null) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Criar elemento de áudio para notificação
   useEffect(() => {
     audioRef.current = new Audio('/notification.mp3');
     audioRef.current.volume = 0.5;
@@ -358,7 +326,6 @@ export function useInternalChatRealtime(threadId: string | null) {
   useEffect(() => {
     if (!user?.id) return;
 
-    // Canal para novas mensagens
     const messagesChannel = supabase
       .channel('internal-chat-messages-realtime')
       .on(
@@ -371,42 +338,22 @@ export function useInternalChatRealtime(threadId: string | null) {
         (payload) => {
           const newMessage = payload.new as any;
           
-          // Invalidar queries
+          // Invalidar apenas as queries necessárias
           queryClient.invalidateQueries({ 
             queryKey: ['internal-chat-messages', newMessage.thread_id] 
           });
           queryClient.invalidateQueries({ queryKey: ['internal-chat-threads'] });
-          queryClient.invalidateQueries({ queryKey: ['internal-chat-unread-count'] });
 
-          // Se não sou o remetente, tocar som
           if (newMessage.sender_id !== user.id) {
             playNotificationSound();
+            queryClient.invalidateQueries({ queryKey: ['internal-chat-unread-count'] });
           }
-        }
-      )
-      .subscribe();
-
-    // Canal para atualizações de participantes (unread count)
-    const participantsChannel = supabase
-      .channel('internal-chat-participants-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'internal_chat_participants',
-          filter: `user_id=eq.${user.id}`
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['internal-chat-threads'] });
-          queryClient.invalidateQueries({ queryKey: ['internal-chat-unread-count'] });
         }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(messagesChannel);
-      supabase.removeChannel(participantsChannel);
     };
   }, [user?.id, queryClient, playNotificationSound]);
 }

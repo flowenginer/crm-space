@@ -47,10 +47,23 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
     }
   };
 
+  // Função para renderizar badge de departamento com cor
+  const DepartmentBadge = ({ name, color }: { name?: string | null; color?: string | null }) => {
+    if (!name) return null;
+    return (
+      <span 
+        className="px-2 py-0.5 rounded text-[10px] font-medium text-white truncate max-w-[80px]"
+        style={{ backgroundColor: color || 'hsl(var(--muted-foreground))' }}
+      >
+        {name}
+      </span>
+    );
+  };
+
   return (
-    <div className="w-80 border-r border-border flex flex-col bg-card">
+    <div className="w-80 border-r border-border flex flex-col bg-card min-h-0">
       {/* Header */}
-      <div className="p-4 border-b border-border">
+      <div className="p-4 border-b border-border shrink-0">
         <h2 className="text-lg font-semibold mb-3">Chat Interno</h2>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -64,8 +77,8 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-2 mx-4 mt-2" style={{ width: 'calc(100% - 2rem)' }}>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <TabsList className="grid w-full grid-cols-2 mx-4 mt-2 shrink-0" style={{ width: 'calc(100% - 2rem)' }}>
           <TabsTrigger value="conversations" className="gap-2">
             <MessageCircle className="h-4 w-4" />
             Conversas
@@ -77,15 +90,15 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
         </TabsList>
 
         {/* Conversations Tab */}
-        <TabsContent value="conversations" className="flex-1 m-0">
-          <ScrollArea className="h-[calc(100vh-14rem)]">
-            <div className="p-2 space-y-1">
+        <TabsContent value="conversations" className="flex-1 m-0 min-h-0">
+          <ScrollArea className="h-full">
+            <div className="p-2 space-y-0.5">
               {threadsLoading ? (
                 Array(5).fill(0).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="flex-1">
-                      <Skeleton className="h-4 w-24 mb-2" />
+                  <div key={i} className="flex items-center gap-3 p-2">
+                    <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <Skeleton className="h-4 w-24 mb-1" />
                       <Skeleton className="h-3 w-32" />
                     </div>
                   </div>
@@ -102,53 +115,54 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
                     key={thread.id}
                     onClick={() => onSelectThread(thread.id, thread.other_user.id)}
                     className={cn(
-                      'w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left',
+                      'w-full flex items-center gap-2.5 p-2 rounded-lg transition-colors text-left',
                       selectedThreadId === thread.id 
                         ? 'bg-primary/10 border border-primary/20' 
                         : 'hover:bg-muted'
                     )}
                   >
-                    <div className="relative">
-                      <Avatar className="h-10 w-10">
+                    <div className="relative shrink-0">
+                      <Avatar className="h-9 w-9">
                         <AvatarImage src={thread.other_user.avatar_url || ''} />
-                        <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs">
                           {getInitials(thread.other_user.full_name)}
                         </AvatarFallback>
                       </Avatar>
                       {thread.other_user.is_online && (
-                        <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-card" />
+                        <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-card" />
                       )}
                     </div>
                     
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="font-medium text-sm truncate">
                           {thread.other_user.full_name || 'Usuário'}
                         </span>
-                        {thread.last_message_at && (
-                          <span className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(thread.last_message_at), { 
-                              addSuffix: false,
-                              locale: ptBR 
-                            })}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {thread.last_message_at && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatDistanceToNow(new Date(thread.last_message_at), { 
+                                addSuffix: false,
+                                locale: ptBR 
+                              })}
+                            </span>
+                          )}
+                          {thread.unread_count > 0 && (
+                            <Badge variant="default" className="h-4 min-w-[16px] px-1 text-[9px]">
+                              {thread.unread_count > 99 ? '99+' : thread.unread_count}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between mt-0.5">
-                        <p className="text-xs text-muted-foreground truncate max-w-[160px]">
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <p className="text-xs text-muted-foreground truncate">
                           {thread.last_message_preview || 'Nova conversa'}
                         </p>
-                        {thread.unread_count > 0 && (
-                          <Badge variant="default" className="h-5 min-w-[20px] px-1.5 text-[10px]">
-                            {thread.unread_count > 99 ? '99+' : thread.unread_count}
-                          </Badge>
-                        )}
+                        <DepartmentBadge 
+                          name={thread.other_user.department_name} 
+                          color={thread.other_user.department_color}
+                        />
                       </div>
-                      {thread.other_user.department_name && (
-                        <p className="text-[10px] text-muted-foreground/70 mt-0.5">
-                          {thread.other_user.department_name}
-                        </p>
-                      )}
                     </div>
                   </button>
                 ))
@@ -157,18 +171,16 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
           </ScrollArea>
         </TabsContent>
 
-        {/* Contacts Tab */}
-        <TabsContent value="contacts" className="flex-1 m-0">
-          <ScrollArea className="h-[calc(100vh-14rem)]">
-            <div className="p-2 space-y-1">
+        {/* Contacts Tab - Cards compactos */}
+        <TabsContent value="contacts" className="flex-1 m-0 min-h-0">
+          <ScrollArea className="h-full">
+            <div className="p-2 space-y-0.5">
               {membersLoading ? (
-                Array(5).fill(0).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="flex-1">
-                      <Skeleton className="h-4 w-24 mb-2" />
-                      <Skeleton className="h-3 w-20" />
-                    </div>
+                Array(8).fill(0).map((_, i) => (
+                  <div key={i} className="flex items-center gap-2.5 p-2">
+                    <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+                    <Skeleton className="h-4 w-24 flex-1" />
+                    <Skeleton className="h-4 w-16" />
                   </div>
                 ))
               ) : filteredMembers?.length === 0 ? (
@@ -182,34 +194,34 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
                     key={member.id}
                     onClick={() => handleStartChat(member.id)}
                     disabled={startChat.isPending}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left hover:bg-muted disabled:opacity-50"
+                    className="w-full flex items-center gap-2.5 py-2 px-2 rounded-lg transition-colors text-left hover:bg-muted disabled:opacity-50"
                   >
-                    <div className="relative">
-                      <Avatar className="h-10 w-10">
+                    {/* Avatar com indicador de online */}
+                    <div className="relative shrink-0">
+                      <Avatar className="h-8 w-8">
                         <AvatarImage src={member.avatar_url || ''} />
-                        <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs">
                           {getInitials(member.full_name)}
                         </AvatarFallback>
                       </Avatar>
-                      {member.is_online && (
-                        <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-card" />
-                      )}
+                      <span 
+                        className={cn(
+                          "absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-card",
+                          member.is_online ? "bg-green-500" : "bg-muted-foreground/40"
+                        )}
+                      />
                     </div>
                     
-                    <div className="flex-1 min-w-0">
-                      <span className="font-medium text-sm truncate block">
-                        {member.full_name || 'Usuário'}
-                      </span>
-                      {member.department_name && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {member.department_name}
-                        </p>
-                      )}
-                      <p className="text-[10px] text-muted-foreground/70">
-                        {member.is_online ? 'Online' : 'Offline'}
-                        {member.is_available && ' • Disponível'}
-                      </p>
-                    </div>
+                    {/* Nome */}
+                    <span className="font-medium text-sm truncate flex-1 min-w-0">
+                      {member.full_name || 'Usuário'}
+                    </span>
+
+                    {/* Badge de departamento com cor */}
+                    <DepartmentBadge 
+                      name={member.department_name} 
+                      color={member.department_color}
+                    />
                   </button>
                 ))
               )}
