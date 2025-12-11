@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 export interface ConversationEvent {
   id: string;
   conversation_id: string;
-  event_type: 'transfer' | 'close' | 'reopen' | 'auto_reassign' | 'share';
+  event_type: 'transfer' | 'close' | 'reopen' | 'auto_reassign' | 'share' | 'share_cancelled';
   actor_id: string | null;
   data: {
     from_user_id?: string;
@@ -26,6 +26,11 @@ export interface ConversationEvent {
     // Share event data
     shared_with_user_id?: string;
     shared_with_department_id?: string;
+    // Share cancelled event data
+    cancelled_share_with_user_id?: string;
+    cancelled_share_with_user_name?: string;
+    cancelled_share_with_department_id?: string;
+    cancelled_share_with_department_name?: string;
   };
   created_at: string;
   actor?: {
