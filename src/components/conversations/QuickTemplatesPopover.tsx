@@ -12,7 +12,8 @@ import {
   Sparkles,
   ExternalLink,
   Send,
-  Edit2
+  Edit2,
+  Settings
 } from 'lucide-react';
 import {
   Popover,
@@ -23,6 +24,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useTemplates, useIncrementTemplateUsage, type MessageTemplate, type ContentBlock } from '@/hooks/useTemplates';
 import { useChatbotFlows } from '@/hooks/useChatbotFlows';
+import { useUserQuickTemplates, useAddQuickTemplate } from '@/hooks/useQuickTemplates';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
   Sheet,
@@ -33,6 +35,8 @@ import {
 } from '@/components/ui/sheet';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Link } from 'react-router-dom';
+import { QuickTemplatesConfigModal } from './QuickTemplatesConfigModal';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 type TemplateCategory = 'messages' | 'audios' | 'media' | 'documents' | 'flows' | 'triggers';
 
@@ -80,11 +84,13 @@ export function QuickTemplatesPopover({
   const [open, setOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<TemplateCategory>('messages');
   const [searchQuery, setSearchQuery] = useState('');
+  const [configModalOpen, setConfigModalOpen] = useState(false);
   const isMobile = useIsMobile();
 
   // Fetch templates
   const { data: templates = [], isLoading: templatesLoading } = useTemplates();
   const { data: flows = [], isLoading: flowsLoading } = useChatbotFlows();
+  const { data: quickTemplates = [] } = useUserQuickTemplates();
   const incrementUsage = useIncrementTemplateUsage();
 
   // Filter templates by category
@@ -204,6 +210,28 @@ export function QuickTemplatesPopover({
 
   const currentCategory = CATEGORIES.find(c => c.id === activeCategory);
 
+  // Handle quick template click
+  const handleQuickTemplateClick = useCallback((qt: typeof quickTemplates[0]) => {
+    if (!qt.template) return;
+    
+    const processedContent = replaceVariables(qt.template.content);
+    const processedBlocks = qt.template.content_blocks?.map(block => ({
+      ...block,
+      content: block.content ? replaceVariables(block.content) : undefined
+    })) || null;
+    
+    let type: 'text' | 'audio' | 'image' | 'document' = 'text';
+    if (qt.template.media_url) {
+      if (qt.template.media_type?.startsWith('audio')) type = 'audio';
+      else if (qt.template.media_type?.startsWith('image') || qt.template.media_type?.startsWith('video')) type = 'image';
+      else type = 'document';
+    }
+    
+    onSelectTemplate(processedContent, type, qt.template.media_url, qt.template.media_type, qt.template.media_name, processedBlocks);
+    incrementUsage.mutate(qt.template_id);
+    setOpen(false);
+  }, [replaceVariables, onSelectTemplate, incrementUsage]);
+
   const renderContent = () => (
     <div className="flex flex-col h-full">
       {/* Category Tabs - All visible, no overflow */}
@@ -228,6 +256,61 @@ export function QuickTemplatesPopover({
           );
         })}
       </div>
+
+      {/* Quick Favorites Section - Only show in messages category */}
+      {activeCategory === 'messages' && (
+        <div className="px-2 pt-2 pb-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <Star size={12} className="text-amber-500" />
+              Meus Favoritos
+            </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfigModalOpen(true);
+              }}
+              className="p-1 hover:bg-muted rounded transition-colors"
+              title="Configurar favoritos"
+            >
+              <Settings size={12} className="text-muted-foreground" />
+            </button>
+          </div>
+          <div className="flex gap-1.5">
+            {[1, 2, 3, 4, 5].map((position) => {
+              const qt = quickTemplates.find(q => q.position === position);
+              return (
+                <Tooltip key={position}>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => qt && handleQuickTemplateClick(qt)}
+                      disabled={!qt}
+                      className={cn(
+                        'flex-1 h-9 rounded-md text-[10px] font-medium transition-all truncate px-1.5',
+                        qt
+                          ? 'bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20'
+                          : 'bg-muted/50 text-muted-foreground/50 border border-dashed border-muted-foreground/20 cursor-default'
+                      )}
+                    >
+                      {qt?.template?.title ? (
+                        <span className="truncate block">{qt.template.title.slice(0, 8)}</span>
+                      ) : (
+                        <span className="opacity-50">—</span>
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  {qt?.template && (
+                    <TooltipContent side="bottom" className="max-w-[200px]">
+                      <p className="font-medium text-xs">{qt.template.title}</p>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{qt.template.content}</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="p-2 border-b border-border">
@@ -388,51 +471,63 @@ export function QuickTemplatesPopover({
   // Mobile: Use Sheet (drawer from bottom)
   if (isMobile) {
     return (
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>
+      <>
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetTrigger asChild>
+            <button 
+              className="p-2 hover:bg-muted rounded-lg transition-colors"
+              title="Atalhos rápidos"
+            >
+              <Sparkles size={22} className="text-muted-foreground" />
+            </button>
+          </SheetTrigger>
+          <SheetContent side="bottom" className="h-[70vh] p-0">
+            <SheetHeader className="px-4 py-3 border-b border-border">
+              <SheetTitle className="text-left flex items-center gap-2">
+                <Sparkles size={18} className="text-primary" />
+                Atalhos Rápidos
+              </SheetTitle>
+            </SheetHeader>
+            {renderContent()}
+          </SheetContent>
+        </Sheet>
+        <QuickTemplatesConfigModal 
+          open={configModalOpen} 
+          onOpenChange={setConfigModalOpen} 
+        />
+      </>
+    );
+  }
+
+  // Desktop: Use Popover
+  return (
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
           <button 
             className="p-2 hover:bg-muted rounded-lg transition-colors"
             title="Atalhos rápidos"
           >
             <Sparkles size={22} className="text-muted-foreground" />
           </button>
-        </SheetTrigger>
-        <SheetContent side="bottom" className="h-[70vh] p-0">
-          <SheetHeader className="px-4 py-3 border-b border-border">
-            <SheetTitle className="text-left flex items-center gap-2">
-              <Sparkles size={18} className="text-primary" />
-              Atalhos Rápidos
-            </SheetTitle>
-          </SheetHeader>
-          {renderContent()}
-        </SheetContent>
-      </Sheet>
-    );
-  }
-
-  // Desktop: Use Popover
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button 
-          className="p-2 hover:bg-muted rounded-lg transition-colors"
-          title="Atalhos rápidos"
+        </PopoverTrigger>
+        <PopoverContent 
+          side="top" 
+          align="start" 
+          className="w-[580px] p-0 max-h-[500px] overflow-hidden"
+          onOpenAutoFocus={(e) => e.preventDefault()}
         >
-          <Sparkles size={22} className="text-muted-foreground" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent 
-        side="top" 
-        align="start" 
-        className="w-[580px] p-0 max-h-[450px] overflow-hidden"
-        onOpenAutoFocus={(e) => e.preventDefault()}
-      >
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
-          <Sparkles size={16} className="text-primary" />
-          <span className="font-medium text-sm">Atalhos Rápidos</span>
-        </div>
-        {renderContent()}
-      </PopoverContent>
-    </Popover>
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
+            <Sparkles size={16} className="text-primary" />
+            <span className="font-medium text-sm">Atalhos Rápidos</span>
+          </div>
+          {renderContent()}
+        </PopoverContent>
+      </Popover>
+      <QuickTemplatesConfigModal 
+        open={configModalOpen} 
+        onOpenChange={setConfigModalOpen} 
+      />
+    </>
   );
 }
