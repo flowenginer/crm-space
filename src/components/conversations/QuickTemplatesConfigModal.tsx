@@ -79,7 +79,7 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md bg-background border shadow-lg">
+      <DialogContent className="max-w-[340px] sm:max-w-sm md:max-w-md bg-background border shadow-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Star className="w-5 h-5 text-amber-500" />
@@ -87,15 +87,15 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 w-full overflow-hidden">
           {/* Info text */}
           <p className="text-sm text-muted-foreground">
             Configure até 5 mensagens favoritas para acesso rápido. Clique em um slot vazio para adicionar.
           </p>
 
           {/* Slots grid */}
-          <div className="p-3 rounded-lg bg-card border">
-            <div className="flex justify-center gap-2">
+          <div className="p-3 rounded-lg bg-card border w-full overflow-hidden">
+            <div className="flex justify-center gap-1 sm:gap-2 w-full">
               {SLOT_POSITIONS.map((position) => {
                 const qt = slotTemplates.get(position);
                 const isSelected = selectedSlot === position;
@@ -104,7 +104,7 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
                   <div
                     key={position}
                     className={cn(
-                      'relative w-16 h-16 rounded-lg border-2 border-dashed transition-all cursor-pointer group flex-shrink-0',
+                      'relative w-11 h-11 sm:w-12 sm:h-12 rounded-lg border-2 border-dashed transition-all cursor-pointer group flex-shrink-0',
                       qt 
                         ? 'border-primary/50 bg-primary/10' 
                         : 'border-muted-foreground/30 hover:border-primary/50 bg-background',
@@ -118,8 +118,8 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
                   >
                     {qt ? (
                       <>
-                        <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-0.5 overflow-hidden">
-                          <span className="text-[9px] font-medium text-foreground line-clamp-3 leading-tight">
+                        <div className="absolute inset-0.5 flex flex-col items-center justify-center text-center p-0.5 overflow-hidden">
+                          <span className="text-[8px] font-medium text-foreground line-clamp-2 leading-tight">
                             {qt.template?.title}
                           </span>
                         </div>
@@ -135,13 +135,13 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
                       </>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <Plus size={16} className={cn(
+                        <Plus size={14} className={cn(
                           'text-muted-foreground',
                           isSelected && 'text-primary'
                         )} />
                       </div>
                     )}
-                    <span className="absolute bottom-0.5 right-1 text-[8px] text-muted-foreground font-medium">
+                    <span className="absolute bottom-0 right-0.5 text-[7px] text-muted-foreground font-medium">
                       {position}
                     </span>
                   </div>
@@ -152,32 +152,33 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
 
           {/* Template selector when slot is selected */}
           {selectedSlot !== null && (
-            <div className="space-y-2 border rounded-lg p-3 bg-card">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
+            <div className="space-y-2 border rounded-lg p-3 bg-card w-full max-w-full overflow-hidden">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium truncate">
                   Selecionar template para slot {selectedSlot}
                 </span>
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="flex-shrink-0"
                   onClick={() => setSelectedSlot(null)}
                 >
                   Cancelar
                 </Button>
               </div>
 
-              <div className="relative">
+              <div className="relative w-full">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Buscar mensagem..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-8 pl-8 text-sm"
+                  className="h-8 pl-8 text-sm w-full"
                 />
               </div>
 
-              <ScrollArea className="h-[160px]">
-                <div className="space-y-1 pr-3">
+              <ScrollArea className="h-[160px] w-full">
+                <div className="space-y-1 pr-3 w-full overflow-hidden">
                   {templatesLoading ? (
                     <div className="text-center py-4 text-muted-foreground text-sm">
                       Carregando...
@@ -195,14 +196,14 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
                           onClick={() => handleAddToSlot(template, selectedSlot)}
                           disabled={isUsed}
                           className={cn(
-                            'w-full text-left p-2 rounded-md transition-colors',
+                            'w-full text-left p-2 rounded-md transition-colors overflow-hidden',
                             isUsed
                               ? 'opacity-50 cursor-not-allowed bg-muted/50'
                               : 'hover:bg-muted'
                           )}
                         >
-                          <p className="font-medium text-sm truncate">{template.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">{template.content}</p>
+                          <p className="font-medium text-sm truncate max-w-full">{template.title}</p>
+                          <p className="text-xs text-muted-foreground truncate max-w-full">{template.content}</p>
                           {isUsed && (
                             <span className="text-[10px] text-amber-600">Já adicionado</span>
                           )}
