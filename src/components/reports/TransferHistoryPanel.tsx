@@ -13,6 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
+  Link2,
+  Share2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,7 +63,7 @@ export function TransferHistoryPanel({
   const [toUserId, setToUserId] = useState<string | null>(null);
   const [fromDepartmentId, setFromDepartmentId] = useState<string | null>(null);
   const [toDepartmentId, setToDepartmentId] = useState<string | null>(null);
-  const [transferType, setTransferType] = useState<'all' | 'transfer' | 'return'>('all');
+  const [transferType, setTransferType] = useState<'all' | 'transfer' | 'return' | 'share'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 20;
@@ -222,7 +224,7 @@ export function TransferHistoryPanel({
 
           <Select 
             value={transferType} 
-            onValueChange={(v: 'all' | 'transfer' | 'return') => { setTransferType(v); setPage(1); }}
+            onValueChange={(v: 'all' | 'transfer' | 'return' | 'share') => { setTransferType(v); setPage(1); }}
           >
             <SelectTrigger className="h-9">
               <ArrowLeftRight size={14} className="mr-2 text-muted-foreground" />
@@ -232,16 +234,17 @@ export function TransferHistoryPanel({
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="transfer">Transferência</SelectItem>
               <SelectItem value="return">Devolução</SelectItem>
+              <SelectItem value="share">Compartilhamento</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-muted-foreground font-medium">Total Transferências</span>
+            <span className="text-sm text-muted-foreground font-medium">Transferências</span>
             <div className="p-2 bg-primary/10 rounded-lg">
               <ArrowLeftRight size={18} className="text-primary" />
             </div>
@@ -255,15 +258,29 @@ export function TransferHistoryPanel({
 
         <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-muted-foreground font-medium">Média por Dia</span>
-            <div className="p-2 bg-blue-500/10 rounded-lg">
-              <TrendingUp size={18} className="text-blue-500" />
+            <span className="text-sm text-muted-foreground font-medium">Devoluções</span>
+            <div className="p-2 bg-amber-500/10 rounded-lg">
+              <RotateCcw size={18} className="text-amber-500" />
             </div>
           </div>
           {isLoadingKPIs ? (
             <Skeleton className="h-8 w-20" />
           ) : (
-            <div className="text-2xl font-bold text-foreground">{kpis?.avgPerDay || 0}</div>
+            <div className="text-2xl font-bold text-foreground">{kpis?.totalReturns || 0}</div>
+          )}
+        </div>
+
+        <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground font-medium">Compartilhamentos</span>
+            <div className="p-2 bg-violet-500/10 rounded-lg">
+              <Share2 size={18} className="text-violet-500" />
+            </div>
+          </div>
+          {isLoadingKPIs ? (
+            <Skeleton className="h-8 w-20" />
+          ) : (
+            <div className="text-2xl font-bold text-foreground">{kpis?.totalShares || 0}</div>
           )}
         </div>
 
@@ -283,7 +300,7 @@ export function TransferHistoryPanel({
           )}
           {kpis?.topFromDepartment && (
             <div className="text-xs text-muted-foreground mt-1">
-              {kpis.topFromDepartment.count} transferências
+              {kpis.topFromDepartment.count} ações
             </div>
           )}
         </div>
@@ -313,7 +330,7 @@ export function TransferHistoryPanel({
       {/* Table */}
       <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
         <div className="p-4 border-b border-border flex items-center justify-between">
-          <h3 className="font-semibold text-foreground">Histórico de Transferências</h3>
+          <h3 className="font-semibold text-foreground">Histórico de Transferências e Compartilhamentos</h3>
           <span className="text-sm text-muted-foreground">
             {transferData?.totalCount || 0} registros
           </span>
@@ -349,7 +366,7 @@ export function TransferHistoryPanel({
                   <TableCell colSpan={8} className="text-center py-8">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <Search size={32} className="opacity-50" />
-                      <p>Nenhuma transferência encontrada no período</p>
+                      <p>Nenhum registro encontrado no período</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -372,7 +389,7 @@ export function TransferHistoryPanel({
                       <span className="text-sm">{record.from_user_name || '-'}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm">{record.to_user_name || '-'}</span>
+                      <span className="text-sm">{record.to_user_name || record.to_department_name || '-'}</span>
                     </TableCell>
                     <TableCell>
                       <span className="text-sm">{record.from_department_name || '-'}</span>
@@ -381,7 +398,12 @@ export function TransferHistoryPanel({
                       <span className="text-sm">{record.to_department_name || '-'}</span>
                     </TableCell>
                     <TableCell>
-                      {record.is_return ? (
+                      {record.is_share ? (
+                        <Badge variant="outline" className="bg-violet-500/10 text-violet-600 border-violet-500/30">
+                          <Link2 size={12} className="mr-1" />
+                          Compartilhamento
+                        </Badge>
+                      ) : record.is_return ? (
                         <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">
                           <RotateCcw size={12} className="mr-1" />
                           Devolução

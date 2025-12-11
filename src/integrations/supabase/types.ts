@@ -3656,6 +3656,7 @@ export type Database = {
           from_user_name: string
           id: string
           is_return: boolean
+          is_share: boolean
           to_department_id: string
           to_department_name: string
           to_user_id: string
