@@ -268,6 +268,7 @@ export function QuickTemplatesPopover({
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                setOpen(false);
                 setConfigModalOpen(true);
               }}
               className="p-1 hover:bg-muted rounded transition-colors"

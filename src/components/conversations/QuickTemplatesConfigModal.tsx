@@ -79,7 +79,7 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg bg-background border shadow-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Star className="w-5 h-5 text-amber-500" />
@@ -94,63 +94,65 @@ export function QuickTemplatesConfigModal({ open, onOpenChange }: QuickTemplates
           </p>
 
           {/* Slots grid */}
-          <div className="grid grid-cols-5 gap-2">
-            {SLOT_POSITIONS.map((position) => {
-              const qt = slotTemplates.get(position);
-              const isSelected = selectedSlot === position;
+          <div className="p-4 rounded-lg bg-card border">
+            <div className="grid grid-cols-5 gap-2">
+              {SLOT_POSITIONS.map((position) => {
+                const qt = slotTemplates.get(position);
+                const isSelected = selectedSlot === position;
 
-              return (
-                <div
-                  key={position}
-                  className={cn(
-                    'relative aspect-square rounded-lg border-2 border-dashed transition-all cursor-pointer group',
-                    qt 
-                      ? 'border-primary/50 bg-primary/5' 
-                      : 'border-muted-foreground/30 hover:border-primary/50',
-                    isSelected && 'border-primary ring-2 ring-primary/20'
-                  )}
-                  onClick={() => {
-                    if (!qt) {
-                      setSelectedSlot(isSelected ? null : position);
-                    }
-                  }}
-                >
-                  {qt ? (
-                    <>
-                      <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-1">
-                        <span className="text-[10px] font-medium text-foreground line-clamp-2 leading-tight">
-                          {qt.template?.title}
-                        </span>
+                return (
+                  <div
+                    key={position}
+                    className={cn(
+                      'relative aspect-square rounded-lg border-2 border-dashed transition-all cursor-pointer group',
+                      qt 
+                        ? 'border-primary/50 bg-primary/10' 
+                        : 'border-muted-foreground/30 hover:border-primary/50 bg-background',
+                      isSelected && 'border-primary ring-2 ring-primary/20 bg-primary/5'
+                    )}
+                    onClick={() => {
+                      if (!qt) {
+                        setSelectedSlot(isSelected ? null : position);
+                      }
+                    }}
+                  >
+                    {qt ? (
+                      <>
+                        <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-1">
+                          <span className="text-[10px] font-medium text-foreground line-clamp-2 leading-tight">
+                            {qt.template?.title}
+                          </span>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveFromSlot(position);
+                          }}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X size={12} />
+                        </button>
+                      </>
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Plus size={20} className={cn(
+                          'text-muted-foreground',
+                          isSelected && 'text-primary'
+                        )} />
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveFromSlot(position);
-                        }}
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X size={12} />
-                      </button>
-                    </>
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Plus size={20} className={cn(
-                        'text-muted-foreground',
-                        isSelected && 'text-primary'
-                      )} />
-                    </div>
-                  )}
-                  <span className="absolute bottom-0.5 right-1 text-[9px] text-muted-foreground font-medium">
-                    {position}
-                  </span>
-                </div>
-              );
-            })}
+                    )}
+                    <span className="absolute bottom-0.5 right-1 text-[9px] text-muted-foreground font-medium">
+                      {position}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Template selector when slot is selected */}
           {selectedSlot !== null && (
-            <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+            <div className="space-y-2 border rounded-lg p-3 bg-card">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">
                   Selecionar template para slot {selectedSlot}
