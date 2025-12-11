@@ -54,6 +54,7 @@ export function InternalChatInput({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const shouldSendAudioRef = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -122,18 +123,21 @@ export function InternalChatInput({
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
+      shouldSendAudioRef.current = true;
 
       mediaRecorder.ondataavailable = (e) => {
         audioChunksRef.current.push(e.data);
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioFile = new File([audioBlob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
-        
         stream.getTracks().forEach(track => track.stop());
         
-        await handleFileUpload(audioFile, 'audio');
+        // Só envia se não foi cancelado
+        if (shouldSendAudioRef.current && audioChunksRef.current.length > 0) {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const audioFile = new File([audioBlob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
+          await handleFileUpload(audioFile, 'audio');
+        }
       };
 
       mediaRecorder.start();
@@ -150,13 +154,28 @@ export function InternalChatInput({
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current) {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      shouldSendAudioRef.current = true;
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
     }
+    setIsRecording(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      shouldSendAudioRef.current = false;
+      mediaRecorderRef.current.stop();
+    }
+    audioChunksRef.current = [];
+    setIsRecording(false);
+    setRecordingTime(0);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    toast.info('Gravação cancelada');
   };
 
   const formatTime = (seconds: number) => {
@@ -194,14 +213,26 @@ export function InternalChatInput({
         <div className="flex items-center gap-3 mb-2 px-3 py-2 bg-destructive/10 rounded-lg">
           <div className="h-3 w-3 rounded-full bg-destructive animate-pulse" />
           <span className="text-sm font-medium">Gravando... {formatTime(recordingTime)}</span>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8 ml-auto text-destructive"
-            onClick={stopRecording}
-          >
-            <StopCircle className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-1 ml-auto">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={cancelRecording}
+              title="Cancelar"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 text-primary"
+              onClick={stopRecording}
+              title="Enviar"
+            >
+              <Send className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
       )}
 

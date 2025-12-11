@@ -1,29 +1,32 @@
 import { useState } from 'react';
-import { Reply, Download, Play, Pause, File, Image as ImageIcon } from 'lucide-react';
+import { Reply, Download, Play, Pause, File, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
-import { InternalChatMessage } from '@/hooks/useInternalChat';
+import { InternalChatMessage, useDeleteInternalMessage } from '@/hooks/useInternalChat';
 
 interface InternalChatMessageItemProps {
   message: InternalChatMessage;
   showAvatar: boolean;
   showDate: boolean;
   onReply: () => void;
+  threadId: string;
 }
 
 export function InternalChatMessageItem({ 
   message, 
   showAvatar, 
   showDate,
-  onReply 
+  onReply,
+  threadId
 }: InternalChatMessageItemProps) {
   const { user } = useAuth();
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const deleteMessage = useDeleteInternalMessage();
   
   const isFromMe = message.sender_id === user?.id;
 
@@ -219,18 +222,33 @@ export function InternalChatMessageItem({
             </p>
           </div>
 
-          {/* Reply button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'absolute top-0 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity',
-              isFromMe ? '-left-8' : '-right-8'
+          {/* Action buttons */}
+          <div className={cn(
+            'absolute top-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity',
+            isFromMe ? '-left-16' : '-right-16'
+          )}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={onReply}
+              title="Responder"
+            >
+              <Reply className="h-3 w-3" />
+            </Button>
+            {isFromMe && !message.is_deleted && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-destructive hover:text-destructive"
+                onClick={() => deleteMessage.mutate({ messageId: message.id, threadId })}
+                title="Apagar"
+                disabled={deleteMessage.isPending}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
             )}
-            onClick={onReply}
-          >
-            <Reply className="h-3 w-3" />
-          </Button>
+          </div>
         </div>
       </div>
     </>
