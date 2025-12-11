@@ -37,6 +37,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { usePendingRequestsCount, useContactRequestsRealtime } from '@/hooks/useContactRequests';
 import { useInternalChatUnreadCount } from '@/hooks/useInternalChat';
+import { usePendingCallbacksCount } from '@/hooks/useCallbackReminders';
 
 
 interface NavItem {
@@ -88,6 +89,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { hasPermission, isAdmin, role: userRole, isFullyLoaded } = usePermissions();
   const { data: pendingRequestsCount = 0 } = usePendingRequestsCount();
   const { data: internalChatUnreadCount = 0 } = useInternalChatUnreadCount();
+  const { data: callbacksCount } = usePendingCallbacksCount();
   
   // Ativar listener de realtime para requisições
   useContactRequestsRealtime();
@@ -266,7 +268,9 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             const isActive = location.pathname === item.href;
             const Icon = item.icon;
 
-            const showBadge = item.href === '/agendamentos' && pendingCount && pendingCount > 0;
+            const showBadge = item.href === '/agendamentos' && ((pendingCount && pendingCount > 0) || (callbacksCount && callbacksCount.total > 0));
+            const totalAgendamentos = (pendingCount || 0) + (callbacksCount?.total || 0);
+            const hasOverdueCallbacks = callbacksCount && callbacksCount.overdue > 0;
             const showLiveBadge = item.href === '/ao-vivo';
             const showRequestsBadge = item.href === '/conversations/requests' && pendingRequestsCount > 0;
             const showInternalChatBadge = item.href === '/internal-chat' && internalChatUnreadCount > 0;
@@ -299,8 +303,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                   <span className="flex-1 flex items-center justify-between">
                     {item.title}
                     {showBadge && (
-                      <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
-                        {pendingCount > 99 ? '99+' : pendingCount}
+                      <span className={`ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white ${hasOverdueCallbacks ? 'bg-red-500' : 'bg-amber-500'}`}>
+                        {totalAgendamentos > 99 ? '99+' : totalAgendamentos}
                       </span>
                     )}
                     {showRequestsBadge && (
