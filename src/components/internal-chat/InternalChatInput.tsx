@@ -90,7 +90,7 @@ export function InternalChatInput({
     }
   };
 
-  const handleFileUpload = async (file: File, type: 'image' | 'video' | 'document' | 'audio') => {
+  const handleFileUpload = useCallback(async (file: File, type: 'image' | 'video' | 'document' | 'audio') => {
     try {
       let currentThreadId = threadId;
       if (!currentThreadId) {
@@ -102,7 +102,7 @@ export function InternalChatInput({
 
       await sendMessage.mutateAsync({
         threadId: currentThreadId,
-        content: message.trim() || undefined,
+        content: undefined,
         messageType: type,
         mediaUrl: result.url,
         mediaName: result.name,
@@ -114,8 +114,9 @@ export function InternalChatInput({
       onCancelReply();
     } catch (error) {
       console.error('Upload error:', error);
+      toast.error('Erro ao enviar arquivo');
     }
-  };
+  }, [threadId, onStartChat, uploadMedia, sendMessage, replyingTo?.id, onCancelReply]);
 
   const startRecording = async () => {
     try {
