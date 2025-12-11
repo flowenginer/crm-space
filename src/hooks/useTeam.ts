@@ -8,6 +8,7 @@ export interface TeamMember {
   phone: string | null;
   department_id: string | null;
   is_online: boolean | null;
+  is_available: boolean | null;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
@@ -23,7 +24,7 @@ export function useTeam() {
         .from('profiles')
         .select(`
           id, full_name, avatar_url, phone, department_id,
-          is_online, last_seen_at, is_active, role, created_at, updated_at,
+          is_online, is_available, last_seen_at, is_active, role, created_at, updated_at,
           department:departments(id, name)
         `)
         .order('full_name');

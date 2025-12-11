@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, Users, PinOff, Check, Circle } from 'lucide-react';
+import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, Users, PinOff, Check, Circle, PauseCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -64,6 +64,7 @@ export function TransferModal({
     setSelectedUserId('');
   }, [selectedDepartmentId, transferType]);
 
+  // Filtrar apenas usuários DISPONÍVEIS (is_available !== false)
   const teamInDepartment = useMemo(() => {
     if (!selectedDepartmentId) return [];
     
@@ -73,7 +74,23 @@ export function TransferModal({
     
     return team.filter(member => 
       member.id !== currentAssignedTo &&
-      (usersInDepartment.includes(member.id) || member.department_id === selectedDepartmentId)
+      (usersInDepartment.includes(member.id) || member.department_id === selectedDepartmentId) &&
+      member.is_available !== false // Excluir usuários com recebimento pausado
+    );
+  }, [team, selectedDepartmentId, allUserDepartments, currentAssignedTo]);
+
+  // Usuários pausados para mostrar indicador visual (opcional)
+  const pausedUsersInDepartment = useMemo(() => {
+    if (!selectedDepartmentId) return [];
+    
+    const usersInDepartment = allUserDepartments
+      .filter(ud => ud.department_id === selectedDepartmentId)
+      .map(ud => ud.user_id);
+    
+    return team.filter(member => 
+      member.id !== currentAssignedTo &&
+      (usersInDepartment.includes(member.id) || member.department_id === selectedDepartmentId) &&
+      member.is_available === false
     );
   }, [team, selectedDepartmentId, allUserDepartments, currentAssignedTo]);
 
@@ -308,12 +325,20 @@ export function TransferModal({
                   <span className="text-xs font-normal text-muted-foreground">
                     ({teamInDepartment.length} disponíve{teamInDepartment.length !== 1 ? 'is' : 'l'})
                   </span>
+                  {pausedUsersInDepartment.length > 0 && (
+                    <span className="text-xs font-normal text-amber-500 flex items-center gap-1">
+                      <PauseCircle size={12} />
+                      {pausedUsersInDepartment.length} pausado{pausedUsersInDepartment.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
                 </Label>
                 {teamInDepartment.length === 0 ? (
-                  <div className="flex items-center justify-center py-4 text-center">
-                    <User className="h-5 w-5 text-muted-foreground/50 mr-2" />
+                  <div className="flex flex-col items-center justify-center py-4 text-center gap-2">
+                    <User className="h-5 w-5 text-muted-foreground/50" />
                     <p className="text-sm text-muted-foreground">
-                      Nenhum atendente neste departamento
+                      {pausedUsersInDepartment.length > 0 
+                        ? 'Todos os atendentes estão com recebimento pausado'
+                        : 'Nenhum atendente neste departamento'}
                     </p>
                   </div>
                 ) : (
