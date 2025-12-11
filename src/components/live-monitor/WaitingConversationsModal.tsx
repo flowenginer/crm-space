@@ -93,7 +93,7 @@ export function WaitingConversationsModal({
 
   const handleOpenConversation = (conversationId: string) => {
     onOpenChange(false);
-    navigate(`/conversas?id=${conversationId}`);
+    navigate(`/conversations?id=${conversationId}`);
   };
 
   const handlePreview = (conversationId: string) => {
