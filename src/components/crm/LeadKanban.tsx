@@ -28,6 +28,7 @@ import {
   X,
   DollarSign,
   Eye,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
@@ -153,15 +154,60 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
       if (conversation) {
         navigate(`/conversations?id=${conversation.id}`);
       } else {
-        toast({
-          title: 'Sem conversa',
-          description: 'Este contato não possui conversa ativa.',
-        });
+        // Se não tem conversa, criar uma nova
+        await handleStartConversation(contact);
       }
     } catch {
       toast({
         title: 'Erro',
         description: 'Não foi possível abrir a conversa',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleStartConversation = async (contact: ContactForKanban) => {
+    try {
+      // Verificar se já existe uma conversa
+      const { data: existingConversation } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_id', contact.id)
+        .order('last_message_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingConversation) {
+        navigate(`/conversations?id=${existingConversation.id}`);
+        return;
+      }
+
+      // Criar nova conversa
+      const { data: newConversation, error } = await supabase
+        .from('conversations')
+        .insert({
+          contact_id: contact.id,
+          status: 'open',
+          is_unread: false,
+          unread_count: 0,
+          lead_status: contact.lead_status || null,
+        })
+        .select('id')
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: 'Conversa criada',
+        description: `Nova conversa iniciada com ${contact.full_name}`,
+      });
+
+      navigate(`/conversations?id=${newConversation.id}`);
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível criar a conversa',
         variant: 'destructive',
       });
     }
@@ -205,6 +251,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
                 contacts={allContacts?.['__no_status__'] || []}
                 onOpenConversation={handleOpenConversation}
                 onPreviewConversation={handlePreviewConversation}
+                onStartConversation={handleStartConversation}
                 canDelete={false}
                 searchQuery={searchQuery}
                 gradientColor={gradientColors[0]}
@@ -224,6 +271,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
                   contacts={allContacts?.[status.name] || []}
                   onOpenConversation={handleOpenConversation}
                   onPreviewConversation={handlePreviewConversation}
+                  onStartConversation={handleStartConversation}
                   canDelete={true}
                   searchQuery={searchQuery}
                   gradientColor={gradientColors[colorIndex]}
@@ -277,6 +325,7 @@ function LeadKanbanColumn({
   contacts,
   onOpenConversation,
   onPreviewConversation,
+  onStartConversation,
   canDelete,
   searchQuery,
   gradientColor,
@@ -288,6 +337,7 @@ function LeadKanbanColumn({
   contacts: ContactForKanban[];
   onOpenConversation: (contact: ContactForKanban) => void;
   onPreviewConversation: (conversationId: string | null) => void;
+  onStartConversation: (contact: ContactForKanban) => void;
   canDelete: boolean;
   searchQuery: string;
   gradientColor: string;
@@ -379,6 +429,7 @@ function LeadKanbanColumn({
                 contact={contact}
                 onClick={() => onOpenConversation(contact)}
                 onPreview={() => onPreviewConversation(contact.conversation_id)}
+                onStartConversation={() => onStartConversation(contact)}
               />
             ))}
           </SortableContext>
@@ -405,11 +456,13 @@ function ContactCard({
   contact,
   onClick,
   onPreview,
+  onStartConversation,
   isOverlay = false,
 }: {
   contact: ContactForKanban;
   onClick?: () => void;
   onPreview?: () => void;
+  onStartConversation?: () => void;
   isOverlay?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -458,8 +511,8 @@ function ContactCard({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {/* Preview button */}
-          {contact.conversation_id && (
+          {/* Preview button or Start conversation button */}
+          {contact.conversation_id ? (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -469,6 +522,17 @@ function ContactCard({
               title="Visualizar conversa"
             >
               <Eye size={12} className="text-muted-foreground hover:text-foreground" />
+            </button>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartConversation?.();
+              }}
+              className="p-1 hover:bg-emerald-500/20 rounded transition-colors"
+              title="Iniciar conversa"
+            >
+              <MessageSquarePlus size={12} className="text-emerald-500 hover:text-emerald-600" />
             </button>
           )}
           {/* Unread badge */}
