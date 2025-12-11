@@ -18,11 +18,12 @@ interface ShareModalProps {
   onSuccess?: () => void;
   conversationId: string;
   contactName?: string;
+  conversationOwnerId?: string | null; // The assigned_to of the conversation
 }
 
 type ShareType = 'user' | 'department';
 
-export function ShareModal({ open, onClose, onSuccess, conversationId, contactName }: ShareModalProps) {
+export function ShareModal({ open, onClose, onSuccess, conversationId, contactName, conversationOwnerId }: ShareModalProps) {
   const [shareType, setShareType] = useState<ShareType>('user');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
