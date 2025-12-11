@@ -1,5 +1,6 @@
 import { FunnelData } from '@/hooks/useMetaAdsAnalytics';
 import { Loader2 } from 'lucide-react';
+import { generateGradientColors } from '@/lib/utils';
 
 interface MetaFunnelChartProps {
   data: FunnelData[];
@@ -32,6 +33,7 @@ export function MetaFunnelChart({
 
   const maxCount = Math.max(...data.map(d => d.count));
   const totalItems = data.length;
+  const gradientColors = generateGradientColors(totalItems);
 
   // Calculate width for each stage (starts at 100% and decreases proportionally)
   const getWidthPercent = (index: number, count: number) => {
@@ -92,7 +94,7 @@ export function MetaFunnelChart({
                     width: '100%',
                     height: isLast ? '32px' : '40px',
                     clipPath,
-                    backgroundColor: item.color,
+                    backgroundColor: gradientColors[index],
                   }}
                 >
                   {/* Count centered in trapezoid */}

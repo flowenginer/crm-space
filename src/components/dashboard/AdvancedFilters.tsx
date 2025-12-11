@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { format, subDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarIcon, Filter, X, ChevronDown } from 'lucide-react';
+import { CalendarIcon, Filter, X, ChevronDown, History, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -43,8 +45,22 @@ export function AdvancedFilters({
   departments,
 }: AdvancedFiltersProps) {
   const [isDateOpen, setIsDateOpen] = useState(false);
+  const [isFixingHistorical, setIsFixingHistorical] = useState(false);
   
   const { dateFrom, dateTo, agentId, departmentId } = filters;
+
+  const handleFixHistorical = async () => {
+    setIsFixingHistorical(true);
+    try {
+      const { error } = await supabase.rpc('fix_historical_origin_detection');
+      if (error) throw error;
+      toast.success('Histórico corrigido com sucesso!');
+    } catch (error: any) {
+      toast.error('Erro ao corrigir histórico: ' + error.message);
+    } finally {
+      setIsFixingHistorical(false);
+    }
+  };
 
   const activeFiltersCount = [agentId, departmentId].filter(Boolean).length;
 
@@ -181,6 +197,21 @@ export function AdvancedFilters({
           </Button>
         </div>
       )}
+
+      {/* Fix Historical Button - Far Right */}
+      <Button
+        variant="outline"
+        className="ml-auto"
+        onClick={handleFixHistorical}
+        disabled={isFixingHistorical}
+      >
+        {isFixingHistorical ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : (
+          <History className="h-4 w-4 mr-2" />
+        )}
+        Corrigir Histórico
+      </Button>
     </div>
   );
 }
