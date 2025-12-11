@@ -838,17 +838,17 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
       )}
 
       {/* Action Buttons - Top */}
-      <div className="flex gap-2 p-3 border-b border-border">
+      <div className="flex gap-1.5 p-3 border-b border-border">
         {/* Only show share button if user is the conversation owner */}
         {conversation?.assigned_to === currentUser?.id && (
           <Button
             onClick={() => setShowShareModal(true)}
             variant="outline"
             size="sm"
-            className="flex-1 gap-2 h-9 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-900/20"
+            className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2 text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-900/20"
           >
-            <Share2 size={14} />
-            Compartilhar
+            <Share2 size={14} className="shrink-0" />
+            <span className="truncate">Compartilhar</span>
           </Button>
         )}
         
@@ -856,20 +856,20 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
           onClick={() => setShowTransferModal(true)}
           variant="outline"
           size="sm"
-          className="flex-1 gap-2 h-9 text-xs"
+          className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2"
         >
-          <ArrowRightLeft size={14} />
-          Transferir
+          <ArrowRightLeft size={14} className="shrink-0" />
+          <span className="truncate">Transferir</span>
         </Button>
         
         <Button
           onClick={() => setShowCloseModal(true)}
           variant="ghost"
           size="sm"
-          className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10 gap-2 h-9 text-xs"
+          className="flex-1 min-w-0 text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5 h-9 text-xs px-2"
         >
-          <X size={14} />
-          Fechar
+          <X size={14} className="shrink-0" />
+          <span className="truncate">Fechar</span>
         </Button>
       </div>
 
