@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Users, Clock, MessageSquare, ChevronDown, ChevronUp, 
-  Settings, BarChart3, Power, PowerOff, Loader2, AlertTriangle
+  Settings, BarChart3, Power, PowerOff, Loader2, AlertTriangle, Timer
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,26 +42,63 @@ import {
   useUpdateResponseAlertSettings,
   AgentStatus 
 } from '@/hooks/useAgentMonitor';
+import { usePermissions } from '@/hooks/usePermissions';
 import { ResponseTimeChart } from './ResponseTimeChart';
 import { WaitingConversationsModal } from './WaitingConversationsModal';
+import { AvailabilityTimerModal } from './AvailabilityTimerModal';
 
 export function AgentMonitorPanel() {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showChart, setShowChart] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
+  const [timerModalAgent, setTimerModalAgent] = useState<AgentStatus | null>(null);
   
   const { data: agents = [], isLoading } = useAgentMonitorStatus();
   const { data: alertMinutes = 5 } = useResponseAlertSettings();
   const toggleAvailability = useToggleAgentAvailability();
   const updateAlertSettings = useUpdateResponseAlertSettings();
+  const { hasPermission, isAdmin, isSupervisor } = usePermissions();
 
-  const handleToggleAvailability = async (agent: AgentStatus) => {
+  const canToggleAvailability = hasPermission('live', 'toggle_availability') || isAdmin || isSupervisor;
+
+  const handleToggleClick = (agent: AgentStatus) => {
+    if (!canToggleAvailability) {
+      toast.error('Você não tem permissão para alterar disponibilidade de agentes');
+      return;
+    }
+
+    if (agent.is_available) {
+      // Se está ativo, abre modal para escolher tempo
+      setTimerModalAgent(agent);
+    } else {
+      // Se está pausado, reativa imediatamente
+      handleReactivate(agent);
+    }
+  };
+
+  const handleReactivate = async (agent: AgentStatus) => {
     try {
       await toggleAvailability.mutateAsync({
         agentId: agent.agent_id,
-        isAvailable: !agent.is_available,
+        isAvailable: true,
       });
-      toast.success(`${agent.agent_name} agora está ${!agent.is_available ? 'disponível' : 'indisponível'} para receber leads`);
+      toast.success(`${agent.agent_name} agora está disponível para receber leads`);
+    } catch (error) {
+      toast.error('Erro ao alterar disponibilidade');
+    }
+  };
+
+  const handleDeactivateWithTimer = async (untilTime: string | null, reason: string) => {
+    if (!timerModalAgent) return;
+    
+    try {
+      await toggleAvailability.mutateAsync({
+        agentId: timerModalAgent.agent_id,
+        isAvailable: false,
+        unavailableUntil: untilTime,
+        unavailabilityReason: reason,
+      });
+      toast.success(`${timerModalAgent.agent_name} pausado: ${reason}`);
     } catch (error) {
       toast.error('Erro ao alterar disponibilidade');
     }
