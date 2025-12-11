@@ -18,6 +18,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface HeaderProps {
   title: string;
@@ -157,13 +158,17 @@ export function Header({ title, onMenuClick }: HeaderProps) {
     setSearchParams(newParams, { replace: true });
   };
 
+  // OTIMIZAÇÃO: Usa hook centralizado
+  const { data: currentUser } = useCurrentUser();
+
   // Fetch useful notifications: assignments, transfers, SLA alerts
   const { data: notifications = [] } = useQuery({
-    queryKey: ['header-notifications'],
-    staleTime: 30000, // 30 seconds cache
+    queryKey: ['header-notifications', currentUser?.id],
+    staleTime: 60000, // OTIMIZAÇÃO: 1 minuto de cache
+    refetchOnWindowFocus: false,
+    enabled: !!currentUser?.id,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      if (!currentUser?.id) return [];
 
       const allNotifications: Notification[] = [];
 
@@ -176,7 +181,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
           updated_at,
           contact:contacts(full_name)
         `)
-        .eq('assigned_to', user.id)
+        .eq('assigned_to', currentUser.id)
         .eq('status', 'open')
         .gte('updated_at', oneDayAgo)
         .order('updated_at', { ascending: false })
@@ -202,7 +207,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
           transfer_note,
           contact:contacts(full_name)
         `)
-        .eq('assigned_to', user.id)
+        .eq('assigned_to', currentUser.id)
         .not('transferred_at', 'is', null)
         .gte('transferred_at', oneDayAgo)
         .order('transferred_at', { ascending: false })
@@ -228,7 +233,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
           sla_status,
           contact:contacts(full_name)
         `)
-        .eq('assigned_to', user.id)
+        .eq('assigned_to', currentUser.id)
         .eq('status', 'open')
         .in('sla_status', ['warning', 'critical'])
         .order('updated_at', { ascending: false })

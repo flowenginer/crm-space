@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { useCurrentUser } from './useCurrentUser';
 
 interface PinnedConversation {
   id: string;
@@ -11,24 +12,25 @@ interface PinnedConversation {
 
 export function usePinnedConversations() {
   const queryClient = useQueryClient();
+  const { data: currentUser } = useCurrentUser();
 
   const query = useQuery({
-    queryKey: ['pinned-conversations'],
+    queryKey: ['pinned-conversations', currentUser?.id],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      if (!currentUser?.id) return [];
 
-      // Otimizado: selecionar apenas campos necessários
       const { data, error } = await supabase
         .from('pinned_conversations')
         .select('id, user_id, conversation_id, pinned_at')
-        .eq('user_id', user.id)
+        .eq('user_id', currentUser.id)
         .order('pinned_at', { ascending: false });
 
       if (error) throw error;
       return data as PinnedConversation[];
     },
-    staleTime: 60000, // 1 minute cache
+    enabled: !!currentUser?.id,
+    staleTime: 2 * 60 * 1000, // OTIMIZAÇÃO: 2 minutos de cache
+    refetchOnWindowFocus: false,
   });
 
   // Realtime subscription with debounce
@@ -65,16 +67,16 @@ export function usePinnedConversations() {
 
 export function usePinConversation() {
   const queryClient = useQueryClient();
+  const { data: currentUser } = useCurrentUser();
 
   return useMutation({
     mutationFn: async (conversationId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!currentUser?.id) throw new Error('Not authenticated');
 
       const { error } = await supabase
         .from('pinned_conversations')
         .insert({
-          user_id: user.id,
+          user_id: currentUser.id,
           conversation_id: conversationId,
         });
 
@@ -88,16 +90,16 @@ export function usePinConversation() {
 
 export function useUnpinConversation() {
   const queryClient = useQueryClient();
+  const { data: currentUser } = useCurrentUser();
 
   return useMutation({
     mutationFn: async (conversationId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!currentUser?.id) throw new Error('Not authenticated');
 
       const { error } = await supabase
         .from('pinned_conversations')
         .delete()
-        .eq('user_id', user.id)
+        .eq('user_id', currentUser.id)
         .eq('conversation_id', conversationId);
 
       if (error) throw error;

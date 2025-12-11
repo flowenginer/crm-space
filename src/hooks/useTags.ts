@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentUser, useCurrentUserProfile } from './useCurrentUser';
 
 // ============ Standalone Functions ============
 
@@ -64,36 +65,21 @@ export interface CreateTagInput {
   department_id?: string | null;
 }
 
-// Fetch tags with visibility filtering
+// OTIMIZAÇÃO: Usa hooks centralizados para evitar chamadas duplicadas
 export function useTags() {
+  const { data: currentUser } = useCurrentUser();
+  const { data: profile } = useCurrentUserProfile();
+
   return useQuery({
-    queryKey: ['tags'],
-    staleTime: 60000, // 1 minute cache
+    queryKey: ['tags', currentUser?.id],
+    staleTime: 2 * 60 * 1000, // OTIMIZAÇÃO: 2 minutos de cache
+    refetchOnWindowFocus: false,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
-
-      // Get user's department
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('department_id')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      // Build query with visibility filter
-      // Public tags OR private tags created by user OR department tags for user's department
-      let query = supabase
-        .from('tags')
-        .select(`
-          *,
-          department:departments(id, name),
-          creator:profiles!tags_created_by_fkey(id, full_name)
-        `)
-        .order('name');
+      if (!currentUser?.id) return [];
 
       // Apply visibility filter
       const conditions = ['visibility.eq.public'];
-      conditions.push(`and(visibility.eq.private,created_by.eq.${user.id})`);
+      conditions.push(`and(visibility.eq.private,created_by.eq.${currentUser.id})`);
       if (profile?.department_id) {
         conditions.push(`and(visibility.eq.department,department_id.eq.${profile.department_id})`);
       }
@@ -111,6 +97,7 @@ export function useTags() {
       if (error) throw error;
       return data as Tag[];
     },
+    enabled: !!currentUser?.id,
   });
 }
 
