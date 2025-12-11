@@ -178,10 +178,11 @@ export function useTransferConversation() {
       }
 
       // Verificar se a função retornou JSONB com sucesso
-      if (data && typeof data === 'object' && 'success' in data) {
-        if (!data.success) {
-          console.error('[Transfer] RPC returned failure:', data);
-          throw new Error(data.message || 'Falha ao transferir conversa');
+      const rpcData = data as unknown as { success?: boolean; message?: string } | boolean | null;
+      if (rpcData && typeof rpcData === 'object' && 'success' in rpcData) {
+        if (!rpcData.success) {
+          console.error('[Transfer] RPC returned failure:', rpcData);
+          throw new Error(rpcData.message || 'Falha ao transferir conversa');
         }
       }
 
