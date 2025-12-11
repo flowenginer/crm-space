@@ -6,7 +6,7 @@ import { useLeadsDistributionByAgent, AgentLeadDistribution } from '@/hooks/useL
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { cn } from '@/lib/utils';
 
 interface OriginBreakdownChartProps {
@@ -54,7 +54,7 @@ function AgentDistributionPanel({
 }) {
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center py-12">
         <Loader2 className="h-5 w-5 animate-spin text-primary" />
       </div>
     );
@@ -62,7 +62,7 @@ function AgentDistributionPanel({
 
   if (agents.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
         <Users className="h-8 w-8 mb-2 opacity-50" />
         <p className="text-sm">Nenhum lead atribuído</p>
       </div>
@@ -70,7 +70,7 @@ function AgentDistributionPanel({
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex flex-col">
       <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border">
         <div 
           className="w-3 h-3 rounded-full"
@@ -82,35 +82,33 @@ function AgentDistributionPanel({
         </Badge>
       </div>
       
-      <ScrollArea className="flex-1 -mr-2 pr-2">
-        <div className="space-y-2">
-          {agents.map((agent) => (
-            <div 
-              key={agent.agent_id}
-              className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-            >
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={agent.agent_avatar || undefined} />
-                <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                  {agent.agent_name?.slice(0, 2).toUpperCase() || <User className="h-3 w-3" />}
-                </AvatarFallback>
-              </Avatar>
-              
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{agent.agent_name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {agent.converted_count} conv. ({agent.conversion_rate}%)
-                </p>
-              </div>
-              
-              <div className="text-right">
-                <p className="text-lg font-bold">{agent.lead_count}</p>
-                <p className="text-[10px] text-muted-foreground">leads</p>
-              </div>
+      <div className="space-y-2">
+        {agents.map((agent) => (
+          <div 
+            key={agent.agent_id}
+            className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+          >
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={agent.agent_avatar || undefined} />
+              <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                {agent.agent_name?.slice(0, 2).toUpperCase() || <User className="h-3 w-3" />}
+              </AvatarFallback>
+            </Avatar>
+            
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{agent.agent_name}</p>
+              <p className="text-xs text-muted-foreground">
+                {agent.converted_count} conv. ({agent.conversion_rate}%)
+              </p>
             </div>
-          ))}
-        </div>
-      </ScrollArea>
+            
+            <div className="text-right">
+              <p className="text-lg font-bold">{agent.lead_count}</p>
+              <p className="text-[10px] text-muted-foreground">leads</p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -295,7 +293,7 @@ export function OriginBreakdownChart({
 
           {/* Coluna do Painel de Agentes */}
           {showAgentPanel && selectedData && (
-            <div className="border-l border-border pl-4 h-[340px]">
+            <div className="border-l border-border pl-4">
               <AgentDistributionPanel 
                 agents={agentDistribution || []}
                 isLoading={isLoadingAgents}
