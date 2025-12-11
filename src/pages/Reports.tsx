@@ -29,8 +29,10 @@ import {
   Facebook,
   ExternalLink,
   ArrowLeftRight,
+  Phone,
 } from 'lucide-react';
 import { TransferHistoryPanel } from '@/components/reports/TransferHistoryPanel';
+import { CallHistoryPanel } from '@/components/reports/CallHistoryPanel';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardGrid, DashboardCardConfig } from '@/components/dashboard/DashboardGrid';
@@ -460,6 +462,13 @@ export default function Reports() {
           >
             <ArrowLeftRight size={18} />
             Transferências
+          </TabsTrigger>
+          <TabsTrigger
+            value="calls"
+            className="flex-1 flex items-center justify-center gap-2 py-3 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-accent data-[state=active]:text-white rounded-lg"
+          >
+            <Phone size={18} />
+            Ligações
           </TabsTrigger>
         </TabsList>
 
@@ -1219,6 +1228,11 @@ export default function Reports() {
         {/* TAB 6: Transfers Report */}
         <TabsContent value="transfers" className="space-y-6">
           <TransferHistoryPanel />
+        </TabsContent>
+
+        {/* TAB 7: Call History Report */}
+        <TabsContent value="calls" className="space-y-6">
+          <CallHistoryPanel dateRange={dateRange} />
         </TabsContent>
       </Tabs>
     </div>

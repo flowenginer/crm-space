@@ -103,6 +103,113 @@ export type Database = {
         }
         Relationships: []
       }
+      call_logs: {
+        Row: {
+          call_date: string
+          call_time: string
+          contact_id: string
+          conversation_id: string | null
+          created_at: string | null
+          followup_date: string | null
+          followup_message: string | null
+          id: string
+          notes: string | null
+          result_id: string | null
+          schedule_followup: boolean | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          call_date?: string
+          call_time?: string
+          contact_id: string
+          conversation_id?: string | null
+          created_at?: string | null
+          followup_date?: string | null
+          followup_message?: string | null
+          id?: string
+          notes?: string | null
+          result_id?: string | null
+          schedule_followup?: boolean | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          call_date?: string
+          call_time?: string
+          contact_id?: string
+          conversation_id?: string | null
+          created_at?: string | null
+          followup_date?: string | null
+          followup_message?: string | null
+          id?: string
+          notes?: string | null
+          result_id?: string | null
+          schedule_followup?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_logs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_result_id_fkey"
+            columns: ["result_id"]
+            isOneToOne: false
+            referencedRelation: "call_results"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      call_results: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          order_position: number | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          order_position?: number | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          order_position?: number | null
+        }
+        Relationships: []
+      }
       chatbot_flows: {
         Row: {
           channel_ids: string[] | null
