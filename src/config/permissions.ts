@@ -93,6 +93,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     permissions: [
       { key: 'live.view', name: 'Acessar Monitor', description: 'Visualizar monitor em tempo real' },
       { key: 'live.intervene', name: 'Intervir em Conversas', description: 'Entrar em conversas de outros atendentes' },
+      { key: 'live.toggle_availability', name: 'Controlar Disponibilidade', description: 'Ativar/desativar recebimento de leads de outros agentes' },
     ],
   },
   {

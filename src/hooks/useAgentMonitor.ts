@@ -12,6 +12,8 @@ export interface AgentStatus {
   open_conversations: number;
   waiting_response: number;
   oldest_waiting_minutes: number;
+  unavailable_until: string | null;
+  unavailability_reason: string | null;
 }
 
 export interface AgentResponseHistory {
@@ -96,10 +98,26 @@ export function useToggleAgentAvailability() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ agentId, isAvailable }: { agentId: string; isAvailable: boolean }) => {
+    mutationFn: async ({ 
+      agentId, 
+      isAvailable,
+      unavailableUntil,
+      unavailabilityReason
+    }: { 
+      agentId: string; 
+      isAvailable: boolean;
+      unavailableUntil?: string | null;
+      unavailabilityReason?: string | null;
+    }) => {
+      const updateData: Record<string, unknown> = { 
+        is_available: isAvailable,
+        unavailable_until: isAvailable ? null : (unavailableUntil || null),
+        unavailability_reason: isAvailable ? null : (unavailabilityReason || null),
+      };
+
       const { error } = await supabase
         .from('profiles')
-        .update({ is_available: isAvailable })
+        .update(updateData)
         .eq('id', agentId);
 
       if (error) throw error;
