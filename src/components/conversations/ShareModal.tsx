@@ -5,13 +5,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Share2, Loader2, Users, Building2, X, Link2 } from 'lucide-react';
+import { Share2, Loader2, Users, Building2, X, Link2, Eye, Pencil } from 'lucide-react';
 import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useAllUserDepartments } from '@/hooks/useUserDepartments';
-import { useShareConversation, useMySharesForConversation, useRemoveShare } from '@/hooks/useSharedConversations';
+import { useShareConversation, useMySharesForConversation, useRemoveShare, type PermissionLevel } from '@/hooks/useSharedConversations';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface ShareModalProps {
   open: boolean;
@@ -30,6 +32,7 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
   const [selectedUserId, setSelectedUserId] = useState('');
   const [shareWithEntireDepartment, setShareWithEntireDepartment] = useState(false);
   const [note, setNote] = useState('');
+  const [permissionLevel, setPermissionLevel] = useState<PermissionLevel>('view');
 
   const { data: departments = [] } = useDepartments();
   const { data: teamMembers = [] } = useTeam();
@@ -62,6 +65,7 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
           conversationId,
           departmentId: selectedDepartmentId,
           note: note.trim() || undefined,
+          permissionLevel,
         });
       } else {
         if (!selectedUserId) {
@@ -72,6 +76,7 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
           conversationId,
           sharedWith: selectedUserId,
           note: note.trim() || undefined,
+          permissionLevel,
         });
       }
 
@@ -79,6 +84,7 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
       // Reset form but keep modal open to allow more shares
       setSelectedUserId('');
       setNote('');
+      setPermissionLevel('view');
       onSuccess?.();
     } catch (error: any) {
       if (error.code === '23505') {
@@ -106,6 +112,7 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
     setSelectedUserId('');
     setShareWithEntireDepartment(false);
     setNote('');
+    setPermissionLevel('view');
     onClose();
   };
 
@@ -161,6 +168,21 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
                           <span className="text-sm">{share.department.name} (departamento)</span>
                         </>
                       ) : null}
+                      <Badge 
+                        variant="outline" 
+                        className={cn(
+                          "text-[10px] px-1.5 py-0",
+                          share.permission_level === 'edit' 
+                            ? 'border-green-500/50 text-green-600 bg-green-500/10' 
+                            : 'border-muted-foreground/50 text-muted-foreground'
+                        )}
+                      >
+                        {share.permission_level === 'edit' ? (
+                          <><Pencil className="h-2.5 w-2.5 mr-0.5" /> Editor</>
+                        ) : (
+                          <><Eye className="h-2.5 w-2.5 mr-0.5" /> Visualização</>
+                        )}
+                      </Badge>
                     </div>
                     <Button
                       variant="ghost"
@@ -276,6 +298,44 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
               )}
             </>
           )}
+
+          {/* Permission Level Selection */}
+          <div className="space-y-2">
+            <Label>Nível de acesso</Label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={permissionLevel === 'view' ? 'default' : 'outline'}
+                size="sm"
+                className={cn(
+                  "flex-1",
+                  permissionLevel === 'view' && "bg-muted-foreground"
+                )}
+                onClick={() => setPermissionLevel('view')}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Só visualizar
+              </Button>
+              <Button
+                type="button"
+                variant={permissionLevel === 'edit' ? 'default' : 'outline'}
+                size="sm"
+                className={cn(
+                  "flex-1",
+                  permissionLevel === 'edit' && "bg-green-600 hover:bg-green-700"
+                )}
+                onClick={() => setPermissionLevel('edit')}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Conversar também
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {permissionLevel === 'view' 
+                ? 'O usuário poderá apenas ver as mensagens, sem poder responder.'
+                : 'O usuário poderá enviar mensagens na conversa junto com você.'}
+            </p>
+          </div>
 
           {/* Note */}
           <div className="space-y-2">

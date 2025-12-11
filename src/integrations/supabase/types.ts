@@ -2521,6 +2521,7 @@ export type Database = {
           department_id: string | null
           id: string
           note: string | null
+          permission_level: string
           shared_at: string
           shared_by: string
           shared_with: string | null
@@ -2530,6 +2531,7 @@ export type Database = {
           department_id?: string | null
           id?: string
           note?: string | null
+          permission_level?: string
           shared_at?: string
           shared_by: string
           shared_with?: string | null
@@ -2539,6 +2541,7 @@ export type Database = {
           department_id?: string | null
           id?: string
           note?: string | null
+          permission_level?: string
           shared_at?: string
           shared_by?: string
           shared_with?: string | null

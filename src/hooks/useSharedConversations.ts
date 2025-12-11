@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
 
+export type PermissionLevel = 'view' | 'edit';
+
 export interface SharedConversation {
   id: string;
   conversation_id: string;
@@ -10,6 +12,7 @@ export interface SharedConversation {
   department_id: string | null;
   note: string | null;
   shared_at: string;
+  permission_level: PermissionLevel;
   shared_by_profile?: {
     id: string;
     full_name: string | null;
@@ -53,7 +56,7 @@ export function useSharedConversations() {
       let query = supabase
         .from('shared_conversations')
         .select(`
-          id, conversation_id, shared_by, shared_with, department_id, note, shared_at,
+          id, conversation_id, shared_by, shared_with, department_id, note, shared_at, permission_level,
           shared_by_profile:profiles!shared_conversations_shared_by_fkey(id, full_name, avatar_url),
           shared_with_profile:profiles!shared_conversations_shared_with_fkey(id, full_name, avatar_url),
           department:departments!shared_conversations_department_id_fkey(id, name)
@@ -153,7 +156,7 @@ export function useMySharesForConversation(conversationId: string | null) {
       const { data, error } = await supabase
         .from('shared_conversations')
         .select(`
-          id, conversation_id, shared_by, shared_with, department_id, note, shared_at,
+          id, conversation_id, shared_by, shared_with, department_id, note, shared_at, permission_level,
           shared_with_profile:profiles!shared_conversations_shared_with_fkey(id, full_name, avatar_url),
           department:departments!shared_conversations_department_id_fkey(id, name)
         `)
@@ -179,6 +182,7 @@ export function useShareConversation() {
       sharedWith?: string;
       departmentId?: string;
       note?: string;
+      permissionLevel?: PermissionLevel;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -203,6 +207,7 @@ export function useShareConversation() {
           shared_with: params.sharedWith || null,
           department_id: params.departmentId || null,
           note: params.note || null,
+          permission_level: params.permissionLevel || 'view',
         });
 
       if (error) throw error;
@@ -216,6 +221,7 @@ export function useShareConversation() {
           shared_with_user_id: params.sharedWith || null,
           shared_with_department_id: params.departmentId || null,
           note: params.note || null,
+          permission_level: params.permissionLevel || 'view',
         }
       });
     },
@@ -289,6 +295,21 @@ export function useUnshareConversation() {
 export function useIsSharedWithMe(conversationId: string) {
   const { data: sharedConversations } = useSharedConversations();
   return sharedConversations?.some(sc => sc.conversation_id === conversationId) ?? false;
+}
+
+// Check permission level for a shared conversation
+export function useMySharePermission(conversationId: string | null) {
+  const { data: sharedConversations } = useSharedConversations();
+  
+  const share = conversationId 
+    ? sharedConversations?.find(sc => sc.conversation_id === conversationId)
+    : undefined;
+    
+  return {
+    isShared: !!share,
+    canEdit: share?.permission_level === 'edit',
+    permissionLevel: share?.permission_level || null,
+  };
 }
 
 // Toggle for convenience (like pin)
