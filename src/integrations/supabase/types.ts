@@ -3448,6 +3448,17 @@ export type Database = {
           status_name: string
         }[]
       }
+      get_leads_distribution_by_agent: {
+        Args: { p_date_from: string; p_date_to: string; p_origin?: string }
+        Returns: {
+          agent_avatar: string
+          agent_id: string
+          agent_name: string
+          conversion_rate: number
+          converted_count: number
+          lead_count: number
+        }[]
+      }
       get_no_tag_conversation_count: {
         Args: {
           p_agent_id?: string

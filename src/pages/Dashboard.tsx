@@ -100,6 +100,8 @@ export default function Dashboard() {
           isLoading={loadingOrigin}
           selectedOrigin={selectedOrigin}
           onOriginClick={setSelectedOrigin}
+          dateFrom={filters.dateFrom}
+          dateTo={filters.dateTo}
         />
         <StatusFunnelRealtime 
           data={statusFunnelRealtime} 
