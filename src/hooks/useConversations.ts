@@ -123,7 +123,8 @@ export function useConversations(filter?: AssignmentFilter) {
       if (error) throw error;
       return data as Conversation[];
     },
-    staleTime: 30000, // 30 segundos de cache
+    staleTime: 60000, // OTIMIZAÇÃO: 1 minuto de cache
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -184,7 +185,8 @@ export function useMessages(conversationId: string | null) {
       return messages;
     },
     enabled: !!conversationId,
-    staleTime: 10000, // 10 segundos de cache para mensagens
+    staleTime: 30000, // OTIMIZAÇÃO: 30 segundos de cache
+    refetchOnWindowFocus: false,
   });
 }
 

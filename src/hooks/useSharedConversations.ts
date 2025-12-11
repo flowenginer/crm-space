@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { useCurrentUser, useCurrentUserDepartments } from './useCurrentUser';
 
 export type PermissionLevel = 'view' | 'edit';
 
@@ -34,23 +35,16 @@ export interface SharedConversationCounts {
   unread: number;
 }
 
-// Fetch shared conversations for the current user
+// OTIMIZAÇÃO: Usa hooks centralizados para evitar chamadas duplicadas
 export function useSharedConversations() {
   const queryClient = useQueryClient();
+  const { data: currentUser } = useCurrentUser();
+  const { data: userDeptIds = [] } = useCurrentUserDepartments();
 
   const query = useQuery({
-    queryKey: ['shared-conversations'],
+    queryKey: ['shared-conversations', currentUser?.id],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
-
-      // Get user's departments
-      const { data: userDepts } = await supabase
-        .from('user_departments')
-        .select('department_id')
-        .eq('user_id', user.id);
-      
-      const userDeptIds = userDepts?.map(d => d.department_id) || [];
+      if (!currentUser?.id) return [];
 
       // Fetch shared conversations where user is recipient (by user or department)
       let query = supabase
@@ -61,14 +55,14 @@ export function useSharedConversations() {
           shared_with_profile:profiles!shared_conversations_shared_with_fkey(id, full_name, avatar_url),
           department:departments!shared_conversations_department_id_fkey(id, name)
         `)
-        .neq('shared_by', user.id) // Exclude own shares
+        .neq('shared_by', currentUser.id)
         .order('shared_at', { ascending: false });
 
       // Filter: shared_with = user OR department_id IN user's departments
       if (userDeptIds.length > 0) {
-        query = query.or(`shared_with.eq.${user.id},department_id.in.(${userDeptIds.join(',')})`);
+        query = query.or(`shared_with.eq.${currentUser.id},department_id.in.(${userDeptIds.join(',')})`);
       } else {
-        query = query.eq('shared_with', user.id);
+        query = query.eq('shared_with', currentUser.id);
       }
 
       const { data, error } = await query;
@@ -76,10 +70,12 @@ export function useSharedConversations() {
       if (error) throw error;
       return data as SharedConversation[];
     },
-    staleTime: 30000, // 30 seconds cache (reduced for faster updates)
+    enabled: !!currentUser?.id,
+    staleTime: 60000, // OTIMIZAÇÃO: 1 minuto de cache
+    refetchOnWindowFocus: false,
   });
 
-  // Realtime subscription with faster debounce
+  // OTIMIZAÇÃO: Debounce aumentado e invalidações consolidadas
   useEffect(() => {
     let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
     
@@ -95,13 +91,16 @@ export function useSharedConversations() {
         () => {
           if (debounceTimeout) clearTimeout(debounceTimeout);
           debounceTimeout = setTimeout(() => {
-            queryClient.invalidateQueries({ queryKey: ['shared-conversations'] });
-            queryClient.invalidateQueries({ queryKey: ['shared-conversation-counts'] });
-            queryClient.invalidateQueries({ queryKey: ['my-shares'] });
-            queryClient.invalidateQueries({ queryKey: ['my-all-shares'] });
-            queryClient.invalidateQueries({ queryKey: ['shared-conversations-details'] });
-            queryClient.invalidateQueries({ queryKey: ['all-shared-conversation-ids'] });
-          }, 200); // Reduced from 500ms for faster response
+            // OTIMIZAÇÃO: Apenas invalidar queries essenciais com refetchType: 'active'
+            queryClient.invalidateQueries({ 
+              queryKey: ['shared-conversations'],
+              refetchType: 'active'
+            });
+            queryClient.invalidateQueries({ 
+              queryKey: ['shared-conversation-counts'],
+              refetchType: 'active'
+            });
+          }, 500); // OTIMIZAÇÃO: Aumentado de 200ms para 500ms
         }
       )
       .subscribe();

@@ -23,16 +23,19 @@ export function useRealtimeMessages(conversationId: string | null) {
   useEffect(() => {
     if (!conversationId) return;
 
-    // Debounced invalidation to prevent rapid-fire updates
+    // OTIMIZAÇÃO: Debounce aumentado de 300ms para 500ms
     const invalidateMessages = debounce(() => {
-      // Invalidate both old and new query keys for compatibility
-      queryClient.invalidateQueries({ queryKey: ['messages-paginated', conversationId] });
-      queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
-      
-      // Also invalidate conversation counts (new messages may change unread status)
-      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
-    }, 300);
+      // OTIMIZAÇÃO: Apenas invalidar mensagens da conversa atual
+      // Contagens são invalidadas pelo useRealtimeConversations
+      queryClient.invalidateQueries({ 
+        queryKey: ['messages-paginated', conversationId],
+        refetchType: 'active' // Só refetch se query estiver ativa
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ['messages', conversationId],
+        refetchType: 'active'
+      });
+    }, 500);
 
     // Subscribe to new messages in the current conversation
     const channel = supabase
@@ -58,7 +61,6 @@ export function useRealtimeMessages(conversationId: string | null) {
           filter: `conversation_id=eq.${conversationId}`,
         },
         () => {
-          // Refresh messages on update (reactions, deletions, etc.)
           invalidateMessages();
         }
       )
@@ -74,24 +76,29 @@ export function useRealtimeConversations() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    // Invalidação imediata para mudanças críticas (transferências, fechamentos)
-    // OTIMIZAÇÃO: Reduzido de 6 queries para 3 essenciais
+    // OTIMIZAÇÃO: Invalidação imediata apenas para queries ativas
     const invalidateImmediately = () => {
-      console.log('🔄 [Realtime] Invalidating essential conversation queries immediately');
-      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
+      queryClient.invalidateQueries({ 
+        queryKey: ['conversations-paginated'],
+        refetchType: 'active'
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ['conversation-total-counts'],
+        refetchType: 'active'
+      });
     };
 
-    // Debounced invalidation para outras mudanças (500ms - otimizado para performance)
-    // OTIMIZAÇÃO: Reduzido de 11 queries para 3 essenciais
-    // As contagens de filtros (tags, channels, etc) usam staleTime de 5min e não precisam invalidar em tempo real
+    // OTIMIZAÇÃO: Debounce aumentado de 500ms para 800ms
     const invalidateConversations = debounce(() => {
-      console.log('📨 [Realtime] Debounced invalidation triggered (optimized - 3 queries)');
-      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
-      queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-    }, 500);
+      queryClient.invalidateQueries({ 
+        queryKey: ['conversations-paginated'],
+        refetchType: 'active'
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ['conversation-total-counts'],
+        refetchType: 'active'
+      });
+    }, 800);
 
     // Helper para obter o ID do usuário atual
     const getCurrentUserId = async () => {

@@ -547,7 +547,8 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextPage,
-    staleTime: 30000, // 30 seconds
+    staleTime: 60000, // OTIMIZAÇÃO: 1 minuto de cache
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -596,7 +597,8 @@ export function useConversationCounts(statusFilter: StatusFilter = 'active') {
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextPage,
-    staleTime: 60000, // 1 minute cache
+    staleTime: 2 * 60 * 1000, // OTIMIZAÇÃO: 2 minutos de cache
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -633,6 +635,7 @@ export function useSortFilterCounts(statusFilter: StatusFilter = 'active') {
         client_not_replied: clientNotRepliedResult.count || 0,
       };
     },
-    staleTime: 30000, // 30 seconds cache
+    staleTime: 60000, // OTIMIZAÇÃO: 1 minuto de cache
+    refetchOnWindowFocus: false,
   });
 }
