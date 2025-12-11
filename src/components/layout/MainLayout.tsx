@@ -64,8 +64,10 @@ export function MainLayout() {
 
   const pageTitle = pageTitles[location.pathname] || 'Space Sports CRM';
 
-  // Check if current route is conversations (hide header for more space)
+  // Check if current route is conversations or internal chat (hide header for more space)
   const isConversationsPage = location.pathname === '/conversations';
+  const isInternalChatPage = location.pathname === '/internal-chat';
+  const isFullHeightPage = isConversationsPage || isInternalChatPage;
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -91,7 +93,7 @@ export function MainLayout() {
           isMobile && 'ml-0'
         )}
       >
-        {!isConversationsPage && (
+        {!isFullHeightPage && (
           <Header
             title={pageTitle}
             onMenuClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -99,7 +101,7 @@ export function MainLayout() {
         )}
         <main className={cn(
           "flex-1 animate-fade-in",
-          isConversationsPage 
+          isFullHeightPage 
             ? "p-0 overflow-hidden h-full" 
             : "p-6 md:p-8 overflow-y-auto"
         )}>
