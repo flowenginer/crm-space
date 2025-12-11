@@ -94,6 +94,7 @@ export function useSharedConversations() {
           debounceTimeout = setTimeout(() => {
             queryClient.invalidateQueries({ queryKey: ['shared-conversations'] });
             queryClient.invalidateQueries({ queryKey: ['shared-conversation-counts'] });
+            queryClient.invalidateQueries({ queryKey: ['my-shares'] });
           }, 500);
         }
       )
@@ -139,6 +140,35 @@ export function useSharedConversationIds() {
   return sharedConversations?.map(sc => sc.conversation_id) || [];
 }
 
+// Fetch shares made BY current user for a specific conversation (for owner to manage)
+export function useMySharesForConversation(conversationId: string | null) {
+  return useQuery({
+    queryKey: ['my-shares', conversationId],
+    queryFn: async () => {
+      if (!conversationId) return [];
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      const { data, error } = await supabase
+        .from('shared_conversations')
+        .select(`
+          id, conversation_id, shared_by, shared_with, department_id, note, shared_at,
+          shared_with_profile:profiles!shared_conversations_shared_with_fkey(id, full_name, avatar_url),
+          department:departments!shared_conversations_department_id_fkey(id, name)
+        `)
+        .eq('conversation_id', conversationId)
+        .eq('shared_by', user.id)
+        .order('shared_at', { ascending: false });
+
+      if (error) throw error;
+      return data as SharedConversation[];
+    },
+    enabled: !!conversationId,
+    staleTime: 30000,
+  });
+}
+
 // Share conversation mutation
 export function useShareConversation() {
   const queryClient = useQueryClient();
@@ -152,6 +182,18 @@ export function useShareConversation() {
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+
+      // Verify user is the conversation owner
+      const { data: conversation, error: convError } = await supabase
+        .from('conversations')
+        .select('assigned_to')
+        .eq('id', params.conversationId)
+        .single();
+      
+      if (convError) throw convError;
+      if (conversation.assigned_to !== user.id) {
+        throw new Error('Apenas o atendente responsável pode compartilhar esta conversa');
+      }
 
       const { error } = await supabase
         .from('shared_conversations')
@@ -177,10 +219,32 @@ export function useShareConversation() {
         }
       });
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['shared-conversations'] });
       queryClient.invalidateQueries({ queryKey: ['shared-conversation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-events'] });
+      queryClient.invalidateQueries({ queryKey: ['my-shares', variables.conversationId] });
+    },
+  });
+}
+
+// Remove a specific share (owner canceling)
+export function useRemoveShare() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (shareId: string) => {
+      const { error } = await supabase
+        .from('shared_conversations')
+        .delete()
+        .eq('id', shareId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shared-conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-conversation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['my-shares'] });
     },
   });
 }
@@ -216,6 +280,7 @@ export function useUnshareConversation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shared-conversations'] });
       queryClient.invalidateQueries({ queryKey: ['shared-conversation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['my-shares'] });
     },
   });
 }

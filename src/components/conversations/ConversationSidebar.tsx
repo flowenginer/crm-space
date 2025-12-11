@@ -20,7 +20,8 @@ import { TransferModal } from './TransferModal';
 import { ShareModal } from './ShareModal';
 import { fetchContactProfile } from '@/lib/whatsapp/instance-creator';
 import { useLeadStatuses } from '@/hooks/useLeadKanban';
-import { useIsSharedWithMe, useUnshareConversation } from '@/hooks/useSharedConversations';
+import { useIsSharedWithMe, useUnshareConversation, useMySharesForConversation, useRemoveShare } from '@/hooks/useSharedConversations';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -50,9 +51,16 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   // Fetch dynamic lead statuses
   const { data: leadStatuses = [] } = useLeadStatuses();
   
+  // Get current user
+  const { user: currentUser } = useAuth();
+  
   // Check if conversation is shared with me
   const isSharedWithMe = useIsSharedWithMe(conversationId);
   const unshareConversation = useUnshareConversation();
+  
+  // Fetch shares made by me for this conversation (for managing)
+  const { data: myShares = [] } = useMySharesForConversation(conversationId);
+  const removeShareMutation = useRemoveShare();
 
   // Fetch conversation with contact data - campos específicos para otimização
   const { data: conversation, isLoading: loadingConversation } = useQuery({
@@ -831,15 +839,18 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
 
       {/* Action Buttons - Top */}
       <div className="flex gap-2 p-3 border-b border-border">
-        <Button
-          onClick={() => setShowShareModal(true)}
-          variant="outline"
-          size="sm"
-          className="flex-1 gap-2 h-9 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-900/20"
-        >
-          <Share2 size={14} />
-          Compartilhar
-        </Button>
+        {/* Only show share button if user is the conversation owner */}
+        {conversation?.assigned_to === currentUser?.id && (
+          <Button
+            onClick={() => setShowShareModal(true)}
+            variant="outline"
+            size="sm"
+            className="flex-1 gap-2 h-9 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-900/20"
+          >
+            <Share2 size={14} />
+            Compartilhar
+          </Button>
+        )}
         
         <Button
           onClick={() => setShowTransferModal(true)}
@@ -861,6 +872,51 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
           Fechar
         </Button>
       </div>
+
+      {/* Shares made by me (only visible to conversation owner) */}
+      {conversation?.assigned_to === currentUser?.id && myShares.length > 0 && (
+        <div className="px-3 py-2 bg-blue-50/50 dark:bg-blue-900/10 border-b border-border">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+              <Share2 size={12} />
+              Compartilhado com:
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {myShares.map((share) => (
+              <div 
+                key={share.id} 
+                className="flex items-center justify-between bg-background rounded-md px-2 py-1.5"
+              >
+                <span className="text-xs text-foreground">
+                  {share.shared_with_profile?.full_name || share.department?.name || 'Destinatário'}
+                  {share.department && !share.shared_with && (
+                    <span className="text-muted-foreground ml-1">(departamento)</span>
+                  )}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    removeShareMutation.mutate(share.id, {
+                      onSuccess: () => toast.success('Compartilhamento removido'),
+                      onError: () => toast.error('Erro ao remover compartilhamento'),
+                    });
+                  }}
+                  disabled={removeShareMutation.isPending}
+                >
+                  {removeShareMutation.isPending ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <X size={12} />
+                  )}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
@@ -1240,6 +1296,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
         onClose={() => setShowShareModal(false)}
         conversationId={conversationId}
         contactName={contact?.full_name || 'Contato'}
+        conversationOwnerId={conversation?.assigned_to}
       />
 
       {/* Channel Selector Modal */}
