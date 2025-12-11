@@ -19,6 +19,7 @@ export interface TransferRecord {
   to_department_name: string | null;
   transfer_note: string | null;
   is_return: boolean;
+  is_share: boolean;
   actor_id: string | null;
   actor_name: string | null;
   total_count: number;
@@ -31,7 +32,7 @@ interface UseTransferHistoryParams {
   toUserId?: string | null;
   fromDepartmentId?: string | null;
   toDepartmentId?: string | null;
-  transferType?: 'all' | 'transfer' | 'return';
+  transferType?: 'all' | 'transfer' | 'return' | 'share';
   searchQuery?: string;
   page?: number;
   pageSize?: number;
@@ -130,13 +131,14 @@ export function useTransferHistoryKPIs({
       if (error) throw error;
 
       const records = (data as TransferRecord[]) || [];
-      const totalTransfers = records.length;
+      const totalTransfers = records.filter((r) => !r.is_return && !r.is_share).length;
       const totalReturns = records.filter((r) => r.is_return).length;
+      const totalShares = records.filter((r) => r.is_share).length;
 
       // Calcular dias no período
       const diffTime = Math.abs(dateTo.getTime() - dateFrom.getTime());
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
-      const avgPerDay = totalTransfers / diffDays;
+      const avgPerDay = records.length / diffDays;
 
       // Departamento que mais transfere
       const fromDeptCounts: Record<string, { name: string; count: number }> = {};
@@ -163,6 +165,7 @@ export function useTransferHistoryKPIs({
       return {
         totalTransfers,
         totalReturns,
+        totalShares,
         avgPerDay: Math.round(avgPerDay * 10) / 10,
         topFromDepartment: topFromDept || null,
         topToDepartment: topToDept || null,
