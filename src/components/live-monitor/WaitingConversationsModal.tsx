@@ -1,19 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Clock, Eye, ExternalLink, Loader2, MessageSquare, MoreVertical, ArrowRightLeft, User } from 'lucide-react';
+import { Clock, Eye, ExternalLink, Loader2, MessageSquare, ArrowRightLeft, User } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -120,7 +114,7 @@ export function WaitingConversationsModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl md:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-primary" />
@@ -159,7 +153,7 @@ export function WaitingConversationsModal({
                       </Avatar>
 
                       {/* Content */}
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 overflow-hidden">
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium text-sm truncate">
                             {conv.contact_name || 'Sem nome'}
@@ -178,32 +172,36 @@ export function WaitingConversationsModal({
                         </p>
                       </div>
 
-                      {/* Actions Dropdown */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 flex-shrink-0"
-                          >
-                            <MoreVertical size={16} />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem onClick={() => handlePreview(conv.conversation_id)}>
-                            <Eye size={14} className="mr-2" />
-                            Visualizar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleTransfer(conv)}>
-                            <ArrowRightLeft size={14} className="mr-2" />
-                            Transferir
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleOpenConversation(conv.conversation_id)}>
-                            <ExternalLink size={14} className="mr-2" />
-                            Abrir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {/* Action Buttons - Always Visible */}
+                      <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => handlePreview(conv.conversation_id)}
+                          title="Visualizar"
+                        >
+                          <Eye size={16} />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => handleTransfer(conv)}
+                          title="Transferir"
+                        >
+                          <ArrowRightLeft size={16} />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => handleOpenConversation(conv.conversation_id)}
+                          title="Abrir"
+                        >
+                          <ExternalLink size={16} />
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
