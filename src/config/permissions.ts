@@ -190,9 +190,16 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     icon: BarChart3,
     order: 11,
     permissions: [
-      { key: 'reports.view', name: 'Ver Relatórios', description: 'Acessar relatórios e métricas' },
+      { key: 'reports.view', name: 'Ver Relatórios', description: 'Acessar módulo de relatórios' },
       { key: 'reports.view_all', name: 'Ver Relatórios Globais', description: 'Ver relatórios de toda a equipe' },
-      { key: 'reports.export', name: 'Exportar Relatórios', description: 'Exportar dados para planilha' },
+      { key: 'reports.view_sla', name: 'Ver SLA', description: 'Acessar relatório de SLA e tempo de resposta' },
+      { key: 'reports.view_attendance', name: 'Ver Atendimentos', description: 'Acessar relatório de atendimentos' },
+      { key: 'reports.view_sales', name: 'Ver Vendas', description: 'Acessar relatório de vendas e faturamento' },
+      { key: 'reports.view_satisfaction', name: 'Ver Satisfação', description: 'Acessar relatório de satisfação e NPS' },
+      { key: 'reports.view_performance', name: 'Ver Performance', description: 'Acessar relatório de performance individual' },
+      { key: 'reports.view_transfers', name: 'Ver Transferências', description: 'Acessar histórico de transferências' },
+      { key: 'reports.view_calls', name: 'Ver Ligações', description: 'Acessar histórico de ligações' },
+      { key: 'reports.export', name: 'Exportar Relatórios', description: 'Exportar dados para planilha/PDF' },
     ],
   },
   {
