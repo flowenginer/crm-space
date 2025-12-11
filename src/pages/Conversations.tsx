@@ -1358,19 +1358,32 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   } = usePaginatedConversations(conversationFilters);
 
   // Build filters for contextual counts - TODOS os filtros ativos
-  const countFilters: CountFilters = useMemo(() => ({
-    departmentId: advancedFilters.departmentId !== 'all' ? advancedFilters.departmentId : undefined,
-    agentId: advancedFilters.agentId !== 'all' ? advancedFilters.agentId : undefined,
-    origin: advancedFilters.origin !== 'all' ? advancedFilters.origin as 'meta_ads' | 'organic' : undefined,
-    channelId: channelFilter !== 'all' ? channelFilter : undefined,
-    // Filtros adicionais que agora são aplicados:
-    dateFilter: dateFilter !== 'all' ? dateFilter : undefined,
-    customDateFrom: customDateRange.from,
-    customDateTo: customDateRange.to,
-    sortFilter: (sortFilter !== 'newest' && sortFilter !== 'oldest') ? sortFilter : undefined,
-    tagId: advancedFilters.tagIds.length === 1 ? advancedFilters.tagIds[0] : undefined, // Single tag filter
-    statusFilter: statusFilter, // Status filter for conversation counts
-  }), [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, channelFilter, dateFilter, customDateRange.from, customDateRange.to, sortFilter, statusFilter]);
+  // Para vendedores (não admin/supervisor), SEMPRE filtrar pelas próprias conversas
+  const countFilters: CountFilters = useMemo(() => {
+    // Determinar o agentId efetivo:
+    // 1. Se usuário selecionou um agente específico no filtro avançado, usar esse
+    // 2. Se usuário NÃO é admin/supervisor, SEMPRE filtrar pelo próprio ID
+    // 3. Caso contrário (admin/supervisor sem filtro), não filtrar por agente
+    const effectiveAgentId = advancedFilters.agentId !== 'all'
+      ? advancedFilters.agentId
+      : (!isAdmin && !isSupervisor && profile?.id)
+        ? profile.id
+        : undefined;
+
+    return {
+      departmentId: advancedFilters.departmentId !== 'all' ? advancedFilters.departmentId : undefined,
+      agentId: effectiveAgentId,
+      origin: advancedFilters.origin !== 'all' ? advancedFilters.origin as 'meta_ads' | 'organic' : undefined,
+      channelId: channelFilter !== 'all' ? channelFilter : undefined,
+      // Filtros adicionais que agora são aplicados:
+      dateFilter: dateFilter !== 'all' ? dateFilter : undefined,
+      customDateFrom: customDateRange.from,
+      customDateTo: customDateRange.to,
+      sortFilter: (sortFilter !== 'newest' && sortFilter !== 'oldest') ? sortFilter : undefined,
+      tagId: advancedFilters.tagIds.length === 1 ? advancedFilters.tagIds[0] : undefined, // Single tag filter
+      statusFilter: statusFilter, // Status filter for conversation counts
+    };
+  }, [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, channelFilter, dateFilter, customDateRange.from, customDateRange.to, sortFilter, statusFilter, isAdmin, isSupervisor, profile?.id]);
 
   // Filters for each count type (excluding self to avoid circular filtering)
   const deptCountFilters: CountFilters = useMemo(() => ({ ...countFilters, departmentId: undefined }), [countFilters]);
