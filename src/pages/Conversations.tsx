@@ -94,6 +94,7 @@ import { TransferEventCard } from '@/components/conversations/TransferEventCard'
 import { ReopenEventCard } from '@/components/conversations/ReopenEventCard';
 import { CloseEventCard } from '@/components/conversations/CloseEventCard';
 import { ShareEventCard } from '@/components/conversations/ShareEventCard';
+import { ShareCancelledEventCard } from '@/components/conversations/ShareCancelledEventCard';
 import { useRealtimeMessages, useRealtimeConversations, useRealtimeConversationEvents, useTypingIndicator } from '@/hooks/useRealtimeChat';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
@@ -3689,6 +3690,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             />
                           ) : (item as ConversationEvent).event_type === 'share' ? (
                             <ShareEventCard 
+                              key={`event-${item.id}`} 
+                              event={item as ConversationEvent}
+                              currentUserId={currentUser?.id}
+                            />
+                          ) : (item as ConversationEvent).event_type === 'share_cancelled' ? (
+                            <ShareCancelledEventCard 
                               key={`event-${item.id}`} 
                               event={item as ConversationEvent}
                               currentUserId={currentUser?.id}

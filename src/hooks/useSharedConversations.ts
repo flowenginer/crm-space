@@ -269,23 +269,78 @@ export function useShareConversation() {
   });
 }
 
-// Remove a specific share (owner canceling)
+// Remove a specific share (owner canceling) - creates event before deleting
 export function useRemoveShare() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (shareId: string) => {
-      const { error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // 1. Fetch share data before deleting (need conversation_id for event)
+      const { data: shareData, error: fetchError } = await supabase
+        .from('shared_conversations')
+        .select(`
+          id,
+          conversation_id,
+          shared_with,
+          department_id
+        `)
+        .eq('id', shareId)
+        .single();
+
+      if (fetchError || !shareData) throw fetchError || new Error('Share not found');
+
+      // 2. Fetch names for the event data
+      let sharedWithUserName: string | null = null;
+      let departmentName: string | null = null;
+
+      if (shareData.shared_with) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', shareData.shared_with)
+          .single();
+        sharedWithUserName = profile?.full_name || null;
+      }
+
+      if (shareData.department_id) {
+        const { data: dept } = await supabase
+          .from('departments')
+          .select('name')
+          .eq('id', shareData.department_id)
+          .single();
+        departmentName = dept?.name || null;
+      }
+
+      // 3. Create cancellation event
+      await supabase.from('conversation_events').insert({
+        conversation_id: shareData.conversation_id,
+        event_type: 'share_cancelled',
+        actor_id: user.id,
+        data: {
+          cancelled_share_with_user_id: shareData.shared_with || null,
+          cancelled_share_with_user_name: sharedWithUserName,
+          cancelled_share_with_department_id: shareData.department_id || null,
+          cancelled_share_with_department_name: departmentName,
+        }
+      });
+
+      // 4. Delete the share
+      const { error: deleteError } = await supabase
         .from('shared_conversations')
         .delete()
         .eq('id', shareId);
       
-      if (error) throw error;
+      if (deleteError) throw deleteError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shared-conversations'] });
       queryClient.invalidateQueries({ queryKey: ['shared-conversation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['my-shares'] });
+      queryClient.invalidateQueries({ queryKey: ['my-all-shares'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-events'] });
     },
   });
 }
