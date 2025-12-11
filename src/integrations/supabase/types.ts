@@ -4153,15 +4153,26 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
-      transfer_conversation: {
-        Args: {
-          p_conversation_id: string
-          p_note?: string
-          p_to_department_id?: string
-          p_to_user_id: string
-        }
-        Returns: boolean
-      }
+      transfer_conversation:
+        | {
+            Args: {
+              p_conversation_id: string
+              p_force?: boolean
+              p_note?: string
+              p_to_department_id?: string
+              p_to_user_id?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_conversation_id: string
+              p_note?: string
+              p_to_department_id?: string
+              p_to_user_id: string
+            }
+            Returns: boolean
+          }
       unaccent: { Args: { "": string }; Returns: string }
       update_message_whatsapp_id: {
         Args: {
