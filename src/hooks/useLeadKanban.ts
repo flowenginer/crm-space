@@ -20,6 +20,8 @@ export interface ContactForKanban {
   assigned_to: string | null;
   updated_at: string;
   negotiated_value: number | null;
+  conversation_id: string | null;
+  unread_count: number;
   assignee?: {
     id: string;
     full_name: string | null;
@@ -174,6 +176,8 @@ export function useAllKanbanContacts(limitPerStatus = 20) {
         assignee_id: string | null;
         assignee_name: string | null;
         assignee_avatar: string | null;
+        conversation_id: string | null;
+        unread_count: number;
       }) => {
         const status = row.lead_status || '__no_status__';
         if (!grouped[status]) grouped[status] = [];
@@ -188,6 +192,8 @@ export function useAllKanbanContacts(limitPerStatus = 20) {
           assigned_to: row.assigned_to,
           updated_at: row.updated_at,
           negotiated_value: row.negotiated_value,
+          conversation_id: row.conversation_id,
+          unread_count: row.unread_count || 0,
           assignee: row.assignee_id ? {
             id: row.assignee_id,
             full_name: row.assignee_name,

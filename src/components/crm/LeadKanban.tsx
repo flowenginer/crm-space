@@ -27,7 +27,10 @@ import {
   Loader2,
   X,
   DollarSign,
+  Eye,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -71,9 +74,18 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
   const navigate = useNavigate();
   const [activeContact, setActiveContact] = useState<ContactForKanban | null>(null);
   const [showAddStatusModal, setShowAddStatusModal] = useState(false);
+  const [previewConversationId, setPreviewConversationId] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Use external search query from Header
   const searchQuery = externalSearchQuery;
+
+  const handlePreviewConversation = (conversationId: string | null) => {
+    if (conversationId) {
+      setPreviewConversationId(conversationId);
+      setShowPreview(true);
+    }
+  };
 
   const { data: leadStatuses, isLoading: statusesLoading } = useLeadStatuses();
   const { data: summaryMap, isLoading: summaryLoading } = useLeadStatusSummary();
@@ -192,6 +204,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
                 totalValue={noStatusSummary.total_value}
                 contacts={allContacts?.['__no_status__'] || []}
                 onOpenConversation={handleOpenConversation}
+                onPreviewConversation={handlePreviewConversation}
                 canDelete={false}
                 searchQuery={searchQuery}
                 gradientColor={gradientColors[0]}
@@ -210,6 +223,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
                   totalValue={summary?.total_value || 0}
                   contacts={allContacts?.[status.name] || []}
                   onOpenConversation={handleOpenConversation}
+                  onPreviewConversation={handlePreviewConversation}
                   canDelete={true}
                   searchQuery={searchQuery}
                   gradientColor={gradientColors[colorIndex]}
@@ -240,6 +254,16 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
         onOpenChange={setShowAddStatusModal}
         existingCount={leadStatuses?.length || 0}
       />
+
+      {/* Conversation Preview Dialog */}
+      <ConversationPreviewDialog
+        conversationId={previewConversationId}
+        isOpen={showPreview}
+        onClose={() => {
+          setShowPreview(false);
+          setPreviewConversationId(null);
+        }}
+      />
     </div>
   );
 }
@@ -252,6 +276,7 @@ function LeadKanbanColumn({
   totalValue,
   contacts,
   onOpenConversation,
+  onPreviewConversation,
   canDelete,
   searchQuery,
   gradientColor,
@@ -262,6 +287,7 @@ function LeadKanbanColumn({
   totalValue: number;
   contacts: ContactForKanban[];
   onOpenConversation: (contact: ContactForKanban) => void;
+  onPreviewConversation: (conversationId: string | null) => void;
   canDelete: boolean;
   searchQuery: string;
   gradientColor: string;
@@ -352,6 +378,7 @@ function LeadKanbanColumn({
                 key={contact.id}
                 contact={contact}
                 onClick={() => onOpenConversation(contact)}
+                onPreview={() => onPreviewConversation(contact.conversation_id)}
               />
             ))}
           </SortableContext>
@@ -377,10 +404,12 @@ function LeadKanbanColumn({
 function ContactCard({
   contact,
   onClick,
+  onPreview,
   isOverlay = false,
 }: {
   contact: ContactForKanban;
   onClick?: () => void;
+  onPreview?: () => void;
   isOverlay?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -428,12 +457,36 @@ function ContactCard({
             </h4>
           </div>
         </div>
-        {getTimeInStatus() && (
-          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex items-center gap-1">
-            <Clock size={10} />
-            {getTimeInStatus()}
-          </span>
-        )}
+        <div className="flex items-center gap-1">
+          {/* Preview button */}
+          {contact.conversation_id && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview?.();
+              }}
+              className="p-1 hover:bg-muted rounded transition-colors"
+              title="Visualizar conversa"
+            >
+              <Eye size={12} className="text-muted-foreground hover:text-foreground" />
+            </button>
+          )}
+          {/* Unread badge */}
+          {contact.unread_count > 0 && (
+            <Badge 
+              className="h-5 min-w-[20px] px-1.5 text-[10px] bg-emerald-500 hover:bg-emerald-600 text-white border-0"
+            >
+              {contact.unread_count > 99 ? '99+' : contact.unread_count}
+            </Badge>
+          )}
+          {/* Time in status */}
+          {getTimeInStatus() && (
+            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex items-center gap-1">
+              <Clock size={10} />
+              {getTimeInStatus()}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="space-y-1 text-xs text-muted-foreground">
