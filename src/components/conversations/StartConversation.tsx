@@ -76,6 +76,18 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
         return { canAccess: true };
       }
       
+      // EXCEÇÃO: Verificar se alguma conversa deste contato foi compartilhada COM o usuário
+      const { data: sharedConvs } = await supabase
+        .from('shared_conversations')
+        .select('conversation_id, conversations!inner(contact_id)')
+        .eq('conversations.contact_id', contact.id)
+        .eq('shared_with', user?.id!)
+        .limit(1);
+
+      if (sharedConvs && sharedConvs.length > 0) {
+        return { canAccess: true };
+      }
+      
       // Contact belongs to another user - get owner info
       const { data: ownerProfile } = await supabase
         .from('profiles')
@@ -134,6 +146,18 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
     // User is the owner
     if (conv.assigned_to === user?.id) {
+      return { canAccess: true };
+    }
+
+    // EXCEÇÃO: Verificar se a conversa foi compartilhada COM o usuário
+    const { data: sharedWithMe } = await supabase
+      .from('shared_conversations')
+      .select('id')
+      .eq('conversation_id', conversationId)
+      .eq('shared_with', user?.id!)
+      .maybeSingle();
+
+    if (sharedWithMe) {
       return { canAccess: true };
     }
 

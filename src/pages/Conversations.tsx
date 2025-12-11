@@ -1663,6 +1663,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
   // ============ VERIFICAÇÃO DE PERMISSÃO VIA URL ============
   // Bloquear acesso quando a conversa é carregada via URL e está atribuída a outro vendedor
+  // EXCEÇÃO: Conversas compartilhadas com o usuário têm acesso permitido
   useEffect(() => {
     // Aguardar permissões carregarem completamente
     if (!isFullyLoaded || !selectedConversationId || !selectedConversation) return;
@@ -1672,12 +1673,23 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     
     // Verificar se a conversa está atribuída a outro usuário
     if (selectedConversation.assigned_to && selectedConversation.assigned_to !== profile?.id) {
+      // EXCEÇÃO: Se a conversa foi compartilhada COM o usuário, permitir acesso
+      const isSharedWithUser = sharedConversationIds.includes(selectedConversation.id);
+      if (isSharedWithUser) {
+        console.log('[Conversations] Acesso permitido via compartilhamento:', {
+          conversationId: selectedConversationId,
+          sharedWithUser: true,
+        });
+        return; // Permite o acesso
+      }
+      
       const assignedAgent = teamMembers.find(t => t.id === selectedConversation.assigned_to);
       
       console.log('[Conversations] Bloqueando acesso via URL:', {
         conversationId: selectedConversationId,
         assignedTo: selectedConversation.assigned_to,
         currentUserId: profile?.id,
+        isSharedWithUser: false,
       });
       
       setBlockedContact({
@@ -1696,7 +1708,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       // Limpar a URL para remover o ID da conversa bloqueada
       navigate('/conversations', { replace: true });
     }
-  }, [selectedConversationId, selectedConversation, canAccessAllConversations, profile?.id, isFullyLoaded, teamMembers, navigate]);
+  }, [selectedConversationId, selectedConversation, canAccessAllConversations, profile?.id, isFullyLoaded, teamMembers, navigate, sharedConversationIds]);
 
   // Note: last_message_is_from_me is now included directly in conversation data from the server
   // No need to fetch last messages separately anymore
@@ -2179,21 +2191,26 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     
     // ============ VERIFICAÇÃO DE PERMISSÃO ============
     // Se NÃO for admin/supervisor, verificar se a conversa está atribuída a outro vendedor
+    // EXCEÇÃO: Conversas compartilhadas com o usuário têm acesso permitido
     if (!canAccessAllConversations && conv.assigned_to && conv.assigned_to !== profile?.id) {
-      const assignedAgent = teamMembers.find(t => t.id === conv.assigned_to);
-      setBlockedContact({
-        id: conv.contact_id,
-        full_name: conv.contact?.full_name || 'Contato',
-        phone: conv.contact?.phone || '',
-      });
-      setBlockedByAgent({
-        id: conv.assigned_to,
-        full_name: assignedAgent?.full_name || conv.assignee?.full_name || null,
-        avatar_url: assignedAgent?.avatar_url || null,
-      });
-      setBlockedConversationId(conv.id);
-      setShowContactRequestModal(true);
-      return;
+      // EXCEÇÃO: Se a conversa foi compartilhada COM o usuário, permitir acesso
+      const isSharedWithUser = sharedConversationIds.includes(conv.id);
+      if (!isSharedWithUser) {
+        const assignedAgent = teamMembers.find(t => t.id === conv.assigned_to);
+        setBlockedContact({
+          id: conv.contact_id,
+          full_name: conv.contact?.full_name || 'Contato',
+          phone: conv.contact?.phone || '',
+        });
+        setBlockedByAgent({
+          id: conv.assigned_to,
+          full_name: assignedAgent?.full_name || conv.assignee?.full_name || null,
+          avatar_url: assignedAgent?.avatar_url || null,
+        });
+        setBlockedConversationId(conv.id);
+        setShowContactRequestModal(true);
+        return;
+      }
     }
     // ============ FIM DA VERIFICAÇÃO ============
     
