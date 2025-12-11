@@ -333,11 +333,11 @@ function LeadKanbanColumn({
           )}
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center justify-between">
           <span className="text-xs text-gray-700 font-medium bg-white/50 px-1.5 py-0.5 rounded">
             👤 {count.toLocaleString('pt-BR')}
           </span>
-          <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-800 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+          <span className="text-xs font-bold bg-emerald-500/40 text-emerald-950 px-1.5 py-0.5 rounded flex items-center gap-0.5">
             <DollarSign size={10} />
             R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </span>
@@ -437,9 +437,16 @@ function ContactCard({
       </div>
 
       <div className="space-y-1 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1">
-          <Phone size={10} />
-          <span className="truncate">{contact.phone}</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 min-w-0">
+            <Phone size={10} className="shrink-0" />
+            <span className="truncate">{contact.phone}</span>
+          </div>
+          {(contact.negotiated_value ?? 0) > 0 && (
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold shrink-0 text-[10px]">
+              R$ {contact.negotiated_value!.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          )}
         </div>
         {contact.email && (
           <div className="flex items-center gap-1">
