@@ -107,7 +107,7 @@ import { useTags, useAddTagToContact, useRemoveTagFromContact, useCreateTag, Tag
 import { useDepartments } from '@/hooks/useDepartments';
 import { useChannels } from '@/hooks/useChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
-import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds, useMySharePermission } from '@/hooks/useSharedConversations';
+import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds, useAllSharedConversationIds, useMySharePermission } from '@/hooks/useSharedConversations';
 import { useSharedConversationsWithDetails } from '@/hooks/useSharedConversationsWithDetails';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
@@ -1419,7 +1419,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const { isPinned, togglePin } = useTogglePinConversation();
   const { data: sharedConversations = [] } = useSharedConversations();
   const { data: sharedCounts } = useSharedConversationCounts();
-  const sharedConversationIds = useSharedConversationIds();
+  const sharedConversationIds = useSharedConversationIds(); // IDs shared WITH me (for badge)
+  const allSharedConversationIds = useAllSharedConversationIds(); // All shared IDs (WITH me + BY me)
   const { data: sharedConversationsData = [] } = useSharedConversationsWithDetails();
   const sharePermission = useMySharePermission(selectedConversationId);
   const sendMessage = useSendMessage();
@@ -1893,16 +1894,20 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           // Even selected conversation must be pinned to appear here
           if (!isPinnedConv) return false;
         } else if (quickFilter === 'shared') {
-          // On "Compartilhadas" tab: only show shared conversations
-          const sharedIds = new Set(sharedConversationIds);
+          // On "Compartilhadas" tab: only show shared conversations (both directions)
+          const sharedIds = new Set(allSharedConversationIds);
           if (!sharedIds.has(conv.id)) return false;
         } else {
-          // On other tabs: show selected conversation regardless of pinned status
+          // On other tabs: show selected conversation regardless of pinned/shared status
           if (selectedConversationId && conv.id === selectedConversationId) {
             return true;
           }
           // Don't hide pinned conversations when there's an active search
           if (isPinnedConv && !debouncedSearchQuery) return false;
+          // Don't hide shared conversations when there's an active search
+          // Shared conversations only appear in "Compartilhadas" tab
+          const isSharedConv = allSharedConversationIds.includes(conv.id);
+          if (isSharedConv && !debouncedSearchQuery) return false;
         }
         
         // Channel filter - aplicado no servidor, mas mantemos para consistência visual imediata
@@ -1937,7 +1942,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       });
     
     return filtered;
-  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery, sharedConversationIds]);
+  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery, allSharedConversationIds]);
 
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
@@ -1951,14 +1956,22 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   }, [conversations, pinnedConversations, quickFilter, selectedConversationId]);
 
   // Calculate unread count for shared conversations (for notification badge)
+  // Count unread from both directions (shared WITH me + shared BY me)
   const sharedUnreadCount = useMemo(() => {
-    return sharedCounts?.unread ?? 0;
-  }, [sharedCounts]);
+    const sharedIds = new Set(allSharedConversationIds);
+    return conversations.filter(conv => 
+      sharedIds.has(conv.id) && 
+      conv.is_unread && 
+      // Don't count the currently selected conversation if user is viewing it
+      !(quickFilter === 'shared' && selectedConversationId === conv.id)
+    ).length;
+  }, [conversations, allSharedConversationIds, quickFilter, selectedConversationId]);
 
   // Calculate filter counts - USE REAL COUNTS FROM DATABASE
   const filterCounts = useMemo(() => {
     const pinnedCount = pinnedConversations.length;
-    const sharedCount = sharedCounts?.total ?? 0;
+    // Use combined shared count (both directions: shared WITH me + shared BY me)
+    const sharedCount = allSharedConversationIds.length;
     
     // Count pending conversations (assigned_to = null AND department_id is not null for user's departments)
     const pendingCount = totalCounts?.pending ?? 0;
@@ -1966,7 +1979,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     // Se não pode ver não atribuídas, "Todas" exclui as não atribuídas
     if (!canViewUnassigned) {
       return { 
-        all: (totalCounts?.mine ?? 0) + pinnedCount, // Todas = minhas + fixadas
+        all: (totalCounts?.mine ?? 0) + pinnedCount - sharedCount, // Todas = minhas + fixadas - compartilhadas
         pinned: pinnedCount, 
         shared: sharedCount,
         mine: totalCounts?.mine ?? 0,
@@ -1977,14 +1990,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     
     // Use real database counts when available, fallback to loaded conversations
     return { 
-      all: totalCounts?.all ?? conversations.length, 
+      all: (totalCounts?.all ?? conversations.length) - sharedCount, // Subtrair compartilhadas de "Todas"
       pinned: pinnedCount, 
       shared: sharedCount,
       mine: totalCounts?.mine ?? 0, 
       pending: pendingCount,
       unassigned: totalCounts?.unassigned ?? 0 
     };
-  }, [totalCounts, conversations.length, pinnedConversations, sharedCounts, canViewUnassigned]);
+  }, [totalCounts, conversations.length, pinnedConversations, allSharedConversationIds, canViewUnassigned]);
 
   // Calculate date filter counts - USE REAL COUNTS FROM DATABASE
   const dateFilterCounts = useMemo(() => {

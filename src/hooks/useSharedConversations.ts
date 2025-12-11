@@ -98,6 +98,8 @@ export function useSharedConversations() {
             queryClient.invalidateQueries({ queryKey: ['shared-conversations'] });
             queryClient.invalidateQueries({ queryKey: ['shared-conversation-counts'] });
             queryClient.invalidateQueries({ queryKey: ['my-shares'] });
+            queryClient.invalidateQueries({ queryKey: ['my-all-shares'] });
+            queryClient.invalidateQueries({ queryKey: ['shared-conversations-details'] });
           }, 500);
         }
       )
@@ -137,10 +139,43 @@ export function useSharedConversationCounts() {
   });
 }
 
-// Get shared conversation IDs for filtering
+// Get shared conversation IDs for filtering (conversations shared WITH me)
 export function useSharedConversationIds() {
   const { data: sharedConversations } = useSharedConversations();
   return sharedConversations?.map(sc => sc.conversation_id) || [];
+}
+
+// Fetch ALL conversation IDs shared BY current user (owner perspective)
+export function useMyAllShares() {
+  return useQuery({
+    queryKey: ['my-all-shares'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      const { data, error } = await supabase
+        .from('shared_conversations')
+        .select('conversation_id')
+        .eq('shared_by', user.id);
+
+      if (error) throw error;
+      return data?.map(d => d.conversation_id) || [];
+    },
+    staleTime: 30000,
+  });
+}
+
+// Get ALL shared conversation IDs (both directions: shared WITH me + shared BY me)
+// This is used to move conversations from "Todas" to "Compartilhadas" for both users
+export function useAllSharedConversationIds() {
+  const { data: sharedConversations } = useSharedConversations(); // Shared WITH me
+  const { data: sharedByMe } = useMyAllShares(); // Shared BY me
+  
+  const idsWithMe = sharedConversations?.map(sc => sc.conversation_id) || [];
+  const idsByMe = sharedByMe || [];
+  
+  // Combine without duplicates
+  return [...new Set([...idsWithMe, ...idsByMe])];
 }
 
 // Fetch shares made BY current user for a specific conversation (for owner to manage)
