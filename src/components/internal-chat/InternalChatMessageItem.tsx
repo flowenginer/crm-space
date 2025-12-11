@@ -26,6 +26,9 @@ export function InternalChatMessageItem({
   const { user } = useAuth();
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const deleteMessage = useDeleteInternalMessage();
   
   const isFromMe = message.sender_id === user?.id;
@@ -33,6 +36,12 @@ export function InternalChatMessageItem({
   const getInitials = (name: string | null) => {
     if (!name) return '?';
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  const formatAudioTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handlePlayAudio = () => {
@@ -48,7 +57,24 @@ export function InternalChatMessageItem({
       }
     } else {
       const audio = new Audio(message.media_url);
-      audio.onended = () => setIsPlaying(false);
+      
+      audio.onloadedmetadata = () => {
+        setAudioDuration(audio.duration);
+      };
+      
+      audio.ontimeupdate = () => {
+        if (audio.duration > 0) {
+          setAudioProgress((audio.currentTime / audio.duration) * 100);
+          setCurrentTime(audio.currentTime);
+        }
+      };
+      
+      audio.onended = () => {
+        setIsPlaying(false);
+        setAudioProgress(0);
+        setCurrentTime(0);
+      };
+      
       audio.play();
       setAudioElement(audio);
       setIsPlaying(true);
@@ -100,7 +126,7 @@ export function InternalChatMessageItem({
             <Button
               variant="ghost"
               size="icon"
-              className="h-10 w-10 rounded-full"
+              className="h-10 w-10 rounded-full shrink-0"
               onClick={handlePlayAudio}
             >
               {isPlaying ? (
@@ -112,14 +138,15 @@ export function InternalChatMessageItem({
             <div className="flex-1">
               <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div 
-                  className={cn(
-                    "h-full bg-primary transition-all duration-300",
-                    isPlaying ? "animate-pulse" : ""
-                  )}
-                  style={{ width: isPlaying ? '50%' : '0%' }}
+                  className="h-full bg-primary transition-all duration-100"
+                  style={{ width: `${audioProgress}%` }}
                 />
               </div>
-              <span className="text-xs text-muted-foreground mt-1">Áudio</span>
+              <span className="text-xs text-muted-foreground mt-1">
+                {audioDuration > 0 
+                  ? formatAudioTime(currentTime) + ' / ' + formatAudioTime(audioDuration)
+                  : 'Áudio'}
+              </span>
             </div>
           </div>
         );
@@ -163,7 +190,7 @@ export function InternalChatMessageItem({
 
       <div className={cn(
         'flex gap-2 group',
-        isFromMe ? 'justify-end' : 'justify-start'
+        isFromMe ? 'justify-end pr-4' : 'justify-start pl-2'
       )}>
         {/* Avatar (apenas para mensagens de outros) */}
         {!isFromMe && showAvatar && (
