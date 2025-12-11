@@ -219,33 +219,33 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
             {/* Tipo de Compartilhamento */}
             <div className="space-y-3">
               <Label className="text-sm font-semibold text-foreground">Tipo de compartilhamento</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => {
                     setShareType('user');
                     setShareWithEntireDepartment(false);
                   }}
                   className={cn(
-                    'relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200',
+                    'relative flex items-center gap-3 p-3 rounded-xl border-2 transition-all duration-200',
                     shareType === 'user' 
                       ? 'border-primary bg-gradient-to-br from-primary/10 to-purple-500/10 shadow-lg shadow-primary/10' 
                       : 'border-border hover:border-primary/50 hover:bg-muted/50'
                   )}
                 >
                   {shareType === 'user' && (
-                    <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                      <Check className="h-3 w-3 text-white" />
+                    <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                      <Check className="h-2.5 w-2.5 text-white" />
                     </div>
                   )}
                   <div className={cn(
-                    'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
+                    'w-8 h-8 rounded-lg flex items-center justify-center transition-colors flex-shrink-0',
                     shareType === 'user' 
                       ? 'bg-gradient-to-br from-primary to-purple-600 text-white' 
                       : 'bg-muted text-muted-foreground'
                   )}>
-                    <Users size={20} />
+                    <Users size={16} />
                   </div>
-                  <div className="text-center">
+                  <div className="text-left min-w-0">
                     <p className={cn(
                       'text-sm font-medium',
                       shareType === 'user' ? 'text-primary' : 'text-foreground'
@@ -261,26 +261,26 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
                     setSelectedUserId('');
                   }}
                   className={cn(
-                    'relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200',
+                    'relative flex items-center gap-3 p-3 rounded-xl border-2 transition-all duration-200',
                     shareType === 'department' 
                       ? 'border-primary bg-gradient-to-br from-primary/10 to-purple-500/10 shadow-lg shadow-primary/10' 
                       : 'border-border hover:border-primary/50 hover:bg-muted/50'
                   )}
                 >
                   {shareType === 'department' && (
-                    <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                      <Check className="h-3 w-3 text-white" />
+                    <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                      <Check className="h-2.5 w-2.5 text-white" />
                     </div>
                   )}
                   <div className={cn(
-                    'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
+                    'w-8 h-8 rounded-lg flex items-center justify-center transition-colors flex-shrink-0',
                     shareType === 'department' 
                       ? 'bg-gradient-to-br from-primary to-purple-600 text-white' 
                       : 'bg-muted text-muted-foreground'
                   )}>
-                    <Building2 size={20} />
+                    <Building2 size={16} />
                   </div>
-                  <div className="text-center">
+                  <div className="text-left min-w-0">
                     <p className={cn(
                       'text-sm font-medium',
                       shareType === 'department' ? 'text-primary' : 'text-foreground'
@@ -299,50 +299,43 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
                 <Building2 size={14} className="text-primary" />
                 Departamento
               </Label>
-              <ScrollArea className="h-[120px]">
-                <div className="grid grid-cols-2 gap-2 pr-3">
-                  {activeDepartments.map((dept) => {
-                    const usersCount = userDepartments.filter(ud => ud.department_id === dept.id).length;
-                    const isSelected = selectedDepartmentId === dept.id;
-                    return (
-                      <button
-                        key={dept.id}
-                        onClick={() => {
-                          setSelectedDepartmentId(dept.id);
-                          setSelectedUserId('');
-                        }}
-                        className={cn(
-                          'relative flex items-center gap-3 p-3 rounded-lg border-2 transition-all duration-200 text-left',
-                          isSelected
-                            ? 'border-primary bg-gradient-to-r from-primary/10 to-purple-500/10 shadow-md ring-2 ring-primary/20'
-                            : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                        )}
-                      >
-                        {isSelected && (
-                          <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
-                            <Check className="h-2.5 w-2.5 text-white" />
-                          </div>
-                        )}
+              <div className="grid grid-cols-2 gap-2">
+                {activeDepartments.map((dept) => {
+                  const usersCount = userDepartments.filter(ud => ud.department_id === dept.id).length;
+                  const isSelected = selectedDepartmentId === dept.id;
+                  return (
+                    <button
+                      key={dept.id}
+                      onClick={() => {
+                        setSelectedDepartmentId(dept.id);
+                        setSelectedUserId('');
+                      }}
+                      className={cn(
+                        'relative flex items-center justify-between p-2.5 rounded-lg border-2 transition-all duration-200',
+                        isSelected
+                          ? 'border-primary bg-gradient-to-r from-primary/10 to-purple-500/10 shadow-md ring-2 ring-primary/20'
+                          : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
                         <div 
-                          className="w-3 h-8 rounded-full flex-shrink-0"
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                           style={{ backgroundColor: dept.color || '#8B5CF6' }}
                         />
-                        <div className="min-w-0 flex-1">
-                          <p className={cn(
-                            'text-sm font-medium truncate',
-                            isSelected ? 'text-primary' : 'text-foreground'
-                          )}>
-                            {dept.name}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {usersCount} usuário{usersCount !== 1 ? 's' : ''}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
+                        <span className={cn(
+                          'text-sm font-medium truncate',
+                          isSelected ? 'text-primary' : 'text-foreground'
+                        )}>
+                          {dept.name}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
+                        {usersCount}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Checkbox para compartilhar com todo departamento (apenas se tipo for usuário) */}
@@ -372,73 +365,58 @@ export function ShareModal({ open, onClose, onSuccess, conversationId, contactNa
                     ({teamInDepartment.length} disponíve{teamInDepartment.length !== 1 ? 'is' : 'l'})
                   </span>
                 </Label>
-                <ScrollArea className="h-[120px]">
-                  {teamInDepartment.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <Users className="h-8 w-8 text-muted-foreground/50 mb-2" />
-                      <p className="text-sm text-muted-foreground">
-                        Nenhum usuário neste departamento
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2 pr-3">
-                      {teamInDepartment.map((member) => {
-                        const isSelected = selectedUserId === member.id;
-                        return (
-                          <button
-                            key={member.id}
-                            onClick={() => setSelectedUserId(member.id)}
-                            className={cn(
-                              'relative flex items-center gap-3 p-3 rounded-lg border-2 transition-all duration-200 text-left',
-                              isSelected
-                                ? 'border-primary bg-gradient-to-r from-primary/10 to-purple-500/10 shadow-md ring-2 ring-primary/20'
-                                : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                            )}
-                          >
-                            {isSelected && (
-                              <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
-                                <Check className="h-2.5 w-2.5 text-white" />
-                              </div>
-                            )}
-                            <div className="relative">
-                              <Avatar className="h-9 w-9 border-2 border-background">
-                                <AvatarImage src={member.avatar_url || undefined} />
-                                <AvatarFallback className={cn(
-                                  'text-xs font-medium',
-                                  isSelected 
-                                    ? 'bg-gradient-to-br from-primary to-purple-600 text-white' 
-                                    : 'bg-muted'
-                                )}>
-                                  {member.full_name?.charAt(0) || 'U'}
-                                </AvatarFallback>
-                              </Avatar>
-                              {member.is_online && (
-                                <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-green-500 border-2 border-background">
-                                  <Circle className="h-full w-full animate-pulse text-green-300 fill-current" />
-                                </div>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className={cn(
-                                'text-sm font-medium truncate',
-                                isSelected ? 'text-primary' : 'text-foreground'
+                {teamInDepartment.length === 0 ? (
+                  <div className="flex items-center justify-center py-4 text-center">
+                    <Users className="h-5 w-5 text-muted-foreground/50 mr-2" />
+                    <p className="text-sm text-muted-foreground">
+                      Nenhum usuário neste departamento
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {teamInDepartment.map((member) => {
+                      const isSelected = selectedUserId === member.id;
+                      return (
+                        <button
+                          key={member.id}
+                          onClick={() => setSelectedUserId(member.id)}
+                          className={cn(
+                            'relative flex items-center justify-between p-2.5 rounded-lg border-2 transition-all duration-200',
+                            isSelected
+                              ? 'border-primary bg-gradient-to-r from-primary/10 to-purple-500/10 shadow-md ring-2 ring-primary/20'
+                              : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                          )}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Avatar className="h-7 w-7 border border-background flex-shrink-0">
+                              <AvatarImage src={member.avatar_url || undefined} />
+                              <AvatarFallback className={cn(
+                                'text-xs font-medium',
+                                isSelected 
+                                  ? 'bg-gradient-to-br from-primary to-purple-600 text-white' 
+                                  : 'bg-muted'
                               )}>
-                                {member.full_name || 'Usuário'}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {member.is_online ? (
-                                  <span className="text-green-500">Online</span>
-                                ) : (
-                                  <span>Offline</span>
-                                )}
-                              </p>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </ScrollArea>
+                                {member.full_name?.charAt(0) || 'U'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className={cn(
+                              'text-sm font-medium truncate',
+                              isSelected ? 'text-primary' : 'text-foreground'
+                            )}>
+                              {member.full_name || 'Usuário'}
+                            </span>
+                          </div>
+                          <span className={cn(
+                            'text-xs flex-shrink-0 ml-2',
+                            member.is_online ? 'text-green-500' : 'text-muted-foreground'
+                          )}>
+                            {member.is_online ? 'Online' : 'Offline'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
