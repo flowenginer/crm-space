@@ -119,6 +119,7 @@ import { ImagePreviewDialog } from '@/components/conversations/ImagePreviewDialo
 import { MediaDownloadButton } from '@/components/conversations/MediaDownloadButton';
 import { DocumentPreview } from '@/components/conversations/DocumentPreview';
 import { CallLogModal } from '@/components/conversations/CallLogModal';
+import { WaitingCard } from '@/components/conversations/WaitingCard';
 import type { Profile } from '@/types';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
@@ -2926,8 +2927,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </div>
           </div>
 
+          {/* Card Aguardando Resposta */}
+          <WaitingCard />
+
           {/* Search */}
-          <div className="relative">
+          <div className="relative mt-3">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="text"
