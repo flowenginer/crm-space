@@ -22,6 +22,7 @@ import { ptBR } from 'date-fns/locale';
 import { ImagePreviewDialog } from './ImagePreviewDialog';
 import { DocumentPreview } from './DocumentPreview';
 import { MediaDownloadButton } from './MediaDownloadButton';
+import { useRealtimeMessages } from '@/hooks/useRealtimeChat';
 
 interface ConversationPreviewDialogProps {
   conversationId: string | null;
@@ -90,6 +91,9 @@ export function ConversationPreviewDialog({
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // Ativar subscription realtime quando o diálogo estiver aberto
+  useRealtimeMessages(isOpen ? conversationId : null);
 
   // Fetch conversation details
   const { data: conversation, isLoading: conversationLoading } = useQuery({
