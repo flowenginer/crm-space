@@ -1,8 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentTenantId } from './useTenant';
 
 export interface PriceRule {
   id: string;
+  tenant_id: string | null;
   product_id: string | null;
   attribute_value_id: string;
   adjustment_type: 'fixed' | 'percentage';
@@ -27,8 +29,10 @@ export interface PriceRuleWithDetails extends PriceRule {
 
 // Hook para buscar todas as regras de preço com detalhes
 export function usePriceRules() {
+  const { data: tenantId } = useCurrentTenantId();
+
   return useQuery({
-    queryKey: ['product-price-rules'],
+    queryKey: ['product-price-rules', tenantId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('product_attribute_price_rules')
@@ -46,12 +50,14 @@ export function usePriceRules() {
       if (error) throw error;
       return data as unknown as PriceRuleWithDetails[];
     },
+    // RLS handles tenant filtering automatically
   });
 }
 
 // Hook para criar regra de preço
 export function useCreatePriceRule() {
   const queryClient = useQueryClient();
+  const { data: tenantId } = useCurrentTenantId();
 
   return useMutation({
     mutationFn: async (data: {
@@ -65,6 +71,7 @@ export function useCreatePriceRule() {
         .from('product_attribute_price_rules')
         .insert({
           ...data,
+          tenant_id: tenantId,
           product_id: data.product_id || null,
         })
         .select()
@@ -82,6 +89,7 @@ export function useCreatePriceRule() {
 // Hook para criar múltiplas regras de preço
 export function useCreateBulkPriceRules() {
   const queryClient = useQueryClient();
+  const { data: tenantId } = useCurrentTenantId();
 
   return useMutation({
     mutationFn: async (rules: {
@@ -95,6 +103,7 @@ export function useCreateBulkPriceRules() {
         .from('product_attribute_price_rules')
         .insert(rules.map(r => ({
           ...r,
+          tenant_id: tenantId,
           product_id: r.product_id || null,
         })));
 
