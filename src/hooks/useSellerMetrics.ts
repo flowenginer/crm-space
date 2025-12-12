@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useCurrentTenantId } from './useTenant';
 import { startOfMonth, endOfMonth, format, differenceInDays, startOfDay, endOfDay } from 'date-fns';
 
 export interface SellerMetrics {
@@ -12,6 +11,10 @@ export interface SellerMetrics {
   pendingPaymentValue: number;
   ordersToday: number;
   revenueToday: number;
+  // CRM-based metrics
+  contactsInPipeline: number;
+  pipelineValue: number;
+  conversions: number;
 }
 
 export interface SellerGoalProgress {
@@ -20,6 +23,7 @@ export interface SellerGoalProgress {
   target3: { value: number; bonus: number; progress: number; remaining: number };
   daysRemaining: number;
   dailyTarget: number;
+  totalRevenue: number;
 }
 
 export interface PendingOrder {
@@ -37,10 +41,43 @@ export interface Opportunity {
   contact_phone: string;
   negotiated_value: number;
   lead_status: string;
+  last_interaction_at: string | null;
 }
 
+export interface PipelineStage {
+  status: string;
+  label: string;
+  count: number;
+  value: number;
+  color: string;
+}
+
+// Lead statuses that represent closed/won deals
+const CLOSED_STATUSES = [
+  '07 - Pedido Fechado',
+  '08 - Em andamento',
+  '10 - Aguardando envio',
+  '11 - Pedido Enviado',
+  '12 - Entregue',
+  '13 - Recompra',
+];
+
+// Lead statuses that represent active opportunities (hot leads)
+const OPPORTUNITY_STATUSES = [
+  '05 - Orçamento',
+  '06 - Aguardando pagamento',
+];
+
+// All active pipeline statuses for tracking
+const PIPELINE_STAGES = [
+  { status: '06 - Aguardando pagamento', label: 'Aguardando Pagamento', color: 'warning' },
+  { status: '05 - Orçamento', label: 'Em Orçamento', color: 'primary' },
+  { status: '04 - Layout', label: 'Layout', color: 'blue' },
+  { status: '03 - Catálogo', label: 'Catálogo', color: 'purple' },
+  { status: '02 - Pré-venda', label: 'Pré-venda', color: 'muted' },
+];
+
 export function useSellerMetrics(sellerId: string | undefined) {
-  const { data: tenantId } = useCurrentTenantId();
   const now = new Date();
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
@@ -52,8 +89,17 @@ export function useSellerMetrics(sellerId: string | undefined) {
     queryFn: async (): Promise<SellerMetrics> => {
       if (!sellerId) throw new Error('Seller ID required');
 
-      // Orders this month
-      const { data: orders, error: ordersError } = await supabase
+      // Get seller commission rate
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('commission_percent')
+        .eq('id', sellerId)
+        .single();
+
+      const commissionRate = (profile?.commission_percent || 0) / 100;
+
+      // Try to get orders data
+      const { data: orders } = await supabase
         .from('orders')
         .select('id, total, payment_status, created_at')
         .eq('seller_id', sellerId)
@@ -61,22 +107,30 @@ export function useSellerMetrics(sellerId: string | undefined) {
         .gte('created_at', monthStart.toISOString())
         .lte('created_at', monthEnd.toISOString());
 
-      if (ordersError) throw ordersError;
+      // Get CRM-based metrics (contacts that converted this month)
+      const { data: conversions } = await supabase
+        .from('contacts')
+        .select('id, negotiated_value, lead_status, updated_at')
+        .eq('assigned_to', sellerId)
+        .in('lead_status', CLOSED_STATUSES)
+        .gte('updated_at', monthStart.toISOString())
+        .lte('updated_at', monthEnd.toISOString());
 
-      // Get seller commission rate
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('commission_percent')
-        .eq('id', sellerId)
-        .single();
-
-      if (profileError) throw profileError;
-
-      const commissionRate = (profile?.commission_percent || 0) / 100;
+      // Get contacts in active pipeline
+      const { data: pipelineContacts } = await supabase
+        .from('contacts')
+        .select('id, negotiated_value')
+        .eq('assigned_to', sellerId)
+        .in('lead_status', OPPORTUNITY_STATUSES);
 
       const totalOrders = orders?.length || 0;
-      const totalRevenue = orders?.reduce((sum, o) => sum + (o.total || 0), 0) || 0;
-      const averageTicket = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+      const orderRevenue = orders?.reduce((sum, o) => sum + (o.total || 0), 0) || 0;
+      
+      // Use CRM conversions as backup if no orders
+      const crmRevenue = conversions?.reduce((sum, c) => sum + (c.negotiated_value || 0), 0) || 0;
+      const totalRevenue = orderRevenue > 0 ? orderRevenue : crmRevenue;
+      
+      const averageTicket = totalOrders > 0 ? totalRevenue / totalOrders : (conversions?.length || 0) > 0 ? crmRevenue / (conversions?.length || 1) : 0;
       const commission = totalRevenue * commissionRate;
 
       // Pending payment orders
@@ -89,26 +143,30 @@ export function useSellerMetrics(sellerId: string | undefined) {
         const orderDate = new Date(o.created_at);
         return orderDate >= todayStart && orderDate <= todayEnd;
       }) || [];
-      const ordersToday = todayOrders.length;
-      const revenueToday = todayOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+
+      // CRM metrics
+      const contactsInPipeline = pipelineContacts?.length || 0;
+      const pipelineValue = pipelineContacts?.reduce((sum, c) => sum + (c.negotiated_value || 0), 0) || 0;
 
       return {
-        totalOrders,
+        totalOrders: totalOrders || conversions?.length || 0,
         totalRevenue,
         averageTicket,
         commission,
         pendingPaymentOrders,
         pendingPaymentValue,
-        ordersToday,
-        revenueToday,
+        ordersToday: todayOrders.length,
+        revenueToday: todayOrders.reduce((sum, o) => sum + (o.total || 0), 0),
+        contactsInPipeline,
+        pipelineValue,
+        conversions: conversions?.length || 0,
       };
     },
-    enabled: !!sellerId && !!tenantId,
+    enabled: !!sellerId,
   });
 }
 
 export function useSellerGoalProgress(sellerId: string | undefined) {
-  const { data: tenantId } = useCurrentTenantId();
   const now = new Date();
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
@@ -127,8 +185,8 @@ export function useSellerGoalProgress(sellerId: string | undefined) {
 
       if (profileError) throw profileError;
 
-      // Get total revenue this month
-      const { data: orders, error: ordersError } = await supabase
+      // Get total revenue from orders this month (paid only)
+      const { data: orders } = await supabase
         .from('orders')
         .select('total')
         .eq('seller_id', sellerId)
@@ -137,9 +195,19 @@ export function useSellerGoalProgress(sellerId: string | undefined) {
         .gte('created_at', monthStart.toISOString())
         .lte('created_at', monthEnd.toISOString());
 
-      if (ordersError) throw ordersError;
+      // Also get CRM conversions as backup
+      const { data: conversions } = await supabase
+        .from('contacts')
+        .select('negotiated_value')
+        .eq('assigned_to', sellerId)
+        .in('lead_status', CLOSED_STATUSES)
+        .gte('updated_at', monthStart.toISOString())
+        .lte('updated_at', monthEnd.toISOString());
 
-      const totalRevenue = orders?.reduce((sum, o) => sum + (o.total || 0), 0) || 0;
+      const orderRevenue = orders?.reduce((sum, o) => sum + (o.total || 0), 0) || 0;
+      const crmRevenue = conversions?.reduce((sum, c) => sum + (c.negotiated_value || 0), 0) || 0;
+      const totalRevenue = orderRevenue > 0 ? orderRevenue : crmRevenue;
+      
       const daysRemaining = differenceInDays(monthEnd, now) + 1;
 
       const calculateProgress = (target: number) => {
@@ -168,9 +236,10 @@ export function useSellerGoalProgress(sellerId: string | undefined) {
         target3,
         daysRemaining,
         dailyTarget,
+        totalRevenue,
       };
     },
-    enabled: !!sellerId && !!tenantId,
+    enabled: !!sellerId,
   });
 }
 
@@ -180,30 +249,25 @@ export function useSellerPendingOrders(sellerId: string | undefined) {
     queryFn: async (): Promise<PendingOrder[]> => {
       if (!sellerId) throw new Error('Seller ID required');
 
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          order_number,
-          total,
-          created_at,
-          contact:contacts(full_name, phone)
-        `)
-        .eq('seller_id', sellerId)
-        .neq('status', 'canceled')
-        .neq('payment_status', 'paid')
-        .order('created_at', { ascending: false })
+      // Get contacts awaiting payment from CRM (lead_status = '06 - Aguardando pagamento')
+      const { data: contacts, error } = await supabase
+        .from('contacts')
+        .select('id, full_name, phone, negotiated_value, updated_at')
+        .eq('assigned_to', sellerId)
+        .eq('lead_status', '06 - Aguardando pagamento')
+        .gt('negotiated_value', 0)
+        .order('updated_at', { ascending: false })
         .limit(10);
 
       if (error) throw error;
 
-      return (data || []).map(o => ({
-        id: o.id,
-        order_number: o.order_number,
-        contact_name: (o.contact as any)?.full_name || 'Cliente não identificado',
-        contact_phone: (o.contact as any)?.phone || '',
-        total: o.total || 0,
-        created_at: o.created_at,
+      return (contacts || []).map((c, index) => ({
+        id: c.id,
+        order_number: `#${String(index + 1).padStart(3, '0')}`,
+        contact_name: c.full_name || 'Cliente não identificado',
+        contact_phone: c.phone || '',
+        total: c.negotiated_value || 0,
+        created_at: c.updated_at,
       }));
     },
     enabled: !!sellerId,
@@ -211,22 +275,18 @@ export function useSellerPendingOrders(sellerId: string | undefined) {
 }
 
 export function useSellerOpportunities(sellerId: string | undefined) {
-  const now = new Date();
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
-
   return useQuery({
     queryKey: ['seller-opportunities', sellerId],
     queryFn: async (): Promise<Opportunity[]> => {
       if (!sellerId) throw new Error('Seller ID required');
 
-      // Get contacts with negotiated value that haven't converted yet
+      // Get contacts in hot opportunity stages
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, full_name, phone, negotiated_value, lead_status')
+        .select('id, full_name, phone, negotiated_value, lead_status, last_interaction_at')
         .eq('assigned_to', sellerId)
         .gt('negotiated_value', 0)
-        .not('lead_status', 'in', '("Convertido","Fechado","Ganho","Won","Venda")')
+        .in('lead_status', ['05 - Orçamento', '04 - Layout'])
         .order('negotiated_value', { ascending: false })
         .limit(10);
 
@@ -238,8 +298,62 @@ export function useSellerOpportunities(sellerId: string | undefined) {
         contact_phone: c.phone,
         negotiated_value: c.negotiated_value || 0,
         lead_status: c.lead_status || 'new',
+        last_interaction_at: c.last_interaction_at,
       }));
     },
     enabled: !!sellerId,
+  });
+}
+
+export function useSellerPipeline(sellerId: string | undefined) {
+  return useQuery({
+    queryKey: ['seller-pipeline', sellerId],
+    queryFn: async (): Promise<PipelineStage[]> => {
+      if (!sellerId) throw new Error('Seller ID required');
+
+      const results: PipelineStage[] = [];
+
+      for (const stage of PIPELINE_STAGES) {
+        const { data, error } = await supabase
+          .from('contacts')
+          .select('id, negotiated_value')
+          .eq('assigned_to', sellerId)
+          .eq('lead_status', stage.status);
+
+        if (error) throw error;
+
+        const count = data?.length || 0;
+        const value = data?.reduce((sum, c) => sum + (c.negotiated_value || 0), 0) || 0;
+
+        results.push({
+          status: stage.status,
+          label: stage.label,
+          count,
+          value,
+          color: stage.color,
+        });
+      }
+
+      return results;
+    },
+    enabled: !!sellerId,
+  });
+}
+
+export function useSellers() {
+  return useQuery({
+    queryKey: ['sellers-list'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .in('role', ['vendedor', 'admin', 'supervisor'])
+        .eq('is_active', true)
+        .order('full_name');
+
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 300000,
   });
 }

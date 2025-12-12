@@ -1,10 +1,25 @@
+import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useSellerMetrics, useSellerGoalProgress, useSellerPendingOrders, useSellerOpportunities } from '@/hooks/useSellerMetrics';
+import { 
+  useSellerMetrics, 
+  useSellerGoalProgress, 
+  useSellerPendingOrders, 
+  useSellerOpportunities,
+  useSellerPipeline,
+  useSellers 
+} from '@/hooks/useSellerMetrics';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   ShoppingCart,
   DollarSign,
@@ -17,25 +32,51 @@ import {
   Phone,
   ArrowRight,
   Loader2,
+  Users,
+  FileText,
+  Palette,
+  BookOpen,
+  UserCheck,
 } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(value);
+};
+
+const stageIcons: Record<string, React.ReactNode> = {
+  '06 - Aguardando pagamento': <Clock className="h-5 w-5" />,
+  '05 - Orçamento': <FileText className="h-5 w-5" />,
+  '04 - Layout': <Palette className="h-5 w-5" />,
+  '03 - Catálogo': <BookOpen className="h-5 w-5" />,
+  '02 - Pré-venda': <UserCheck className="h-5 w-5" />,
+};
+
+const stageColors: Record<string, string> = {
+  'warning': 'bg-warning/10 text-warning',
+  'primary': 'bg-primary/10 text-primary',
+  'blue': 'bg-blue-500/10 text-blue-500',
+  'purple': 'bg-purple-500/10 text-purple-500',
+  'muted': 'bg-muted text-muted-foreground',
+};
+
 export default function SellerDashboard() {
-  const { user } = useAuth();
-  const sellerId = user?.id;
+  const { user, profile } = useAuth();
+  const isAdminOrSupervisor = profile?.role === 'admin' || profile?.role === 'supervisor';
+  
+  const [selectedSellerId, setSelectedSellerId] = useState<string>(user?.id || '');
+  const activeSellerId = selectedSellerId || user?.id;
 
-  const { data: metrics, isLoading: loadingMetrics } = useSellerMetrics(sellerId);
-  const { data: goals, isLoading: loadingGoals } = useSellerGoalProgress(sellerId);
-  const { data: pendingOrders = [], isLoading: loadingPending } = useSellerPendingOrders(sellerId);
-  const { data: opportunities = [], isLoading: loadingOpportunities } = useSellerOpportunities(sellerId);
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
-  };
+  const { data: sellers = [], isLoading: loadingSellers } = useSellers();
+  const { data: metrics, isLoading: loadingMetrics } = useSellerMetrics(activeSellerId);
+  const { data: goals, isLoading: loadingGoals } = useSellerGoalProgress(activeSellerId);
+  const { data: pendingOrders = [], isLoading: loadingPending } = useSellerPendingOrders(activeSellerId);
+  const { data: opportunities = [], isLoading: loadingOpportunities } = useSellerOpportunities(activeSellerId);
+  const { data: pipeline = [], isLoading: loadingPipeline } = useSellerPipeline(activeSellerId);
 
   const isLoading = loadingMetrics || loadingGoals;
 
@@ -48,20 +89,55 @@ export default function SellerDashboard() {
   }
 
   const currentMonth = format(new Date(), 'MMMM yyyy', { locale: ptBR });
+  const selectedSellerName = sellers.find(s => s.id === activeSellerId)?.full_name || 'Vendedor';
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dashboard do Vendedor</h1>
           <p className="text-muted-foreground">Resultados de {currentMonth}</p>
         </div>
-        <Badge variant="outline" className="gap-2">
-          <Calendar size={14} />
-          {goals?.daysRemaining || 0} dias restantes
-        </Badge>
+        
+        <div className="flex items-center gap-3">
+          {/* Seller Filter - only for admin/supervisor */}
+          {isAdminOrSupervisor && (
+            <Select 
+              value={selectedSellerId || user?.id || ''} 
+              onValueChange={setSelectedSellerId}
+            >
+              <SelectTrigger className="w-[200px]">
+                <Users className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Selecionar vendedor" />
+              </SelectTrigger>
+              <SelectContent>
+                {sellers.map((seller) => (
+                  <SelectItem key={seller.id} value={seller.id}>
+                    {seller.full_name || 'Sem nome'}
+                    {seller.id === user?.id && ' (você)'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
+          <Badge variant="outline" className="gap-2">
+            <Calendar size={14} />
+            {goals?.daysRemaining || 0} dias restantes
+          </Badge>
+        </div>
       </div>
+
+      {/* Selected Seller Badge */}
+      {isAdminOrSupervisor && selectedSellerId && selectedSellerId !== user?.id && (
+        <div className="bg-muted/50 border border-border rounded-lg p-3 flex items-center gap-2">
+          <Users className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">
+            Visualizando dados de: <strong className="text-foreground">{selectedSellerName}</strong>
+          </span>
+        </div>
+      )}
 
       {/* Main KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -72,7 +148,7 @@ export default function SellerDashboard() {
                 <ShoppingCart className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Pedidos no Mês</p>
+                <p className="text-sm text-muted-foreground">Conversões no Mês</p>
                 <p className="text-2xl font-bold">{metrics?.totalOrders || 0}</p>
               </div>
             </div>
@@ -122,6 +198,34 @@ export default function SellerDashboard() {
         </Card>
       </div>
 
+      {/* Pipeline Cards */}
+      <div>
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <TrendingUp className="h-5 w-5" />
+          Pipeline de Vendas
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          {loadingPipeline ? (
+            <div className="col-span-full flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : (
+            pipeline.map((stage) => (
+              <Card key={stage.status} className="relative overflow-hidden">
+                <CardContent className="pt-4 pb-3">
+                  <div className={`inline-flex p-2 rounded-lg mb-2 ${stageColors[stage.color] || stageColors.muted}`}>
+                    {stageIcons[stage.status] || <Users className="h-5 w-5" />}
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{stage.label}</p>
+                  <p className="text-xl font-bold">{stage.count}</p>
+                  <p className="text-xs text-muted-foreground">{formatCurrency(stage.value)}</p>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+
       {/* Goals Progress */}
       <Card>
         <CardHeader>
@@ -131,6 +235,14 @@ export default function SellerDashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Current Revenue Summary */}
+          {goals && goals.totalRevenue > 0 && (
+            <div className="p-4 bg-success/10 border border-success/20 rounded-xl mb-4">
+              <p className="text-sm text-muted-foreground">Faturamento atual do mês</p>
+              <p className="text-2xl font-bold text-success">{formatCurrency(goals.totalRevenue)}</p>
+            </div>
+          )}
+
           {/* Target 1 */}
           {goals?.target1.value > 0 && (
             <div className="space-y-2">
@@ -244,12 +356,12 @@ export default function SellerDashboard() {
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pending Orders */}
+        {/* Pending Payment */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-warning" />
-              Pedidos Aguardando Pagamento
+              Aguardando Pagamento
               {pendingOrders.length > 0 && (
                 <Badge variant="secondary">{pendingOrders.length}</Badge>
               )}
@@ -263,34 +375,40 @@ export default function SellerDashboard() {
             ) : pendingOrders.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <AlertCircle className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>Nenhum pedido pendente</p>
+                <p>Nenhum cliente aguardando pagamento</p>
               </div>
             ) : (
-              <ScrollArea className="h-[300px]">
-                <div className="space-y-3">
-                  {pendingOrders.map((order) => (
-                    <div
-                      key={order.id}
-                      className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium">#{order.order_number}</p>
-                        <p className="text-sm text-muted-foreground">{order.contact_name}</p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Phone size={10} />
-                          {order.contact_phone}
-                        </p>
+              <>
+                <ScrollArea className="h-[280px]">
+                  <div className="space-y-3">
+                    {pendingOrders.map((order) => (
+                      <div
+                        key={order.id}
+                        className="flex items-center justify-between p-3 bg-warning/5 border border-warning/20 rounded-lg"
+                      >
+                        <div>
+                          <p className="font-medium">{order.contact_name}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Phone size={10} />
+                            {order.contact_phone}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-warning">{formatCurrency(order.total)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(order.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-bold text-primary">{formatCurrency(order.total)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(order.created_at), 'dd/MM/yyyy', { locale: ptBR })}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                </ScrollArea>
+                <div className="mt-4 p-3 bg-warning/10 rounded-xl">
+                  <p className="text-sm font-medium">
+                    Total aguardando: {formatCurrency(pendingOrders.reduce((sum, o) => sum + o.total, 0))}
+                  </p>
                 </div>
-              </ScrollArea>
+              </>
             )}
           </CardContent>
         </Card>
@@ -300,7 +418,7 @@ export default function SellerDashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-success" />
-              Oportunidades
+              Oportunidades Quentes
               {opportunities.length > 0 && (
                 <Badge variant="secondary">{opportunities.length}</Badge>
               )}
@@ -315,6 +433,7 @@ export default function SellerDashboard() {
               <div className="text-center py-8 text-muted-foreground">
                 <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-30" />
                 <p>Nenhuma oportunidade identificada</p>
+                <p className="text-sm">Contatos em orçamento ou layout aparecerão aqui</p>
               </div>
             ) : (
               <>
