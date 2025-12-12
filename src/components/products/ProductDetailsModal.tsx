@@ -90,7 +90,7 @@ export function ProductDetailsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
@@ -98,7 +98,7 @@ export function ProductDetailsModal({
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <ScrollArea className="flex-1 h-[calc(90vh-180px)] pr-4">
           <div className="space-y-6">
             {/* Header com imagem e info básica */}
             <div className="flex gap-4">
@@ -251,6 +251,7 @@ export function ProductDetailsModal({
                                 productId: product.id,
                                 templateId: selectedTemplateId,
                                 basePrice: product.base_price,
+                                productName: product.name,
                               });
                               toast.success('Variações aplicadas com sucesso!');
                               refetchVariations();
