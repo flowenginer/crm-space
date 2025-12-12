@@ -43,6 +43,7 @@ export function TemplateVariationsBulkGenerator({
   const [selectedValues, setSelectedValues] = useState<Record<string, string[]>>({});
   const [justCreated, setJustCreated] = useState(false);
   const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
+  const [isVariationsOpen, setIsVariationsOpen] = useState(true);
 
   const createBulkVariations = useCreateBulkTemplateVariations();
   const deleteVariation = useDeleteTemplateVariation();
@@ -243,8 +244,8 @@ export function TemplateVariationsBulkGenerator({
           <CollapsibleContent>
             <CardContent className="space-y-4 pt-0">
               {/* Attribute Type Sections - Compact */}
-              <ScrollArea className="max-h-[200px]">
-                <div className="space-y-4 pr-2">
+              <ScrollArea className="max-h-[180px]">
+                <div className="space-y-3 pr-2">
                   {attributeTypes?.map((type) => {
                     const typeSelected = selectedValues[type.id] || [];
                     const allSelected = typeSelected.length === type.values.length && type.values.length > 0;
@@ -357,71 +358,93 @@ export function TemplateVariationsBulkGenerator({
         </Card>
       </Collapsible>
 
-      {/* Existing Variations Card */}
-      <Card className={`flex-1 ${justCreated ? 'ring-2 ring-green-500 ring-offset-2' : ''}`}>
-        <CardHeader className="py-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            Variações do Template ({existingVariations.length})
-            {justCreated && (
-              <Badge className="bg-green-600 text-white animate-pulse text-[10px]">
-                <Check className="h-3 w-3 mr-1" />
-                Criadas!
-              </Badge>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          {existingVariations.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4 text-sm">
-              Nenhuma variação cadastrada
-            </p>
-          ) : (
-            <ScrollArea className="h-[350px]">
-              <div className="space-y-2 pr-4">
-                {existingVariations.map((variation) => (
-                  <div
-                    key={variation.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border bg-muted/50"
-                  >
-                    <div className="flex-1">
-                      <div className="flex flex-wrap gap-1 mb-1">
-                        {variation.attribute_value_ids.map((valueId) => (
-                          <Badge key={valueId} variant="secondary" className="text-xs">
-                            {getAttributeValueName(valueId)}
-                          </Badge>
-                        ))}
-                      </div>
-                      {variation.variation_name && (
-                        <span className="text-sm text-muted-foreground">
-                          {variation.variation_name}
-                        </span>
-                      )}
-                    </div>
-                    {useGlobalRules ? (
-                      <Badge variant="outline" className="text-muted-foreground">
-                        Regras Globais
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">{formatPriceAdjustment(variation)}</Badge>
-                    )}
-                    {variation.weight_override && (
-                      <Badge variant="outline">{variation.weight_override}kg</Badge>
-                    )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleDeleteVariation(variation.id)}
-                      disabled={deleteVariation.isPending}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                ))}
+      {/* Existing Variations Card - Collapsible */}
+      <Collapsible open={isVariationsOpen} onOpenChange={setIsVariationsOpen}>
+        <Card className={justCreated ? 'ring-2 ring-green-500 ring-offset-2' : ''}>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  Variações do Template ({existingVariations.length})
+                  {justCreated && (
+                    <Badge className="bg-green-600 text-white animate-pulse text-[10px]">
+                      <Check className="h-3 w-3 mr-1" />
+                      Criadas!
+                    </Badge>
+                  )}
+                </CardTitle>
+                {isVariationsOpen ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
               </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+            </CardHeader>
+          </CollapsibleTrigger>
+          
+          <CollapsibleContent>
+            <CardContent className="pt-0">
+              {existingVariations.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4 text-sm">
+                  Nenhuma variação cadastrada
+                </p>
+              ) : (
+                <ScrollArea className="h-[280px]">
+                  <div className="space-y-1.5 pr-4">
+                    {existingVariations.map((variation) => (
+                      <div
+                        key={variation.id}
+                        className="flex items-center gap-2 p-2 rounded-lg border bg-muted/50"
+                      >
+                        {/* Badges inline */}
+                        <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+                          {variation.attribute_value_ids.map((valueId) => (
+                            <Badge key={valueId} variant="secondary" className="text-[10px] h-5 px-1.5">
+                              {getAttributeValueName(valueId)}
+                            </Badge>
+                          ))}
+                          {variation.variation_name && (
+                            <span className="text-xs text-muted-foreground ml-1">
+                              ({variation.variation_name})
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Price info */}
+                        {useGlobalRules ? (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground shrink-0">
+                            Regras Globais
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] shrink-0">
+                            {formatPriceAdjustment(variation)}
+                          </Badge>
+                        )}
+                        {variation.weight_override && (
+                          <Badge variant="outline" className="text-[10px] shrink-0">
+                            {variation.weight_override}kg
+                          </Badge>
+                        )}
+                        
+                        {/* Delete button */}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => handleDeleteVariation(variation.id)}
+                          disabled={deleteVariation.isPending}
+                        >
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
     </div>
   );
 }
