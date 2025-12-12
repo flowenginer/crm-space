@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,10 +26,8 @@ import {
   Eye,
   List,
   LayoutGrid,
-  TrendingUp,
   Clock,
   CheckCircle,
-  XCircle,
   ArrowRightCircle,
 } from 'lucide-react';
 import { useQuotesAdvanced, Quote, QuoteFilters } from '@/hooks/useQuotes';
@@ -112,8 +109,7 @@ export default function Quotes() {
   };
 
   return (
-    <MainLayout>
-      <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -341,19 +337,18 @@ export default function Quotes() {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Modals */}
+        <QuoteModal
+          open={showNewQuoteModal}
+          onOpenChange={setShowNewQuoteModal}
+        />
+
+        <QuoteDetailsModal
+          quote={selectedQuote}
+          open={showDetailsModal}
+          onOpenChange={setShowDetailsModal}
+        />
       </div>
-
-      {/* Modals */}
-      <QuoteModal
-        open={showNewQuoteModal}
-        onOpenChange={setShowNewQuoteModal}
-      />
-
-      <QuoteDetailsModal
-        quote={selectedQuote}
-        open={showDetailsModal}
-        onOpenChange={setShowDetailsModal}
-      />
-    </MainLayout>
   );
 }
