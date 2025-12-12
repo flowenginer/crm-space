@@ -72,10 +72,25 @@ export default function Orders() {
     }).format(value || 0);
   };
 
+  const getContactName = (order: Order) => {
+    if (order.contact && 'full_name' in order.contact) {
+      return (order.contact as { full_name: string }).full_name;
+    }
+    return 'Cliente não informado';
+  };
+
+  const getContactPhone = (order: Order) => {
+    if (order.contact && 'phone' in order.contact) {
+      return (order.contact as { phone: string }).phone;
+    }
+    return null;
+  };
+
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <>
+      <div className="space-y-6 p-6">
+        <div className="flex items-center justify-between">
+          <div>
             <h1 className="text-3xl font-bold">Pedidos</h1>
             <p className="text-muted-foreground">Gerencie seus pedidos e vendas</p>
           </div>
@@ -148,11 +163,11 @@ export default function Orders() {
                       <TableCell>
                         <div>
                           <div className="font-medium">
-                            {order.contact?.full_name || 'Cliente não informado'}
+                            {getContactName(order)}
                           </div>
-                          {order.contact?.phone && (
+                          {getContactPhone(order) && (
                             <div className="text-sm text-muted-foreground">
-                              {order.contact.phone}
+                              {getContactPhone(order)}
                             </div>
                           )}
                         </div>
@@ -204,6 +219,6 @@ export default function Orders() {
         open={isDetailsOpen}
         onOpenChange={setIsDetailsOpen}
       />
-    </div>
+    </>
   );
 }
