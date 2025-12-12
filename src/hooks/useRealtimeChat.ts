@@ -133,10 +133,33 @@ export function useRealtimeConversations() {
           const newStatus = (payload.new as any)?.status;
           const conversationId = (payload.new as any)?.id;
           
-          // Fechamento = invalidação imediata
+          // Fechamento = remoção otimista do cache (não invalidar para evitar refetch)
           if (newStatus === 'closed' && oldStatus !== 'closed') {
-            console.log('✅ [Realtime] Conversation CLOSED - immediate refresh');
-            invalidateImmediately();
+            console.log('✅ [Realtime] Conversation CLOSED - removing from cache (no refetch)');
+            
+            // REMOVER a conversa do cache otimisticamente em vez de invalidar
+            queryClient.setQueriesData(
+              { 
+                predicate: (query) => 
+                  Array.isArray(query.queryKey) && 
+                  query.queryKey[0] === 'conversations-paginated' 
+              },
+              (oldData: any) => {
+                if (!oldData?.pages) return oldData;
+                return {
+                  ...oldData,
+                  pages: oldData.pages.map((page: any) => ({
+                    ...page,
+                    conversations: (page.conversations || []).filter(
+                      (c: any) => c.id !== conversationId
+                    ),
+                  })),
+                };
+              }
+            );
+            
+            // Invalidar apenas contagens (não a lista!)
+            queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
             return;
           }
           
@@ -247,10 +270,39 @@ export function useRealtimeConversations() {
           
           console.log('🔔 [Realtime] Conversation EVENT received:', { eventType, conversationId });
           
-          // Para eventos de transferência, fechamento ou reabertura, invalidar imediatamente
-          if (['transfer', 'close', 'reopen'].includes(eventType)) {
+          // Para eventos de transferência ou reabertura, invalidar imediatamente
+          // CLOSE é tratado separadamente para evitar refetch da conversa fechada
+          if (['transfer', 'reopen'].includes(eventType)) {
             console.log(`✅ [Realtime] Critical event "${eventType}" - immediate refresh for ALL users`);
             invalidateImmediately();
+          }
+          
+          // Para evento de close, remover a conversa do cache em vez de invalidar
+          if (eventType === 'close') {
+            console.log(`✅ [Realtime] Close event - removing conversation ${conversationId} from cache`);
+            
+            queryClient.setQueriesData(
+              { 
+                predicate: (query) => 
+                  Array.isArray(query.queryKey) && 
+                  query.queryKey[0] === 'conversations-paginated' 
+              },
+              (oldData: any) => {
+                if (!oldData?.pages) return oldData;
+                return {
+                  ...oldData,
+                  pages: oldData.pages.map((page: any) => ({
+                    ...page,
+                    conversations: (page.conversations || []).filter(
+                      (c: any) => c.id !== conversationId
+                    ),
+                  })),
+                };
+              }
+            );
+            
+            // Apenas invalidar contagens
+            queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
           }
         }
       )

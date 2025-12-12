@@ -579,10 +579,19 @@ export function useUpdateConversation() {
         .eq('id', id);
 
       if (error) throw error;
+      
+      // Retornar dados para uso no onSuccess
+      return { id, ...data };
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      // Sempre invalidar queries não-paginadas
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      
+      // Para fechamentos, NÃO invalidar conversations-paginated
+      // O realtime e a remoção otimista já cuidam disso
+      if (variables.status !== 'closed') {
+        queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      }
     },
   });
 }

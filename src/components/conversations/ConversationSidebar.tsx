@@ -441,7 +441,11 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
     onSuccess: () => {
       // Remove a conversa do cache local IMEDIATAMENTE para sumir do painel esquerdo
       queryClient.setQueriesData(
-        { queryKey: ['conversations-paginated'] },
+        { 
+          predicate: (query) => 
+            Array.isArray(query.queryKey) && 
+            query.queryKey[0] === 'conversations-paginated' 
+        },
         (oldData: any) => {
           if (!oldData?.pages) return oldData;
           return {
@@ -454,11 +458,12 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
         }
       );
       
-      // Invalida queries para garantir consistência
+      // Invalidar apenas queries específicas - NÃO conversations-paginated!
+      // A remoção otimista acima e o realtime cuidam da lista
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
-      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
       queryClient.invalidateQueries({ queryKey: ['conversation-events', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['lead-status-counts'] });
       // Invalida CRM para atualizar contagens
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       queryClient.invalidateQueries({ queryKey: ['lead-status-summary'] });
