@@ -35,10 +35,11 @@ import { useProductCatalogs } from '@/hooks/useProductCatalogs';
 import { useProductTemplatesWithVariations, useApplyTemplateToProduct, ProductTemplateWithVariations } from '@/hooks/useProductTemplates';
 import { useCreateBulkVariations } from '@/hooks/useProductVariations';
 import { usePriceRules } from '@/hooks/useAttributePriceRules';
-import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles, AlertTriangle, Grid3X3, Info, ExternalLink } from 'lucide-react';
+import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles, AlertTriangle, Grid3X3, Info, ExternalLink, Layers } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ProductImageUploader } from './ProductImageUploader';
 import { ProductVariationsGenerator } from './ProductVariationsGenerator';
+import { ProductVariationsTab } from './ProductVariationsTab';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -436,41 +437,55 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {isEditing ? 'Editar Produto' : 'Novo Produto'}
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0">
+        {/* Fixed Header */}
+        <div className="sticky top-0 z-10 bg-background border-b px-6 py-4">
+          <DialogHeader>
+            <DialogTitle>
+              {isEditing ? 'Editar Produto' : 'Novo Produto'}
+            </DialogTitle>
+          </DialogHeader>
+        </div>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <Tabs defaultValue="basico" className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="basico" className="flex items-center gap-1.5">
-                  <Package className="h-4 w-4" />
-                  <span className="hidden sm:inline">Básico</span>
-                </TabsTrigger>
-                <TabsTrigger value="precos" className="flex items-center gap-1.5">
-                  <DollarSign className="h-4 w-4" />
-                  <span className="hidden sm:inline">Preços</span>
-                </TabsTrigger>
-                <TabsTrigger value="fiscal" className="flex items-center gap-1.5">
-                  <FileText className="h-4 w-4" />
-                  <span className="hidden sm:inline">Fiscal</span>
-                </TabsTrigger>
-                <TabsTrigger value="impostos" className="flex items-center gap-1.5">
-                  <Calculator className="h-4 w-4" />
-                  <span className="hidden sm:inline">Impostos</span>
-                </TabsTrigger>
-                <TabsTrigger value="estoque" className="flex items-center gap-1.5">
-                  <Boxes className="h-4 w-4" />
-                  <span className="hidden sm:inline">Estoque</span>
-                </TabsTrigger>
-              </TabsList>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
+            <Tabs defaultValue="basico" className="flex flex-col flex-1 overflow-hidden">
+              {/* Fixed Tabs Header */}
+              <div className="sticky top-0 z-10 bg-background px-6 pt-4 pb-2 border-b">
+                <TabsList className={`grid w-full ${isEditing ? 'grid-cols-6' : 'grid-cols-5'}`}>
+                  <TabsTrigger value="basico" className="flex items-center gap-1.5">
+                    <Package className="h-4 w-4" />
+                    <span className="hidden sm:inline">Básico</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="precos" className="flex items-center gap-1.5">
+                    <DollarSign className="h-4 w-4" />
+                    <span className="hidden sm:inline">Preços</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="fiscal" className="flex items-center gap-1.5">
+                    <FileText className="h-4 w-4" />
+                    <span className="hidden sm:inline">Fiscal</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="impostos" className="flex items-center gap-1.5">
+                    <Calculator className="h-4 w-4" />
+                    <span className="hidden sm:inline">Impostos</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="estoque" className="flex items-center gap-1.5">
+                    <Boxes className="h-4 w-4" />
+                    <span className="hidden sm:inline">Estoque</span>
+                  </TabsTrigger>
+                  {isEditing && (
+                    <TabsTrigger value="variacoes" className="flex items-center gap-1.5">
+                      <Layers className="h-4 w-4" />
+                      <span className="hidden sm:inline">Variações</span>
+                    </TabsTrigger>
+                  )}
+                </TabsList>
+              </div>
 
-              {/* TAB BÁSICO */}
-              <TabsContent value="basico" className="space-y-4 mt-4">
+              {/* Scrollable Content Area */}
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                {/* TAB BÁSICO */}
+                <TabsContent value="basico" className="space-y-4 mt-0">
                 {/* Variations Selector - only for new products */}
                 {!isEditing && (
                   <div className="p-4 rounded-lg border border-primary/20 bg-primary/5 space-y-4">
@@ -1479,10 +1494,22 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
                   </p>
                 </div>
               </TabsContent>
+
+              {/* TAB VARIAÇÕES - só para edição */}
+              {isEditing && product && (
+                <TabsContent value="variacoes" className="mt-0">
+                  <ProductVariationsTab
+                    productId={product.id}
+                    productName={product.name}
+                    basePrice={product.base_price}
+                  />
+                </TabsContent>
+              )}
+              </div>
             </Tabs>
 
-            {/* Actions */}
-            <div className="flex justify-end gap-3 pt-4 border-t">
+            {/* Fixed Actions Footer */}
+            <div className="sticky bottom-0 bg-background border-t px-6 py-4 flex justify-end gap-3">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
