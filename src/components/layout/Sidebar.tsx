@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import {
@@ -82,10 +82,10 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   });
 
   // Expandir automaticamente menus que contêm a rota atual
-  useMemo(() => {
+  useEffect(() => {
     if (menuHierarchy.length > 0) {
       menuHierarchy.forEach(item => {
-        if (item.children && item.children.some(child => location.pathname === child.href || location.pathname.startsWith(child.href + '/'))) {
+        if (item.children && item.children.some(child => child.href && (location.pathname === child.href || location.pathname.startsWith(child.href + '/')))) {
           setExpandedMenus(prev => new Set([...prev, item.id]));
         }
       });
