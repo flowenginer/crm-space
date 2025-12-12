@@ -35,6 +35,11 @@ export function useRealtimeMessages(conversationId: string | null) {
         queryKey: ['messages', conversationId],
         refetchType: 'active'
       });
+      // Invalidar também o preview de mensagens (visualizador lateral)
+      queryClient.invalidateQueries({ 
+        queryKey: ['messages-preview', conversationId],
+        refetchType: 'active'
+      });
     }, 500);
 
     // Subscribe to new messages in the current conversation
