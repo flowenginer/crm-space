@@ -34,6 +34,7 @@ import ContactRequests from "@/pages/ContactRequests";
 import InternalChat from "@/pages/InternalChat";
 import Attributes from "@/pages/products/Attributes";
 import PriceRules from "@/pages/products/PriceRules";
+import Catalogs from "@/pages/products/Catalogs";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -160,6 +161,11 @@ const App = () => (
               <Route path="/products/price-rules" element={
                 <ProtectedRoute permission="settings.view">
                   <PriceRules />
+                </ProtectedRoute>
+              } />
+              <Route path="/products/catalogs" element={
+                <ProtectedRoute permission="settings.view">
+                  <Catalogs />
                 </ProtectedRoute>
               } />
             </Route>
