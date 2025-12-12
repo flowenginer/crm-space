@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Plus, Trash2, Package, GripVertical, Info } from 'lucide-react';
+import { Package, Info } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
@@ -25,15 +24,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Tooltip,
   TooltipContent,
@@ -44,12 +35,10 @@ import {
   useProductTemplate,
   useCreateProductTemplate,
   useUpdateProductTemplate,
-  useCreateTemplateVariation,
-  useDeleteTemplateVariation,
-  useUpdateTemplateVariation,
-  ProductTemplateVariation,
 } from '@/hooks/useProductTemplates';
-import { useAttributeTypes, AttributeValue } from '@/hooks/useProductAttributes';
+import { useAttributeTypes } from '@/hooks/useProductAttributes';
+import { usePriceRules } from '@/hooks/useAttributePriceRules';
+import { TemplateVariationsBulkGenerator } from './TemplateVariationsBulkGenerator';
 
 const templateSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -75,26 +64,9 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
 
   const { data: template, isLoading: loadingTemplate } = useProductTemplate(templateId || undefined);
   const { data: attributeTypes } = useAttributeTypes();
+  const { data: priceRules } = usePriceRules();
   const createTemplate = useCreateProductTemplate();
   const updateTemplate = useUpdateProductTemplate();
-  const createVariation = useCreateTemplateVariation();
-  const deleteVariation = useDeleteTemplateVariation();
-  const updateVariation = useUpdateTemplateVariation();
-
-  // State for new variation form
-  const [newVariation, setNewVariation] = useState<{
-    selectedAttributes: Record<string, string>;
-    variation_name: string;
-    price_adjustment: number;
-    adjustment_type: 'fixed' | 'percentage';
-    weight_override: number | null;
-  }>({
-    selectedAttributes: {},
-    variation_name: '',
-    price_adjustment: 0,
-    adjustment_type: 'fixed',
-    weight_override: null,
-  });
 
   const form = useForm<TemplateFormData>({
     resolver: zodResolver(templateSchema),
@@ -150,51 +122,6 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
       });
     }
     onOpenChange(false);
-  };
-
-  const handleAddVariation = async () => {
-    if (!templateId) return;
-    
-    const attributeValueIds = Object.values(newVariation.selectedAttributes).filter(Boolean);
-    if (attributeValueIds.length === 0) return;
-
-    await createVariation.mutateAsync({
-      template_id: templateId,
-      attribute_value_ids: attributeValueIds,
-      variation_name: newVariation.variation_name || undefined,
-      price_adjustment: newVariation.price_adjustment,
-      adjustment_type: newVariation.adjustment_type,
-      weight_override: newVariation.weight_override || undefined,
-    });
-
-    setNewVariation({
-      selectedAttributes: {},
-      variation_name: '',
-      price_adjustment: 0,
-      adjustment_type: 'fixed',
-      weight_override: null,
-    });
-  };
-
-  const handleDeleteVariation = async (id: string) => {
-    await deleteVariation.mutateAsync(id);
-  };
-
-  const getAttributeValueName = (valueId: string): string => {
-    for (const type of attributeTypes || []) {
-      const value = type.values.find((v: AttributeValue) => v.id === valueId);
-      if (value) return value.display_value || value.value;
-    }
-    return valueId;
-  };
-
-  const formatPriceAdjustment = (variation: ProductTemplateVariation): string => {
-    if (variation.price_adjustment === 0) return '-';
-    const sign = variation.price_adjustment > 0 ? '+' : '';
-    if (variation.adjustment_type === 'percentage') {
-      return `${sign}${variation.price_adjustment}%`;
-    }
-    return `${sign}R$ ${variation.price_adjustment.toFixed(2)}`;
   };
 
   const isPending = createTemplate.isPending || updateTemplate.isPending;
@@ -368,186 +295,16 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
               </Form>
             </TabsContent>
 
-            <TabsContent value="variations" className="m-0 space-y-4">
-              {/* Add variation form */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Adicionar Variação</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Attribute selectors */}
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {attributeTypes?.map((type) => (
-                      <div key={type.id}>
-                        <label className="text-sm font-medium">{type.name}</label>
-                        <Select
-                          value={newVariation.selectedAttributes[type.id] || ''}
-                          onValueChange={(value) =>
-                            setNewVariation((prev) => ({
-                              ...prev,
-                              selectedAttributes: {
-                                ...prev.selectedAttributes,
-                                [type.id]: value,
-                              },
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={`Selecionar ${type.name}`} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {type.values.map((value: AttributeValue) => (
-                              <SelectItem key={value.id} value={value.id}>
-                                {value.display_value || value.value}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Price adjustment - only show if not using global rules */}
-                  <div className={`grid gap-3 ${useGlobalRules ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
-                    <div>
-                      <label className="text-sm font-medium">Nome (opcional)</label>
-                      <Input
-                        placeholder="Ex: PP-GG Masculino"
-                        value={newVariation.variation_name}
-                        onChange={(e) =>
-                          setNewVariation((prev) => ({
-                            ...prev,
-                            variation_name: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    {!useGlobalRules && (
-                      <div>
-                        <label className="text-sm font-medium">Ajuste de Preço</label>
-                        <div className="flex gap-2">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={newVariation.price_adjustment}
-                            onChange={(e) =>
-                              setNewVariation((prev) => ({
-                                ...prev,
-                                price_adjustment: parseFloat(e.target.value) || 0,
-                              }))
-                            }
-                          />
-                          <Select
-                            value={newVariation.adjustment_type}
-                            onValueChange={(value: 'fixed' | 'percentage') =>
-                              setNewVariation((prev) => ({
-                                ...prev,
-                                adjustment_type: value,
-                              }))
-                            }
-                          >
-                            <SelectTrigger className="w-24">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="fixed">R$</SelectItem>
-                              <SelectItem value="percentage">%</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    )}
-                    <div>
-                      <label className="text-sm font-medium">Peso Override (kg)</label>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        placeholder="Usar padrão"
-                        value={newVariation.weight_override || ''}
-                        onChange={(e) =>
-                          setNewVariation((prev) => ({
-                            ...prev,
-                            weight_override: e.target.value ? parseFloat(e.target.value) : null,
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {useGlobalRules && (
-                    <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                      <Info className="h-4 w-4 inline mr-2" />
-                      Ajustes de preço serão aplicados automaticamente das Regras de Preço globais ao aplicar este template.
-                    </div>
-                  )}
-
-                  <Button
-                    onClick={handleAddVariation}
-                    disabled={Object.values(newVariation.selectedAttributes).filter(Boolean).length === 0}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Adicionar Variação
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Variations list */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Variações do Template ({template?.variations?.length || 0})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {template?.variations?.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-4">
-                      Nenhuma variação cadastrada
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {template?.variations?.map((variation) => (
-                        <div
-                          key={variation.id}
-                          className="flex items-center gap-3 p-3 rounded-lg border bg-muted/50"
-                        >
-                          <GripVertical className="h-4 w-4 text-muted-foreground" />
-                          <div className="flex-1">
-                            <div className="flex flex-wrap gap-1 mb-1">
-                              {variation.attribute_value_ids.map((valueId) => (
-                                <Badge key={valueId} variant="secondary" className="text-xs">
-                                  {getAttributeValueName(valueId)}
-                                </Badge>
-                              ))}
-                            </div>
-                            {variation.variation_name && (
-                              <span className="text-sm text-muted-foreground">
-                                {variation.variation_name}
-                              </span>
-                            )}
-                          </div>
-                          {useGlobalRules ? (
-                            <Badge variant="outline" className="text-muted-foreground">
-                              Regras Globais
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline">{formatPriceAdjustment(variation)}</Badge>
-                          )}
-                          {variation.weight_override && (
-                            <Badge variant="outline">{variation.weight_override}kg</Badge>
-                          )}
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleDeleteVariation(variation.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+            <TabsContent value="variations" className="m-0">
+              {templateId && attributeTypes && priceRules !== undefined && (
+                <TemplateVariationsBulkGenerator
+                  templateId={templateId}
+                  attributeTypes={attributeTypes}
+                  priceRules={priceRules || []}
+                  existingVariations={template?.variations || []}
+                  useGlobalRules={useGlobalRules}
+                />
+              )}
             </TabsContent>
           </ScrollArea>
         </Tabs>
