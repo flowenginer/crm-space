@@ -328,7 +328,7 @@ export function useDeleteTemplateVariation() {
 // Create bulk template variations
 export function useCreateBulkTemplateVariations() {
   const queryClient = useQueryClient();
-  const { data: tenantId } = useCurrentTenantId();
+  const { data: tenantId, isLoading: tenantLoading } = useCurrentTenantId();
 
   return useMutation({
     mutationFn: async ({
@@ -344,6 +344,15 @@ export function useCreateBulkTemplateVariations() {
         weight_override?: number;
       }[];
     }) => {
+      // Validate tenantId is available
+      if (!tenantId) {
+        throw new Error('Tenant não identificado. Por favor, recarregue a página.');
+      }
+
+      if (variations.length === 0) {
+        throw new Error('Nenhuma variação para criar.');
+      }
+
       // Get max display_order
       const { data: maxOrder } = await supabase
         .from('product_template_variations')
@@ -362,11 +371,20 @@ export function useCreateBulkTemplateVariations() {
         display_order: currentOrder++,
       }));
 
-      const { error } = await supabase
-        .from('product_template_variations')
-        .insert(insertData);
+      console.log('[useCreateBulkTemplateVariations] Inserting variations:', insertData);
 
-      if (error) throw error;
+      const { data, error } = await supabase
+        .from('product_template_variations')
+        .insert(insertData)
+        .select();
+
+      if (error) {
+        console.error('[useCreateBulkTemplateVariations] Insert error:', error);
+        throw error;
+      }
+
+      console.log('[useCreateBulkTemplateVariations] Inserted successfully:', data);
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-template'] });
@@ -374,6 +392,7 @@ export function useCreateBulkTemplateVariations() {
       toast.success('Variações criadas com sucesso!');
     },
     onError: (error: Error) => {
+      console.error('[useCreateBulkTemplateVariations] Error:', error);
       toast.error('Erro ao criar variações: ' + error.message);
     },
   });

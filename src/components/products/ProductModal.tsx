@@ -33,10 +33,13 @@ import { Badge } from '@/components/ui/badge';
 import { useCreateProduct, useUpdateProduct, generateSlug, type ProductWithCatalog } from '@/hooks/useProducts';
 import { useProductCatalogs } from '@/hooks/useProductCatalogs';
 import { useProductTemplatesWithVariations, useApplyTemplateToProduct, ProductTemplateWithVariations } from '@/hooks/useProductTemplates';
-import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles, AlertTriangle } from 'lucide-react';
+import { useCreateBulkVariations } from '@/hooks/useProductVariations';
+import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles, AlertTriangle, Grid3X3 } from 'lucide-react';
 import { ProductImageUploader } from './ProductImageUploader';
+import { ProductVariationsGenerator } from './ProductVariationsGenerator';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   ORIGEM_OPTIONS,
   CST_ICMS_OPTIONS,
@@ -120,9 +123,17 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const applyTemplate = useApplyTemplateToProduct();
+  const createBulkVariations = useCreateBulkVariations();
   const isEditing = !!product;
   
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [variationMode, setVariationMode] = useState<'none' | 'template' | 'manual'>('none');
+  const [manualVariations, setManualVariations] = useState<{
+    attributeValueIds: string[];
+    name: string;
+    attributes: Record<string, string>;
+    priceAdjustment: number;
+  }[]>([]);
   const selectedTemplate = templates?.find(t => t.id === selectedTemplateId);
 
   const form = useForm<ProductFormData>({
@@ -281,10 +292,12 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
     }
   }, [product, form]);
 
-  // Reset template selection when modal closes
+  // Reset state when modal closes
   useEffect(() => {
     if (!open) {
       setSelectedTemplateId(null);
+      setVariationMode('none');
+      setManualVariations([]);
     }
   }, [open]);
 
@@ -349,12 +362,33 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
       const result = await createProduct.mutateAsync(payload);
       
       // Apply template if selected
-      if (selectedTemplateId && result?.id) {
+      if (variationMode === 'template' && selectedTemplateId && result?.id) {
         await applyTemplate.mutateAsync({
           productId: result.id,
           templateId: selectedTemplateId,
           basePrice: data.base_price,
         });
+      }
+      
+      // Create manual variations if selected
+      if (variationMode === 'manual' && manualVariations.length > 0 && result?.id) {
+        const productName = data.name.toUpperCase().split(/\s+/).map(w => w.charAt(0)).join('').slice(0, 4);
+        
+        const variationsToInsert = manualVariations.map((v) => ({
+          product_id: result.id,
+          sku: `${productName}-${v.attributeValueIds.map(id => id.slice(-4)).join('-')}`.toUpperCase(),
+          attributes: v.attributes,
+          attribute_value_ids: v.attributeValueIds,
+          variation_name: v.name,
+          price: data.base_price + v.priceAdjustment,
+        }));
+
+        try {
+          await createBulkVariations.mutateAsync(variationsToInsert);
+        } catch (error) {
+          console.error('Error creating variations:', error);
+          toast.error('Produto criado, mas houve erro ao criar variações');
+        }
       }
     }
 
@@ -366,12 +400,24 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
   // Handle template selection - apply template defaults
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplateId(templateId || null);
-    const template = templates?.find(t => t.id === templateId);
-    if (template) {
-      form.setValue('peso_bruto', template.default_weight_kg);
-      form.setValue('peso_liquido', template.default_weight_kg);
-      toast.info(`Template "${template.name}" selecionado. Peso e dimensões aplicados.`);
+    if (templateId) {
+      setVariationMode('template');
+      setManualVariations([]);
+      const template = templates?.find(t => t.id === templateId);
+      if (template) {
+        form.setValue('peso_bruto', template.default_weight_kg);
+        form.setValue('peso_liquido', template.default_weight_kg);
+        toast.info(`Template "${template.name}" selecionado. Peso e dimensões aplicados.`);
+      }
     }
+  };
+
+  // Handle manual variations generated
+  const handleManualVariationsGenerated = (variations: typeof manualVariations) => {
+    setManualVariations(variations);
+    setVariationMode('manual');
+    setSelectedTemplateId(null);
+    toast.success(`${variations.length} variações selecionadas!`);
   };
 
   // Auto-generate slug from name
@@ -419,55 +465,109 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
 
               {/* TAB BÁSICO */}
               <TabsContent value="basico" className="space-y-4 mt-4">
-                {/* Template Selector - only for new products */}
-                {!isEditing && templates && templates.length > 0 && (
-                  <div className="p-4 rounded-lg border border-primary/20 bg-primary/5">
-                    <div className="flex items-center gap-2 mb-3">
-                      <LayoutTemplate className="h-5 w-5 text-primary" />
-                      <span className="font-medium">Usar Template</span>
+                {/* Variations Selector - only for new products */}
+                {!isEditing && (
+                  <div className="p-4 rounded-lg border border-primary/20 bg-primary/5 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Grid3X3 className="h-5 w-5 text-primary" />
+                      <span className="font-medium">Variações do Produto</span>
                       <Badge variant="secondary" className="text-xs">
-                        <Sparkles className="h-3 w-3 mr-1" />
-                        Agilize o cadastro
+                        Opcional
                       </Badge>
                     </div>
-                    <Select value={selectedTemplateId || ''} onValueChange={handleTemplateChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um template para aplicar variações automaticamente" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {templates.map((template) => {
-                          const hasNoVariations = !template.variations?.length;
-                          return (
-                            <SelectItem key={template.id} value={template.id}>
-                              <div className="flex items-center gap-2">
-                                {template.name} ({template.variations?.length || 0} variações)
-                                {hasNoVariations && (
-                                  <Badge variant="destructive" className="text-xs ml-1">
-                                    Sem variações
-                                  </Badge>
-                                )}
+                    
+                    <RadioGroup
+                      value={variationMode}
+                      onValueChange={(value: 'none' | 'template' | 'manual') => {
+                        setVariationMode(value);
+                        if (value !== 'template') setSelectedTemplateId(null);
+                        if (value !== 'manual') setManualVariations([]);
+                      }}
+                      className="space-y-3"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="none" id="var-none" />
+                        <label htmlFor="var-none" className="text-sm cursor-pointer">
+                          Sem variações (produto único)
+                        </label>
+                      </div>
+                      
+                      {templates && templates.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="template" id="var-template" />
+                            <label htmlFor="var-template" className="text-sm cursor-pointer flex items-center gap-2">
+                              <LayoutTemplate className="h-4 w-4" />
+                              Usar Template
+                              <Badge variant="outline" className="text-xs">Recomendado</Badge>
+                            </label>
+                          </div>
+                          {variationMode === 'template' && (
+                            <div className="ml-6 space-y-2">
+                              <Select value={selectedTemplateId || ''} onValueChange={handleTemplateChange}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecione um template" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {templates.map((template) => (
+                                    <SelectItem key={template.id} value={template.id}>
+                                      {template.name} ({template.variations?.length || 0} variações)
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {selectedTemplate && !selectedTemplate.variations?.length && (
+                                <Alert variant="destructive">
+                                  <AlertTriangle className="h-4 w-4" />
+                                  <AlertDescription className="text-xs">
+                                    Template sem variações. Edite o template primeiro.
+                                  </AlertDescription>
+                                </Alert>
+                              )}
+                              {selectedTemplate && selectedTemplate.variations?.length > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                  {selectedTemplate.variations.length} variações serão criadas
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="manual" id="var-manual" />
+                          <label htmlFor="var-manual" className="text-sm cursor-pointer flex items-center gap-2">
+                            <Sparkles className="h-4 w-4" />
+                            Criar variações manualmente
+                          </label>
+                        </div>
+                        {variationMode === 'manual' && (
+                          <div className="ml-6">
+                            {manualVariations.length > 0 ? (
+                              <div className="space-y-2">
+                                <Badge className="bg-green-600">
+                                  {manualVariations.length} variações selecionadas
+                                </Badge>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setManualVariations([])}
+                                >
+                                  Alterar seleção
+                                </Button>
                               </div>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
-                    {selectedTemplate && !selectedTemplate.variations?.length && (
-                      <Alert variant="destructive" className="mt-2">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertDescription>
-                          Este template não possui variações cadastradas. As variações não serão criadas automaticamente.
-                          Edite o template primeiro para adicionar variações.
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                    {selectedTemplate && selectedTemplate.variations?.length > 0 && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Peso: {selectedTemplate.default_weight_kg}kg | 
-                        Dimensões: {selectedTemplate.default_height_cm}x{selectedTemplate.default_width_cm}x{selectedTemplate.default_length_cm}cm | 
-                        {selectedTemplate.variations?.length || 0} variações serão criadas automaticamente
-                      </p>
-                    )}
+                            ) : (
+                              <ProductVariationsGenerator
+                                onVariationsGenerated={handleManualVariationsGenerated}
+                                existingVariationIds={[]}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </RadioGroup>
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-4">
