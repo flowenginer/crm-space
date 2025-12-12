@@ -31,6 +31,7 @@ import {
   Radar,
   Share2,
   LucideIcon,
+  Menu,
 } from 'lucide-react';
 import { UserManagement } from '@/components/settings/UserManagement';
 import { RoleManagement } from '@/components/settings/RoleManagement';
@@ -48,6 +49,7 @@ import { AccessPermissionsSettings } from '@/components/settings/AccessPermissio
 import { LeadDistributionSettings } from '@/components/settings/LeadDistributionSettings';
 import { StoreManagement } from '@/components/settings/StoreManagement';
 import { SalesGoalsManagement } from '@/components/settings/SalesGoalsManagement';
+import { MenuConfiguration } from '@/components/settings/MenuConfiguration';
 import { Facebook, UserCheck, Unlock, Store } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -109,6 +111,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   { value: 'team', label: 'Equipe', icon: Users, permission: ['settings', 'users'] },
   { value: 'roles', label: 'Perfis', icon: Shield, permission: null, adminOnly: true },
   { value: 'access-permissions', label: 'Acesso Especial', icon: Unlock, permission: null, adminOnly: true },
+  { value: 'menu', label: 'Menu', icon: Menu, permission: null, adminOnly: true },
   { value: 'departments', label: 'Departamentos', icon: Building2, permission: ['settings', 'departments'] },
   { value: 'stores', label: 'Lojas', icon: Store, permission: ['settings', 'update'] },
   { value: 'channels', label: 'Canais', icon: MessageSquare, permission: ['settings', 'channels'] },
@@ -551,6 +554,13 @@ export default function Settings() {
         {isTabAvailable('access-permissions') && (
           <TabsContent value="access-permissions" className="space-y-6">
             <AccessPermissionsSettings />
+          </TabsContent>
+        )}
+
+        {/* TAB: Menu Configuration */}
+        {isTabAvailable('menu') && (
+          <TabsContent value="menu" className="space-y-6">
+            <MenuConfiguration />
           </TabsContent>
         )}
 
