@@ -229,7 +229,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[95vh]">
+      <DialogContent className="max-w-6xl max-h-[95vh]">
         <DialogHeader>
           <DialogTitle>Novo Pedido</DialogTitle>
         </DialogHeader>
@@ -340,16 +340,16 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                 {items.map((item, index) => (
                   <div key={index} className="p-4 border rounded-lg space-y-3 bg-muted/30">
                     <div className="grid grid-cols-12 gap-2 items-end">
-                      <div className="col-span-5">
+                      <div className="col-span-6">
                         <Label className="text-xs">Produto</Label>
                         <Select
                           value={item.variation_id || item.product_id || ''}
                           onValueChange={(value) => selectProduct(index, value)}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger className="w-full">
                             <SelectValue placeholder="Selecione um produto" />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="max-w-[500px]">
                             <div className="p-2">
                               <Input
                                 placeholder="Buscar produto..."
@@ -366,14 +366,14 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                               products.slice(0, 15).map((p) => (
                                 <SelectItem key={p.id} value={p.id}>
                                   <div className="flex items-center gap-2 w-full">
-                                    <Avatar className="h-6 w-6">
+                                    <Avatar className="h-6 w-6 flex-shrink-0">
                                       <AvatarImage src={p.image_url} />
                                       <AvatarFallback className="text-[10px]">
                                         <Package className="h-3 w-3" />
                                       </AvatarFallback>
                                     </Avatar>
                                     <div className="flex flex-col flex-1 min-w-0">
-                                      <span className="truncate text-sm">{p.display_name}</span>
+                                      <span className="text-sm">{p.display_name}</span>
                                       <span className="text-xs text-muted-foreground">
                                         {p.sku ? `SKU: ${p.sku}` : ''} 
                                         {p.stock_quantity !== undefined && ` • Est: ${p.stock_quantity}`}
@@ -391,14 +391,6 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                             )}
                           </SelectContent>
                         </Select>
-                        {!(item.variation_id || item.product_id) && (
-                          <Input
-                            placeholder="Ou digite o nome manualmente"
-                            value={item.product_name}
-                            onChange={(e) => updateItem(index, 'product_name', e.target.value)}
-                            className="mt-1"
-                          />
-                        )}
                       </div>
                       <div className="col-span-2">
                         <Label className="text-xs">Preço Unit.</Label>
@@ -444,7 +436,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                           </Select>
                         </div>
                       </div>
-                      <div className="col-span-2 flex items-center justify-between">
+                      <div className="col-span-1 flex items-center justify-between gap-1">
                         <span className="text-sm font-medium">
                           {formatCurrency(getItemSubtotal(item))}
                         </span>
