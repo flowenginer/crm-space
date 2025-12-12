@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -16,11 +16,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Trash2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User } from 'lucide-react';
 import { useCreateOrder } from '@/hooks/useOrders';
 import { useContacts } from '@/hooks/useContacts';
 import { useAllVariations } from '@/hooks/useProductVariations';
+import { useActiveStores } from '@/hooks/useStores';
+import { useTeam } from '@/hooks/useTeam';
+import { useAuth } from '@/hooks/useAuth';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 
 interface OrderItem {
   product_name: string;
@@ -29,6 +34,8 @@ interface OrderItem {
   sku?: string;
   unit_price: number;
   quantity: number;
+  discount: number;
+  discount_type: 'fixed' | 'percent';
 }
 
 interface OrderModalProps {
@@ -38,18 +45,68 @@ interface OrderModalProps {
   contactId?: string;
 }
 
+const PAYMENT_METHODS = [
+  { value: 'pix', label: 'PIX' },
+  { value: 'credit_card', label: 'Cartão de Crédito' },
+  { value: 'debit_card', label: 'Cartão de Débito' },
+  { value: 'boleto', label: 'Boleto' },
+  { value: 'cash', label: 'Dinheiro' },
+  { value: 'transfer', label: 'Transferência' },
+];
+
+const SHIPPING_METHODS = [
+  { value: 'sedex', label: 'Sedex' },
+  { value: 'pac', label: 'PAC' },
+  { value: 'motoboy', label: 'Motoboy' },
+  { value: 'pickup', label: 'Retirada' },
+  { value: 'other', label: 'Outro' },
+];
+
 export function OrderModal({ open, onOpenChange, conversationId, contactId: initialContactId }: OrderModalProps) {
+  const { user } = useAuth();
+  
+  // Form state
   const [contactId, setContactId] = useState(initialContactId || '');
-  const [notes, setNotes] = useState('');
+  const [storeId, setStoreId] = useState('');
+  const [sellerId, setSellerId] = useState(user?.id || '');
   const [items, setItems] = useState<OrderItem[]>([
-    { product_name: '', unit_price: 0, quantity: 1 }
+    { product_name: '', unit_price: 0, quantity: 1, discount: 0, discount_type: 'fixed' }
   ]);
+  
+  // Discount
+  const [totalDiscount, setTotalDiscount] = useState(0);
+  const [totalDiscountType, setTotalDiscountType] = useState<'fixed' | 'percent'>('fixed');
+  
+  // Shipping
+  const [shippingMethod, setShippingMethod] = useState('');
+  const [shippingCost, setShippingCost] = useState(0);
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
+  
+  // Payment
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [installments, setInstallments] = useState(1);
+  const [paidAmount, setPaidAmount] = useState(0);
+  
+  // Notes
+  const [customerNotes, setCustomerNotes] = useState('');
+  const [internalNotes, setInternalNotes] = useState('');
+  
+  // Search states
   const [contactSearch, setContactSearch] = useState('');
   const [variationSearch, setVariationSearch] = useState('');
 
+  // Data hooks
   const { data: contacts = [] } = useContacts();
   const { data: variations = [] } = useAllVariations();
+  const { data: stores = [] } = useActiveStores();
+  const { data: teamMembers = [] } = useTeam();
   const createOrder = useCreateOrder();
+
+  useEffect(() => {
+    if (user?.id && !sellerId) {
+      setSellerId(user.id);
+    }
+  }, [user?.id]);
 
   const filteredContacts = contacts.filter(c => 
     c.full_name.toLowerCase().includes(contactSearch.toLowerCase()) ||
@@ -62,7 +119,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   );
 
   const addItem = () => {
-    setItems([...items, { product_name: '', unit_price: 0, quantity: 1 }]);
+    setItems([...items, { product_name: '', unit_price: 0, quantity: 1, discount: 0, discount_type: 'fixed' }]);
   };
 
   const removeItem = (index: number) => {
@@ -93,7 +150,22 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     }
   };
 
-  const total = items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+  // Calculate item subtotal with discount
+  const getItemSubtotal = (item: OrderItem) => {
+    const baseTotal = item.unit_price * item.quantity;
+    if (item.discount_type === 'percent') {
+      return baseTotal * (1 - item.discount / 100);
+    }
+    return baseTotal - item.discount;
+  };
+
+  // Calculate totals
+  const itemsSubtotal = items.reduce((sum, item) => sum + getItemSubtotal(item), 0);
+  const totalDiscountValue = totalDiscountType === 'percent' 
+    ? itemsSubtotal * (totalDiscount / 100)
+    : totalDiscount;
+  const subtotalAfterDiscount = itemsSubtotal - totalDiscountValue;
+  const total = subtotalAfterDiscount + shippingCost;
 
   const handleSubmit = async () => {
     if (items.some(item => !item.product_name || item.unit_price <= 0)) {
@@ -111,7 +183,8 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
         unit_price: item.unit_price,
         quantity: item.quantity,
       })),
-      notes,
+      notes: customerNotes,
+      shipping_method: shippingMethod || undefined,
     });
 
     onOpenChange(false);
@@ -120,8 +193,19 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
 
   const resetForm = () => {
     setContactId(initialContactId || '');
-    setNotes('');
-    setItems([{ product_name: '', unit_price: 0, quantity: 1 }]);
+    setStoreId('');
+    setSellerId(user?.id || '');
+    setItems([{ product_name: '', unit_price: 0, quantity: 1, discount: 0, discount_type: 'fixed' }]);
+    setTotalDiscount(0);
+    setTotalDiscountType('fixed');
+    setShippingMethod('');
+    setShippingCost(0);
+    setExpectedDeliveryDate('');
+    setPaymentMethod('');
+    setInstallments(1);
+    setPaidAmount(0);
+    setCustomerNotes('');
+    setInternalNotes('');
   };
 
   const formatCurrency = (value: number) => {
@@ -133,152 +217,405 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
+      <DialogContent className="max-w-4xl max-h-[95vh]">
         <DialogHeader>
           <DialogTitle>Novo Pedido</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[70vh] pr-4">
-          <div className="space-y-6">
-            {/* Cliente */}
-            <div className="space-y-2">
-              <Label>Cliente</Label>
-              <Select value={contactId} onValueChange={setContactId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  <div className="p-2">
-                    <Input
-                      placeholder="Buscar cliente..."
-                      value={contactSearch}
-                      onChange={(e) => setContactSearch(e.target.value)}
-                      className="mb-2"
-                    />
-                  </div>
-                  {filteredContacts.slice(0, 10).map((contact) => (
-                    <SelectItem key={contact.id} value={contact.id}>
-                      {contact.full_name} - {contact.phone}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        <Tabs defaultValue="items" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="items" className="gap-2">
+              <Package size={16} />
+              Itens
+            </TabsTrigger>
+            <TabsTrigger value="shipping" className="gap-2">
+              <Truck size={16} />
+              Entrega
+            </TabsTrigger>
+            <TabsTrigger value="payment" className="gap-2">
+              <CreditCard size={16} />
+              Pagamento
+            </TabsTrigger>
+            <TabsTrigger value="notes" className="gap-2">
+              <FileText size={16} />
+              Observações
+            </TabsTrigger>
+          </TabsList>
 
-            {/* Itens */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label>Itens do Pedido</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Adicionar Item
-                </Button>
+          <ScrollArea className="h-[55vh] mt-4">
+            {/* ITEMS TAB */}
+            <TabsContent value="items" className="space-y-4 pr-4">
+              {/* Basic Info */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <User size={14} />
+                    Cliente
+                  </Label>
+                  <Select value={contactId} onValueChange={setContactId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um cliente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <div className="p-2">
+                        <Input
+                          placeholder="Buscar cliente..."
+                          value={contactSearch}
+                          onChange={(e) => setContactSearch(e.target.value)}
+                          className="mb-2"
+                        />
+                      </div>
+                      {filteredContacts.slice(0, 10).map((contact) => (
+                        <SelectItem key={contact.id} value={contact.id}>
+                          {contact.full_name} - {contact.phone}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Store size={14} />
+                    Loja
+                  </Label>
+                  <Select value={storeId} onValueChange={setStoreId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a loja" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stores.map((store) => (
+                        <SelectItem key={store.id} value={store.id}>
+                          {store.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <User size={14} />
+                    Vendedor
+                  </Label>
+                  <Select value={sellerId} onValueChange={setSellerId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o vendedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teamMembers.map((member) => (
+                        <SelectItem key={member.id} value={member.id}>
+                          {member.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              {items.map((item, index) => (
-                <div key={index} className="grid grid-cols-12 gap-2 items-end p-3 border rounded-lg">
-                  <div className="col-span-5">
-                    <Label className="text-xs">Produto</Label>
-                    <Select
-                      value={item.variation_id || ''}
-                      onValueChange={(value) => selectVariation(index, value)}
-                    >
+              <Separator />
+
+              {/* Items */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-semibold">Itens do Pedido</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addItem}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Adicionar Item
+                  </Button>
+                </div>
+
+                {items.map((item, index) => (
+                  <div key={index} className="p-4 border rounded-lg space-y-3 bg-muted/30">
+                    <div className="grid grid-cols-12 gap-2 items-end">
+                      <div className="col-span-5">
+                        <Label className="text-xs">Produto</Label>
+                        <Select
+                          value={item.variation_id || ''}
+                          onValueChange={(value) => selectVariation(index, value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione ou digite" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <div className="p-2">
+                              <Input
+                                placeholder="Buscar produto..."
+                                value={variationSearch}
+                                onChange={(e) => setVariationSearch(e.target.value)}
+                                className="mb-2"
+                              />
+                            </div>
+                            {filteredVariations.slice(0, 10).map((v) => (
+                              <SelectItem key={v.id} value={v.id}>
+                                {v.product?.name} {v.variation_name ? `- ${v.variation_name}` : ''} {v.sku ? `(${v.sku})` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {!item.variation_id && (
+                          <Input
+                            placeholder="Ou digite o nome"
+                            value={item.product_name}
+                            onChange={(e) => updateItem(index, 'product_name', e.target.value)}
+                            className="mt-1"
+                          />
+                        )}
+                      </div>
+                      <div className="col-span-2">
+                        <Label className="text-xs">Preço Unit.</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.unit_price}
+                          onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                        />
+                      </div>
+                      <div className="col-span-1">
+                        <Label className="text-xs">Qtd</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Label className="text-xs">Desconto</Label>
+                        <div className="flex gap-1">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.discount}
+                            onChange={(e) => updateItem(index, 'discount', parseFloat(e.target.value) || 0)}
+                            className="flex-1"
+                          />
+                          <Select
+                            value={item.discount_type}
+                            onValueChange={(value: 'fixed' | 'percent') => updateItem(index, 'discount_type', value)}
+                          >
+                            <SelectTrigger className="w-16">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="fixed">R$</SelectItem>
+                              <SelectItem value="percent">%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="col-span-2 flex items-center justify-between">
+                        <span className="text-sm font-medium">
+                          {formatCurrency(getItemSubtotal(item))}
+                        </span>
+                        {items.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeItem(index)}
+                            className="h-8 w-8"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Separator />
+
+              {/* Total Discount */}
+              <div className="flex items-center gap-4">
+                <Label>Desconto Total:</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={totalDiscount}
+                  onChange={(e) => setTotalDiscount(parseFloat(e.target.value) || 0)}
+                  className="w-32"
+                />
+                <Select
+                  value={totalDiscountType}
+                  onValueChange={(value: 'fixed' | 'percent') => setTotalDiscountType(value)}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed">R$</SelectItem>
+                    <SelectItem value="percent">%</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Totals Summary */}
+              <div className="p-4 bg-muted rounded-lg space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Subtotal dos itens:</span>
+                  <span>{formatCurrency(itemsSubtotal)}</span>
+                </div>
+                {totalDiscountValue > 0 && (
+                  <div className="flex justify-between text-sm text-destructive">
+                    <span>Desconto:</span>
+                    <span>-{formatCurrency(totalDiscountValue)}</span>
+                  </div>
+                )}
+                {shippingCost > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span>Frete:</span>
+                    <span>{formatCurrency(shippingCost)}</span>
+                  </div>
+                )}
+                <Separator />
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total:</span>
+                  <span className="text-primary">{formatCurrency(total)}</span>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* SHIPPING TAB */}
+            <TabsContent value="shipping" className="space-y-4 pr-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Método de Entrega</Label>
+                  <Select value={shippingMethod} onValueChange={setShippingMethod}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o método" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SHIPPING_METHODS.map((method) => (
+                        <SelectItem key={method.value} value={method.value}>
+                          {method.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Valor do Frete</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={shippingCost}
+                    onChange={(e) => setShippingCost(parseFloat(e.target.value) || 0)}
+                    placeholder="0,00"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Previsão de Entrega</Label>
+                  <Input
+                    type="date"
+                    value={expectedDeliveryDate}
+                    onChange={(e) => setExpectedDeliveryDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* PAYMENT TAB */}
+            <TabsContent value="payment" className="space-y-4 pr-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Forma de Pagamento</Label>
+                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a forma" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_METHODS.map((method) => (
+                        <SelectItem key={method.value} value={method.value}>
+                          {method.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {paymentMethod === 'credit_card' && (
+                  <div className="space-y-2">
+                    <Label>Número de Parcelas</Label>
+                    <Select value={String(installments)} onValueChange={(v) => setInstallments(parseInt(v))}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione ou digite" />
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <div className="p-2">
-                          <Input
-                            placeholder="Buscar produto..."
-                            value={variationSearch}
-                            onChange={(e) => setVariationSearch(e.target.value)}
-                            className="mb-2"
-                          />
-                        </div>
-                        {filteredVariations.slice(0, 10).map((v) => (
-                          <SelectItem key={v.id} value={v.id}>
-                            {v.product?.name} {v.variation_name ? `- ${v.variation_name}` : ''} {v.sku ? `(${v.sku})` : ''}
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                          <SelectItem key={n} value={String(n)}>
+                            {n}x {n === 1 ? 'à vista' : `de ${formatCurrency(total / n)}`}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {!item.variation_id && (
-                      <Input
-                        placeholder="Ou digite o nome"
-                        value={item.product_name}
-                        onChange={(e) => updateItem(index, 'product_name', e.target.value)}
-                        className="mt-1"
-                      />
-                    )}
                   </div>
-                  <div className="col-span-3">
-                    <Label className="text-xs">Preço Unit.</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={item.unit_price}
-                      onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Label className="text-xs">Qtd</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={item.quantity}
-                      onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
-                    />
-                  </div>
-                  <div className="col-span-2 flex items-center justify-between">
-                    <span className="text-sm font-medium">
-                      {formatCurrency(item.unit_price * item.quantity)}
-                    </span>
-                    {items.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeItem(index)}
-                        className="h-8 w-8"
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                )}
 
-              <div className="flex justify-end p-3 bg-muted rounded-lg">
-                <div className="text-lg font-bold">
-                  Total: {formatCurrency(total)}
+                <div className="space-y-2">
+                  <Label>Valor Pago Inicialmente</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={paidAmount}
+                    onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                    placeholder="0,00"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Restante: {formatCurrency(Math.max(total - paidAmount, 0))}
+                  </p>
                 </div>
               </div>
-            </div>
+            </TabsContent>
 
-            {/* Observações */}
-            <div className="space-y-2">
-              <Label>Observações</Label>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Observações do pedido..."
-                rows={3}
-              />
-            </div>
+            {/* NOTES TAB */}
+            <TabsContent value="notes" className="space-y-4 pr-4">
+              <div className="space-y-2">
+                <Label>Observações para o Cliente</Label>
+                <Textarea
+                  value={customerNotes}
+                  onChange={(e) => setCustomerNotes(e.target.value)}
+                  placeholder="Observações que serão visíveis para o cliente..."
+                  rows={4}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Observações Internas</Label>
+                <Textarea
+                  value={internalNotes}
+                  onChange={(e) => setInternalNotes(e.target.value)}
+                  placeholder="Observações internas (visíveis apenas para a equipe)..."
+                  rows={4}
+                />
+              </div>
+            </TabsContent>
+          </ScrollArea>
+        </Tabs>
+
+        <div className="flex items-center justify-between pt-4 border-t">
+          <div className="text-lg font-bold">
+            Total: <span className="text-primary">{formatCurrency(total)}</span>
           </div>
-        </ScrollArea>
-
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={createOrder.isPending || items.some(i => !i.product_name)}
-          >
-            {createOrder.isPending ? 'Criando...' : 'Criar Pedido'}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSubmit} 
+              disabled={createOrder.isPending || items.some(i => !i.product_name)}
+            >
+              {createOrder.isPending ? 'Criando...' : 'Criar Pedido'}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

@@ -2821,9 +2821,11 @@ export type Database = {
         Row: {
           amount: number
           created_at: string | null
+          due_date: string | null
           gateway: string | null
           gateway_response: Json | null
           id: string
+          installment_number: number | null
           order_id: string
           paid_at: string | null
           payment_method: string
@@ -2836,9 +2838,11 @@ export type Database = {
         Insert: {
           amount: number
           created_at?: string | null
+          due_date?: string | null
           gateway?: string | null
           gateway_response?: Json | null
           id?: string
+          installment_number?: number | null
           order_id: string
           paid_at?: string | null
           payment_method: string
@@ -2851,9 +2855,11 @@ export type Database = {
         Update: {
           amount?: number
           created_at?: string | null
+          due_date?: string | null
           gateway?: string | null
           gateway_response?: Json | null
           id?: string
+          installment_number?: number | null
           order_id?: string
           paid_at?: string | null
           payment_method?: string
@@ -2944,12 +2950,17 @@ export type Database = {
           contact_id: string | null
           conversation_id: string | null
           created_at: string | null
+          customer_notes: string | null
           delivered_at: string | null
           discount_amount: number | null
           discount_percent: number | null
+          discount_type: string | null
+          expected_delivery_date: string | null
           fulfillment_status: string | null
           id: string
+          installments: number | null
           internal_notes: string | null
+          item_discount: number | null
           notes: string | null
           order_number: string
           order_type: string | null
@@ -2957,15 +2968,18 @@ export type Database = {
           paid_at: string | null
           payment_method: string | null
           payment_status: string | null
+          seller_id: string | null
           shipped_at: string | null
           shipping_address: Json | null
           shipping_cost: number | null
           shipping_method: string | null
           status: string
+          store_id: string | null
           subtotal: number | null
           tax_amount: number | null
           tenant_id: string | null
           total: number | null
+          total_discount: number | null
           tracking_code: string | null
           updated_at: string | null
         }
@@ -2977,12 +2991,17 @@ export type Database = {
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
+          customer_notes?: string | null
           delivered_at?: string | null
           discount_amount?: number | null
           discount_percent?: number | null
+          discount_type?: string | null
+          expected_delivery_date?: string | null
           fulfillment_status?: string | null
           id?: string
+          installments?: number | null
           internal_notes?: string | null
+          item_discount?: number | null
           notes?: string | null
           order_number: string
           order_type?: string | null
@@ -2990,15 +3009,18 @@ export type Database = {
           paid_at?: string | null
           payment_method?: string | null
           payment_status?: string | null
+          seller_id?: string | null
           shipped_at?: string | null
           shipping_address?: Json | null
           shipping_cost?: number | null
           shipping_method?: string | null
           status?: string
+          store_id?: string | null
           subtotal?: number | null
           tax_amount?: number | null
           tenant_id?: string | null
           total?: number | null
+          total_discount?: number | null
           tracking_code?: string | null
           updated_at?: string | null
         }
@@ -3010,12 +3032,17 @@ export type Database = {
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
+          customer_notes?: string | null
           delivered_at?: string | null
           discount_amount?: number | null
           discount_percent?: number | null
+          discount_type?: string | null
+          expected_delivery_date?: string | null
           fulfillment_status?: string | null
           id?: string
+          installments?: number | null
           internal_notes?: string | null
+          item_discount?: number | null
           notes?: string | null
           order_number?: string
           order_type?: string | null
@@ -3023,15 +3050,18 @@ export type Database = {
           paid_at?: string | null
           payment_method?: string | null
           payment_status?: string | null
+          seller_id?: string | null
           shipped_at?: string | null
           shipping_address?: Json | null
           shipping_cost?: number | null
           shipping_method?: string | null
           status?: string
+          store_id?: string | null
           subtotal?: number | null
           tax_amount?: number | null
           tenant_id?: string | null
           total?: number | null
+          total_discount?: number | null
           tracking_code?: string | null
           updated_at?: string | null
         }
@@ -3062,6 +3092,20 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
             referencedColumns: ["id"]
           },
           {
@@ -3627,8 +3671,12 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          bonus_target_1: number | null
+          bonus_target_2: number | null
+          bonus_target_3: number | null
           can_transfer_freely: boolean | null
           can_view_all_conversations: boolean | null
+          commission_percent: number | null
           created_at: string
           current_conversations: number | null
           department_id: string | null
@@ -3646,6 +3694,9 @@ export type Database = {
           permissions: Json | null
           phone: string | null
           role: string | null
+          sales_target_1: number | null
+          sales_target_2: number | null
+          sales_target_3: number | null
           signature_enabled: boolean | null
           signature_name: string | null
           tenant_id: string | null
@@ -3655,8 +3706,12 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          bonus_target_1?: number | null
+          bonus_target_2?: number | null
+          bonus_target_3?: number | null
           can_transfer_freely?: boolean | null
           can_view_all_conversations?: boolean | null
+          commission_percent?: number | null
           created_at?: string
           current_conversations?: number | null
           department_id?: string | null
@@ -3674,6 +3729,9 @@ export type Database = {
           permissions?: Json | null
           phone?: string | null
           role?: string | null
+          sales_target_1?: number | null
+          sales_target_2?: number | null
+          sales_target_3?: number | null
           signature_enabled?: boolean | null
           signature_name?: string | null
           tenant_id?: string | null
@@ -3683,8 +3741,12 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          bonus_target_1?: number | null
+          bonus_target_2?: number | null
+          bonus_target_3?: number | null
           can_transfer_freely?: boolean | null
           can_view_all_conversations?: boolean | null
+          commission_percent?: number | null
           created_at?: string
           current_conversations?: number | null
           department_id?: string | null
@@ -3702,6 +3764,9 @@ export type Database = {
           permissions?: Json | null
           phone?: string | null
           role?: string | null
+          sales_target_1?: number | null
+          sales_target_2?: number | null
+          sales_target_3?: number | null
           signature_enabled?: boolean | null
           signature_name?: string | null
           tenant_id?: string | null
@@ -4036,6 +4101,47 @@ export type Database = {
           session_id?: string
         }
         Relationships: []
+      }
+      stores: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stores_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tags: {
         Row: {
