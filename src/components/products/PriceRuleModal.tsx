@@ -173,10 +173,11 @@ export function PriceRuleModal({ open, onOpenChange, editingRule }: PriceRuleMod
   // Preview calculation
   const previewPrice = 89.90;
   const calculatedPrice = useMemo(() => {
+    const numericValue = Number(adjustmentValue) || 0;
     if (adjustmentType === 'fixed') {
-      return previewPrice + (adjustmentValue || 0);
+      return previewPrice + numericValue;
     }
-    return previewPrice * (1 + (adjustmentValue || 0) / 100);
+    return previewPrice * (1 + numericValue / 100);
   }, [adjustmentType, adjustmentValue]);
 
   return (
