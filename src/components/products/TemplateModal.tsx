@@ -164,7 +164,7 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="info">Informações</TabsTrigger>
             <TabsTrigger value="variations" disabled={!isEditing}>
@@ -172,10 +172,10 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
             </TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="flex-1 mt-4">
-            <TabsContent value="info" className="m-0 space-y-4">
+          <ScrollArea className="flex-1 h-[calc(90vh-220px)] mt-4">
+            <TabsContent value="info" className="m-0 space-y-4 pr-4">
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <div className="space-y-4">
                   <FormField
                     control={form.control}
                     name="name"
@@ -310,20 +310,11 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
                       />
                     </div>
                   </div>
-
-                  <div className="flex justify-end gap-2 pt-4">
-                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                      Cancelar
-                    </Button>
-                    <Button type="submit" disabled={isPending}>
-                      {isPending ? 'Salvando...' : isEditing ? 'Salvar' : 'Criar Template'}
-                    </Button>
-                  </div>
-                </form>
+                </div>
               </Form>
             </TabsContent>
 
-            <TabsContent value="variations" className="m-0">
+            <TabsContent value="variations" className="m-0 pr-4">
               {effectiveTemplateId && attributeTypes && priceRules !== undefined && (
                 <TemplateVariationsBulkGenerator
                   templateId={effectiveTemplateId}
@@ -336,6 +327,16 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
             </TabsContent>
           </ScrollArea>
         </Tabs>
+
+        {/* Footer fixo sempre visível */}
+        <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={form.handleSubmit(onSubmit)} disabled={isPending}>
+            {isPending ? 'Salvando...' : isEditing ? 'Salvar' : 'Criar Template'}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
