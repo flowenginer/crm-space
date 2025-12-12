@@ -67,8 +67,18 @@ export interface CreateOrderData {
   channel_id?: string;
   order_type?: string;
   notes?: string;
+  internal_notes?: string;
   shipping_address?: Record<string, unknown>;
   shipping_method?: string;
+  shipping_cost?: number;
+  expected_delivery_date?: string;
+  payment_method?: string;
+  installments?: number;
+  paid_amount?: number;
+  store_id?: string;
+  seller_id?: string;
+  discount_amount?: number;
+  discount_percent?: number;
   items: {
     product_id?: string;
     variation_id?: string;
@@ -78,6 +88,8 @@ export interface CreateOrderData {
     unit_price: number;
     quantity: number;
     unit_cost?: number;
+    discount_amount?: number;
+    discount_percent?: number;
   }[];
 }
 
@@ -292,7 +304,31 @@ export function useCreateOrder() {
 
       if (numError) throw numError;
 
-      // Criar pedido (tenant_id é gerenciado pelo RLS)
+      // Calcular subtotal e total
+      const itemsSubtotal = data.items.reduce((sum, item) => {
+        const itemTotal = item.unit_price * item.quantity;
+        const itemDiscount = item.discount_percent 
+          ? itemTotal * (item.discount_percent / 100)
+          : (item.discount_amount || 0);
+        return sum + (itemTotal - itemDiscount);
+      }, 0);
+
+      const totalDiscount = data.discount_percent 
+        ? itemsSubtotal * (data.discount_percent / 100)
+        : (data.discount_amount || 0);
+
+      const total = itemsSubtotal - totalDiscount + (data.shipping_cost || 0);
+
+      // Determinar status de pagamento
+      const paidAmount = data.paid_amount || 0;
+      let paymentStatus = 'pending';
+      if (paidAmount >= total) {
+        paymentStatus = 'paid';
+      } else if (paidAmount > 0) {
+        paymentStatus = 'partial';
+      }
+
+      // Criar pedido
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -302,9 +338,23 @@ export function useCreateOrder() {
           channel_id: data.channel_id,
           order_type: data.order_type || 'sale',
           notes: data.notes,
+          internal_notes: data.internal_notes,
           shipping_address: data.shipping_address,
           shipping_method: data.shipping_method,
-          status: 'draft',
+          shipping_cost: data.shipping_cost || 0,
+          expected_delivery_date: data.expected_delivery_date || null,
+          payment_method: data.payment_method,
+          installments: data.installments || 1,
+          paid_amount: paidAmount,
+          paid_at: paidAmount > 0 ? new Date().toISOString() : null,
+          payment_status: paymentStatus,
+          store_id: data.store_id || null,
+          seller_id: data.seller_id || null,
+          discount_amount: data.discount_amount || 0,
+          discount_percent: data.discount_percent || 0,
+          subtotal: itemsSubtotal,
+          total: total,
+          status: 'pending',
         } as any)
         .select()
         .single();
@@ -323,6 +373,9 @@ export function useCreateOrder() {
           unit_price: item.unit_price,
           quantity: item.quantity,
           unit_cost: item.unit_cost || 0,
+          discount_amount: item.discount_amount || 0,
+          discount_percent: item.discount_percent || 0,
+          subtotal: item.unit_price * item.quantity - (item.discount_amount || 0),
         }));
 
         const { error: itemsError } = await supabase
@@ -332,10 +385,61 @@ export function useCreateOrder() {
         if (itemsError) throw itemsError;
       }
 
+      // Criar parcelas de pagamento se usar cartão de crédito com parcelas
+      const installments = data.installments || 1;
+      if (installments > 1 && data.payment_method === 'credit_card') {
+        const installmentValue = total / installments;
+        const payments = [];
+        const today = new Date();
+
+        for (let i = 0; i < installments; i++) {
+          const dueDate = new Date(today);
+          dueDate.setMonth(dueDate.getMonth() + i);
+
+          payments.push({
+            order_id: order.id,
+            amount: installmentValue,
+            payment_method: data.payment_method,
+            installment_number: i + 1,
+            due_date: dueDate.toISOString().split('T')[0],
+            status: i === 0 && paidAmount >= installmentValue ? 'paid' : 'pending',
+            paid_at: i === 0 && paidAmount >= installmentValue ? new Date().toISOString() : null,
+          });
+        }
+
+        const { error: paymentsError } = await supabase
+          .from('order_payments')
+          .insert(payments as any);
+
+        if (paymentsError) console.error('Error creating payments:', paymentsError);
+      }
+
+      // Criar transação financeira (contas a receber)
+      if (total > 0) {
+        const { error: transactionError } = await supabase
+          .from('financial_transactions')
+          .insert({
+            tenant_id: tenantId,
+            type: 'income',
+            description: `Pedido #${orderNumber}`,
+            amount: total,
+            due_date: new Date().toISOString().split('T')[0],
+            status: paymentStatus === 'paid' ? 'paid' : 'pending',
+            paid_amount: paidAmount,
+            paid_at: paymentStatus === 'paid' ? new Date().toISOString() : null,
+            contact_id: data.contact_id || null,
+            order_id: order.id,
+            total_installments: installments,
+          } as any);
+
+        if (transactionError) console.error('Error creating financial transaction:', transactionError);
+      }
+
       return order;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-transactions'] });
       toast.success('Pedido criado com sucesso');
     },
     onError: (error) => {

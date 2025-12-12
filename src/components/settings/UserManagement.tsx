@@ -44,6 +44,9 @@ import {
   Users,
   Star,
   PenLine,
+  Target,
+  DollarSign,
+  Trophy,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -1068,6 +1071,17 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
   const [selectedDepartments, setSelectedDepartments] = useState<{ id: string; name: string; color: string; isPrimary: boolean }[]>([]);
   const [signatureName, setSignatureName] = useState('');
   const [signatureEnabled, setSignatureEnabled] = useState(true);
+  
+  // Commission and targets state
+  const [commissionPercent, setCommissionPercent] = useState(0);
+  const [salesTarget1, setSalesTarget1] = useState(0);
+  const [salesTarget2, setSalesTarget2] = useState(0);
+  const [salesTarget3, setSalesTarget3] = useState(0);
+  const [bonusTarget1, setBonusTarget1] = useState(0);
+  const [bonusTarget2, setBonusTarget2] = useState(0);
+  const [bonusTarget3, setBonusTarget3] = useState(0);
+  const [showCommissionSection, setShowCommissionSection] = useState(false);
+  
   const queryClient = useQueryClient();
   
   const addUserToDept = useAddUserToDepartment();
@@ -1119,6 +1133,16 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
       setSignatureName(user.signature_name || '');
       setSignatureEnabled(user.signature_enabled !== false);
       fetchUserEmail(user.id);
+
+      // Load commission and targets
+      setCommissionPercent(user.commission_percent || 0);
+      setSalesTarget1(user.sales_target_1 || 0);
+      setSalesTarget2(user.sales_target_2 || 0);
+      setSalesTarget3(user.sales_target_3 || 0);
+      setBonusTarget1(user.bonus_target_1 || 0);
+      setBonusTarget2(user.bonus_target_2 || 0);
+      setBonusTarget3(user.bonus_target_3 || 0);
+      setShowCommissionSection(false);
 
       // Load user's departments
       const userDepts = user.user_departments || [];
@@ -1202,6 +1226,13 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
           is_active: isActive,
           signature_name: signatureName || null,
           signature_enabled: signatureEnabled,
+          commission_percent: commissionPercent || 0,
+          sales_target_1: salesTarget1 || 0,
+          sales_target_2: salesTarget2 || 0,
+          sales_target_3: salesTarget3 || 0,
+          bonus_target_1: bonusTarget1 || 0,
+          bonus_target_2: bonusTarget2 || 0,
+          bonus_target_3: bonusTarget3 || 0,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
@@ -1561,7 +1592,131 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
             </div>
           </div>
 
-          {/* Active Status */}
+          {/* Commission and Targets Section */}
+          <div className="border border-border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowCommissionSection(!showCommissionSection)}
+              className="w-full flex items-center justify-between p-4 bg-muted hover:bg-muted/80 transition-colors"
+            >
+              <span className="font-medium text-foreground flex items-center gap-2">
+                <Target size={16} />
+                Comissão e Metas
+              </span>
+              {showCommissionSection ? (
+                <ChevronUp size={18} className="text-muted-foreground" />
+              ) : (
+                <ChevronDown size={18} className="text-muted-foreground" />
+              )}
+            </button>
+            
+            {showCommissionSection && (
+              <div className="p-4 space-y-4 bg-card">
+                {/* Commission Percent */}
+                <div>
+                  <Label className="text-sm mb-2 flex items-center gap-2">
+                    <DollarSign size={14} />
+                    Percentual de Comissão
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                      value={commissionPercent}
+                      onChange={(e) => setCommissionPercent(parseFloat(e.target.value) || 0)}
+                      className="w-24"
+                    />
+                    <span className="text-muted-foreground">%</span>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                    <Trophy size={14} className="text-warning" />
+                    Metas de Vendas
+                  </h4>
+
+                  {/* Target 1 */}
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Meta 1 (R$)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="100"
+                        value={salesTarget1}
+                        onChange={(e) => setSalesTarget1(parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Bonificação (R$)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="10"
+                        value={bonusTarget1}
+                        onChange={(e) => setBonusTarget1(parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Target 2 */}
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Meta 2 (R$)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="100"
+                        value={salesTarget2}
+                        onChange={(e) => setSalesTarget2(parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Bonificação (R$)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="10"
+                        value={bonusTarget2}
+                        onChange={(e) => setBonusTarget2(parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Target 3 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Meta 3 (R$)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="100"
+                        value={salesTarget3}
+                        onChange={(e) => setSalesTarget3(parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Bonificação (R$)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="10"
+                        value={bonusTarget3}
+                        onChange={(e) => setBonusTarget3(parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground mt-2">
+                  Ao bater cada meta, o vendedor recebe a bonificação correspondente além da comissão.
+                </p>
+              </div>
+            )}
+          </div>
           <div className="flex items-center justify-between p-4 bg-muted rounded-xl">
             <div>
               <div className="font-medium text-foreground">
