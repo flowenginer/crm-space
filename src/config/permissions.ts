@@ -37,6 +37,8 @@ import {
   Tags,
   Shield,
   LucideIcon,
+  ShoppingCart,
+  Wallet,
 } from 'lucide-react';
 
 export interface PermissionDefinition {
@@ -147,10 +149,35 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     ],
   },
   {
+    key: 'orders',
+    label: 'Pedidos',
+    icon: ShoppingCart,
+    order: 8,
+    permissions: [
+      { key: 'orders.view', name: 'Ver Pedidos', description: 'Visualizar pedidos' },
+      { key: 'orders.create', name: 'Criar Pedido', description: 'Adicionar novos pedidos' },
+      { key: 'orders.update', name: 'Editar Pedido', description: 'Modificar pedidos existentes' },
+      { key: 'orders.delete', name: 'Cancelar Pedido', description: 'Cancelar pedidos' },
+    ],
+  },
+  {
+    key: 'financial',
+    label: 'Financeiro',
+    icon: Wallet,
+    order: 9,
+    permissions: [
+      { key: 'financial.view', name: 'Ver Financeiro', description: 'Acessar módulo financeiro' },
+      { key: 'financial.create', name: 'Criar Transação', description: 'Adicionar receitas e despesas' },
+      { key: 'financial.update', name: 'Editar Transação', description: 'Modificar transações' },
+      { key: 'financial.delete', name: 'Excluir Transação', description: 'Remover transações' },
+      { key: 'financial.manage_accounts', name: 'Gerenciar Contas', description: 'Criar e editar contas bancárias' },
+    ],
+  },
+  {
     key: 'channels',
     label: 'Canais WhatsApp',
     icon: Smartphone,
-    order: 8,
+    order: 10,
     permissions: [
       { key: 'channels.view', name: 'Ver Canais', description: 'Visualizar canais WhatsApp conectados' },
       { key: 'channels.create', name: 'Criar Canal', description: 'Adicionar novos canais' },
@@ -163,7 +190,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     key: 'contacts',
     label: 'Contatos',
     icon: Users,
-    order: 9,
+    order: 11,
     permissions: [
       { key: 'contacts.view', name: 'Ver Contatos', description: 'Visualizar lista de contatos' },
       { key: 'contacts.create', name: 'Criar Contato', description: 'Adicionar novos contatos' },
@@ -177,7 +204,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     key: 'marketing',
     label: 'Marketing',
     icon: Megaphone,
-    order: 10,
+    order: 12,
     permissions: [
       { key: 'marketing.view', name: 'Ver Meta Ads', description: 'Acessar gerenciador de anúncios' },
       { key: 'marketing.view_campaigns', name: 'Ver Campanhas', description: 'Visualizar relatórios de campanhas' },
@@ -188,7 +215,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     key: 'reports',
     label: 'Relatórios',
     icon: BarChart3,
-    order: 11,
+    order: 13,
     permissions: [
       { key: 'reports.view', name: 'Ver Relatórios', description: 'Acessar módulo de relatórios' },
       { key: 'reports.view_all', name: 'Ver Relatórios Globais', description: 'Ver relatórios de toda a equipe' },
@@ -206,7 +233,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     key: 'tags',
     label: 'Tags e Etiquetas',
     icon: Tags,
-    order: 12,
+    order: 14,
     permissions: [
       { key: 'tags.view', name: 'Ver Tags', description: 'Visualizar tags do sistema' },
       { key: 'tags.create', name: 'Criar Tag', description: 'Adicionar novas tags' },
@@ -218,7 +245,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     key: 'webhooks',
     label: 'Webhooks e Integrações',
     icon: Link2,
-    order: 13,
+    order: 15,
     permissions: [
       { key: 'webhooks.view', name: 'Ver Webhooks', description: 'Visualizar webhooks configurados' },
       { key: 'webhooks.create', name: 'Criar Webhook', description: 'Adicionar novos webhooks' },
@@ -230,7 +257,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     key: 'settings',
     label: 'Configurações',
     icon: Settings,
-    order: 14,
+    order: 16,
     permissions: [
       { key: 'settings.view', name: 'Ver Configurações', description: 'Acessar configurações do sistema' },
       { key: 'settings.update', name: 'Editar Configurações Gerais', description: 'Modificar configurações gerais da empresa' },
@@ -247,7 +274,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     key: 'users',
     label: 'Gestão de Usuários',
     icon: Shield,
-    order: 15,
+    order: 17,
     permissions: [
       { key: 'users.view', name: 'Ver Usuários', description: 'Visualizar lista de usuários' },
       { key: 'users.create', name: 'Criar Usuário', description: 'Convidar novos usuários' },
@@ -260,7 +287,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     key: 'queues',
     label: 'Filas de Atendimento',
     icon: Users,
-    order: 16,
+    order: 18,
     permissions: [
       { key: 'queues.view', name: 'Ver Filas', description: 'Visualizar filas de atendimento' },
       { key: 'queues.manage', name: 'Gerenciar Filas', description: 'Criar e configurar filas' },

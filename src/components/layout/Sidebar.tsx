@@ -32,6 +32,8 @@ import {
   Tags,
   Settings2,
   DollarSign,
+  ShoppingCart,
+  Wallet,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -76,6 +78,8 @@ const navItems: NavItem[] = [
   { title: 'Agendamentos', href: '/agendamentos', icon: CalendarClock, permission: 'schedules.view' },
   { title: 'Automações', href: '/automations', icon: Workflow, permission: 'automations.view' },
   { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.view' },
+  { title: 'Pedidos', href: '/orders', icon: ShoppingCart, permission: 'orders.view' },
+  { title: 'Financeiro', href: '/financial', icon: Wallet, permission: 'financial.view' },
   { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.view' },
   { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.view' },
   // Marketing
