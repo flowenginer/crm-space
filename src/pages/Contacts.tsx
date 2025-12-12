@@ -205,6 +205,7 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
     birth_date: '',
     cpf_cnpj: '',
     person_type: 'individual',
+    contact_type: 'customer' as 'customer' | 'supplier' | 'both',
     street: '',
     number: '',
     complement: '',
@@ -257,6 +258,7 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
       birth_date: '',
       cpf_cnpj: '',
       person_type: 'individual',
+      contact_type: 'customer',
       street: '',
       number: '',
       complement: '',
@@ -284,6 +286,7 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
       birth_date: contact.birth_date || '',
       cpf_cnpj: contact.cpf_cnpj || '',
       person_type: contact.person_type || 'individual',
+      contact_type: ((contact as any).contact_type || 'customer') as 'customer' | 'supplier' | 'both',
       street: contact.street || '',
       number: contact.number || '',
       complement: contact.complement || '',
@@ -316,7 +319,8 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
           birth_date: formData.birth_date || null,
           assigned_to: formData.assigned_to || null,
           department_id: formData.department_id || null,
-        });
+          contact_type: formData.contact_type,
+        } as any);
         toast.success('Contato atualizado com sucesso!');
       } else {
         await createContact.mutateAsync({
@@ -325,7 +329,8 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
           birth_date: formData.birth_date || null,
           assigned_to: formData.assigned_to || null,
           department_id: formData.department_id || null,
-        });
+          contact_type: formData.contact_type,
+        } as any);
         toast.success('Contato criado com sucesso!');
       }
       setShowContactModal(false);
@@ -1170,7 +1175,7 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
                     />
                   </div>
 
-                  <div className="col-span-2">
+                  <div>
                     <label className="block text-sm font-medium text-foreground mb-2">Tipo de pessoa</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2">
@@ -1192,6 +1197,42 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
                           onChange={(e) => setFormData({ ...formData, person_type: e.target.value })}
                         />
                         <span className="text-sm text-foreground">Pessoa jurídica</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">Tipo de contato</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="contactType"
+                          value="customer"
+                          checked={formData.contact_type === 'customer'}
+                          onChange={(e) => setFormData({ ...formData, contact_type: e.target.value as 'customer' | 'supplier' | 'both' })}
+                        />
+                        <span className="text-sm text-foreground">Cliente</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="contactType"
+                          value="supplier"
+                          checked={formData.contact_type === 'supplier'}
+                          onChange={(e) => setFormData({ ...formData, contact_type: e.target.value as 'customer' | 'supplier' | 'both' })}
+                        />
+                        <span className="text-sm text-foreground">Fornecedor</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="contactType"
+                          value="both"
+                          checked={formData.contact_type === 'both'}
+                          onChange={(e) => setFormData({ ...formData, contact_type: e.target.value as 'customer' | 'supplier' | 'both' })}
+                        />
+                        <span className="text-sm text-foreground">Ambos</span>
                       </label>
                     </div>
                   </div>

@@ -33,10 +33,19 @@ export function TransactionModal({ open, onOpenChange, type }: TransactionModalP
   const [contactId, setContactId] = useState('');
   const [notes, setNotes] = useState('');
   const [installments, setInstallments] = useState('1');
+  const [contactType, setContactType] = useState<'customer' | 'supplier'>(
+    type === 'income' ? 'customer' : 'supplier'
+  );
 
   const { data: categories = [] } = useFinancialCategories(type);
   const { data: contacts = [] } = useContacts();
   const createTransaction = useCreateTransaction();
+
+  // Filtrar contatos por tipo
+  const filteredContacts = contacts.filter((contact) => {
+    const ct = (contact as any).contact_type || 'customer';
+    return ct === contactType || ct === 'both';
+  });
 
   const handleSubmit = async () => {
     if (!description || !amount || !dueDate) return;
@@ -124,17 +133,46 @@ export function TransactionModal({ open, onOpenChange, type }: TransactionModalP
           </div>
 
           <div className="space-y-2">
-            <Label>Cliente/Fornecedor</Label>
+            <Label>{type === 'income' ? 'Cliente' : 'Fornecedor'}</Label>
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => { setContactType('customer'); setContactId(''); }}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                  contactType === 'customer'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background text-foreground border-border hover:bg-muted'
+                }`}
+              >
+                Cliente
+              </button>
+              <button
+                type="button"
+                onClick={() => { setContactType('supplier'); setContactId(''); }}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                  contactType === 'supplier'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background text-foreground border-border hover:bg-muted'
+                }`}
+              >
+                Fornecedor
+              </button>
+            </div>
             <Select value={contactId} onValueChange={setContactId}>
               <SelectTrigger>
-                <SelectValue placeholder="Selecione um contato" />
+                <SelectValue placeholder={`Selecione um ${contactType === 'customer' ? 'cliente' : 'fornecedor'}`} />
               </SelectTrigger>
               <SelectContent>
-                {contacts.slice(0, 20).map((contact) => (
+                {filteredContacts.slice(0, 50).map((contact) => (
                   <SelectItem key={contact.id} value={contact.id}>
                     {contact.full_name}
                   </SelectItem>
                 ))}
+                {filteredContacts.length === 0 && (
+                  <div className="px-2 py-4 text-sm text-muted-foreground text-center">
+                    Nenhum {contactType === 'customer' ? 'cliente' : 'fornecedor'} cadastrado
+                  </div>
+                )}
               </SelectContent>
             </Select>
           </div>
