@@ -434,10 +434,7 @@ export function useApplyTemplateToProduct() {
         .from('products')
         .update({
           template_id: templateId,
-          weight_kg: template.default_weight_kg,
-          height_cm: template.default_height_cm,
-          width_cm: template.default_width_cm,
-          length_cm: template.default_length_cm,
+          has_variations: true,
         })
         .eq('id', productId);
 
