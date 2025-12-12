@@ -3563,6 +3563,7 @@ export type Database = {
           slug: string
           tenant_id: string | null
           updated_at: string | null
+          use_global_price_rules: boolean | null
         }
         Insert: {
           created_at?: string | null
@@ -3578,6 +3579,7 @@ export type Database = {
           slug: string
           tenant_id?: string | null
           updated_at?: string | null
+          use_global_price_rules?: boolean | null
         }
         Update: {
           created_at?: string | null
@@ -3593,6 +3595,7 @@ export type Database = {
           slug?: string
           tenant_id?: string | null
           updated_at?: string | null
+          use_global_price_rules?: boolean | null
         }
         Relationships: [
           {

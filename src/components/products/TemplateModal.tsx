@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Plus, Trash2, Package, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Package, GripVertical, Info } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Switch } from '@/components/ui/switch';
 import {
   Form,
   FormControl,
@@ -34,6 +35,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   useProductTemplate,
   useCreateProductTemplate,
   useUpdateProductTemplate,
@@ -51,6 +58,7 @@ const templateSchema = z.object({
   default_height_cm: z.coerce.number().min(0).default(0),
   default_width_cm: z.coerce.number().min(0).default(0),
   default_length_cm: z.coerce.number().min(0).default(0),
+  use_global_price_rules: z.boolean().default(false),
 });
 
 type TemplateFormData = z.infer<typeof templateSchema>;
@@ -97,6 +105,7 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
       default_height_cm: 0,
       default_width_cm: 0,
       default_length_cm: 0,
+      use_global_price_rules: false,
     },
   });
 
@@ -109,6 +118,7 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
         default_height_cm: template.default_height_cm,
         default_width_cm: template.default_width_cm,
         default_length_cm: template.default_length_cm,
+        use_global_price_rules: template.use_global_price_rules ?? false,
       });
     } else if (!isEditing) {
       form.reset({
@@ -118,10 +128,13 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
         default_height_cm: 0,
         default_width_cm: 0,
         default_length_cm: 0,
+        use_global_price_rules: false,
       });
       setActiveTab('info');
     }
   }, [template, isEditing, form]);
+
+  const useGlobalRules = form.watch('use_global_price_rules');
 
   const onSubmit = async (data: TemplateFormData) => {
     if (isEditing && templateId) {
@@ -245,6 +258,46 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
 
                   <Separator />
 
+                  {/* Hybrid approach toggle */}
+                  <FormField
+                    control={form.control}
+                    name="use_global_price_rules"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 bg-muted/50">
+                        <div className="space-y-0.5 flex-1">
+                          <div className="flex items-center gap-2">
+                            <FormLabel className="text-base">Usar Regras de Preço Globais</FormLabel>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <p><strong>Ativado:</strong> Ajustes de preço das variações vêm das Regras de Preço globais (menu Regras de Preço)</p>
+                                  <p className="mt-1"><strong>Desativado:</strong> Cada variação tem seu próprio ajuste de preço definido aqui no template</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                          <FormDescription>
+                            {field.value 
+                              ? 'Os preços serão calculados automaticamente com base nas regras globais cadastradas'
+                              : 'Você define o ajuste de preço para cada variação individualmente'
+                            }
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  <Separator />
+
                   <div className="grid gap-4 md:grid-cols-2">
                     <FormField
                       control={form.control}
@@ -354,8 +407,8 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
                     ))}
                   </div>
 
-                  {/* Price adjustment */}
-                  <div className="grid gap-3 md:grid-cols-3">
+                  {/* Price adjustment - only show if not using global rules */}
+                  <div className={`grid gap-3 ${useGlobalRules ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
                     <div>
                       <label className="text-sm font-medium">Nome (opcional)</label>
                       <Input
@@ -369,39 +422,41 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
                         }
                       />
                     </div>
-                    <div>
-                      <label className="text-sm font-medium">Ajuste de Preço</label>
-                      <div className="flex gap-2">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={newVariation.price_adjustment}
-                          onChange={(e) =>
-                            setNewVariation((prev) => ({
-                              ...prev,
-                              price_adjustment: parseFloat(e.target.value) || 0,
-                            }))
-                          }
-                        />
-                        <Select
-                          value={newVariation.adjustment_type}
-                          onValueChange={(value: 'fixed' | 'percentage') =>
-                            setNewVariation((prev) => ({
-                              ...prev,
-                              adjustment_type: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger className="w-24">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="fixed">R$</SelectItem>
-                            <SelectItem value="percentage">%</SelectItem>
-                          </SelectContent>
-                        </Select>
+                    {!useGlobalRules && (
+                      <div>
+                        <label className="text-sm font-medium">Ajuste de Preço</label>
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={newVariation.price_adjustment}
+                            onChange={(e) =>
+                              setNewVariation((prev) => ({
+                                ...prev,
+                                price_adjustment: parseFloat(e.target.value) || 0,
+                              }))
+                            }
+                          />
+                          <Select
+                            value={newVariation.adjustment_type}
+                            onValueChange={(value: 'fixed' | 'percentage') =>
+                              setNewVariation((prev) => ({
+                                ...prev,
+                                adjustment_type: value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="w-24">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="fixed">R$</SelectItem>
+                              <SelectItem value="percentage">%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <div>
                       <label className="text-sm font-medium">Peso Override (kg)</label>
                       <Input
@@ -418,6 +473,13 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
                       />
                     </div>
                   </div>
+
+                  {useGlobalRules && (
+                    <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
+                      <Info className="h-4 w-4 inline mr-2" />
+                      Ajustes de preço serão aplicados automaticamente das Regras de Preço globais ao aplicar este template.
+                    </div>
+                  )}
 
                   <Button
                     onClick={handleAddVariation}
@@ -463,7 +525,13 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
                               </span>
                             )}
                           </div>
-                          <Badge variant="outline">{formatPriceAdjustment(variation)}</Badge>
+                          {useGlobalRules ? (
+                            <Badge variant="outline" className="text-muted-foreground">
+                              Regras Globais
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">{formatPriceAdjustment(variation)}</Badge>
+                          )}
                           {variation.weight_override && (
                             <Badge variant="outline">{variation.weight_override}kg</Badge>
                           )}

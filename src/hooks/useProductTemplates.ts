@@ -15,6 +15,7 @@ export interface ProductTemplate {
   default_length_cm: number;
   is_active: boolean;
   display_order: number;
+  use_global_price_rules: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -141,6 +142,7 @@ export function useCreateProductTemplate() {
       default_height_cm?: number;
       default_width_cm?: number;
       default_length_cm?: number;
+      use_global_price_rules?: boolean;
     }) => {
       // Get max display_order
       const { data: maxOrder } = await supabase
@@ -409,6 +411,24 @@ export function useApplyTemplateToProduct() {
 
       if (variationsError) throw variationsError;
 
+      // Fetch global price rules if template uses them
+      let globalPriceRules: Array<{
+        attribute_value_id: string;
+        adjustment_type: string;
+        adjustment_value: number;
+      }> = [];
+      
+      if (template.use_global_price_rules) {
+        const { data: rules, error: rulesError } = await supabase
+          .from('product_attribute_price_rules')
+          .select('attribute_value_id, adjustment_type, adjustment_value')
+          .eq('is_active', true)
+          .order('priority', { ascending: false });
+        
+        if (rulesError) throw rulesError;
+        globalPriceRules = rules || [];
+      }
+
       // Update product with template info
       const { error: updateError } = await supabase
         .from('products')
@@ -427,10 +447,26 @@ export function useApplyTemplateToProduct() {
       if (templateVariations && templateVariations.length > 0) {
         const productVariations = templateVariations.map((tv, index) => {
           let price = basePrice;
-          if (tv.adjustment_type === 'fixed') {
-            price = basePrice + (tv.price_adjustment || 0);
-          } else if (tv.adjustment_type === 'percentage') {
-            price = basePrice * (1 + (tv.price_adjustment || 0) / 100);
+          
+          if (template.use_global_price_rules) {
+            // Apply global price rules based on attribute values
+            for (const valueId of tv.attribute_value_ids) {
+              const rule = globalPriceRules.find(r => r.attribute_value_id === valueId);
+              if (rule) {
+                if (rule.adjustment_type === 'fixed') {
+                  price += rule.adjustment_value;
+                } else if (rule.adjustment_type === 'percentage') {
+                  price *= (1 + rule.adjustment_value / 100);
+                }
+              }
+            }
+          } else {
+            // Use template-specific adjustments
+            if (tv.adjustment_type === 'fixed') {
+              price = basePrice + (tv.price_adjustment || 0);
+            } else if (tv.adjustment_type === 'percentage') {
+              price = basePrice * (1 + (tv.price_adjustment || 0) / 100);
+            }
           }
 
           return {
