@@ -12,38 +12,30 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { AttributeTypeWithValues, AttributeValue } from '@/hooks/useProductAttributes';
-import { PriceRuleWithDetails } from '@/hooks/useAttributePriceRules';
-import { ProductTemplateVariation, useCreateBulkTemplateVariations, useDeleteTemplateVariation } from '@/hooks/useProductTemplates';
-
-interface TemplateVariationsBulkGeneratorProps {
-  templateId: string;
-  attributeTypes: AttributeTypeWithValues[];
-  priceRules: PriceRuleWithDetails[];
-  existingVariations: ProductTemplateVariation[];
-  useGlobalRules: boolean;
-}
+import { useAttributeTypes, AttributeTypeWithValues, AttributeValue } from '@/hooks/useProductAttributes';
+import { usePriceRules, PriceRuleWithDetails } from '@/hooks/useAttributePriceRules';
 
 interface GeneratedVariation {
   attributeValueIds: string[];
   name: string;
+  attributes: Record<string, string>;
   priceAdjustment: number;
-  adjustmentType: 'fixed' | 'percentage';
 }
 
-export function TemplateVariationsBulkGenerator({
-  templateId,
-  attributeTypes,
-  priceRules,
-  existingVariations,
-  useGlobalRules,
-}: TemplateVariationsBulkGeneratorProps) {
+interface ProductVariationsGeneratorProps {
+  onVariationsGenerated: (variations: GeneratedVariation[]) => void;
+  existingVariationIds?: string[][];
+}
+
+export function ProductVariationsGenerator({
+  onVariationsGenerated,
+  existingVariationIds = [],
+}: ProductVariationsGeneratorProps) {
+  const { data: attributeTypes, isLoading: loadingTypes } = useAttributeTypes();
+  const { data: priceRules } = usePriceRules();
+  
   // Track selected values per attribute type
   const [selectedValues, setSelectedValues] = useState<Record<string, string[]>>({});
-  const [justCreated, setJustCreated] = useState(false);
-
-  const createBulkVariations = useCreateBulkTemplateVariations();
-  const deleteVariation = useDeleteTemplateVariation();
 
   // Create a map of attribute value ID to price rule
   const priceRuleMap = useMemo(() => {
@@ -64,13 +56,11 @@ export function TemplateVariationsBulkGenerator({
   // Toggle all values of an attribute type
   const toggleSelectAll = (typeId: string, values: AttributeValue[]) => {
     const currentSelected = selectedValues[typeId] || [];
-    const allValueIds = values.map(v => v.id);
+    const allValueIds = values.filter(v => v.is_active).map(v => v.id);
     
     if (currentSelected.length === allValueIds.length) {
-      // Deselect all
       setSelectedValues(prev => ({ ...prev, [typeId]: [] }));
     } else {
-      // Select all
       setSelectedValues(prev => ({ ...prev, [typeId]: allValueIds }));
     }
   };
@@ -91,27 +81,39 @@ export function TemplateVariationsBulkGenerator({
   const generatedVariations = useMemo((): GeneratedVariation[] => {
     const typesWithSelectedValues = Object.entries(selectedValues)
       .filter(([_, values]) => values.length > 0)
-      .map(([typeId, valueIds]) => ({
-        typeId,
-        values: valueIds.map(vId => {
-          const type = attributeTypes.find(t => t.id === typeId);
-          const value = type?.values.find(v => v.id === vId);
-          return { id: vId, name: value ? getValueDisplayName(value) : vId };
-        }),
-      }));
+      .map(([typeId, valueIds]) => {
+        const type = attributeTypes?.find(t => t.id === typeId);
+        return {
+          typeId,
+          typeName: type?.name || '',
+          values: valueIds.map(vId => {
+            const value = type?.values.find(v => v.id === vId);
+            return { id: vId, name: value ? getValueDisplayName(value) : vId };
+          }),
+        };
+      });
 
     if (typesWithSelectedValues.length === 0) return [];
 
     // Generate combinations using cartesian product
-    const combinations = typesWithSelectedValues.reduce<{ ids: string[]; names: string[] }[]>
-      ((acc, { values }) => {
+    const combinations = typesWithSelectedValues.reduce<{ 
+      ids: string[]; 
+      names: string[];
+      attributes: Record<string, string>;
+    }[]>(
+      (acc, { typeName, values }) => {
         if (acc.length === 0) {
-          return values.map(v => ({ ids: [v.id], names: [v.name] }));
+          return values.map(v => ({ 
+            ids: [v.id], 
+            names: [v.name],
+            attributes: { [typeName]: v.name },
+          }));
         }
         return acc.flatMap(existing =>
           values.map(v => ({
             ids: [...existing.ids, v.id],
             names: [...existing.names, v.name],
+            attributes: { ...existing.attributes, [typeName]: v.name },
           }))
         );
       },
@@ -121,114 +123,86 @@ export function TemplateVariationsBulkGenerator({
     // Calculate price adjustments based on global rules
     return combinations.map(combo => {
       let totalAdjustment = 0;
-      let hasPercentage = false;
 
-      if (useGlobalRules) {
-        combo.ids.forEach(valueId => {
-          const rule = priceRuleMap[valueId];
-          if (rule) {
-            if (rule.adjustment_type === 'percentage') {
-              hasPercentage = true;
-            }
-            totalAdjustment += rule.adjustment_value;
-          }
-        });
-      }
+      combo.ids.forEach(valueId => {
+        const rule = priceRuleMap[valueId];
+        if (rule && rule.adjustment_type === 'fixed') {
+          totalAdjustment += rule.adjustment_value;
+        }
+      });
 
       return {
         attributeValueIds: combo.ids,
         name: combo.names.join(' - '),
+        attributes: combo.attributes,
         priceAdjustment: totalAdjustment,
-        adjustmentType: hasPercentage ? 'percentage' : 'fixed',
       };
     });
-  }, [selectedValues, attributeTypes, priceRuleMap, useGlobalRules]);
+  }, [selectedValues, attributeTypes, priceRuleMap]);
 
   // Check if a variation already exists
   const variationExists = (attributeValueIds: string[]): boolean => {
-    return existingVariations.some(existing => {
-      if (existing.attribute_value_ids.length !== attributeValueIds.length) return false;
-      return attributeValueIds.every(id => existing.attribute_value_ids.includes(id));
+    return existingVariationIds.some(existing => {
+      if (existing.length !== attributeValueIds.length) return false;
+      return attributeValueIds.every(id => existing.includes(id));
     });
   };
 
   // Filter out variations that already exist
   const newVariations = generatedVariations.filter(v => !variationExists(v.attributeValueIds));
 
-  // Handle bulk creation
-  const handleGenerateVariations = async () => {
-    if (newVariations.length === 0) return;
-
-    try {
-      await createBulkVariations.mutateAsync({
-        template_id: templateId,
-        variations: newVariations.map(v => ({
-          attribute_value_ids: v.attributeValueIds,
-          variation_name: v.name,
-          price_adjustment: useGlobalRules ? 0 : v.priceAdjustment,
-          adjustment_type: v.adjustmentType,
-        })),
-      });
-
-      // Clear selections and show success indicator
-      setSelectedValues({});
-      setJustCreated(true);
-      setTimeout(() => setJustCreated(false), 3000);
-    } catch (error) {
-      // Error is already handled by the mutation
-      console.error('Failed to create variations:', error);
-    }
+  // Handle confirm selection
+  const handleConfirm = () => {
+    onVariationsGenerated(newVariations);
   };
 
-  // Handle delete variation
-  const handleDeleteVariation = async (id: string) => {
-    await deleteVariation.mutateAsync(id);
+  // Clear all selections
+  const handleClear = () => {
+    setSelectedValues({});
   };
 
-  // Get attribute value name by ID
-  const getAttributeValueName = (valueId: string): string => {
-    for (const type of attributeTypes) {
-      const value = type.values.find(v => v.id === valueId);
-      if (value) return getValueDisplayName(value);
-    }
-    return valueId;
-  };
+  if (loadingTypes) {
+    return (
+      <div className="text-center py-6 text-muted-foreground">
+        Carregando atributos...
+      </div>
+    );
+  }
 
-  // Format price adjustment for display
-  const formatPriceAdjustment = (variation: ProductTemplateVariation | GeneratedVariation): string => {
-    const adjustment = 'price_adjustment' in variation ? variation.price_adjustment : variation.priceAdjustment;
-    const type = 'adjustment_type' in variation ? variation.adjustment_type : variation.adjustmentType;
-    
-    if (adjustment === 0) return '-';
-    const sign = adjustment > 0 ? '+' : '';
-    if (type === 'percentage') {
-      return `${sign}${adjustment}%`;
-    }
-    return `${sign}R$ ${adjustment.toFixed(2)}`;
-  };
+  const activeTypes = attributeTypes?.filter(t => t.is_active && t.values.some(v => v.is_active)) || [];
+
+  if (activeTypes.length === 0) {
+    return (
+      <div className="text-center py-6 text-muted-foreground">
+        <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
+        <p>Nenhum atributo cadastrado.</p>
+        <p className="text-sm">Cadastre atributos em Produtos → Atributos antes de criar variações.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      {/* Bulk Generator Card */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
-            Geração em Massa de Variações
+            Selecionar Atributos
           </CardTitle>
           <CardDescription>
-            Selecione os atributos desejados e gere todas as combinações automaticamente
+            Selecione os valores de cada atributo para gerar as combinações de variações
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
           {/* Attribute Type Sections */}
-          {attributeTypes?.map((type) => {
+          {activeTypes.map((type) => {
             const typeSelected = selectedValues[type.id] || [];
-            const allSelected = typeSelected.length === type.values.length && type.values.length > 0;
+            const activeValues = type.values.filter(v => v.is_active);
+            const allSelected = typeSelected.length === activeValues.length && activeValues.length > 0;
             const someSelected = typeSelected.length > 0;
 
             return (
-              <div key={type.id} className="space-y-3">
+              <div key={type.id} className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium flex items-center gap-2">
                     {type.name}
@@ -239,16 +213,17 @@ export function TemplateVariationsBulkGenerator({
                     )}
                   </label>
                   <Button
+                    type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => toggleSelectAll(type.id, type.values)}
-                    className="text-xs"
+                    onClick={() => toggleSelectAll(type.id, activeValues)}
+                    className="text-xs h-7"
                   >
                     {allSelected ? 'Desmarcar todos' : 'Selecionar todos'}
                   </Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {type.values.map((value) => {
+                  {activeValues.map((value) => {
                     const isSelected = typeSelected.includes(value.id);
                     const priceRule = priceRuleMap[value.id];
 
@@ -260,7 +235,7 @@ export function TemplateVariationsBulkGenerator({
                               type="button"
                               onClick={() => toggleValue(type.id, value.id)}
                               className={`
-                                relative flex items-center gap-2 px-3 py-2 rounded-lg border text-sm
+                                relative flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm
                                 transition-all duration-200
                                 ${isSelected
                                   ? 'border-primary bg-primary/10 text-primary'
@@ -270,10 +245,10 @@ export function TemplateVariationsBulkGenerator({
                             >
                               <Checkbox
                                 checked={isSelected}
-                                className="pointer-events-none"
+                                className="pointer-events-none h-3.5 w-3.5"
                               />
                               <span>{getValueDisplayName(value)}</span>
-                              {priceRule && useGlobalRules && (
+                              {priceRule && (
                                 <Badge variant="outline" className="text-xs ml-1 bg-amber-500/10 text-amber-600 border-amber-500/30">
                                   {priceRule.adjustment_type === 'percentage'
                                     ? `${priceRule.adjustment_value > 0 ? '+' : ''}${priceRule.adjustment_value}%`
@@ -285,7 +260,7 @@ export function TemplateVariationsBulkGenerator({
                           </TooltipTrigger>
                           {priceRule && (
                             <TooltipContent>
-                              <p>Regra de preço global: {priceRule.adjustment_type === 'percentage'
+                              <p>Regra de preço: {priceRule.adjustment_type === 'percentage'
                                 ? `${priceRule.adjustment_value}%`
                                 : `R$ ${priceRule.adjustment_value.toFixed(2)}`
                               }</p>
@@ -303,9 +278,9 @@ export function TemplateVariationsBulkGenerator({
 
           {/* Preview Section */}
           {generatedVariations.length > 0 && (
-            <div className="space-y-3">
+            <div className="space-y-3 pt-2">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium">Preview das Combinações</h4>
+                <h4 className="text-sm font-medium">Preview das Variações</h4>
                 <div className="flex items-center gap-2 text-sm">
                   <Badge variant="outline">
                     {generatedVariations.length} total
@@ -321,7 +296,7 @@ export function TemplateVariationsBulkGenerator({
                 </div>
               </div>
 
-              <ScrollArea className="h-48 rounded-lg border">
+              <ScrollArea className="h-40 rounded-lg border">
                 <div className="p-2 space-y-1">
                   {generatedVariations.map((variation, index) => {
                     const exists = variationExists(variation.attributeValueIds);
@@ -339,9 +314,9 @@ export function TemplateVariationsBulkGenerator({
                             {variation.name}
                           </span>
                         </div>
-                        {useGlobalRules && variation.priceAdjustment !== 0 && (
+                        {variation.priceAdjustment !== 0 && (
                           <Badge variant="outline" className="text-xs">
-                            {formatPriceAdjustment(variation)}
+                            {variation.priceAdjustment > 0 ? '+' : ''}R$ {variation.priceAdjustment.toFixed(2)}
                           </Badge>
                         )}
                       </div>
@@ -350,91 +325,33 @@ export function TemplateVariationsBulkGenerator({
                 </div>
               </ScrollArea>
 
-              <Button
-                onClick={handleGenerateVariations}
-                disabled={newVariations.length === 0 || createBulkVariations.isPending}
-                className="w-full"
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                {createBulkVariations.isPending
-                  ? 'Gerando...'
-                  : `Gerar ${newVariations.length} Variações`
-                }
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleClear}
+                  className="flex-1"
+                >
+                  Limpar Seleção
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleConfirm}
+                  disabled={newVariations.length === 0}
+                  className="flex-1"
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Usar {newVariations.length} Variações
+                </Button>
+              </div>
             </div>
           )}
 
           {generatedVariations.length === 0 && (
-            <div className="text-center py-6 text-muted-foreground">
-              <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Selecione os valores dos atributos acima para gerar as combinações</p>
+            <div className="text-center py-4 text-muted-foreground">
+              <Info className="h-6 w-6 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Selecione os valores dos atributos acima para gerar as combinações</p>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Existing Variations Card */}
-      <Card className={justCreated ? 'ring-2 ring-green-500 ring-offset-2' : ''}>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            Variações do Template ({existingVariations.length})
-            {justCreated && (
-              <Badge className="bg-green-600 text-white animate-pulse">
-                <Check className="h-3 w-3 mr-1" />
-                Variações criadas!
-              </Badge>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {existingVariations.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4">
-              Nenhuma variação cadastrada
-            </p>
-          ) : (
-            <ScrollArea className="h-[300px]">
-              <div className="space-y-2 pr-4">
-                {existingVariations.map((variation) => (
-                  <div
-                    key={variation.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border bg-muted/50"
-                  >
-                    <div className="flex-1">
-                      <div className="flex flex-wrap gap-1 mb-1">
-                        {variation.attribute_value_ids.map((valueId) => (
-                          <Badge key={valueId} variant="secondary" className="text-xs">
-                            {getAttributeValueName(valueId)}
-                          </Badge>
-                        ))}
-                      </div>
-                      {variation.variation_name && (
-                        <span className="text-sm text-muted-foreground">
-                          {variation.variation_name}
-                        </span>
-                      )}
-                    </div>
-                    {useGlobalRules ? (
-                      <Badge variant="outline" className="text-muted-foreground">
-                        Regras Globais
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">{formatPriceAdjustment(variation)}</Badge>
-                    )}
-                    {variation.weight_override && (
-                      <Badge variant="outline">{variation.weight_override}kg</Badge>
-                    )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleDeleteVariation(variation.id)}
-                      disabled={deleteVariation.isPending}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
           )}
         </CardContent>
       </Card>
