@@ -110,63 +110,88 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
                   <p className="text-xs mt-1">Inicie uma conversa na aba Contatos</p>
                 </div>
               ) : (
-                filteredThreads?.map((thread) => (
-                  <button
-                    key={thread.id}
-                    onClick={() => onSelectThread(thread.id, thread.other_user.id)}
-                    className={cn(
-                      'w-full flex items-center gap-2.5 p-2 rounded-lg transition-colors text-left',
-                      selectedThreadId === thread.id 
-                        ? 'bg-primary/10 border border-primary/20' 
-                        : 'hover:bg-muted'
-                    )}
-                  >
-                    <div className="relative shrink-0">
-                      <Avatar className="h-9 w-9">
-                        <AvatarImage src={thread.other_user.avatar_url || ''} />
-                        <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                          {getInitials(thread.other_user.full_name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      {thread.other_user.is_online && (
-                        <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-card" />
+                filteredThreads?.map((thread) => {
+                  const hasUnread = thread.unread_count > 0;
+                  return (
+                    <button
+                      key={thread.id}
+                      onClick={() => onSelectThread(thread.id, thread.other_user.id)}
+                      className={cn(
+                        'w-full flex items-start gap-2.5 p-2.5 rounded-lg transition-colors text-left',
+                        selectedThreadId === thread.id 
+                          ? 'bg-primary/10 border border-primary/20' 
+                          : hasUnread 
+                            ? 'bg-primary/5 hover:bg-primary/10' 
+                            : 'hover:bg-muted'
                       )}
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-sm truncate">
-                          {thread.other_user.full_name || 'Usuário'}
-                        </span>
-                        {thread.last_message_at && (
-                          <span className="text-[10px] text-muted-foreground shrink-0">
-                            {formatDistanceToNow(new Date(thread.last_message_at), { 
-                              addSuffix: false,
-                              locale: ptBR 
-                            })}
+                    >
+                      {/* Avatar com indicador online */}
+                      <div className="relative shrink-0">
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={thread.other_user.avatar_url || ''} />
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                            {getInitials(thread.other_user.full_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        {thread.other_user.is_online && (
+                          <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-card" />
+                        )}
+                      </div>
+                      
+                      {/* Conteúdo */}
+                      <div className="flex-1 min-w-0">
+                        {/* Linha 1: Nome + Hora */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={cn(
+                            "text-sm truncate",
+                            hasUnread ? "font-semibold text-foreground" : "font-medium"
+                          )}>
+                            {thread.other_user.full_name || 'Usuário'}
                           </span>
+                          <span className={cn(
+                            "text-[10px] shrink-0",
+                            hasUnread ? "text-primary font-medium" : "text-muted-foreground"
+                          )}>
+                            {thread.last_message_at ? 
+                              formatDistanceToNow(new Date(thread.last_message_at), { 
+                                addSuffix: false,
+                                locale: ptBR 
+                              }) : ''
+                            }
+                          </span>
+                        </div>
+                        
+                        {/* Linha 2: Preview + Badge não lidas */}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className={cn(
+                            "text-xs truncate flex-1 min-w-0",
+                            hasUnread ? "text-foreground/80 font-medium" : "text-muted-foreground"
+                          )}>
+                            {thread.last_message_preview || 'Nova conversa'}
+                          </p>
+                          {hasUnread && (
+                            <Badge 
+                              variant="default" 
+                              className="h-5 min-w-[20px] px-1.5 text-[10px] font-bold bg-primary hover:bg-primary shrink-0"
+                            >
+                              {thread.unread_count > 99 ? '99+' : thread.unread_count}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* Linha 3: Departamento */}
+                        {thread.other_user.department_name && (
+                          <div className="mt-1">
+                            <DepartmentBadge 
+                              name={thread.other_user.department_name} 
+                              color={thread.other_user.department_color}
+                            />
+                          </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-xs text-muted-foreground truncate flex-1 min-w-0">
-                          {thread.last_message_preview || 'Nova conversa'}
-                        </p>
-                        <DepartmentBadge 
-                          name={thread.other_user.department_name} 
-                          color={thread.other_user.department_color}
-                        />
-                        {thread.unread_count > 0 && (
-                          <Badge 
-                            variant="default" 
-                            className="h-4 min-w-[16px] px-1 text-[9px] bg-green-500 hover:bg-green-600 shrink-0"
-                          >
-                            {thread.unread_count > 99 ? '99+' : thread.unread_count}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                ))
+                    </button>
+                  );
+                })
               )}
             </div>
           </ScrollArea>
