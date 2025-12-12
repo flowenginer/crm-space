@@ -59,6 +59,7 @@ interface MenuItemModalProps {
   editingItem?: MenuItem | null;
   parentId?: string | null;
   isSubmitting?: boolean;
+  allMenuItems?: MenuItem[];
 }
 
 export function MenuItemModal({
@@ -68,6 +69,7 @@ export function MenuItemModal({
   editingItem,
   parentId,
   isSubmitting,
+  allMenuItems = [],
 }: MenuItemModalProps) {
   const [form, setForm] = useState<MenuItemInput>({
     title: '',
@@ -118,7 +120,22 @@ export function MenuItemModal({
     });
   };
 
-  const isSubmenu = !!parentId || !!editingItem?.parent_id;
+  // Filter valid parent options (exclude self and children to prevent circular deps)
+  const getDescendantIds = (itemId: string): string[] => {
+    const item = allMenuItems.find(i => i.id === itemId);
+    if (!item) return [];
+    const children = allMenuItems.filter(i => i.parent_id === itemId);
+    return [itemId, ...children.flatMap(c => getDescendantIds(c.id))];
+  };
+
+  const excludedIds = editingItem ? getDescendantIds(editingItem.id) : [];
+  
+  // Only root items (no parent) can be parents
+  const availableParents = allMenuItems.filter(
+    item => !item.parent_id && !excludedIds.includes(item.id)
+  );
+
+  const isSubmenu = !!form.parent_id;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -139,6 +156,26 @@ export function MenuItemModal({
               placeholder="Ex: Dashboard"
               required
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="parent_id">Menu Pai</Label>
+            <Select
+              value={form.parent_id || 'none'}
+              onValueChange={(value) => setForm({ ...form, parent_id: value === 'none' ? null : value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o menu pai" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nenhum (menu principal)</SelectItem>
+                {availableParents.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
