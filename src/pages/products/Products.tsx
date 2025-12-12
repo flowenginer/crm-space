@@ -51,6 +51,7 @@ import {
   ImageIcon,
 } from 'lucide-react';
 import { ProductModal } from '@/components/products/ProductModal';
+import { ProductDetailsModal } from '@/components/products/ProductDetailsModal';
 import type { ProductWithCatalog } from '@/hooks/useProducts';
 
 export default function Products() {
@@ -60,6 +61,7 @@ export default function Products() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductWithCatalog | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<ProductWithCatalog | null>(null);
 
   const { data: products, isLoading } = useProducts({
     catalogId: catalogFilter !== 'all' ? catalogFilter : undefined,
@@ -188,7 +190,11 @@ export default function Products() {
               </TableHeader>
               <TableBody>
                 {products?.map((product) => (
-                  <TableRow key={product.id}>
+                  <TableRow 
+                    key={product.id} 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setViewingProduct(product)}
+                  >
                     <TableCell>
                       {product.main_image_url ? (
                         <img
@@ -256,7 +262,7 @@ export default function Products() {
                         {product.is_active ? 'Ativo' : 'Inativo'}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon">
@@ -264,6 +270,10 @@ export default function Products() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setViewingProduct(product)}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            Ver detalhes
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEdit(product)}>
                             <Pencil className="h-4 w-4 mr-2" />
                             Editar
@@ -305,6 +315,17 @@ export default function Products() {
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
         product={editingProduct}
+      />
+
+      {/* Product Details Modal */}
+      <ProductDetailsModal
+        open={!!viewingProduct}
+        onOpenChange={(open) => !open && setViewingProduct(null)}
+        product={viewingProduct}
+        onEdit={(product) => {
+          setViewingProduct(null);
+          handleEdit(product);
+        }}
       />
 
       {/* Delete Confirmation */}
