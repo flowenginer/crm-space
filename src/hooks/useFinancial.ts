@@ -307,6 +307,144 @@ export function useCancelTransaction() {
   });
 }
 
+// Category Management
+export function useCreateCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: { name: string; type: 'income' | 'expense'; color?: string }) => {
+      const { error } = await supabase
+        .from('financial_categories')
+        .insert({
+          name: data.name,
+          type: data.type,
+          color: data.color || '#8B5CF6',
+        } as any);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-categories'] });
+      toast.success('Categoria criada com sucesso');
+    },
+    onError: (error) => {
+      toast.error('Erro ao criar categoria: ' + error.message);
+    },
+  });
+}
+
+export function useUpdateCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: { id: string; name: string; color?: string }) => {
+      const { error } = await supabase
+        .from('financial_categories')
+        .update({ name: data.name, color: data.color })
+        .eq('id', data.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-categories'] });
+      toast.success('Categoria atualizada');
+    },
+    onError: (error) => {
+      toast.error('Erro ao atualizar categoria: ' + error.message);
+    },
+  });
+}
+
+export function useDeleteCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (categoryId: string) => {
+      const { error } = await supabase
+        .from('financial_categories')
+        .update({ is_active: false })
+        .eq('id', categoryId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-categories'] });
+      toast.success('Categoria removida');
+    },
+  });
+}
+
+// Transfer between accounts
+export function useTransferBetweenAccounts() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      fromAccountId: string;
+      toAccountId: string;
+      amount: number;
+      description?: string;
+    }) => {
+      // Get current balances
+      const { data: fromAccount, error: fromError } = await supabase
+        .from('financial_accounts')
+        .select('current_balance')
+        .eq('id', data.fromAccountId)
+        .single();
+
+      if (fromError) throw fromError;
+
+      const { data: toAccount, error: toError } = await supabase
+        .from('financial_accounts')
+        .select('current_balance')
+        .eq('id', data.toAccountId)
+        .single();
+
+      if (toError) throw toError;
+
+      // Update from account (subtract)
+      const { error: updateFromError } = await supabase
+        .from('financial_accounts')
+        .update({ current_balance: (fromAccount.current_balance || 0) - data.amount })
+        .eq('id', data.fromAccountId);
+
+      if (updateFromError) throw updateFromError;
+
+      // Update to account (add)
+      const { error: updateToError } = await supabase
+        .from('financial_accounts')
+        .update({ current_balance: (toAccount.current_balance || 0) + data.amount })
+        .eq('id', data.toAccountId);
+
+      if (updateToError) throw updateToError;
+
+      // Create transaction record for tracking
+      const { error: transError } = await supabase
+        .from('financial_transactions')
+        .insert({
+          type: 'expense',
+          amount: data.amount,
+          description: data.description || 'Transferência entre contas',
+          due_date: new Date().toISOString().split('T')[0],
+          status: 'paid',
+          paid_at: new Date().toISOString(),
+          paid_amount: data.amount,
+          account_id: data.fromAccountId,
+        } as any);
+
+      if (transError) console.warn('Could not create transfer record:', transError);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-transactions'] });
+      toast.success('Transferência realizada com sucesso');
+    },
+    onError: (error) => {
+      toast.error('Erro na transferência: ' + error.message);
+    },
+  });
+}
+
 // Summary
 export function useFinancialSummary(startDate?: string, endDate?: string) {
   return useQuery({

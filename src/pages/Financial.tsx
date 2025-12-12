@@ -29,18 +29,25 @@ import {
   CheckCircle,
   Clock,
   CreditCard,
+  ArrowRightLeft,
+  BarChart3,
+  Tag,
 } from 'lucide-react';
 import {
   useFinancialTransactions,
   useFinancialSummary,
   useFinancialAccounts,
+  useFinancialCategories,
   FinancialTransaction,
 } from '@/hooks/useFinancial';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { TransactionModal } from '@/components/financial/TransactionModal';
 import { PaymentModal } from '@/components/financial/PaymentModal';
 import { AccountsPanel } from '@/components/financial/AccountsPanel';
+import { CategoryManagement } from '@/components/financial/CategoryManagement';
+import { TransferModal } from '@/components/financial/TransferModal';
+import { FinancialCharts } from '@/components/financial/FinancialCharts';
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof Clock }> = {
   pending: { label: 'Pendente', variant: 'outline', icon: Clock },
@@ -54,14 +61,34 @@ export default function Financial() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [periodFilter, setPeriodFilter] = useState<string>('current');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<'income' | 'expense'>('income');
   const [selectedTransaction, setSelectedTransaction] = useState<FinancialTransaction | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
 
-  const currentMonth = new Date();
-  const startDate = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
-  const endDate = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
+  // Calcular datas baseado no período selecionado
+  const getDateRange = () => {
+    const now = new Date();
+    switch (periodFilter) {
+      case 'current':
+        return { start: startOfMonth(now), end: endOfMonth(now) };
+      case 'last':
+        const lastMonth = subMonths(now, 1);
+        return { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) };
+      case 'last3':
+        return { start: startOfMonth(subMonths(now, 2)), end: endOfMonth(now) };
+      case 'all':
+        return { start: null, end: null };
+      default:
+        return { start: startOfMonth(now), end: endOfMonth(now) };
+    }
+  };
+
+  const dateRange = getDateRange();
+  const startDate = dateRange.start ? format(dateRange.start, 'yyyy-MM-dd') : undefined;
+  const endDate = dateRange.end ? format(dateRange.end, 'yyyy-MM-dd') : undefined;
 
   const { data: transactions = [], isLoading } = useFinancialTransactions({
     type: typeFilter !== 'all' ? (typeFilter as 'income' | 'expense') : undefined,
@@ -71,6 +98,7 @@ export default function Financial() {
   });
   const { data: summary } = useFinancialSummary(startDate, endDate);
   const { data: accounts = [] } = useFinancialAccounts();
+  const { data: categories = [] } = useFinancialCategories();
 
   const filteredTransactions = transactions.filter(t => {
     if (!searchTerm) return true;
@@ -102,11 +130,15 @@ export default function Financial() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Financeiro</h1>
-            <p className="text-muted-foreground">Controle de contas a pagar e receber</p>
+            <p className="text-muted-foreground">Controle completo de finanças</p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsTransferModalOpen(true)}>
+              <ArrowRightLeft className="h-4 w-4 mr-2" />
+              Transferir
+            </Button>
             <Button variant="outline" onClick={() => openNewTransaction('expense')}>
-              <TrendingDown className="h-4 w-4 mr-2 text-red-500" />
+              <TrendingDown className="h-4 w-4 mr-2 text-rose-500" />
               Nova Despesa
             </Button>
             <Button onClick={() => openNewTransaction('income')}>
@@ -117,14 +149,16 @@ export default function Financial() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Saldo Total</CardTitle>
               <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalBalance)}</div>
+              <div className={`text-2xl font-bold ${totalBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {formatCurrency(totalBalance)}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {accounts.length} conta(s) ativa(s)
               </p>
@@ -134,10 +168,10 @@ export default function Financial() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">A Receber</CardTitle>
-              <TrendingUp className="h-4 w-4 text-green-500" />
+              <TrendingUp className="h-4 w-4 text-emerald-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">
+              <div className="text-2xl font-bold text-emerald-600">
                 {formatCurrency(summary?.pendingIncome)}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -149,10 +183,10 @@ export default function Financial() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">A Pagar</CardTitle>
-              <TrendingDown className="h-4 w-4 text-red-500" />
+              <TrendingDown className="h-4 w-4 text-rose-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">
+              <div className="text-2xl font-bold text-rose-600">
                 {formatCurrency(summary?.pendingExpense)}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -164,10 +198,10 @@ export default function Financial() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Vencidos</CardTitle>
-              <AlertCircle className="h-4 w-4 text-orange-500" />
+              <AlertCircle className="h-4 w-4 text-amber-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-600">
+              <div className="text-2xl font-bold text-amber-600">
                 {formatCurrency((summary?.overdueIncome || 0) + (summary?.overdueExpense || 0))}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -175,22 +209,75 @@ export default function Financial() {
               </p>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Resultado</CardTitle>
+              <BarChart3 className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${
+                (summary?.paidIncome || 0) - (summary?.paidExpense || 0) >= 0 
+                  ? 'text-emerald-600' 
+                  : 'text-rose-600'
+              }`}>
+                {formatCurrency((summary?.paidIncome || 0) - (summary?.paidExpense || 0))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Realizado no período
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
-            <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-            <TabsTrigger value="accounts">Contas Bancárias</TabsTrigger>
+            <TabsTrigger value="overview" className="gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Visão Geral
+            </TabsTrigger>
+            <TabsTrigger value="transactions" className="gap-2">
+              <CreditCard className="h-4 w-4" />
+              Transações
+            </TabsTrigger>
+            <TabsTrigger value="accounts" className="gap-2">
+              <Wallet className="h-4 w-4" />
+              Contas
+            </TabsTrigger>
+            <TabsTrigger value="categories" className="gap-2">
+              <Tag className="h-4 w-4" />
+              Categorias
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-4">
+          <TabsContent value="overview" className="space-y-6">
+            {/* Period Filter */}
+            <div className="flex justify-end">
+              <Select value={periodFilter} onValueChange={setPeriodFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="current">Este mês</SelectItem>
+                  <SelectItem value="last">Mês passado</SelectItem>
+                  <SelectItem value="last3">Últimos 3 meses</SelectItem>
+                  <SelectItem value="all">Todo período</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Charts */}
+            <FinancialCharts transactions={transactions} categories={categories} />
+          </TabsContent>
+
+          <TabsContent value="transactions" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Transações do Mês</CardTitle>
+                <CardTitle>Transações</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex gap-4 mb-6">
-                  <div className="relative flex-1">
+                <div className="flex gap-4 mb-6 flex-wrap">
+                  <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       placeholder="Buscar transações..."
@@ -199,6 +286,17 @@ export default function Financial() {
                       className="pl-10"
                     />
                   </div>
+                  <Select value={periodFilter} onValueChange={setPeriodFilter}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Período" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="current">Este mês</SelectItem>
+                      <SelectItem value="last">Mês passado</SelectItem>
+                      <SelectItem value="last3">Últimos 3 meses</SelectItem>
+                      <SelectItem value="all">Todo período</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Select value={typeFilter} onValueChange={setTypeFilter}>
                     <SelectTrigger className="w-40">
                       <SelectValue placeholder="Tipo" />
@@ -250,9 +348,9 @@ export default function Financial() {
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 {transaction.type === 'income' ? (
-                                  <TrendingUp className="h-4 w-4 text-green-500" />
+                                  <TrendingUp className="h-4 w-4 text-emerald-500" />
                                 ) : (
-                                  <TrendingDown className="h-4 w-4 text-red-500" />
+                                  <TrendingDown className="h-4 w-4 text-rose-500" />
                                 )}
                                 <span className="font-medium">{transaction.description}</span>
                               </div>
@@ -279,7 +377,7 @@ export default function Financial() {
                               </Badge>
                             </TableCell>
                             <TableCell className={`text-right font-medium ${
-                              transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                              transaction.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
                             }`}>
                               {transaction.type === 'income' ? '+' : '-'}
                               {formatCurrency(transaction.amount)}
@@ -309,6 +407,10 @@ export default function Financial() {
           <TabsContent value="accounts">
             <AccountsPanel />
           </TabsContent>
+
+          <TabsContent value="categories">
+            <CategoryManagement />
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -322,6 +424,11 @@ export default function Financial() {
         open={isPaymentModalOpen}
         onOpenChange={setIsPaymentModalOpen}
         transaction={selectedTransaction}
+      />
+
+      <TransferModal
+        open={isTransferModalOpen}
+        onOpenChange={setIsTransferModalOpen}
       />
     </>
   );
