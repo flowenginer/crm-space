@@ -17,20 +17,23 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User } from 'lucide-react';
+import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle } from 'lucide-react';
 import { useCreateOrder } from '@/hooks/useOrders';
 import { useContacts } from '@/hooks/useContacts';
-import { useAllVariations } from '@/hooks/useProductVariations';
+import { useProductsForOrders, ProductForOrder } from '@/hooks/useProductsForOrders';
 import { useActiveStores } from '@/hooks/useStores';
 import { useTeam } from '@/hooks/useTeam';
 import { useAuth } from '@/hooks/useAuth';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface OrderItem {
   product_name: string;
   variation_name?: string;
   variation_id?: string;
+  product_id?: string;
   sku?: string;
   unit_price: number;
   quantity: number;
@@ -93,11 +96,11 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   
   // Search states
   const [contactSearch, setContactSearch] = useState('');
-  const [variationSearch, setVariationSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
 
   // Data hooks
   const { data: contacts = [] } = useContacts();
-  const { data: variations = [] } = useAllVariations();
+  const { data: products = [] } = useProductsForOrders(productSearch);
   const { data: stores = [] } = useActiveStores();
   const { data: teamMembers = [] } = useTeam();
   const createOrder = useCreateOrder();
@@ -111,11 +114,6 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   const filteredContacts = contacts.filter(c => 
     c.full_name.toLowerCase().includes(contactSearch.toLowerCase()) ||
     c.phone.includes(contactSearch)
-  );
-
-  const filteredVariations = variations.filter(v =>
-    v.variation_name?.toLowerCase().includes(variationSearch.toLowerCase()) ||
-    v.sku?.toLowerCase().includes(variationSearch.toLowerCase())
   );
 
   const addItem = () => {
@@ -134,20 +132,28 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     setItems(newItems);
   };
 
-  const selectVariation = (index: number, variationId: string) => {
-    const variation = variations.find(v => v.id === variationId);
-    if (variation) {
+  const selectProduct = (index: number, productId: string) => {
+    const product = products.find(p => p.id === productId);
+    if (product) {
       const newItems = [...items];
       newItems[index] = {
         ...newItems[index],
-        variation_id: variation.id,
-        product_name: variation.product?.name || variation.variation_name || '',
-        variation_name: variation.variation_name || undefined,
-        sku: variation.sku || '',
-        unit_price: variation.price || variation.product?.base_price || 0,
+        variation_id: product.type === 'variation' ? product.id : undefined,
+        product_id: product.product_id,
+        product_name: product.product_name,
+        variation_name: product.variation_name,
+        sku: product.sku || '',
+        unit_price: product.price,
       };
       setItems(newItems);
     }
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value);
   };
 
   // Calculate item subtotal with discount
@@ -220,12 +226,6 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     setInternalNotes('');
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -343,31 +343,57 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                       <div className="col-span-5">
                         <Label className="text-xs">Produto</Label>
                         <Select
-                          value={item.variation_id || ''}
-                          onValueChange={(value) => selectVariation(index, value)}
+                          value={item.variation_id || item.product_id || ''}
+                          onValueChange={(value) => selectProduct(index, value)}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Selecione ou digite" />
+                            <SelectValue placeholder="Selecione um produto" />
                           </SelectTrigger>
                           <SelectContent>
                             <div className="p-2">
                               <Input
                                 placeholder="Buscar produto..."
-                                value={variationSearch}
-                                onChange={(e) => setVariationSearch(e.target.value)}
+                                value={productSearch}
+                                onChange={(e) => setProductSearch(e.target.value)}
                                 className="mb-2"
                               />
                             </div>
-                            {filteredVariations.slice(0, 10).map((v) => (
-                              <SelectItem key={v.id} value={v.id}>
-                                {v.product?.name} {v.variation_name ? `- ${v.variation_name}` : ''} {v.sku ? `(${v.sku})` : ''}
-                              </SelectItem>
-                            ))}
+                            {products.length === 0 ? (
+                              <div className="p-4 text-center text-muted-foreground text-sm">
+                                Nenhum produto encontrado
+                              </div>
+                            ) : (
+                              products.slice(0, 15).map((p) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  <div className="flex items-center gap-2 w-full">
+                                    <Avatar className="h-6 w-6">
+                                      <AvatarImage src={p.image_url} />
+                                      <AvatarFallback className="text-[10px]">
+                                        <Package className="h-3 w-3" />
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex flex-col flex-1 min-w-0">
+                                      <span className="truncate text-sm">{p.display_name}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {p.sku ? `SKU: ${p.sku}` : ''} 
+                                        {p.stock_quantity !== undefined && ` • Est: ${p.stock_quantity}`}
+                                      </span>
+                                    </div>
+                                    <span className="text-sm font-medium whitespace-nowrap">
+                                      {formatCurrency(p.price)}
+                                    </span>
+                                    {p.is_low_stock && (
+                                      <AlertTriangle className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))
+                            )}
                           </SelectContent>
                         </Select>
-                        {!item.variation_id && (
+                        {!(item.variation_id || item.product_id) && (
                           <Input
-                            placeholder="Ou digite o nome"
+                            placeholder="Ou digite o nome manualmente"
                             value={item.product_name}
                             onChange={(e) => updateItem(index, 'product_name', e.target.value)}
                             className="mt-1"
