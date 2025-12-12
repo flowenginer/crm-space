@@ -313,12 +313,23 @@ export function useCreateCategory() {
 
   return useMutation({
     mutationFn: async (data: { name: string; type: 'income' | 'expense'; color?: string }) => {
+      // Buscar tenant_id do usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .single();
+
       const { error } = await supabase
         .from('financial_categories')
         .insert({
           name: data.name,
           type: data.type,
           color: data.color || '#8B5CF6',
+          tenant_id: profile?.tenant_id,
         } as any);
 
       if (error) throw error;
