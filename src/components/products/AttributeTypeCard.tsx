@@ -1,12 +1,6 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, GripVertical, MoreHorizontal, Pencil, Plus, Trash2, List } from 'lucide-react';
+import { ChevronDown, ChevronRight, GripVertical, Pencil, Plus, Trash2, List, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +19,7 @@ import {
   type AttributeTypeWithValues,
   useDeleteAttributeType,
   useReorderAttributeValues,
+  useUpdateAttributeType,
 } from '@/hooks/useProductAttributes';
 import { AttributeValueRow } from './AttributeValueRow';
 import { AttributeValueModal } from './AttributeValueModal';
@@ -59,6 +54,7 @@ export function AttributeTypeCard({ attributeType, onEdit }: AttributeTypeCardPr
   const [editingValue, setEditingValue] = useState<AttributeTypeWithValues['values'][0] | null>(null);
 
   const deleteMutation = useDeleteAttributeType();
+  const updateMutation = useUpdateAttributeType();
   const reorderValuesMutation = useReorderAttributeValues();
 
   const {
@@ -168,26 +164,39 @@ export function AttributeTypeCard({ attributeType, onEdit }: AttributeTypeCardPr
             </Badge>
           </button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit(attributeType)}>
-                <Pencil className="mr-2 h-4 w-4" />
-                Editar
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setShowDeleteDialog(true)}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Excluir
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => onEdit(attributeType)}
+              title="Editar"
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => updateMutation.mutate({ id: attributeType.id, is_active: !attributeType.is_active })}
+              title={attributeType.is_active ? 'Desativar' : 'Ativar'}
+            >
+              {attributeType.is_active ? (
+                <ToggleRight className="h-4 w-4 text-green-500" />
+              ) : (
+                <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              onClick={() => setShowDeleteDialog(true)}
+              title="Excluir"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Expanded Content */}

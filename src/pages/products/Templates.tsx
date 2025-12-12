@@ -159,7 +159,7 @@ export default function Templates() {
               <TableHead className="text-center">Peso (kg)</TableHead>
               <TableHead className="text-center">Dimensões (cm)</TableHead>
               <TableHead className="text-center">Status</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
+              <TableHead className="w-[120px]">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -200,15 +200,29 @@ export default function Templates() {
                     </div>
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={template.is_active ? 'default' : 'secondary'}>
-                      {template.is_active ? 'Ativo' : 'Inativo'}
-                    </Badge>
+                    <button
+                      onClick={() => handleToggleStatus(template.id, template.is_active)}
+                      className="flex items-center gap-1.5 mx-auto"
+                    >
+                      {template.is_active ? (
+                        <>
+                          <ToggleRight className="h-5 w-5 text-green-500" />
+                          <span className="text-sm text-green-600">Ativo</span>
+                        </>
+                      ) : (
+                        <>
+                          <ToggleLeft className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Inativo</span>
+                        </>
+                      )}
+                    </button>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="h-8 w-8"
                         onClick={() => handleEdit(template.id)}
                         title="Editar"
                       >
@@ -217,21 +231,9 @@ export default function Templates() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleToggleStatus(template.id, template.is_active)}
-                        title={template.is_active ? 'Desativar' : 'Ativar'}
-                      >
-                        {template.is_active ? (
-                          <ToggleRight className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <ToggleLeft className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
                         onClick={() => setDeletingId(template.id)}
                         title="Excluir"
-                        className="text-destructive hover:text-destructive"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
