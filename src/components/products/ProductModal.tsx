@@ -437,7 +437,7 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 top-[5%] translate-y-0">
         {/* Fixed Header */}
         <div className="sticky top-0 z-10 bg-background border-b px-6 py-4">
           <DialogHeader>
