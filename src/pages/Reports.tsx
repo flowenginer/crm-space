@@ -31,7 +31,9 @@ import {
   ArrowLeftRight,
   Phone,
   Lock,
+  Wallet,
 } from 'lucide-react';
+import { FinancialDashboard } from '@/components/reports/FinancialDashboard';
 import { TransferHistoryPanel } from '@/components/reports/TransferHistoryPanel';
 import { CallHistoryPanel } from '@/components/reports/CallHistoryPanel';
 import { useNavigate } from 'react-router-dom';
@@ -260,6 +262,7 @@ export default function Reports() {
       { value: 'sla', label: 'SLA', icon: Clock, permission: 'reports.view_sla' },
       { value: 'attendance', label: 'Atendimentos', icon: MessageSquare, permission: 'reports.view_attendance' },
       { value: 'sales', label: 'Vendas', icon: DollarSign, permission: 'reports.view_sales' },
+      { value: 'financial', label: 'Financeiro', icon: Wallet, permission: 'reports.view_financial' },
       { value: 'satisfaction', label: 'Satisfação', icon: Smile, permission: 'reports.view_satisfaction' },
       { value: 'performance', label: 'Performance', icon: Users, permission: 'reports.view_performance' },
       { value: 'transfers', label: 'Transferências', icon: ArrowLeftRight, permission: 'reports.view_transfers' },
@@ -1231,6 +1234,16 @@ export default function Reports() {
         {/* TAB 7: Call History Report */}
         <TabsContent value="calls" className="space-y-6">
           <CallHistoryPanel dateRange={dateRange} />
+        </TabsContent>
+
+        {/* TAB 8: Financial Report */}
+        <TabsContent value="financial" className="space-y-6">
+          <FinancialDashboard 
+            filters={{
+              startDate: dateRange?.from,
+              endDate: dateRange?.to,
+            }}
+          />
         </TabsContent>
         </Tabs>
       )}
