@@ -81,6 +81,21 @@ export interface CreateOrderData {
   }[];
 }
 
+export interface OrderFilters {
+  status?: string;
+  contact_id?: string;
+  assigned_to?: string;
+  payment_status?: string;
+  payment_method?: string;
+  date_from?: string;
+  date_to?: string;
+  min_total?: number;
+  max_total?: number;
+  has_discount?: boolean;
+  has_conversation?: boolean;
+  shipping_method?: string;
+}
+
 export function useOrders(filters?: { status?: string; contact_id?: string }) {
   const { data: tenantId } = useCurrentTenantId();
 
@@ -107,6 +122,118 @@ export function useOrders(filters?: { status?: string; contact_id?: string }) {
       return data as Order[];
     },
     enabled: !!tenantId,
+  });
+}
+
+// Hook avançado com todos os filtros
+export function useOrdersAdvanced(filters: OrderFilters) {
+  const { data: tenantId } = useCurrentTenantId();
+
+  return useQuery({
+    queryKey: ['orders-advanced', tenantId, filters],
+    queryFn: async () => {
+      let query = supabase
+        .from('orders')
+        .select(`
+          *,
+          contact:contacts(id, full_name, phone)
+        `)
+        .order('created_at', { ascending: false });
+
+      // Filtro por status
+      if (filters.status && filters.status !== 'all') {
+        query = query.eq('status', filters.status);
+      }
+      
+      // Filtro por contact_id
+      if (filters.contact_id) {
+        query = query.eq('contact_id', filters.contact_id);
+      }
+
+      // Filtro por vendedor
+      if (filters.assigned_to && filters.assigned_to !== 'all') {
+        query = query.eq('assigned_to', filters.assigned_to);
+      }
+
+      // Filtro por status de pagamento
+      if (filters.payment_status && filters.payment_status !== 'all') {
+        query = query.eq('payment_status', filters.payment_status);
+      }
+
+      // Filtro por forma de pagamento
+      if (filters.payment_method && filters.payment_method !== 'all') {
+        query = query.eq('payment_method', filters.payment_method);
+      }
+
+      // Filtro por método de entrega
+      if (filters.shipping_method && filters.shipping_method !== 'all') {
+        query = query.eq('shipping_method', filters.shipping_method);
+      }
+
+      // Filtro por data inicial
+      if (filters.date_from) {
+        query = query.gte('created_at', filters.date_from + 'T00:00:00');
+      }
+
+      // Filtro por data final
+      if (filters.date_to) {
+        query = query.lte('created_at', filters.date_to + 'T23:59:59');
+      }
+
+      // Filtro por valor mínimo
+      if (filters.min_total !== undefined && filters.min_total > 0) {
+        query = query.gte('total', filters.min_total);
+      }
+
+      // Filtro por valor máximo
+      if (filters.max_total !== undefined && filters.max_total > 0) {
+        query = query.lte('total', filters.max_total);
+      }
+
+      // Filtro por desconto
+      if (filters.has_discount) {
+        query = query.or('discount_amount.gt.0,discount_percent.gt.0');
+      }
+
+      // Filtro por conversa vinculada
+      if (filters.has_conversation) {
+        query = query.not('conversation_id', 'is', null);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as Order[];
+    },
+    enabled: !!tenantId,
+  });
+}
+
+// Hook para contar pedidos por contato (identificar primeira compra)
+export function useContactOrderCounts(contactIds: string[]) {
+  return useQuery({
+    queryKey: ['contact-order-counts', contactIds],
+    queryFn: async () => {
+      if (contactIds.length === 0) return {};
+      
+      const { data, error } = await supabase
+        .from('orders')
+        .select('contact_id')
+        .in('contact_id', contactIds)
+        .neq('status', 'canceled');
+
+      if (error) throw error;
+      
+      // Contar pedidos por contato
+      const counts: Record<string, number> = {};
+      data?.forEach(order => {
+        if (order.contact_id) {
+          counts[order.contact_id] = (counts[order.contact_id] || 0) + 1;
+        }
+      });
+      
+      return counts;
+    },
+    enabled: contactIds.length > 0,
   });
 }
 

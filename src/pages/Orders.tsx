@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,21 +11,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Plus, Search, Package, Eye, LayoutGrid, List, BarChart3 } from 'lucide-react';
-import { useOrders, Order } from '@/hooks/useOrders';
+import { Plus, Package, Eye, BarChart3, Star } from 'lucide-react';
+import { useOrdersAdvanced, useContactOrderCounts, Order } from '@/hooks/useOrders';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { OrderModal } from '@/components/orders/OrderModal';
 import { OrderDetailsModal } from '@/components/orders/OrderDetailsModal';
 import { OrdersDashboard } from '@/components/orders/OrdersDashboard';
 import { OrderKanban } from '@/components/orders/OrderKanban';
+import { OrderFilters, OrderFiltersState, initialFilters } from '@/components/orders/OrderFilters';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   draft: { label: 'Rascunho', variant: 'secondary' },
@@ -48,27 +42,62 @@ const paymentStatusConfig: Record<string, { label: string; variant: 'default' | 
 export default function Orders() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [filters, setFilters] = useState<OrderFiltersState>(initialFilters);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  const { data: orders = [], isLoading } = useOrders(
-    statusFilter !== 'all' ? { status: statusFilter } : undefined
+  // Converter filtros do componente para o hook
+  const hookFilters = useMemo(() => ({
+    status: filters.status !== 'all' ? filters.status : undefined,
+    assigned_to: filters.assignedTo !== 'all' ? filters.assignedTo : undefined,
+    payment_status: filters.paymentStatus !== 'all' ? filters.paymentStatus : undefined,
+    payment_method: filters.paymentMethod !== 'all' ? filters.paymentMethod : undefined,
+    shipping_method: filters.shippingMethod !== 'all' ? filters.shippingMethod : undefined,
+    date_from: filters.dateFrom || undefined,
+    date_to: filters.dateTo || undefined,
+    min_total: filters.minTotal ? parseFloat(filters.minTotal) : undefined,
+    max_total: filters.maxTotal ? parseFloat(filters.maxTotal) : undefined,
+    has_discount: filters.hasDiscount || undefined,
+    has_conversation: filters.hasConversation || undefined,
+  }), [filters]);
+
+  const { data: orders = [], isLoading } = useOrdersAdvanced(hookFilters);
+
+  // Obter IDs dos contatos para verificar primeira compra
+  const contactIds = useMemo(() => 
+    orders
+      .map(o => o.contact_id)
+      .filter((id): id is string => !!id),
+    [orders]
   );
 
-  const filteredOrders = orders.filter(order => {
-    if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
-    const contactName = order.contact && 'full_name' in order.contact ? (order.contact as { full_name: string }).full_name : '';
-    const contactPhone = order.contact && 'phone' in order.contact ? (order.contact as { phone: string }).phone : '';
-    return (
-      order.order_number.toLowerCase().includes(search) ||
-      contactName.toLowerCase().includes(search) ||
-      contactPhone.includes(search)
-    );
-  });
+  const { data: orderCounts = {} } = useContactOrderCounts(contactIds);
+
+  // Filtrar por busca textual e primeira compra
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      // Filtro de busca textual
+      if (filters.search) {
+        const search = filters.search.toLowerCase();
+        const contactName = order.contact?.full_name || '';
+        const contactPhone = order.contact?.phone || '';
+        const matchesSearch = 
+          order.order_number.toLowerCase().includes(search) ||
+          contactName.toLowerCase().includes(search) ||
+          contactPhone.includes(search);
+        if (!matchesSearch) return false;
+      }
+      
+      // Filtro de primeira compra
+      if (filters.isFirstPurchase && order.contact_id) {
+        const count = orderCounts[order.contact_id] || 0;
+        if (count > 1) return false;
+      }
+      
+      return true;
+    });
+  }, [orders, filters.search, filters.isFirstPurchase, orderCounts]);
 
   // Excluir cancelados do kanban
   const kanbanOrders = filteredOrders.filter(o => o.status !== 'canceled');
@@ -81,17 +110,16 @@ export default function Orders() {
   };
 
   const getContactName = (order: Order) => {
-    if (order.contact && 'full_name' in order.contact) {
-      return (order.contact as { full_name: string }).full_name;
-    }
-    return 'Cliente não informado';
+    return order.contact?.full_name || 'Cliente não informado';
   };
 
   const getContactPhone = (order: Order) => {
-    if (order.contact && 'phone' in order.contact) {
-      return (order.contact as { phone: string }).phone;
-    }
-    return null;
+    return order.contact?.phone || null;
+  };
+
+  const isFirstPurchase = (order: Order) => {
+    if (!order.contact_id) return false;
+    return (orderCounts[order.contact_id] || 0) === 1;
   };
 
   const handleViewOrder = (order: Order) => {
@@ -133,46 +161,12 @@ export default function Orders() {
             {/* Filters */}
             <Card>
               <CardContent className="pt-6">
-                <div className="flex gap-4 flex-wrap items-center">
-                  <div className="relative flex-1 min-w-[200px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Buscar por número, cliente..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos os status</SelectItem>
-                      {Object.entries(statusConfig).map(([key, config]) => (
-                        <SelectItem key={key} value={key}>
-                          {config.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex gap-1 border rounded-lg p-1">
-                    <Button
-                      variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                      size="icon"
-                      onClick={() => setViewMode('list')}
-                    >
-                      <List className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
-                      size="icon"
-                      onClick={() => setViewMode('kanban')}
-                    >
-                      <LayoutGrid className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <OrderFilters
+                  filters={filters}
+                  onFiltersChange={setFilters}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                />
               </CardContent>
             </Card>
 
@@ -216,14 +210,28 @@ export default function Orders() {
                               #{order.order_number}
                             </TableCell>
                             <TableCell>
-                              <div>
-                                <div className="font-medium">
-                                  {getContactName(order)}
-                                </div>
-                                {getContactPhone(order) && (
-                                  <div className="text-sm text-muted-foreground">
-                                    {getContactPhone(order)}
+                              <div className="flex items-center gap-2">
+                                <div>
+                                  <div className="font-medium">
+                                    {getContactName(order)}
                                   </div>
+                                  {getContactPhone(order) && (
+                                    <div className="text-sm text-muted-foreground">
+                                      {getContactPhone(order)}
+                                    </div>
+                                  )}
+                                </div>
+                                {isFirstPurchase(order) && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger>
+                                        <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Primeira compra</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 )}
                               </div>
                             </TableCell>
