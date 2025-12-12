@@ -61,7 +61,7 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
   };
 
   return (
-    <div className="w-80 border-r border-border flex flex-col bg-card min-h-0">
+    <div className="w-96 border-r border-border flex flex-col bg-card min-h-0">
       {/* Header */}
       <div className="p-4 border-b border-border shrink-0">
         <h2 className="text-lg font-semibold mb-3">Chat Interno</h2>
@@ -92,7 +92,7 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
         {/* Conversations Tab */}
         <TabsContent value="conversations" className="flex-1 m-0 min-h-0">
           <ScrollArea className="h-full">
-            <div className="p-2 space-y-0.5">
+            <div className="p-3 space-y-2">
               {threadsLoading ? (
                 Array(5).fill(0).map((_, i) => (
                   <div key={i} className="flex items-center gap-3 p-2">
@@ -117,12 +117,12 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
                       key={thread.id}
                       onClick={() => onSelectThread(thread.id, thread.other_user.id)}
                       className={cn(
-                        'w-full flex items-start gap-2.5 p-2.5 rounded-lg transition-colors text-left',
+                        'w-full flex items-start gap-3 p-3 rounded-lg transition-colors text-left border',
                         selectedThreadId === thread.id 
-                          ? 'bg-primary/10 border border-primary/20' 
+                          ? 'bg-primary/10 border-primary/30' 
                           : hasUnread 
-                            ? 'bg-primary/5 hover:bg-primary/10' 
-                            : 'hover:bg-muted'
+                            ? 'bg-primary/5 border-primary/20 hover:bg-primary/10' 
+                            : 'border-border hover:bg-muted'
                       )}
                     >
                       {/* Avatar com indicador online */}
