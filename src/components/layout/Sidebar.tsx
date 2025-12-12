@@ -69,29 +69,30 @@ interface NavGroup {
  * NAVEGAÇÃO COM PERMISSÕES CORRETAS
  * Todas as permissões devem corresponder às definidas em src/config/permissions.ts
  */
+// Itens ordenados alfabeticamente (exceto Dashboard que fica primeiro e Configurações que fica por último)
 const navItems: NavItem[] = [
+  // Dashboard sempre primeiro
   { title: 'Dashboard', href: '/', icon: LayoutDashboard, permission: 'dashboard.view' },
-  { title: 'Meu Painel', href: '/seller-dashboard', icon: UserCircle, roles: ['vendedor', 'admin', 'supervisor'] },
-  { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.view' },
-  { title: 'Chat Interno', href: '/internal-chat', icon: MessagesSquare },
-  { title: 'Requisições', href: '/conversations/requests', icon: GitPullRequest, permission: 'conversations.requests' },
-  { title: 'Ao Vivo', href: '/ao-vivo', icon: Radio, permission: 'live.view' },
-  { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.view' },
+  // Demais itens em ordem alfabética (A-Z)
   { title: 'Agendamentos', href: '/agendamentos', icon: CalendarClock, permission: 'schedules.view' },
-  { title: 'Automações', href: '/automations', icon: Workflow, permission: 'automations.view' },
-  { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.view' },
-  { title: 'Pedidos', href: '/orders', icon: ShoppingCart, permission: 'orders.view' },
-  { title: 'Financeiro', href: '/financial', icon: Wallet, permission: 'financial.view' },
-  { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.view' },
-  { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.view' },
-  // Marketing
-  { title: 'Meta Ads', href: '/meta-ads', icon: Megaphone, permission: 'marketing.view' },
-  { title: 'Relatório Campanhas', href: '/relatorios/campanhas', icon: Target, permission: 'marketing.view_campaigns' },
-  // Relatórios
+  { title: 'Ao Vivo', href: '/ao-vivo', icon: Radio, permission: 'live.view' },
   { title: 'Atendimentos', href: '/relatorios/atendimentos', icon: ClipboardList, permission: 'reports.view' },
+  { title: 'Automações', href: '/automations', icon: Workflow, permission: 'automations.view' },
+  { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.view' },
+  { title: 'Chat Interno', href: '/internal-chat', icon: MessagesSquare },
+  { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.view' },
+  { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.view' },
+  { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.view' },
+  { title: 'Financeiro', href: '/financial', icon: Wallet, permission: 'financial.view' },
+  { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.view' },
+  { title: 'Meta Ads', href: '/meta-ads', icon: Megaphone, permission: 'marketing.view' },
+  { title: 'Meu Painel', href: '/seller-dashboard', icon: UserCircle, roles: ['vendedor', 'admin', 'supervisor'] },
+  { title: 'Pedidos', href: '/orders', icon: ShoppingCart, permission: 'orders.view' },
+  { title: 'Relatório Campanhas', href: '/relatorios/campanhas', icon: Target, permission: 'marketing.view_campaigns' },
   { title: 'Relatórios', href: '/reports', icon: BarChart3, permission: 'reports.view' },
-  // Integrações
+  { title: 'Requisições', href: '/conversations/requests', icon: GitPullRequest, permission: 'conversations.requests' },
   { title: 'Webhooks', href: '/webhooks', icon: Link2, permission: 'webhooks.view' },
+  // Configurações sempre por último
   { title: 'Configurações', href: '/settings', icon: Settings, permission: 'settings.view' },
 ];
 

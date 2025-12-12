@@ -297,22 +297,6 @@ export default function Reports() {
         </div>
       </div>
 
-      {/* Quick Access */}
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => navigate('/relatorios/campanhas')}
-          className="flex items-center gap-3 px-4 py-3 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-600/20 rounded-xl transition-all group"
-        >
-          <div className="p-2 bg-blue-600 rounded-lg group-hover:scale-110 transition-transform">
-            <Facebook size={18} className="text-white" />
-          </div>
-          <div className="text-left">
-            <p className="text-sm font-medium text-foreground">Meta Ads - Campanhas</p>
-            <p className="text-xs text-muted-foreground">Leads e conversões de anúncios</p>
-          </div>
-          <ExternalLink size={16} className="text-blue-600 ml-2" />
-        </button>
-      </div>
 
       {/* Tabs */}
       {availableTabs.length === 0 ? (
