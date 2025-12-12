@@ -2475,6 +2475,92 @@ export type Database = {
         }
         Relationships: []
       }
+      product_attribute_types: {
+        Row: {
+          allow_multiple: boolean
+          created_at: string
+          description: string | null
+          display_order: number
+          id: string
+          is_active: boolean
+          is_required: boolean
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          allow_multiple?: boolean
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          is_required?: boolean
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          allow_multiple?: boolean
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          is_required?: boolean
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      product_attribute_values: {
+        Row: {
+          attribute_type_id: string
+          created_at: string
+          display_order: number
+          display_value: string | null
+          id: string
+          is_active: boolean
+          metadata: Json | null
+          slug: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          attribute_type_id: string
+          created_at?: string
+          display_order?: number
+          display_value?: string | null
+          id?: string
+          is_active?: boolean
+          metadata?: Json | null
+          slug: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          attribute_type_id?: string
+          created_at?: string
+          display_order?: number
+          display_value?: string | null
+          id?: string
+          is_active?: boolean
+          metadata?: Json | null
+          slug?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_attribute_values_attribute_type_id_fkey"
+            columns: ["attribute_type_id"]
+            isOneToOne: false
+            referencedRelation: "product_attribute_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null

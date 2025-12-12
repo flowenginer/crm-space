@@ -13,6 +13,8 @@ import {
   Shirt,
   Bell,
   ChevronLeft,
+  ChevronDown,
+  ChevronRight,
   Menu,
   LucideIcon,
   CalendarClock,
@@ -25,6 +27,11 @@ import {
   Link2,
   GitPullRequest,
   MessagesSquare,
+  Package,
+  Layers,
+  Tags,
+  Settings2,
+  DollarSign,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -46,6 +53,13 @@ interface NavItem {
   icon: LucideIcon;
   permission?: string; // format: 'category.action'
   roles?: string[]; // Aceita qualquer role (admin, supervisor, vendedor, designer, sac, etc.)
+}
+
+interface NavGroup {
+  title: string;
+  icon: LucideIcon;
+  permission?: string;
+  items: NavItem[];
 }
 
 /**
@@ -75,6 +89,19 @@ const navItems: NavItem[] = [
   { title: 'Configurações', href: '/settings', icon: Settings, permission: 'settings.view' },
 ];
 
+// Grupo de Produtos (submenu expansível)
+const productNavGroup: NavGroup = {
+  title: 'Produtos',
+  icon: Package,
+  permission: 'settings.view', // TODO: criar permissão products.view
+  items: [
+    { title: 'Catálogos', href: '/products/catalogs', icon: Layers },
+    { title: 'Produtos', href: '/products', icon: Tags },
+    { title: 'Atributos', href: '/products/attributes', icon: Settings2 },
+    { title: 'Regras de Preço', href: '/products/price-rules', icon: DollarSign },
+  ],
+};
+
 interface SidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
@@ -90,6 +117,11 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { data: pendingRequestsCount = 0 } = usePendingRequestsCount();
   const { data: internalChatUnreadCount = 0 } = useInternalChatUnreadCount();
   const { data: callbacksCount } = usePendingCallbacksCount();
+  
+  // Estado para controlar submenu de Produtos
+  const [isProductsExpanded, setIsProductsExpanded] = useState(() => {
+    return location.pathname.startsWith('/products');
+  });
   
   // Ativar listener de realtime para requisições
   useContactRequestsRealtime();
@@ -262,6 +294,69 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             );
           })}
 
+          {/* Products Submenu */}
+          {(isAdmin || hasPermission('settings', 'view')) && (
+            <div className="mt-2">
+              <button
+                onClick={() => setIsProductsExpanded(!isProductsExpanded)}
+                className={cn(
+                  'group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
+                  location.pathname.startsWith('/products')
+                    ? isDark
+                      ? 'bg-primary/15 text-primary'
+                      : 'bg-white/20 text-white shadow-lg'
+                    : isDark
+                      ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      : 'text-purple-100 hover:bg-white/10 hover:text-white',
+                  isCollapsed && 'justify-center px-3'
+                )}
+              >
+                <Package className={cn(
+                  'h-5 w-5 shrink-0',
+                  location.pathname.startsWith('/products')
+                    ? isDark ? 'text-primary' : 'text-white'
+                    : isDark ? 'text-muted-foreground' : 'text-purple-200'
+                )} />
+                {!isCollapsed && (
+                  <>
+                    <span className="flex-1 text-left">Produtos</span>
+                    {isProductsExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </>
+                )}
+              </button>
+              {isProductsExpanded && !isCollapsed && (
+                <div className="ml-4 mt-1 space-y-1 border-l-2 border-primary/20 pl-3">
+                  {productNavGroup.items.map((item) => {
+                    const isActive = location.pathname === item.href;
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={item.href}
+                        to={item.href}
+                        className={cn(
+                          'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all',
+                          isActive
+                            ? isDark
+                              ? 'bg-primary/10 text-primary font-medium'
+                              : 'bg-white/15 text-white font-medium'
+                            : isDark
+                              ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                              : 'text-purple-200 hover:bg-white/10 hover:text-white'
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Demais itens de navegação */}
           {filteredNavItems.filter(item => item.href !== '/').map((item) => {

@@ -32,6 +32,7 @@ import FlowEditor from "@/pages/FlowEditor";
 import Webhooks from "@/pages/Webhooks";
 import ContactRequests from "@/pages/ContactRequests";
 import InternalChat from "@/pages/InternalChat";
+import Attributes from "@/pages/products/Attributes";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -148,6 +149,11 @@ const App = () => (
               <Route path="/webhooks" element={
                 <ProtectedRoute permission="webhooks.view">
                   <Webhooks />
+                </ProtectedRoute>
+              } />
+              <Route path="/products/attributes" element={
+                <ProtectedRoute permission="settings.view">
+                  <Attributes />
                 </ProtectedRoute>
               } />
             </Route>
