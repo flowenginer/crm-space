@@ -1,44 +1,18 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
+import * as LucideIcons from 'lucide-react';
 import {
-  LayoutDashboard,
-  MessageSquare,
-  Zap,
-  TrendingUp,
-  Radio,
-  Users,
-  BarChart3,
-  Settings,
-  LogOut,
-  Shirt,
   Bell,
   ChevronLeft,
   ChevronDown,
   ChevronRight,
   Menu,
-  LucideIcon,
-  UserCircle,
-  CalendarClock,
-  ClipboardList,
+  LogOut,
+  Shirt,
   Sun,
   Moon,
-  Megaphone,
-  Target,
-  Workflow,
-  Link2,
-  GitPullRequest,
-  MessagesSquare,
-  Package,
-  Layers,
-  Tags,
-  Settings2,
-  DollarSign,
-  ShoppingCart,
-  Wallet,
-  LayoutTemplate,
+  Circle,
 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { NavLink } from '@/components/NavLink';
 import { Button } from '@/components/ui/button';
@@ -49,71 +23,23 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { usePendingRequestsCount, useContactRequestsRealtime } from '@/hooks/useContactRequests';
 import { useInternalChatUnreadCount } from '@/hooks/useInternalChat';
 import { usePendingCallbacksCount } from '@/hooks/useCallbackReminders';
-
-
-interface NavItem {
-  title: string;
-  href: string;
-  icon: LucideIcon;
-  permission?: string; // format: 'category.action'
-  roles?: string[]; // Aceita qualquer role (admin, supervisor, vendedor, designer, sac, etc.)
-}
-
-interface NavGroup {
-  title: string;
-  icon: LucideIcon;
-  permission?: string;
-  items: NavItem[];
-}
-
-/**
- * NAVEGAÇÃO COM PERMISSÕES CORRETAS
- * Todas as permissões devem corresponder às definidas em src/config/permissions.ts
- */
-// Itens ordenados alfabeticamente (exceto Dashboard que fica primeiro e Configurações que fica por último)
-const navItems: NavItem[] = [
-  // Dashboard sempre primeiro
-  { title: 'Dashboard', href: '/', icon: LayoutDashboard, permission: 'dashboard.view' },
-  // Demais itens em ordem alfabética (A-Z)
-  { title: 'Agendamentos', href: '/agendamentos', icon: CalendarClock, permission: 'schedules.view' },
-  { title: 'Ao Vivo', href: '/ao-vivo', icon: Radio, permission: 'live.view' },
-  { title: 'Atendimentos', href: '/relatorios/atendimentos', icon: ClipboardList, permission: 'reports.view' },
-  { title: 'Automações', href: '/automations', icon: Workflow, permission: 'automations.view' },
-  { title: 'Canais WhatsApp', href: '/whatsapp-channels', icon: Radio, permission: 'channels.view' },
-  { title: 'Chat Interno', href: '/internal-chat', icon: MessagesSquare },
-  { title: 'Contatos', href: '/contacts', icon: Users, permission: 'contacts.view' },
-  { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.view' },
-  { title: 'CRM', href: '/crm', icon: TrendingUp, permission: 'deals.view' },
-  { title: 'Financeiro', href: '/financial', icon: Wallet, permission: 'financial.view' },
-  { title: 'Mensagens Rápidas', href: '/quick-messages', icon: Zap, permission: 'templates.view' },
-  { title: 'Meta Ads', href: '/meta-ads', icon: Megaphone, permission: 'marketing.view' },
-  { title: 'Meu Painel', href: '/seller-dashboard', icon: UserCircle, roles: ['vendedor', 'admin', 'supervisor'] },
-  { title: 'Pedidos', href: '/orders', icon: ShoppingCart, permission: 'orders.view' },
-  { title: 'Relatório Campanhas', href: '/relatorios/campanhas', icon: Target, permission: 'marketing.view_campaigns' },
-  { title: 'Relatórios', href: '/reports', icon: BarChart3, permission: 'reports.view' },
-  { title: 'Requisições', href: '/conversations/requests', icon: GitPullRequest, permission: 'conversations.requests' },
-  { title: 'Webhooks', href: '/webhooks', icon: Link2, permission: 'webhooks.view' },
-  // Configurações sempre por último
-  { title: 'Configurações', href: '/settings', icon: Settings, permission: 'settings.view' },
-];
-
-// Grupo de Produtos (submenu expansível)
-const productNavGroup: NavGroup = {
-  title: 'Produtos',
-  icon: Package,
-  permission: 'settings.view', // TODO: criar permissão products.view
-  items: [
-    { title: 'Catálogos', href: '/products/catalogs', icon: Layers },
-    { title: 'Produtos', href: '/products', icon: Tags },
-    { title: 'Templates', href: '/products/templates', icon: LayoutTemplate },
-    { title: 'Atributos', href: '/products/attributes', icon: Settings2 },
-    { title: 'Regras de Preço', href: '/products/price-rules', icon: DollarSign },
-  ],
-};
+import { useMenuHierarchy, MenuItem } from '@/hooks/useMenuConfig';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface SidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
+}
+
+// Componente para renderizar ícone dinamicamente
+function DynamicIcon({ name, className }: { name: string; className?: string }) {
+  const IconComponent = (LucideIcons as any)[name];
+  if (!IconComponent) {
+    return <Circle className={className} />;
+  }
+  return <IconComponent className={className} />;
 }
 
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
@@ -127,9 +53,14 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { data: internalChatUnreadCount = 0 } = useInternalChatUnreadCount();
   const { data: callbacksCount } = usePendingCallbacksCount();
   
-  // Estado para controlar submenu de Produtos
-  const [isProductsExpanded, setIsProductsExpanded] = useState(() => {
-    return location.pathname.startsWith('/products');
+  // Carregar menu do banco de dados
+  const { data: menuHierarchy = [], isLoading: menuLoading } = useMenuHierarchy();
+  
+  // Estado para controlar submenus expandidos
+  const [expandedMenus, setExpandedMenus] = useState<Set<string>>(() => {
+    // Inicializar com menus que contêm a rota atual
+    const expanded = new Set<string>();
+    return expanded;
   });
   
   // Ativar listener de realtime para requisições
@@ -138,7 +69,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   // Fetch pending scheduled messages count
   const { data: pendingCount } = useQuery({
     queryKey: ['pending-scheduled-count'],
-    staleTime: 30000, // 30 seconds cache
+    staleTime: 30000,
     queryFn: async () => {
       const { count, error } = await supabase
         .from('scheduled_messages')
@@ -150,29 +81,96 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     refetchInterval: 30000
   });
 
-  // Filter nav items based on permissions
-  const filteredNavItems = navItems.filter((item) => {
-    // While NOT fully loaded, hide items that require permission for safety
-    if (!isFullyLoaded) {
-      return !item.permission && !item.roles;
+  // Expandir automaticamente menus que contêm a rota atual
+  useMemo(() => {
+    if (menuHierarchy.length > 0) {
+      menuHierarchy.forEach(item => {
+        if (item.children && item.children.some(child => location.pathname === child.href || location.pathname.startsWith(child.href + '/'))) {
+          setExpandedMenus(prev => new Set([...prev, item.id]));
+        }
+      });
     }
+  }, [menuHierarchy, location.pathname]);
+
+  // Filtrar itens de menu baseado em permissões
+  const filteredMenuItems = useMemo(() => {
+    if (!isFullyLoaded) return [];
     
-    // Admin sees everything
-    if (isAdmin) return true;
+    const filterItem = (item: MenuItem): MenuItem | null => {
+      // Verificar se está ativo
+      if (!item.is_active) return null;
+      
+      // Admin vê tudo
+      if (isAdmin) {
+        // Filtrar children também
+        if (item.children) {
+          const filteredChildren = item.children
+            .map(filterItem)
+            .filter((child): child is MenuItem => child !== null);
+          return { ...item, children: filteredChildren };
+        }
+        return item;
+      }
+      
+      // Verificar permissão
+      if (item.permission) {
+        const [category, action] = item.permission.split('.');
+        if (!hasPermission(category, action)) return null;
+      }
+      
+      // Verificar roles
+      if (item.roles && item.roles.length > 0) {
+        if (!userRole || !item.roles.includes(userRole)) return null;
+      }
+      
+      // Filtrar children
+      if (item.children) {
+        const filteredChildren = item.children
+          .map(filterItem)
+          .filter((child): child is MenuItem => child !== null);
+        return { ...item, children: filteredChildren };
+      }
+      
+      return item;
+    };
     
-    // Check specific permission
-    if (item.permission) {
-      const [category, action] = item.permission.split('.');
-      return hasPermission(category, action);
+    return menuHierarchy
+      .map(filterItem)
+      .filter((item): item is MenuItem => item !== null);
+  }, [menuHierarchy, isFullyLoaded, isAdmin, hasPermission, userRole]);
+
+  const toggleExpanded = (id: string) => {
+    setExpandedMenus(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const getBadgeValue = (badgeType: string | null): number | null => {
+    if (!badgeType) return null;
+    
+    switch (badgeType) {
+      case 'scheduledCount':
+        return ((pendingCount || 0) + (callbacksCount?.total || 0)) || null;
+      case 'requestsCount':
+        return pendingRequestsCount || null;
+      case 'internalChatCount':
+        return internalChatUnreadCount || null;
+      default:
+        return null;
     }
-    
-    // Check role restriction
-    if (item.roles) {
-      return userRole ? item.roles.includes(userRole) : false;
-    }
-    
-    return true;
-  });
+  };
+
+  const isLiveBadge = (badgeType: string | null): boolean => {
+    return badgeType === 'liveBadge';
+  };
+
+  const hasOverdueCallbacks = callbacksCount && callbacksCount.overdue > 0;
 
   const getInitials = (name: string | null) => {
     if (!name) return 'U';
@@ -184,14 +182,134 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       .slice(0, 2);
   };
 
+  const renderMenuItem = (item: MenuItem, isSubmenuItem = false) => {
+    const isActive = item.href ? 
+      (location.pathname === item.href || location.pathname.startsWith(item.href + '/')) : 
+      false;
+    const hasChildren = item.children && item.children.length > 0;
+    const isExpanded = expandedMenus.has(item.id);
+    const isCascadeMenu = !item.href && hasChildren;
+    const badgeValue = getBadgeValue(item.show_badge);
+    const showLive = isLiveBadge(item.show_badge);
+    
+    // Se é menu cascata (sem href, com children)
+    if (isCascadeMenu) {
+      const isChildActive = item.children!.some(child => 
+        child.href && (location.pathname === child.href || location.pathname.startsWith(child.href + '/'))
+      );
+      
+      return (
+        <div key={item.id} className="mt-2">
+          <button
+            onClick={() => toggleExpanded(item.id)}
+            className={cn(
+              'group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
+              isChildActive
+                ? isDark
+                  ? 'bg-primary/15 text-primary'
+                  : 'bg-white/20 text-white shadow-lg'
+                : isDark
+                  ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  : 'text-purple-100 hover:bg-white/10 hover:text-white',
+              isCollapsed && 'justify-center px-3'
+            )}
+          >
+            <DynamicIcon 
+              name={item.icon} 
+              className={cn(
+                'h-5 w-5 shrink-0',
+                isChildActive
+                  ? isDark ? 'text-primary' : 'text-white'
+                  : isDark ? 'text-muted-foreground' : 'text-purple-200'
+              )} 
+            />
+            {!isCollapsed && (
+              <>
+                <span className="flex-1 text-left">{item.title}</span>
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </>
+            )}
+          </button>
+          {isExpanded && !isCollapsed && item.children && (
+            <div className="ml-4 mt-1 space-y-1 border-l-2 border-primary/20 pl-3">
+              {item.children.map((child) => renderMenuItem(child, true))}
+            </div>
+          )}
+        </div>
+      );
+    }
+    
+    // Item normal com link
+    return (
+      <NavLink
+        key={item.id}
+        to={item.href || '/'}
+        className={cn(
+          'group flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200',
+          isSubmenuItem ? 'rounded-lg px-3 py-2' : 'px-4 py-3',
+          isActive
+            ? isDark
+              ? isSubmenuItem 
+                ? 'bg-primary/10 text-primary font-medium'
+                : 'bg-primary/15 text-primary border-l-4 border-primary'
+              : isSubmenuItem
+                ? 'bg-white/15 text-white font-medium'
+                : 'bg-white/20 text-white shadow-lg border-l-4 border-white'
+            : isDark
+              ? isSubmenuItem
+                ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground hover:scale-[1.02]'
+              : isSubmenuItem
+                ? 'text-purple-200 hover:bg-white/10 hover:text-white'
+                : 'text-purple-100 hover:bg-white/10 hover:text-white hover:scale-[1.02]',
+          isCollapsed && !isSubmenuItem && 'justify-center px-3'
+        )}
+      >
+        <DynamicIcon 
+          name={item.icon} 
+          className={cn(
+            'shrink-0 transition-transform',
+            isSubmenuItem ? 'h-4 w-4' : 'h-5 w-5',
+            isActive 
+              ? isDark ? 'text-primary' : 'text-white'
+              : isDark 
+                ? 'text-muted-foreground group-hover:text-foreground' 
+                : 'text-purple-200 group-hover:text-white'
+          )} 
+        />
+        {(!isCollapsed || isSubmenuItem) && (
+          <span className="flex-1 flex items-center justify-between">
+            {item.title}
+            {badgeValue && badgeValue > 0 && (
+              <span className={cn(
+                'ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white',
+                item.show_badge === 'scheduledCount' && hasOverdueCallbacks ? 'bg-red-500' : 
+                item.show_badge === 'requestsCount' ? 'bg-destructive' :
+                item.show_badge === 'internalChatCount' ? 'bg-primary' :
+                'bg-amber-500'
+              )}>
+                {badgeValue > 99 ? '99+' : badgeValue}
+              </span>
+            )}
+            {showLive && (
+              <span className="ml-2 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            )}
+          </span>
+        )}
+      </NavLink>
+    );
+  };
+
   return (
     <aside
       className={cn(
         'fixed left-0 top-0 z-40 flex h-screen flex-col shadow-2xl transition-all duration-300',
         isCollapsed ? 'w-20' : 'w-[280px]',
         isMobile && isCollapsed && '-translate-x-full',
-        // Light mode: vibrant purple gradient
-        // Dark mode: subtle dark gradient with hint of purple
         isDark 
           ? 'bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-r border-border/50' 
           : 'bg-gradient-to-b from-purple-600 via-purple-700 to-pink-600'
@@ -230,7 +348,6 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
-          {/* Theme Toggle - visible when sidebar is expanded */}
           {!isCollapsed && (
             <Button
               variant="ghost"
@@ -270,165 +387,14 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-6 px-3">
         <div className="space-y-1.5">
-          {/* Dashboard - primeiro item */}
-          {filteredNavItems.filter(item => item.href === '/').map((item) => {
-            const isActive = location.pathname === item.href;
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.href}
-                to={item.href}
-                className={cn(
-                  'group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
-                  isActive
-                    ? isDark
-                      ? 'bg-primary/15 text-primary border-l-4 border-primary'
-                      : 'bg-white/20 text-white shadow-lg border-l-4 border-white'
-                    : isDark
-                      ? 'text-muted-foreground hover:bg-muted hover:text-foreground hover:scale-[1.02]'
-                      : 'text-purple-100 hover:bg-white/10 hover:text-white hover:scale-[1.02]',
-                  isCollapsed && 'justify-center px-3'
-                )}
-              >
-                <Icon className={cn(
-                  'h-5 w-5 shrink-0 transition-transform',
-                  isActive 
-                    ? isDark ? 'text-primary' : 'text-white'
-                    : isDark 
-                      ? 'text-muted-foreground group-hover:text-foreground' 
-                      : 'text-purple-200 group-hover:text-white'
-                )} />
-                {!isCollapsed && <span>{item.title}</span>}
-              </NavLink>
-            );
-          })}
-
-          {/* Products Submenu */}
-          {(isAdmin || hasPermission('settings', 'view')) && (
-            <div className="mt-2">
-              <button
-                onClick={() => setIsProductsExpanded(!isProductsExpanded)}
-                className={cn(
-                  'group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
-                  location.pathname.startsWith('/products')
-                    ? isDark
-                      ? 'bg-primary/15 text-primary'
-                      : 'bg-white/20 text-white shadow-lg'
-                    : isDark
-                      ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                      : 'text-purple-100 hover:bg-white/10 hover:text-white',
-                  isCollapsed && 'justify-center px-3'
-                )}
-              >
-                <Package className={cn(
-                  'h-5 w-5 shrink-0',
-                  location.pathname.startsWith('/products')
-                    ? isDark ? 'text-primary' : 'text-white'
-                    : isDark ? 'text-muted-foreground' : 'text-purple-200'
-                )} />
-                {!isCollapsed && (
-                  <>
-                    <span className="flex-1 text-left">Produtos</span>
-                    {isProductsExpanded ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
-                    )}
-                  </>
-                )}
-              </button>
-              {isProductsExpanded && !isCollapsed && (
-                <div className="ml-4 mt-1 space-y-1 border-l-2 border-primary/20 pl-3">
-                  {productNavGroup.items.map((item) => {
-                    const isActive = location.pathname === item.href;
-                    const Icon = item.icon;
-                    return (
-                      <NavLink
-                        key={item.href}
-                        to={item.href}
-                        className={cn(
-                          'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all',
-                          isActive
-                            ? isDark
-                              ? 'bg-primary/10 text-primary font-medium'
-                              : 'bg-white/15 text-white font-medium'
-                            : isDark
-                              ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                              : 'text-purple-200 hover:bg-white/10 hover:text-white'
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </NavLink>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+          {menuLoading ? (
+            // Skeleton loading
+            Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-xl" />
+            ))
+          ) : (
+            filteredMenuItems.map((item) => renderMenuItem(item))
           )}
-
-          {/* Demais itens de navegação */}
-          {filteredNavItems.filter(item => item.href !== '/').map((item) => {
-            const isActive = location.pathname === item.href;
-            const Icon = item.icon;
-
-            const showBadge = item.href === '/agendamentos' && ((pendingCount && pendingCount > 0) || (callbacksCount && callbacksCount.total > 0));
-            const totalAgendamentos = (pendingCount || 0) + (callbacksCount?.total || 0);
-            const hasOverdueCallbacks = callbacksCount && callbacksCount.overdue > 0;
-            const showLiveBadge = item.href === '/ao-vivo';
-            const showRequestsBadge = item.href === '/conversations/requests' && pendingRequestsCount > 0;
-            const showInternalChatBadge = item.href === '/internal-chat' && internalChatUnreadCount > 0;
-
-            return (
-              <NavLink
-                key={item.href}
-                to={item.href}
-                className={cn(
-                  'group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
-                  isActive
-                    ? isDark
-                      ? 'bg-primary/15 text-primary border-l-4 border-primary'
-                      : 'bg-white/20 text-white shadow-lg border-l-4 border-white'
-                    : isDark
-                      ? 'text-muted-foreground hover:bg-muted hover:text-foreground hover:scale-[1.02]'
-                      : 'text-purple-100 hover:bg-white/10 hover:text-white hover:scale-[1.02]',
-                  isCollapsed && 'justify-center px-3'
-                )}
-              >
-                <Icon className={cn(
-                  'h-5 w-5 shrink-0 transition-transform',
-                  isActive 
-                    ? isDark ? 'text-primary' : 'text-white'
-                    : isDark 
-                      ? 'text-muted-foreground group-hover:text-foreground' 
-                      : 'text-purple-200 group-hover:text-white'
-                )} />
-                {!isCollapsed && (
-                  <span className="flex-1 flex items-center justify-between">
-                    {item.title}
-                    {showBadge && (
-                      <span className={`ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white ${hasOverdueCallbacks ? 'bg-red-500' : 'bg-amber-500'}`}>
-                        {totalAgendamentos > 99 ? '99+' : totalAgendamentos}
-                      </span>
-                    )}
-                    {showRequestsBadge && (
-                      <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-white">
-                        {pendingRequestsCount > 99 ? '99+' : pendingRequestsCount}
-                      </span>
-                    )}
-                    {showInternalChatBadge && (
-                      <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
-                        {internalChatUnreadCount > 99 ? '99+' : internalChatUnreadCount}
-                      </span>
-                    )}
-                    {showLiveBadge && (
-                      <span className="ml-2 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                    )}
-                  </span>
-                )}
-              </NavLink>
-            );
-          })}
         </div>
       </nav>
 

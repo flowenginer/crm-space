@@ -2223,6 +2223,59 @@ export type Database = {
         }
         Relationships: []
       }
+      menu_items: {
+        Row: {
+          created_at: string | null
+          href: string | null
+          icon: string
+          id: string
+          is_active: boolean | null
+          parent_id: string | null
+          permission: string | null
+          position: number
+          roles: string[] | null
+          show_badge: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          href?: string | null
+          icon?: string
+          id?: string
+          is_active?: boolean | null
+          parent_id?: string | null
+          permission?: string | null
+          position?: number
+          roles?: string[] | null
+          show_badge?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          href?: string | null
+          icon?: string
+          id?: string
+          is_active?: boolean | null
+          parent_id?: string | null
+          permission?: string | null
+          position?: number
+          roles?: string[] | null
+          show_badge?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_items_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_templates: {
         Row: {
           category: string | null
