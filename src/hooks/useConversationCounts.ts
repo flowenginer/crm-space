@@ -485,3 +485,30 @@ export function useNoTagCount(filters?: CountFilters) {
     refetchOnWindowFocus: false,
   });
 }
+
+/**
+ * Hook para buscar contagens de conversas por lead status
+ */
+export function useLeadStatusCounts(filters?: CountFilters) {
+  return useQuery({
+    queryKey: ['lead-status-counts', filters],
+    queryFn: async (): Promise<Record<string, number>> => {
+      const { data, error } = await (supabase.rpc as any)('get_lead_status_counts', {
+        p_department_id: filters?.departmentId || null,
+        p_agent_id: filters?.agentId || null,
+        p_channel_id: filters?.channelId && filters.channelId !== 'no_channel' ? filters.channelId : null,
+        p_origin: filters?.origin && filters.origin !== 'all' ? filters.origin : null,
+        p_status_filter: filters?.statusFilter || 'active',
+      });
+
+      if (error) {
+        console.error('Error fetching lead status counts:', error);
+        throw error;
+      }
+      return (data as Record<string, number>) || {};
+    },
+    staleTime: FILTER_COUNTS_STALE_TIME,
+    refetchInterval: FILTER_COUNTS_REFETCH_INTERVAL,
+    refetchOnWindowFocus: false,
+  });
+}

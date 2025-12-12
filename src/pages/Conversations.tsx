@@ -86,7 +86,8 @@ import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessage
 import { QuickTemplatesPopover } from '@/components/conversations/QuickTemplatesPopover';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
 import { usePaginatedConversations, useSortFilterCounts, type SortFilter, type ConversationFilters, type StatusFilter, type AssignmentFilterExtended } from '@/hooks/usePaginatedConversations';
-import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, useNoTagCount, type CountFilters } from '@/hooks/useConversationCounts';
+import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, useNoTagCount, useLeadStatusCounts, type CountFilters } from '@/hooks/useConversationCounts';
+import { useLeadStatuses } from '@/hooks/useLeadStatuses';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
 import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
@@ -1408,6 +1409,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const { data: noTagCount } = useNoTagCount(tagCountFilters); // Contagem de conversas sem etiqueta
   const { data: agentCountsData } = useAgentCounts(agentCountFilters);
   const { data: sortFilterCountsFromDb } = useSortFilterCounts(statusFilter, conversationFilters.assignment); // Real counts for not_replied and client_not_replied (filtered by assignment)
+  const { data: leadStatuses } = useLeadStatuses();
+  const { data: leadStatusCountsData } = useLeadStatusCounts(countFilters);
   
   // Flatten paginated conversations
   const paginatedConversations = useMemo(() => {
@@ -3018,21 +3021,28 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               <SelectValue placeholder="Status do Lead" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os status</SelectItem>
-              <SelectItem value="01 - Não respondeu">01 - Não respondeu</SelectItem>
-              <SelectItem value="02 - Pré-venda">02 - Pré-venda</SelectItem>
-              <SelectItem value="03 - Catálogo">03 - Catálogo</SelectItem>
-              <SelectItem value="04 - Layout">04 - Layout</SelectItem>
-              <SelectItem value="05 - Orçamento">05 - Orçamento</SelectItem>
-              <SelectItem value="06 - Aguardando pagamento">06 - Aguard. Pagamento</SelectItem>
-              <SelectItem value="07 - Pedido Fechado">07 - Pedido Fechado</SelectItem>
-              <SelectItem value="08 - Em andamento">08 - Em andamento</SelectItem>
-              <SelectItem value="09 - Cobrança">09 - Cobrança</SelectItem>
-              <SelectItem value="10 - Aguardando envio">10 - Aguard. Envio</SelectItem>
-              <SelectItem value="11 - Pedido Enviado">11 - Pedido Enviado</SelectItem>
-              <SelectItem value="12 - Entregue">12 - Entregue</SelectItem>
-              <SelectItem value="13 - Recompra">13 - Recompra</SelectItem>
-              <SelectItem value="14 - Cancelado/Descarte">14 - Cancelado</SelectItem>
+              <SelectItem value="all">
+                <div className="flex items-center justify-between w-full gap-2">
+                  <span>Todos os status</span>
+                  {leadStatusCountsData && Object.keys(leadStatusCountsData).length > 0 && (
+                    <span className="text-xs bg-muted px-1.5 py-0.5 rounded-md text-muted-foreground">
+                      {Object.values(leadStatusCountsData).reduce((a, b) => a + b, 0)}
+                    </span>
+                  )}
+                </div>
+              </SelectItem>
+              {leadStatuses?.map((status) => (
+                <SelectItem key={status.id} value={status.name}>
+                  <div className="flex items-center justify-between w-full gap-2">
+                    <span style={{ color: status.color || undefined }}>{status.name}</span>
+                    {leadStatusCountsData?.[status.name] !== undefined && (
+                      <span className="text-xs bg-muted px-1.5 py-0.5 rounded-md text-muted-foreground">
+                        {leadStatusCountsData[status.name] || 0}
+                      </span>
+                    )}
+                  </div>
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
