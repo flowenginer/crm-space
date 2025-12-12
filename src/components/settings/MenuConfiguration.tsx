@@ -60,6 +60,8 @@ interface SortableMenuItemProps {
   onAddSubmenu: (parentId: string) => void;
   expandedItems: Set<string>;
   toggleExpanded: (id: string) => void;
+  sensors: ReturnType<typeof useSensors>;
+  onSubmenuDragEnd: (event: DragEndEvent, parentId: string, children: MenuItem[]) => void;
 }
 
 function SortableMenuItem({ 
@@ -70,6 +72,8 @@ function SortableMenuItem({
   onAddSubmenu,
   expandedItems,
   toggleExpanded,
+  sensors,
+  onSubmenuDragEnd,
 }: SortableMenuItemProps) {
   const {
     attributes,
@@ -185,55 +189,115 @@ function SortableMenuItem({
         </div>
       </div>
 
-      {/* Submenus */}
+      {/* Submenus with drag & drop */}
       {isExpanded && hasChildren && (
-        <div className="ml-8 mt-2 space-y-2 border-l-2 border-primary/20 pl-4">
-          {item.children!.map((child) => (
-            <div
-              key={child.id}
-              className={cn(
-                'flex items-center gap-2 p-2 rounded-lg border bg-card/50',
-                !child.is_active && 'opacity-60'
-              )}
-            >
-              <div className="flex items-center justify-center w-6 h-6 rounded bg-muted">
-                <DynamicIcon name={child.icon} className="h-3 w-3" />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium truncate">{child.title}</span>
-                {child.href && (
-                  <span className="text-xs text-muted-foreground ml-2">{child.href}</span>
-                )}
-              </div>
-
-              <Switch
-                checked={child.is_active}
-                onCheckedChange={() => onToggleActive(child)}
-                className="scale-75"
-              />
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => onEdit(child)}
-              >
-                <Pencil className="h-3 w-3" />
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-destructive hover:text-destructive"
-                onClick={() => onDelete(child)}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={(event) => onSubmenuDragEnd(event, item.id, item.children!)}
+        >
+          <SortableContext
+            items={item.children!.map(child => child.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="ml-8 mt-2 space-y-2 border-l-2 border-primary/20 pl-4">
+              {item.children!.map((child) => (
+                <SortableSubmenuItem
+                  key={child.id}
+                  item={child}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onToggleActive={onToggleActive}
+                />
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
+    </div>
+  );
+}
+
+// Componente para submenu arrastável
+interface SortableSubmenuItemProps {
+  item: MenuItem;
+  onEdit: (item: MenuItem) => void;
+  onDelete: (item: MenuItem) => void;
+  onToggleActive: (item: MenuItem) => void;
+}
+
+function SortableSubmenuItem({
+  item,
+  onEdit,
+  onDelete,
+  onToggleActive,
+}: SortableSubmenuItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'flex items-center gap-2 p-2 rounded-lg border bg-card/50',
+        isDragging && 'opacity-50 shadow-lg z-50',
+        !item.is_active && 'opacity-60'
+      )}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab hover:bg-muted p-1 rounded"
+      >
+        <GripVertical className="h-3 w-3 text-muted-foreground" />
+      </button>
+
+      <div className="flex items-center justify-center w-6 h-6 rounded bg-muted">
+        <DynamicIcon name={item.icon} className="h-3 w-3" />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <span className="text-sm font-medium truncate">{item.title}</span>
+        {item.href && (
+          <span className="text-xs text-muted-foreground ml-2">{item.href}</span>
+        )}
+      </div>
+
+      <Switch
+        checked={item.is_active}
+        onCheckedChange={() => onToggleActive(item)}
+        className="scale-75"
+      />
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        onClick={() => onEdit(item)}
+      >
+        <Pencil className="h-3 w-3" />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-destructive hover:text-destructive"
+        onClick={() => onDelete(item)}
+      >
+        <Trash2 className="h-3 w-3" />
+      </Button>
     </div>
   );
 }
@@ -335,6 +399,26 @@ export function MenuConfiguration() {
     }
   };
 
+  const handleSubmenuDragEnd = async (event: DragEndEvent, parentId: string, children: MenuItem[]) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = children.findIndex((item) => item.id === active.id);
+      const newIndex = children.findIndex((item) => item.id === over.id);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newOrder = arrayMove(children, oldIndex, newIndex);
+        const updates = newOrder.map((item, index) => ({
+          id: item.id,
+          position: index + 1,
+          parent_id: parentId,
+        }));
+
+        await reorderMenuItems.mutateAsync(updates);
+      }
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -382,6 +466,8 @@ export function MenuConfiguration() {
                     onAddSubmenu={handleAddSubmenu}
                     expandedItems={expandedItems}
                     toggleExpanded={toggleExpanded}
+                    sensors={sensors}
+                    onSubmenuDragEnd={handleSubmenuDragEnd}
                   />
                 ))}
               </div>
