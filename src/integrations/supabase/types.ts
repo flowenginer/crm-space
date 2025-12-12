@@ -1699,6 +1699,69 @@ export type Database = {
           },
         ]
       }
+      inventory_movements: {
+        Row: {
+          cost_per_unit: number | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          movement_type: string
+          notes: string | null
+          quantity: number
+          reference_id: string | null
+          reference_type: string | null
+          stock_after: number
+          stock_before: number
+          tenant_id: string | null
+          variation_id: string
+        }
+        Insert: {
+          cost_per_unit?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          movement_type: string
+          notes?: string | null
+          quantity: number
+          reference_id?: string | null
+          reference_type?: string | null
+          stock_after: number
+          stock_before: number
+          tenant_id?: string | null
+          variation_id: string
+        }
+        Update: {
+          cost_per_unit?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          movement_type?: string
+          notes?: string | null
+          quantity?: number
+          reference_id?: string | null
+          reference_type?: string | null
+          stock_after?: number
+          stock_before?: number
+          tenant_id?: string | null
+          variation_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "product_variations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_assignment_history: {
         Row: {
           assigned_at: string
@@ -2636,6 +2699,48 @@ export type Database = {
           },
         ]
       }
+      product_attributes: {
+        Row: {
+          attribute_type_id: string
+          created_at: string | null
+          display_order: number | null
+          id: string
+          is_required: boolean | null
+          product_id: string
+        }
+        Insert: {
+          attribute_type_id: string
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_required?: boolean | null
+          product_id: string
+        }
+        Update: {
+          attribute_type_id?: string
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_required?: boolean | null
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_attributes_attribute_type_id_fkey"
+            columns: ["attribute_type_id"]
+            isOneToOne: false
+            referencedRelation: "product_attribute_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_attributes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_catalogs: {
         Row: {
           cover_image_url: string | null
@@ -2682,6 +2787,186 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "product_catalogs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_variations: {
+        Row: {
+          attribute_value_ids: string[] | null
+          attributes: Json
+          barcode: string | null
+          cost_price: number | null
+          created_at: string | null
+          height_cm: number | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          length_cm: number | null
+          low_stock_threshold: number | null
+          price: number | null
+          price_override: boolean | null
+          product_id: string
+          sku: string
+          stock_quantity: number | null
+          tenant_id: string | null
+          updated_at: string | null
+          variation_name: string | null
+          weight_kg: number | null
+          width_cm: number | null
+        }
+        Insert: {
+          attribute_value_ids?: string[] | null
+          attributes?: Json
+          barcode?: string | null
+          cost_price?: number | null
+          created_at?: string | null
+          height_cm?: number | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          length_cm?: number | null
+          low_stock_threshold?: number | null
+          price?: number | null
+          price_override?: boolean | null
+          product_id: string
+          sku: string
+          stock_quantity?: number | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          variation_name?: string | null
+          weight_kg?: number | null
+          width_cm?: number | null
+        }
+        Update: {
+          attribute_value_ids?: string[] | null
+          attributes?: Json
+          barcode?: string | null
+          cost_price?: number | null
+          created_at?: string | null
+          height_cm?: number | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          length_cm?: number | null
+          low_stock_threshold?: number | null
+          price?: number | null
+          price_override?: boolean | null
+          product_id?: string
+          sku?: string
+          stock_quantity?: number | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          variation_name?: string | null
+          weight_kg?: number | null
+          width_cm?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_variations_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_variations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          base_price: number
+          catalog_id: string | null
+          compare_at_price: number | null
+          cost_price: number | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          display_order: number | null
+          gallery_images: Json | null
+          has_variations: boolean | null
+          id: string
+          is_active: boolean | null
+          is_featured: boolean | null
+          main_image_url: string | null
+          metadata: Json | null
+          name: string
+          search_vector: unknown
+          short_description: string | null
+          slug: string | null
+          tags: string[] | null
+          tenant_id: string | null
+          track_inventory: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          base_price?: number
+          catalog_id?: string | null
+          compare_at_price?: number | null
+          cost_price?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          display_order?: number | null
+          gallery_images?: Json | null
+          has_variations?: boolean | null
+          id?: string
+          is_active?: boolean | null
+          is_featured?: boolean | null
+          main_image_url?: string | null
+          metadata?: Json | null
+          name: string
+          search_vector?: unknown
+          short_description?: string | null
+          slug?: string | null
+          tags?: string[] | null
+          tenant_id?: string | null
+          track_inventory?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          base_price?: number
+          catalog_id?: string | null
+          compare_at_price?: number | null
+          cost_price?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          display_order?: number | null
+          gallery_images?: Json | null
+          has_variations?: boolean | null
+          id?: string
+          is_active?: boolean | null
+          is_featured?: boolean | null
+          main_image_url?: string | null
+          metadata?: Json | null
+          name?: string
+          search_vector?: unknown
+          short_description?: string | null
+          slug?: string | null
+          tags?: string[] | null
+          tenant_id?: string | null
+          track_inventory?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "product_catalogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -3738,6 +4023,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_variation_price: {
+        Args: {
+          p_attribute_value_ids: string[]
+          p_product_id: string
+          p_tenant_id: string
+        }
+        Returns: number
+      }
       can_access_contact: {
         Args: { _contact_id: string; _user_id: string }
         Returns: boolean
@@ -4346,6 +4639,18 @@ export type Database = {
           p_whatsapp_message_id?: string
         }
         Returns: Json
+      }
+      register_inventory_movement: {
+        Args: {
+          p_cost_per_unit?: number
+          p_movement_type: string
+          p_notes?: string
+          p_quantity: number
+          p_reference_id?: string
+          p_reference_type?: string
+          p_variation_id: string
+        }
+        Returns: string
       }
       search_contacts_paginated: {
         Args: {
