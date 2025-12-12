@@ -409,6 +409,7 @@ export function MenuConfiguration() {
         editingItem={editingItem}
         parentId={parentIdForNew}
         isSubmitting={createMenuItem.isPending || updateMenuItem.isPending}
+        allMenuItems={allItems || []}
       />
 
       <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
