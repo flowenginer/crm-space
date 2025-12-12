@@ -2485,6 +2485,7 @@ export type Database = {
           is_active: boolean
           priority: number
           product_id: string | null
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -2496,6 +2497,7 @@ export type Database = {
           is_active?: boolean
           priority?: number
           product_id?: string | null
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -2507,6 +2509,7 @@ export type Database = {
           is_active?: boolean
           priority?: number
           product_id?: string | null
+          tenant_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2515,6 +2518,13 @@ export type Database = {
             columns: ["attribute_value_id"]
             isOneToOne: false
             referencedRelation: "product_attribute_values"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_attribute_price_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -2530,6 +2540,7 @@ export type Database = {
           is_required: boolean
           name: string
           slug: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -2542,6 +2553,7 @@ export type Database = {
           is_required?: boolean
           name: string
           slug: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -2554,9 +2566,18 @@ export type Database = {
           is_required?: boolean
           name?: string
           slug?: string
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "product_attribute_types_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       product_attribute_values: {
         Row: {
@@ -2568,6 +2589,7 @@ export type Database = {
           is_active: boolean
           metadata: Json | null
           slug: string
+          tenant_id: string | null
           updated_at: string
           value: string
         }
@@ -2580,6 +2602,7 @@ export type Database = {
           is_active?: boolean
           metadata?: Json | null
           slug: string
+          tenant_id?: string | null
           updated_at?: string
           value: string
         }
@@ -2592,6 +2615,7 @@ export type Database = {
           is_active?: boolean
           metadata?: Json | null
           slug?: string
+          tenant_id?: string | null
           updated_at?: string
           value?: string
         }
@@ -2601,6 +2625,13 @@ export type Database = {
             columns: ["attribute_type_id"]
             isOneToOne: false
             referencedRelation: "product_attribute_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_attribute_values_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -2617,6 +2648,7 @@ export type Database = {
           name: string
           settings: Json | null
           slug: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -2630,6 +2662,7 @@ export type Database = {
           name: string
           settings?: Json | null
           slug: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -2643,9 +2676,18 @@ export type Database = {
           name?: string
           settings?: Json | null
           slug?: string
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "product_catalogs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -2671,6 +2713,7 @@ export type Database = {
           role: string | null
           signature_enabled: boolean | null
           signature_name: string | null
+          tenant_id: string | null
           unavailability_reason: string | null
           unavailable_until: string | null
           updated_at: string
@@ -2698,6 +2741,7 @@ export type Database = {
           role?: string | null
           signature_enabled?: boolean | null
           signature_name?: string | null
+          tenant_id?: string | null
           unavailability_reason?: string | null
           unavailable_until?: string | null
           updated_at?: string
@@ -2725,6 +2769,7 @@ export type Database = {
           role?: string | null
           signature_enabled?: boolean | null
           signature_name?: string | null
+          tenant_id?: string | null
           unavailability_reason?: string | null
           unavailable_until?: string | null
           updated_at?: string
@@ -2742,6 +2787,13 @@ export type Database = {
             columns: ["invited_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -3132,6 +3184,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tenants: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          logo_url: string | null
+          max_contacts: number | null
+          max_users: number | null
+          name: string
+          plan_type: string | null
+          settings: Json | null
+          slug: string
+          trial_ends_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          logo_url?: string | null
+          max_contacts?: number | null
+          max_users?: number | null
+          name: string
+          plan_type?: string | null
+          settings?: Json | null
+          slug: string
+          trial_ends_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          logo_url?: string | null
+          max_contacts?: number | null
+          max_users?: number | null
+          name?: string
+          plan_type?: string | null
+          settings?: Json | null
+          slug?: string
+          trial_ends_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       user_departments: {
         Row: {
@@ -4192,6 +4289,7 @@ export type Database = {
         Returns: string[]
       }
       get_user_department_ids: { Args: { _user_id: string }; Returns: string[] }
+      get_user_tenant_id: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -4368,6 +4466,10 @@ export type Database = {
           p_whatsapp_message_id: string
         }
         Returns: Json
+      }
+      user_belongs_to_tenant: {
+        Args: { p_tenant_id: string }
+        Returns: boolean
       }
       user_has_department: {
         Args: { _department_id: string; _user_id: string }
