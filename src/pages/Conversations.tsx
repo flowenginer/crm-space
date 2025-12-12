@@ -1200,6 +1200,7 @@ export default function Conversations() {
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
   const [sortFilter, setSortFilter] = useState<SortFilter>('newest');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+  const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned' | 'pending' | 'shared'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
@@ -1344,10 +1345,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     searchQuery: debouncedSearchQuery || undefined,
     // Filtro de status da conversa
     statusFilter: statusFilter,
+    // Filtro por lead_status do contato
+    leadStatusFilter: leadStatusFilter !== 'all' ? leadStatusFilter : undefined,
     // Permissões - para filtrar conversas quando assignment é 'all'
     canViewPending,
     canViewUnassigned,
-  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter, canViewPending, canViewUnassigned]);
+  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter, leadStatusFilter, canViewPending, canViewUnassigned]);
 
   // Fetch real conversations from database with filter (PAGINATED + SERVER SORTED)
   const { 
@@ -2959,49 +2962,77 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           {/* Card Aguardando Resposta */}
           <WaitingCard />
 
-          {/* Search */}
-          <div className="relative mt-3">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Buscar conversas..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-11 rounded-xl bg-muted/50 border-border/50"
-            />
+          {/* Search + Date Filter - lado a lado */}
+          <div className="flex items-center gap-2 mt-3">
+            {/* Campo de Busca */}
+            <div className="relative flex-1">
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Buscar conversas..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-11 rounded-xl bg-muted/50 border-border/50"
+              />
+            </div>
+            
+            {/* Filtro de Datas */}
+            <Select 
+              value={dateFilter} 
+              onValueChange={(value) => {
+                setDateFilter(value);
+                if (value === 'custom') {
+                  setShowCustomDatePicker(true);
+                }
+              }}
+            >
+              <SelectTrigger className="flex-1 h-11 rounded-xl bg-muted/50 border-border/50">
+                <Calendar size={14} className="mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Todas as datas">
+                  {dateFilter === 'custom' && customDateRange.from 
+                    ? `${format(customDateRange.from, 'dd/MM/yy')}${customDateRange.to ? ` - ${format(customDateRange.to, 'dd/MM/yy')}` : ''}`
+                    : undefined
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as datas</SelectItem>
+                <SelectItem value="today">Hoje ({dateFilterCounts.today})</SelectItem>
+                <SelectItem value="yesterday">Ontem ({dateFilterCounts.yesterday})</SelectItem>
+                <SelectItem value="this_week">Esta semana ({dateFilterCounts.this_week})</SelectItem>
+                <SelectItem value="last_week">Semana passada ({dateFilterCounts.last_week})</SelectItem>
+                <SelectItem value="this_month">Este mês ({dateFilterCounts.this_month})</SelectItem>
+                <SelectItem value="last_month">Mês passado ({dateFilterCounts.last_month})</SelectItem>
+                <SelectItem value="custom">Período personalizado...</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
         {/* Filters */}
         <div className="px-4 py-3 border-b border-border space-y-3">
-          {/* Date Filter (Master) */}
-          <Select 
-            value={dateFilter} 
-            onValueChange={(value) => {
-              setDateFilter(value);
-              if (value === 'custom') {
-                setShowCustomDatePicker(true);
-              }
-            }}
-          >
+          {/* Lead Status Filter */}
+          <Select value={leadStatusFilter} onValueChange={setLeadStatusFilter}>
             <SelectTrigger className="w-full h-10 rounded-lg">
-              <Calendar size={14} className="mr-2 text-muted-foreground" />
-              <SelectValue placeholder="Data do primeiro contato">
-                {dateFilter === 'custom' && customDateRange.from 
-                  ? `${format(customDateRange.from, 'dd/MM/yy')}${customDateRange.to ? ` - ${format(customDateRange.to, 'dd/MM/yy')}` : ''}`
-                  : undefined
-                }
-              </SelectValue>
+              <Tag size={14} className="mr-2 text-muted-foreground" />
+              <SelectValue placeholder="Status do Lead" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas as datas</SelectItem>
-              <SelectItem value="today">Hoje ({dateFilterCounts.today})</SelectItem>
-              <SelectItem value="yesterday">Ontem ({dateFilterCounts.yesterday})</SelectItem>
-              <SelectItem value="this_week">Esta semana ({dateFilterCounts.this_week})</SelectItem>
-              <SelectItem value="last_week">Semana passada ({dateFilterCounts.last_week})</SelectItem>
-              <SelectItem value="this_month">Este mês ({dateFilterCounts.this_month})</SelectItem>
-              <SelectItem value="last_month">Mês passado ({dateFilterCounts.last_month})</SelectItem>
-              <SelectItem value="custom">Período personalizado...</SelectItem>
+              <SelectItem value="all">Todos os status</SelectItem>
+              <SelectItem value="01 - Não respondeu">01 - Não respondeu</SelectItem>
+              <SelectItem value="02 - Pré-venda">02 - Pré-venda</SelectItem>
+              <SelectItem value="03 - Catálogo">03 - Catálogo</SelectItem>
+              <SelectItem value="04 - Layout">04 - Layout</SelectItem>
+              <SelectItem value="05 - Orçamento">05 - Orçamento</SelectItem>
+              <SelectItem value="06 - Aguardando pagamento">06 - Aguard. Pagamento</SelectItem>
+              <SelectItem value="07 - Pedido Fechado">07 - Pedido Fechado</SelectItem>
+              <SelectItem value="08 - Em andamento">08 - Em andamento</SelectItem>
+              <SelectItem value="09 - Cobrança">09 - Cobrança</SelectItem>
+              <SelectItem value="10 - Aguardando envio">10 - Aguard. Envio</SelectItem>
+              <SelectItem value="11 - Pedido Enviado">11 - Pedido Enviado</SelectItem>
+              <SelectItem value="12 - Entregue">12 - Entregue</SelectItem>
+              <SelectItem value="13 - Recompra">13 - Recompra</SelectItem>
+              <SelectItem value="14 - Cancelado/Descarte">14 - Cancelado</SelectItem>
             </SelectContent>
           </Select>
 

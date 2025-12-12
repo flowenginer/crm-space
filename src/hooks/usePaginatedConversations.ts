@@ -57,6 +57,8 @@ export interface ConversationFilters {
   searchQuery?: string;
   // Filtro de status da conversa
   statusFilter?: StatusFilter;
+  // Filtro por lead_status do contato
+  leadStatusFilter?: string;
   // Permissões - para filtrar conversas quando assignment é 'all'
   canViewPending?: boolean;
   canViewUnassigned?: boolean;
@@ -208,10 +210,11 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
     tagIds,
     searchQuery,
     statusFilter = 'active',
+    leadStatusFilter,
   } = filters || {};
   
   return useInfiniteQuery({
-    queryKey: ['conversations-paginated', assignment, sortBy, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery, statusFilter],
+    queryKey: ['conversations-paginated', assignment, sortBy, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery, statusFilter, leadStatusFilter],
     queryFn: async ({ pageParam = 0 }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -501,6 +504,11 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
             return { conversations: [] as Conversation[], nextPage: undefined, pageParam: 0 };
           }
         }
+      }
+
+      // *** FILTRO POR LEAD STATUS DO CONTATO - SERVIDOR ***
+      if (leadStatusFilter) {
+        query = query.eq('lead_status', leadStatusFilter);
       }
 
       // Apply sorting - THIS IS THE KEY: sorting happens on the SERVER
