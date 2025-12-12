@@ -2475,6 +2475,50 @@ export type Database = {
         }
         Relationships: []
       }
+      product_attribute_price_rules: {
+        Row: {
+          adjustment_type: string
+          adjustment_value: number
+          attribute_value_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          priority: number
+          product_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          adjustment_type?: string
+          adjustment_value?: number
+          attribute_value_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          priority?: number
+          product_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          adjustment_type?: string
+          adjustment_value?: number
+          attribute_value_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          priority?: number
+          product_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_attribute_price_rules_attribute_value_id_fkey"
+            columns: ["attribute_value_id"]
+            isOneToOne: false
+            referencedRelation: "product_attribute_values"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_attribute_types: {
         Row: {
           allow_multiple: boolean
