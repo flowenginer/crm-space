@@ -598,6 +598,7 @@ export type Database = {
           blocked_reason: string | null
           city: string | null
           complement: string | null
+          contact_type: string | null
           country: string | null
           cpf_cnpj: string | null
           created_at: string
@@ -635,6 +636,7 @@ export type Database = {
           blocked_reason?: string | null
           city?: string | null
           complement?: string | null
+          contact_type?: string | null
           country?: string | null
           cpf_cnpj?: string | null
           created_at?: string
@@ -672,6 +674,7 @@ export type Database = {
           blocked_reason?: string | null
           city?: string | null
           complement?: string | null
+          contact_type?: string | null
           country?: string | null
           cpf_cnpj?: string | null
           created_at?: string
