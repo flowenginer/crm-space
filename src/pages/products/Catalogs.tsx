@@ -1,23 +1,15 @@
 import { useState } from 'react';
-import { Plus, GripVertical, Pencil, Trash2, Star, Image, ToggleLeft, ToggleRight } from 'lucide-react';
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { Plus, Pencil, Trash2, Star, ToggleLeft, ToggleRight, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,152 +24,21 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   useProductCatalogs,
   useDeleteCatalog,
-  useReorderCatalogs,
   useSetDefaultCatalog,
   useUpdateCatalog,
   ProductCatalog,
 } from '@/hooks/useProductCatalogs';
 import { CatalogModal } from '@/components/products/CatalogModal';
 
-function SortableCatalogCard({
-  catalog,
-  onEdit,
-  onDelete,
-  onSetDefault,
-  onToggleActive,
-}: {
-  catalog: ProductCatalog;
-  onEdit: () => void;
-  onDelete: () => void;
-  onSetDefault: () => void;
-  onToggleActive: () => void;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: catalog.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`group ${isDragging ? 'z-50 opacity-50' : ''}`}
-    >
-      <Card className={`transition-all ${!catalog.is_active ? 'opacity-60' : ''}`}>
-        <CardContent className="p-4">
-          <div className="flex items-start gap-4">
-            <button
-              type="button"
-              className="mt-1 cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical className="h-5 w-5" />
-            </button>
-
-            <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-muted">
-              {catalog.cover_image_url ? (
-                <img
-                  src={catalog.cover_image_url}
-                  alt={catalog.name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center">
-                  <Image className="h-6 w-6 text-muted-foreground" />
-                </div>
-              )}
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold truncate">{catalog.name}</h3>
-                {catalog.is_default && (
-                  <Badge variant="secondary" className="gap-1">
-                    <Star className="h-3 w-3 fill-current" />
-                    Padrão
-                  </Badge>
-                )}
-                {!catalog.is_active && (
-                  <Badge variant="outline">Inativo</Badge>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">/{catalog.slug}</p>
-              {catalog.description && (
-                <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
-                  {catalog.description}
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onToggleActive}
-                title={catalog.is_active ? 'Desativar' : 'Ativar'}
-              >
-                {catalog.is_active ? (
-                  <ToggleRight className="h-4 w-4 text-green-500" />
-                ) : (
-                  <ToggleLeft className="h-4 w-4" />
-                )}
-              </Button>
-              {!catalog.is_default && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onSetDefault}
-                  title="Definir como padrão"
-                >
-                  <Star className="h-4 w-4" />
-                </Button>
-              )}
-              <Button variant="ghost" size="icon" onClick={onEdit}>
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={onDelete}>
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 export default function Catalogs() {
   const { data: catalogs, isLoading } = useProductCatalogs();
   const deleteMutation = useDeleteCatalog();
-  const reorderMutation = useReorderCatalogs();
   const setDefaultMutation = useSetDefaultCatalog();
   const updateMutation = useUpdateCatalog();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCatalog, setEditingCatalog] = useState<ProductCatalog | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id || !catalogs) return;
-
-    const oldIndex = catalogs.findIndex((c) => c.id === active.id);
-    const newIndex = catalogs.findIndex((c) => c.id === over.id);
-    const newOrder = arrayMove(catalogs, oldIndex, newIndex);
-    reorderMutation.mutate(newOrder.map((c) => c.id));
-  };
 
   const handleEdit = (catalog: ProductCatalog) => {
     setEditingCatalog(catalog);
@@ -201,65 +62,140 @@ export default function Catalogs() {
   };
 
   return (
-    <div className="container mx-auto max-w-4xl py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Catálogos</h1>
-          <p className="text-muted-foreground">Gerencie os catálogos de produtos</p>
+    <div className="container mx-auto max-w-5xl py-8 px-4">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+              <FolderOpen className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Catálogos</h1>
+              <p className="text-sm text-muted-foreground">
+                Gerencie os catálogos de produtos
+              </p>
+            </div>
+          </div>
+          <Button onClick={handleCreate} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Novo Catálogo
+          </Button>
         </div>
-        <Button onClick={handleCreate}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Catálogo
-        </Button>
       </div>
 
+      {/* Content */}
       {isLoading ? (
-        <div className="space-y-4">
+        <div className="space-y-2">
           {[1, 2, 3].map((i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <div className="flex items-start gap-4">
-                  <Skeleton className="h-5 w-5" />
-                  <Skeleton className="h-16 w-16 rounded-lg" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-5 w-48" />
-                    <Skeleton className="h-4 w-32" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div key={i} className="h-16 animate-pulse rounded-lg bg-muted" />
           ))}
         </div>
-      ) : catalogs && catalogs.length > 0 ? (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={catalogs.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-3">
-              {catalogs.map((catalog) => (
-                <SortableCatalogCard
-                  key={catalog.id}
-                  catalog={catalog}
-                  onEdit={() => handleEdit(catalog)}
-                  onDelete={() => setDeleteId(catalog.id)}
-                  onSetDefault={() => setDefaultMutation.mutate(catalog.id)}
-                  onToggleActive={() => handleToggleActive(catalog)}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+      ) : catalogs && catalogs.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/20 py-16">
+          <FolderOpen className="h-12 w-12 text-muted-foreground/40" />
+          <h3 className="mt-4 text-lg font-medium text-foreground">Nenhum catálogo cadastrado</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Crie seu primeiro catálogo de produtos
+          </p>
+          <Button onClick={handleCreate} className="mt-4 gap-2">
+            <Plus className="h-4 w-4" />
+            Novo Catálogo
+          </Button>
+        </div>
       ) : (
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle>Nenhum catálogo</CardTitle>
-            <CardDescription>Crie seu primeiro catálogo de produtos</CardDescription>
-          </CardHeader>
-          <CardContent className="flex justify-center pb-6">
-            <Button onClick={handleCreate}>
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Catálogo
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[80px]">Imagem</TableHead>
+                <TableHead>Nome</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead className="text-center">Padrão</TableHead>
+                <TableHead className="text-center">Status</TableHead>
+                <TableHead className="w-[140px]">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {catalogs?.map((catalog) => (
+                <TableRow key={catalog.id}>
+                  <TableCell>
+                    {catalog.cover_image_url ? (
+                      <img
+                        src={catalog.cover_image_url}
+                        alt={catalog.name}
+                        className="h-12 w-12 rounded-md object-cover"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center">
+                        <FolderOpen className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="font-medium">{catalog.name}</TableCell>
+                  <TableCell className="text-muted-foreground">/{catalog.slug}</TableCell>
+                  <TableCell className="text-center">
+                    {catalog.is_default ? (
+                      <Badge variant="secondary" className="gap-1">
+                        <Star className="h-3 w-3 fill-current" />
+                        Padrão
+                      </Badge>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDefaultMutation.mutate(catalog.id)}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Definir
+                      </Button>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <button
+                      onClick={() => handleToggleActive(catalog)}
+                      className="flex items-center gap-1.5 mx-auto"
+                    >
+                      {catalog.is_active ? (
+                        <>
+                          <ToggleRight className="h-5 w-5 text-green-500" />
+                          <span className="text-sm text-green-600">Ativo</span>
+                        </>
+                      ) : (
+                        <>
+                          <ToggleLeft className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Inativo</span>
+                        </>
+                      )}
+                    </button>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleEdit(catalog)}
+                        title="Editar"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteId(catalog.id)}
+                        title="Excluir"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
 
       <CatalogModal
