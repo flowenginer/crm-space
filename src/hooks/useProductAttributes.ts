@@ -1,9 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
+import { useCurrentTenantId } from './useTenant';
 
 export interface AttributeType {
   id: string;
+  tenant_id: string | null;
   name: string;
   slug: string;
   description: string | null;
@@ -17,6 +19,7 @@ export interface AttributeType {
 
 export interface AttributeValue {
   id: string;
+  tenant_id: string | null;
   attribute_type_id: string;
   value: string;
   display_value: string | null;
@@ -34,8 +37,10 @@ export interface AttributeTypeWithValues extends AttributeType {
 
 // Hook para buscar todos os tipos de atributos com seus valores
 export function useAttributeTypes() {
+  const { data: tenantId } = useCurrentTenantId();
+
   return useQuery({
-    queryKey: ['product-attribute-types'],
+    queryKey: ['product-attribute-types', tenantId],
     queryFn: async () => {
       const { data: types, error: typesError } = await supabase
         .from('product_attribute_types')
@@ -59,12 +64,14 @@ export function useAttributeTypes() {
 
       return typesWithValues as AttributeTypeWithValues[];
     },
+    // RLS handles tenant filtering automatically
   });
 }
 
 // Hook para criar tipo de atributo
 export function useCreateAttributeType() {
   const queryClient = useQueryClient();
+  const { data: tenantId } = useCurrentTenantId();
 
   return useMutation({
     mutationFn: async (data: {
@@ -87,6 +94,7 @@ export function useCreateAttributeType() {
         .from('product_attribute_types')
         .insert({
           ...data,
+          tenant_id: tenantId,
           display_order: (maxOrder?.display_order || 0) + 1,
         })
         .select()
@@ -166,6 +174,7 @@ export function useReorderAttributeTypes() {
 // Hook para criar valor de atributo
 export function useCreateAttributeValue() {
   const queryClient = useQueryClient();
+  const { data: tenantId } = useCurrentTenantId();
 
   return useMutation({
     mutationFn: async (data: {
@@ -187,6 +196,7 @@ export function useCreateAttributeValue() {
         .from('product_attribute_values')
         .insert({
           ...data,
+          tenant_id: tenantId,
           display_order: (maxOrder?.display_order || 0) + 1,
         })
         .select()
@@ -204,6 +214,7 @@ export function useCreateAttributeValue() {
 // Hook para criar múltiplos valores
 export function useCreateBulkAttributeValues() {
   const queryClient = useQueryClient();
+  const { data: tenantId } = useCurrentTenantId();
 
   return useMutation({
     mutationFn: async ({
@@ -226,6 +237,7 @@ export function useCreateBulkAttributeValues() {
 
       const insertData = values.map((v) => ({
         attribute_type_id,
+        tenant_id: tenantId,
         value: v.value,
         slug: v.slug,
         display_order: currentOrder++,

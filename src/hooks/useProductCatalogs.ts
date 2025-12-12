@@ -1,9 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useCurrentTenantId } from './useTenant';
 
 export interface ProductCatalog {
   id: string;
+  tenant_id: string | null;
   name: string;
   slug: string;
   description: string | null;
@@ -26,8 +28,10 @@ export function generateSlug(name: string): string {
 }
 
 export function useProductCatalogs() {
+  const { data: tenantId } = useCurrentTenantId();
+
   return useQuery({
-    queryKey: ['product-catalogs'],
+    queryKey: ['product-catalogs', tenantId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('product_catalogs')
@@ -37,11 +41,13 @@ export function useProductCatalogs() {
       if (error) throw error;
       return data as ProductCatalog[];
     },
+    // RLS handles tenant filtering automatically
   });
 }
 
 export function useCreateCatalog() {
   const queryClient = useQueryClient();
+  const { data: tenantId } = useCurrentTenantId();
 
   return useMutation({
     mutationFn: async (data: {
@@ -57,6 +63,7 @@ export function useCreateCatalog() {
       const { data: result, error } = await supabase
         .from('product_catalogs')
         .insert({
+          tenant_id: tenantId,
           name: data.name,
           slug,
           description: data.description || null,
