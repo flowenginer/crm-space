@@ -46,7 +46,8 @@ import { AdMessagePatternsSettings } from '@/components/settings/AdMessagePatter
 import { ActiveSessions } from '@/components/settings/ActiveSessions';
 import { AccessPermissionsSettings } from '@/components/settings/AccessPermissionsSettings';
 import { LeadDistributionSettings } from '@/components/settings/LeadDistributionSettings';
-import { Facebook, UserCheck, Unlock } from 'lucide-react';
+import { StoreManagement } from '@/components/settings/StoreManagement';
+import { Facebook, UserCheck, Unlock, Store } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
@@ -108,14 +109,15 @@ const SETTINGS_TABS: SettingsTab[] = [
   { value: 'roles', label: 'Perfis', icon: Shield, permission: null, adminOnly: true },
   { value: 'access-permissions', label: 'Acesso Especial', icon: Unlock, permission: null, adminOnly: true },
   { value: 'departments', label: 'Departamentos', icon: Building2, permission: ['settings', 'departments'] },
+  { value: 'stores', label: 'Lojas', icon: Store, permission: ['settings', 'update'] },
   { value: 'channels', label: 'Canais', icon: MessageSquare, permission: ['settings', 'channels'] },
   { value: 'fields', label: 'Campos', icon: Database, permission: ['settings', 'fields'] },
   { value: 'tags', label: 'Etiquetas', icon: Tag, permission: ['settings', 'tags'] },
   { value: 'owner-agent', label: 'Responsável', icon: UserCheck, permission: ['settings', 'update'] },
   { value: 'close-reasons', label: 'Fechamento', icon: X, permission: ['settings', 'close_reasons'] },
   { value: 'lead-distribution', label: 'Distribuição', icon: Share2, permission: ['settings', 'update'] },
-  { value: 'notifications', label: 'Notificações', icon: Bell, permission: null }, // Todos podem configurar suas notificações
-  { value: 'security', label: 'Segurança', icon: Key, permission: null }, // Todos podem trocar sua senha
+  { value: 'notifications', label: 'Notificações', icon: Bell, permission: null },
+  { value: 'security', label: 'Segurança', icon: Key, permission: null },
   { value: 'integrations', label: 'Integrações', icon: Plug, permission: ['settings', 'integrations'] },
   { value: 'meta-ads', label: 'Meta Ads', icon: Facebook, permission: ['marketing', 'manage'] },
   { value: 'origin-patterns', label: 'Padrões de Origem', icon: Radar, permission: ['settings', 'update'] },
@@ -595,6 +597,13 @@ export default function Settings() {
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
               <MetricsSettings />
             </div>
+          </TabsContent>
+        )}
+
+        {/* TAB: Stores */}
+        {isTabAvailable('stores') && (
+          <TabsContent value="stores" className="space-y-6">
+            <StoreManagement />
           </TabsContent>
         )}
 

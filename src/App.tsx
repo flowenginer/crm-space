@@ -38,6 +38,7 @@ import Catalogs from "@/pages/products/Catalogs";
 import Products from "@/pages/products/Products";
 import Orders from "@/pages/Orders";
 import Financial from "@/pages/Financial";
+import SellerDashboard from "@/pages/SellerDashboard";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -184,6 +185,11 @@ const App = () => (
               <Route path="/financial" element={
                 <ProtectedRoute permission="deals.view">
                   <Financial />
+                </ProtectedRoute>
+              } />
+              <Route path="/seller-dashboard" element={
+                <ProtectedRoute>
+                  <SellerDashboard />
                 </ProtectedRoute>
               } />
             </Route>
