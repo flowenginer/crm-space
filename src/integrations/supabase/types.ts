@@ -5139,6 +5139,16 @@ export type Database = {
               total_unassigned: number
             }[]
           }
+      get_lead_status_counts: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_department_id?: string
+          p_origin?: string
+          p_status_filter?: string
+        }
+        Returns: Json
+      }
       get_lead_status_summary: {
         Args: { _user_id?: string }
         Returns: {
