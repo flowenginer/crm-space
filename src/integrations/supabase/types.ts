@@ -5289,43 +5289,25 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: number
       }
-      get_kanban_contacts_optimized:
-        | {
-            Args: { _limit_per_status?: number; _user_id: string }
-            Returns: {
-              assigned_to: string
-              assignee_avatar: string
-              assignee_id: string
-              assignee_name: string
-              avatar_url: string
-              contact_id: string
-              conversation_id: string
-              email: string
-              full_name: string
-              lead_status: string
-              negotiated_value: number
-              phone: string
-              unread_count: number
-              updated_at: string
-            }[]
-          }
-        | {
-            Args: { p_limit_per_status?: number }
-            Returns: {
-              assigned_name: string
-              assigned_to: string
-              conversation_id: string
-              email: string
-              full_name: string
-              has_open_conversation: boolean
-              id: string
-              lead_status: string
-              lead_status_changed_at: string
-              negotiated_value: number
-              phone: string
-              unread_count: number
-            }[]
-          }
+      get_kanban_contacts_optimized: {
+        Args: { _limit_per_status?: number; _user_id: string }
+        Returns: {
+          assigned_to: string
+          assignee_avatar: string
+          assignee_id: string
+          assignee_name: string
+          avatar_url: string
+          contact_id: string
+          conversation_id: string
+          email: string
+          full_name: string
+          lead_status: string
+          negotiated_value: number
+          phone: string
+          unread_count: number
+          updated_at: string
+        }[]
+      }
       get_lead_alerts: {
         Args: {
           p_agent_id?: string
