@@ -34,7 +34,9 @@ import { useCreateProduct, useUpdateProduct, generateSlug, type ProductWithCatal
 import { useProductCatalogs } from '@/hooks/useProductCatalogs';
 import { useProductTemplatesWithVariations, useApplyTemplateToProduct, ProductTemplateWithVariations } from '@/hooks/useProductTemplates';
 import { useCreateBulkVariations } from '@/hooks/useProductVariations';
-import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles, AlertTriangle, Grid3X3 } from 'lucide-react';
+import { usePriceRules } from '@/hooks/useAttributePriceRules';
+import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles, AlertTriangle, Grid3X3, Info, ExternalLink } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { ProductImageUploader } from './ProductImageUploader';
 import { ProductVariationsGenerator } from './ProductVariationsGenerator';
 import { toast } from 'sonner';
@@ -120,11 +122,15 @@ interface ProductModalProps {
 export function ProductModal({ open, onOpenChange, product }: ProductModalProps) {
   const { data: catalogs } = useProductCatalogs();
   const { data: templates } = useProductTemplatesWithVariations();
+  const { data: priceRules } = usePriceRules();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const applyTemplate = useApplyTemplateToProduct();
   const createBulkVariations = useCreateBulkVariations();
   const isEditing = !!product;
+  
+  // Filter active price rules
+  const activePriceRules = priceRules?.filter(r => r.is_active) || [];
   
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [variationMode, setVariationMode] = useState<'none' | 'template' | 'manual'>('none');
@@ -767,6 +773,61 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
                       </FormItem>
                     )}
                   />
+                </div>
+
+                {/* Price Rules Info Section */}
+                <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Regras de Preço para Variações</span>
+                    </div>
+                    <Link 
+                      to="/products?tab=prices" 
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                      onClick={() => onOpenChange(false)}
+                    >
+                      Gerenciar regras
+                      <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  </div>
+                  
+                  {activePriceRules.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        {activePriceRules.length} {activePriceRules.length === 1 ? 'regra ativa' : 'regras ativas'} serão aplicadas automaticamente nas variações:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activePriceRules.slice(0, 8).map((rule) => (
+                          <Badge key={rule.id} variant="outline" className="text-xs bg-background">
+                            {rule.attribute_value?.display_value || rule.attribute_value?.value}: 
+                            <span className="ml-1 text-amber-600">
+                              {rule.adjustment_type === 'fixed' 
+                                ? `${rule.adjustment_value > 0 ? '+' : ''}R$${rule.adjustment_value.toFixed(2)}`
+                                : `${rule.adjustment_value > 0 ? '+' : ''}${rule.adjustment_value}%`
+                              }
+                            </span>
+                          </Badge>
+                        ))}
+                        {activePriceRules.length > 8 && (
+                          <Badge variant="secondary" className="text-xs">
+                            +{activePriceRules.length - 8} mais
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        💡 Ao criar variações (manual ou template com regras globais), os preços serão ajustados automaticamente.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">
+                      <p>Nenhuma regra de preço configurada.</p>
+                      <p className="mt-1">
+                        Configure regras em <strong>Produtos → Regras de Preço</strong> para ajustar automaticamente 
+                        os preços das variações (ex: tamanhos maiores custam mais).
+                      </p>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 
