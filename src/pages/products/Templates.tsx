@@ -2,10 +2,10 @@ import { useState } from 'react';
 import {
   Plus,
   Search,
-  MoreHorizontal,
   Pencil,
   Trash2,
-  Copy,
+  ToggleLeft,
+  ToggleRight,
   LayoutTemplate,
   Package,
   Scale,
@@ -24,11 +24,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -159,7 +159,7 @@ export default function Templates() {
               <TableHead className="text-center">Peso (kg)</TableHead>
               <TableHead className="text-center">Dimensões (cm)</TableHead>
               <TableHead className="text-center">Status</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
+              <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -205,30 +205,37 @@ export default function Templates() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEdit(template.id)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleToggleStatus(template.id, template.is_active)}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          {template.is_active ? 'Desativar' : 'Ativar'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setDeletingId(template.id)}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(template.id)}
+                        title="Editar"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleToggleStatus(template.id, template.is_active)}
+                        title={template.is_active ? 'Desativar' : 'Ativar'}
+                      >
+                        {template.is_active ? (
+                          <ToggleRight className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeletingId(template.id)}
+                        title="Excluir"
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
