@@ -14,6 +14,73 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_movements: {
+        Row: {
+          account_id: string
+          amount: number
+          balance_after: number
+          balance_before: number
+          created_at: string | null
+          description: string | null
+          id: string
+          reference_id: string | null
+          reference_type: string | null
+          tenant_id: string | null
+          transaction_id: string | null
+          type: string
+        }
+        Insert: {
+          account_id: string
+          amount: number
+          balance_after: number
+          balance_before: number
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          reference_id?: string | null
+          reference_type?: string | null
+          tenant_id?: string | null
+          transaction_id?: string | null
+          type: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          balance_after?: number
+          balance_before?: number
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          reference_id?: string | null
+          reference_type?: string | null
+          tenant_id?: string | null
+          transaction_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_movements_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "financial_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_movements_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       activity_log: {
         Row: {
           action: string
@@ -1184,6 +1251,247 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      financial_accounts: {
+        Row: {
+          account_number: string | null
+          agency: string | null
+          bank_name: string | null
+          color: string | null
+          created_at: string | null
+          current_balance: number | null
+          id: string
+          initial_balance: number | null
+          is_active: boolean | null
+          name: string
+          tenant_id: string | null
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          account_number?: string | null
+          agency?: string | null
+          bank_name?: string | null
+          color?: string | null
+          created_at?: string | null
+          current_balance?: number | null
+          id?: string
+          initial_balance?: number | null
+          is_active?: boolean | null
+          name: string
+          tenant_id?: string | null
+          type?: string
+          updated_at?: string | null
+        }
+        Update: {
+          account_number?: string | null
+          agency?: string | null
+          bank_name?: string | null
+          color?: string | null
+          created_at?: string | null
+          current_balance?: number | null
+          id?: string
+          initial_balance?: number | null
+          is_active?: boolean | null
+          name?: string
+          tenant_id?: string | null
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_categories: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          parent_id: string | null
+          tenant_id: string | null
+          type: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          parent_id?: string | null
+          tenant_id?: string | null
+          type: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          parent_id?: string | null
+          tenant_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "financial_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_categories_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_transactions: {
+        Row: {
+          account_id: string | null
+          amount: number
+          attachment_url: string | null
+          category_id: string | null
+          competence_date: string | null
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string
+          due_date: string
+          id: string
+          installment_number: number | null
+          is_recurring: boolean | null
+          notes: string | null
+          order_id: string | null
+          paid_amount: number | null
+          paid_at: string | null
+          parent_transaction_id: string | null
+          recurrence_interval: number | null
+          recurrence_type: string | null
+          status: string
+          tenant_id: string | null
+          total_installments: number | null
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          amount: number
+          attachment_url?: string | null
+          category_id?: string | null
+          competence_date?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description: string
+          due_date: string
+          id?: string
+          installment_number?: number | null
+          is_recurring?: boolean | null
+          notes?: string | null
+          order_id?: string | null
+          paid_amount?: number | null
+          paid_at?: string | null
+          parent_transaction_id?: string | null
+          recurrence_interval?: number | null
+          recurrence_type?: string | null
+          status?: string
+          tenant_id?: string | null
+          total_installments?: number | null
+          type: string
+          updated_at?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          amount?: number
+          attachment_url?: string | null
+          category_id?: string | null
+          competence_date?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string
+          due_date?: string
+          id?: string
+          installment_number?: number | null
+          is_recurring?: boolean | null
+          notes?: string | null
+          order_id?: string | null
+          paid_amount?: number | null
+          paid_at?: string | null
+          parent_transaction_id?: string | null
+          recurrence_interval?: number | null
+          recurrence_type?: string | null
+          status?: string
+          tenant_id?: string | null
+          total_installments?: number | null
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "financial_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "financial_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_parent_transaction_id_fkey"
+            columns: ["parent_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       flow_connections: {
         Row: {
@@ -4391,6 +4699,7 @@ export type Database = {
       }
       can_transfer_freely: { Args: { _user_id: string }; Returns: boolean }
       can_view_all_data: { Args: { _user_id: string }; Returns: boolean }
+      check_overdue_transactions: { Args: never; Returns: undefined }
       check_user_permission: {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
@@ -4992,6 +5301,15 @@ export type Database = {
           p_reference_id?: string
           p_reference_type?: string
           p_variation_id: string
+        }
+        Returns: string
+      }
+      register_payment: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_paid_at?: string
+          p_transaction_id: string
         }
         Returns: string
       }

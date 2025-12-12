@@ -37,6 +37,7 @@ import PriceRules from "@/pages/products/PriceRules";
 import Catalogs from "@/pages/products/Catalogs";
 import Products from "@/pages/products/Products";
 import Orders from "@/pages/Orders";
+import Financial from "@/pages/Financial";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -178,6 +179,11 @@ const App = () => (
               <Route path="/orders" element={
                 <ProtectedRoute permission="deals.view">
                   <Orders />
+                </ProtectedRoute>
+              } />
+              <Route path="/financial" element={
+                <ProtectedRoute permission="deals.view">
+                  <Financial />
                 </ProtectedRoute>
               } />
             </Route>
