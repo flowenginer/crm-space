@@ -66,6 +66,30 @@ export function ProductVariationsTab({ productId, productName, basePrice }: Prod
   const [editStock, setEditStock] = useState('');
   const [editIsActive, setEditIsActive] = useState(true);
 
+  // Build a map of attribute value id -> display name
+  const attrValueMap = new Map<string, string>();
+  attributeTypes?.forEach(type => {
+    type.values.forEach(val => {
+      attrValueMap.set(val.id, val.display_value || val.value);
+    });
+  });
+
+  // Get variation display name from attribute_value_ids
+  const getVariationDisplayName = (variation: ProductVariationWithProduct): string => {
+    // First try to use variation_name if it exists
+    if (variation.variation_name && variation.variation_name.trim()) {
+      return variation.variation_name;
+    }
+    
+    // Otherwise build from attribute_value_ids
+    const ids = variation.attribute_value_ids;
+    if (!ids || ids.length === 0) return 'Sem nome';
+    
+    return ids
+      .map(id => attrValueMap.get(id) || id.slice(0, 4))
+      .join(' - ');
+  };
+
   const existingVariationIds = variations?.map(v => v.attribute_value_ids || []) || [];
 
   const handleAddVariations = async (newVariations: {
@@ -169,7 +193,7 @@ export function ProductVariationsTab({ productId, productName, basePrice }: Prod
               {variations.map((variation) => (
                 <TableRow key={variation.id}>
                   <TableCell className="font-medium">
-                    {variation.variation_name || 'Sem nome'}
+                    {getVariationDisplayName(variation)}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {variation.sku}
