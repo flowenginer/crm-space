@@ -38,6 +38,7 @@ import Catalogs from "@/pages/products/Catalogs";
 import Products from "@/pages/products/Products";
 import Templates from "@/pages/products/Templates";
 import Orders from "@/pages/Orders";
+import Quotes from "@/pages/Quotes";
 import Financial from "@/pages/Financial";
 import SellerDashboard from "@/pages/SellerDashboard";
 import NotFound from "@/pages/NotFound";
@@ -186,6 +187,11 @@ const App = () => (
               <Route path="/orders" element={
                 <ProtectedRoute permission="deals.view">
                   <Orders />
+                </ProtectedRoute>
+              } />
+              <Route path="/quotes" element={
+                <ProtectedRoute permission="deals.view">
+                  <Quotes />
                 </ProtectedRoute>
               } />
               <Route path="/financial" element={
