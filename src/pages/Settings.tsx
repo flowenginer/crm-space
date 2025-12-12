@@ -47,6 +47,7 @@ import { ActiveSessions } from '@/components/settings/ActiveSessions';
 import { AccessPermissionsSettings } from '@/components/settings/AccessPermissionsSettings';
 import { LeadDistributionSettings } from '@/components/settings/LeadDistributionSettings';
 import { StoreManagement } from '@/components/settings/StoreManagement';
+import { SalesGoalsManagement } from '@/components/settings/SalesGoalsManagement';
 import { Facebook, UserCheck, Unlock, Store } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -113,6 +114,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   { value: 'channels', label: 'Canais', icon: MessageSquare, permission: ['settings', 'channels'] },
   { value: 'fields', label: 'Campos', icon: Database, permission: ['settings', 'fields'] },
   { value: 'tags', label: 'Etiquetas', icon: Tag, permission: ['settings', 'tags'] },
+  { value: 'sales-goals', label: 'Metas', icon: Target, permission: ['settings', 'update'] },
   { value: 'owner-agent', label: 'Responsável', icon: UserCheck, permission: ['settings', 'update'] },
   { value: 'close-reasons', label: 'Fechamento', icon: X, permission: ['settings', 'close_reasons'] },
   { value: 'lead-distribution', label: 'Distribuição', icon: Share2, permission: ['settings', 'update'] },
@@ -563,6 +565,15 @@ export default function Settings() {
         {isTabAvailable('tags') && (
           <TabsContent value="tags" className="space-y-6">
             <TagManagement />
+          </TabsContent>
+        )}
+
+        {/* TAB: Sales Goals */}
+        {isTabAvailable('sales-goals') && (
+          <TabsContent value="sales-goals" className="space-y-6">
+            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+              <SalesGoalsManagement />
+            </div>
           </TabsContent>
         )}
 
