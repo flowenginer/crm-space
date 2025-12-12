@@ -3577,78 +3577,174 @@ export type Database = {
       }
       products: {
         Row: {
+          aliquota_cofins: number | null
+          aliquota_icms: number | null
+          aliquota_ipi: number | null
+          aliquota_pis: number | null
           base_price: number
           catalog_id: string | null
+          cest: string | null
+          cfop_devolucao: string | null
+          cfop_venda: string | null
+          codigo_beneficio_fiscal: string | null
+          codigo_enquadramento_ipi: string | null
           compare_at_price: number | null
           cost_price: number | null
           created_at: string | null
           created_by: string | null
+          csosn: string | null
+          cst_cofins: string | null
+          cst_icms: string | null
+          cst_ipi: string | null
+          cst_pis: string | null
           description: string | null
           display_order: number | null
+          ex_tipi: string | null
+          fator_conversao_tributavel: number | null
           gallery_images: Json | null
+          gtin: string | null
+          gtin_tributavel: string | null
           has_variations: boolean | null
+          icms_st_aliquota: number | null
+          icms_st_modalidade: string | null
+          icms_st_mva: number | null
           id: string
+          informacoes_adicionais: string | null
           is_active: boolean | null
           is_featured: boolean | null
           main_image_url: string | null
           metadata: Json | null
           name: string
+          ncm: string | null
+          origem: number | null
+          peso_bruto: number | null
+          peso_liquido: number | null
+          reducao_base_icms: number | null
+          regime_tributario: string | null
           search_vector: unknown
           short_description: string | null
+          sku: string | null
           slug: string | null
           tags: string[] | null
           tenant_id: string | null
+          tipo_produto: string | null
           track_inventory: boolean | null
+          unidade_comercial: string | null
+          unidade_tributavel: string | null
           updated_at: string | null
         }
         Insert: {
+          aliquota_cofins?: number | null
+          aliquota_icms?: number | null
+          aliquota_ipi?: number | null
+          aliquota_pis?: number | null
           base_price?: number
           catalog_id?: string | null
+          cest?: string | null
+          cfop_devolucao?: string | null
+          cfop_venda?: string | null
+          codigo_beneficio_fiscal?: string | null
+          codigo_enquadramento_ipi?: string | null
           compare_at_price?: number | null
           cost_price?: number | null
           created_at?: string | null
           created_by?: string | null
+          csosn?: string | null
+          cst_cofins?: string | null
+          cst_icms?: string | null
+          cst_ipi?: string | null
+          cst_pis?: string | null
           description?: string | null
           display_order?: number | null
+          ex_tipi?: string | null
+          fator_conversao_tributavel?: number | null
           gallery_images?: Json | null
+          gtin?: string | null
+          gtin_tributavel?: string | null
           has_variations?: boolean | null
+          icms_st_aliquota?: number | null
+          icms_st_modalidade?: string | null
+          icms_st_mva?: number | null
           id?: string
+          informacoes_adicionais?: string | null
           is_active?: boolean | null
           is_featured?: boolean | null
           main_image_url?: string | null
           metadata?: Json | null
           name: string
+          ncm?: string | null
+          origem?: number | null
+          peso_bruto?: number | null
+          peso_liquido?: number | null
+          reducao_base_icms?: number | null
+          regime_tributario?: string | null
           search_vector?: unknown
           short_description?: string | null
+          sku?: string | null
           slug?: string | null
           tags?: string[] | null
           tenant_id?: string | null
+          tipo_produto?: string | null
           track_inventory?: boolean | null
+          unidade_comercial?: string | null
+          unidade_tributavel?: string | null
           updated_at?: string | null
         }
         Update: {
+          aliquota_cofins?: number | null
+          aliquota_icms?: number | null
+          aliquota_ipi?: number | null
+          aliquota_pis?: number | null
           base_price?: number
           catalog_id?: string | null
+          cest?: string | null
+          cfop_devolucao?: string | null
+          cfop_venda?: string | null
+          codigo_beneficio_fiscal?: string | null
+          codigo_enquadramento_ipi?: string | null
           compare_at_price?: number | null
           cost_price?: number | null
           created_at?: string | null
           created_by?: string | null
+          csosn?: string | null
+          cst_cofins?: string | null
+          cst_icms?: string | null
+          cst_ipi?: string | null
+          cst_pis?: string | null
           description?: string | null
           display_order?: number | null
+          ex_tipi?: string | null
+          fator_conversao_tributavel?: number | null
           gallery_images?: Json | null
+          gtin?: string | null
+          gtin_tributavel?: string | null
           has_variations?: boolean | null
+          icms_st_aliquota?: number | null
+          icms_st_modalidade?: string | null
+          icms_st_mva?: number | null
           id?: string
+          informacoes_adicionais?: string | null
           is_active?: boolean | null
           is_featured?: boolean | null
           main_image_url?: string | null
           metadata?: Json | null
           name?: string
+          ncm?: string | null
+          origem?: number | null
+          peso_bruto?: number | null
+          peso_liquido?: number | null
+          reducao_base_icms?: number | null
+          regime_tributario?: string | null
           search_vector?: unknown
           short_description?: string | null
+          sku?: string | null
           slug?: string | null
           tags?: string[] | null
           tenant_id?: string | null
+          tipo_produto?: string | null
           track_inventory?: boolean | null
+          unidade_comercial?: string | null
+          unidade_tributavel?: string | null
           updated_at?: string | null
         }
         Relationships: [
