@@ -379,6 +379,56 @@ export function useCreateBulkTemplateVariations() {
   });
 }
 
+// Helper function to generate SKU from product name
+function generateProductAbbreviation(productName: string): string {
+  // Take first letter of each word, max 8 chars
+  const words = productName.toUpperCase().split(/\s+/);
+  let abbr = words.map(w => w.charAt(0)).join('');
+  // If too short, add more letters from longer words
+  if (abbr.length < 4 && words.length > 0) {
+    abbr = words
+      .map(w => w.length >= 2 ? w.slice(0, 2) : w)
+      .join('')
+      .slice(0, 8);
+  }
+  return abbr.slice(0, 8);
+}
+
+// Helper to abbreviate attribute value for SKU
+function abbreviateAttributeValue(value: string): string {
+  const v = value.toUpperCase().trim();
+  
+  // Handle common patterns
+  if (/^\d+\s*(ano|anos|a)$/i.test(v)) {
+    const num = v.match(/\d+/)?.[0] || '';
+    return `${num}A`;
+  }
+  if (/^\d+\s*(mês|meses|m)$/i.test(v)) {
+    const num = v.match(/\d+/)?.[0] || '';
+    return `${num}M`;
+  }
+  
+  // Size abbreviations
+  const sizeMap: Record<string, string> = {
+    'MASCULINO': 'M',
+    'FEMININO': 'F',
+    'INFANTIL': 'I',
+    'UNISSEX': 'U',
+    'EXTRA PEQUENO': 'XP',
+    'PEQUENO': 'P',
+    'MÉDIO': 'M',
+    'GRANDE': 'G',
+  };
+  
+  if (sizeMap[v]) return sizeMap[v];
+  
+  // If already short (like PP, P, M, G, G1, G2), use as is
+  if (v.length <= 3) return v;
+  
+  // Otherwise take first 2-3 chars
+  return v.slice(0, 2);
+}
+
 // Apply template to product - creates all variations
 export function useApplyTemplateToProduct() {
   const queryClient = useQueryClient();
@@ -389,10 +439,12 @@ export function useApplyTemplateToProduct() {
       productId,
       templateId,
       basePrice,
+      productName,
     }: {
       productId: string;
       templateId: string;
       basePrice: number;
+      productName?: string;
     }) => {
       // Fetch template with variations
       const { data: template, error: templateError } = await supabase
@@ -410,6 +462,17 @@ export function useApplyTemplateToProduct() {
         .eq('is_active', true);
 
       if (variationsError) throw variationsError;
+
+      // Fetch all attribute values to get their names for SKU generation
+      const { data: allAttributeValues, error: attrError } = await supabase
+        .from('product_attribute_values')
+        .select('id, value, display_value');
+
+      if (attrError) throw attrError;
+
+      const attrValueMap = new Map(
+        allAttributeValues?.map(v => [v.id, v.display_value || v.value]) || []
+      );
 
       // Fetch global price rules if template uses them
       let globalPriceRules: Array<{
@@ -440,9 +503,14 @@ export function useApplyTemplateToProduct() {
 
       if (updateError) throw updateError;
 
+      // Generate product abbreviation for SKU
+      const productAbbr = productName 
+        ? generateProductAbbreviation(productName)
+        : productId.slice(0, 8).toUpperCase();
+
       // Create product variations based on template
       if (templateVariations && templateVariations.length > 0) {
-        const productVariations = templateVariations.map((tv, index) => {
+        const productVariations = templateVariations.map((tv) => {
           let price = basePrice;
           
           if (template.use_global_price_rules) {
@@ -466,10 +534,20 @@ export function useApplyTemplateToProduct() {
             }
           }
 
+          // Generate intelligent SKU from attribute values
+          const attrAbbreviations = tv.attribute_value_ids
+            .map((id: string) => {
+              const valueName = attrValueMap.get(id) || '';
+              return abbreviateAttributeValue(valueName);
+            })
+            .filter(Boolean);
+
+          const sku = `${productAbbr}-${attrAbbreviations.join('-')}`;
+
           return {
             product_id: productId,
             tenant_id: tenantId,
-            sku: `${productId.slice(0, 8)}-${index + 1}`,
+            sku,
             price,
             stock_quantity: 0,
             weight_kg: tv.weight_override || template.default_weight_kg,
