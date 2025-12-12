@@ -36,6 +36,7 @@ import Attributes from "@/pages/products/Attributes";
 import PriceRules from "@/pages/products/PriceRules";
 import Catalogs from "@/pages/products/Catalogs";
 import Products from "@/pages/products/Products";
+import Orders from "@/pages/Orders";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -172,6 +173,11 @@ const App = () => (
               <Route path="/products" element={
                 <ProtectedRoute permission="settings.view">
                   <Products />
+                </ProtectedRoute>
+              } />
+              <Route path="/orders" element={
+                <ProtectedRoute permission="deals.view">
+                  <Orders />
                 </ProtectedRoute>
               } />
             </Route>

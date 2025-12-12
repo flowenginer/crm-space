@@ -2423,6 +2423,348 @@ export type Database = {
           },
         ]
       }
+      order_items: {
+        Row: {
+          created_at: string | null
+          discount_amount: number | null
+          discount_percent: number | null
+          fulfilled_quantity: number | null
+          id: string
+          order_id: string
+          product_id: string | null
+          product_name: string
+          quantity: number
+          sku: string | null
+          subtotal: number | null
+          tenant_id: string | null
+          unit_cost: number | null
+          unit_price: number
+          variation_id: string | null
+          variation_name: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          fulfilled_quantity?: number | null
+          id?: string
+          order_id: string
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          sku?: string | null
+          subtotal?: number | null
+          tenant_id?: string | null
+          unit_cost?: number | null
+          unit_price: number
+          variation_id?: string | null
+          variation_name?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          fulfilled_quantity?: number | null
+          id?: string
+          order_id?: string
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          sku?: string | null
+          subtotal?: number | null
+          tenant_id?: string | null
+          unit_cost?: number | null
+          unit_price?: number
+          variation_id?: string | null
+          variation_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "product_variations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_payments: {
+        Row: {
+          amount: number
+          created_at: string | null
+          gateway: string | null
+          gateway_response: Json | null
+          id: string
+          order_id: string
+          paid_at: string | null
+          payment_method: string
+          refund_amount: number | null
+          refunded_at: string | null
+          status: string | null
+          tenant_id: string | null
+          transaction_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          gateway?: string | null
+          gateway_response?: Json | null
+          id?: string
+          order_id: string
+          paid_at?: string | null
+          payment_method: string
+          refund_amount?: number | null
+          refunded_at?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          transaction_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          gateway?: string | null
+          gateway_response?: Json | null
+          id?: string
+          order_id?: string
+          paid_at?: string | null
+          payment_method?: string
+          refund_amount?: number | null
+          refunded_at?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_status_history: {
+        Row: {
+          changed_by: string | null
+          created_at: string | null
+          from_status: string | null
+          id: string
+          notes: string | null
+          order_id: string
+          tenant_id: string | null
+          to_status: string
+        }
+        Insert: {
+          changed_by?: string | null
+          created_at?: string | null
+          from_status?: string | null
+          id?: string
+          notes?: string | null
+          order_id: string
+          tenant_id?: string | null
+          to_status: string
+        }
+        Update: {
+          changed_by?: string | null
+          created_at?: string | null
+          from_status?: string | null
+          id?: string
+          notes?: string | null
+          order_id?: string
+          tenant_id?: string | null
+          to_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_status_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_status_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_status_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          assigned_to: string | null
+          canceled_at: string | null
+          canceled_reason: string | null
+          channel_id: string | null
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string | null
+          delivered_at: string | null
+          discount_amount: number | null
+          discount_percent: number | null
+          fulfillment_status: string | null
+          id: string
+          internal_notes: string | null
+          notes: string | null
+          order_number: string
+          order_type: string | null
+          paid_amount: number | null
+          paid_at: string | null
+          payment_method: string | null
+          payment_status: string | null
+          shipped_at: string | null
+          shipping_address: Json | null
+          shipping_cost: number | null
+          shipping_method: string | null
+          status: string
+          subtotal: number | null
+          tax_amount: number | null
+          tenant_id: string | null
+          total: number | null
+          tracking_code: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          canceled_at?: string | null
+          canceled_reason?: string | null
+          channel_id?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          delivered_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          fulfillment_status?: string | null
+          id?: string
+          internal_notes?: string | null
+          notes?: string | null
+          order_number: string
+          order_type?: string | null
+          paid_amount?: number | null
+          paid_at?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          shipped_at?: string | null
+          shipping_address?: Json | null
+          shipping_cost?: number | null
+          shipping_method?: string | null
+          status?: string
+          subtotal?: number | null
+          tax_amount?: number | null
+          tenant_id?: string | null
+          total?: number | null
+          tracking_code?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          canceled_at?: string | null
+          canceled_reason?: string | null
+          channel_id?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          delivered_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          fulfillment_status?: string | null
+          id?: string
+          internal_notes?: string | null
+          notes?: string | null
+          order_number?: string
+          order_type?: string | null
+          paid_amount?: number | null
+          paid_at?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          shipped_at?: string | null
+          shipping_address?: Json | null
+          shipping_cost?: number | null
+          shipping_method?: string | null
+          status?: string
+          subtotal?: number | null
+          tax_amount?: number | null
+          tenant_id?: string | null
+          total?: number | null
+          tracking_code?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permission_definitions: {
         Row: {
           category: string
@@ -4072,6 +4414,7 @@ export type Database = {
           updated_count: number
         }[]
       }
+      generate_order_number: { Args: { p_tenant_id: string }; Returns: string }
       get_agent_counts: {
         Args: {
           p_channel_id?: string
