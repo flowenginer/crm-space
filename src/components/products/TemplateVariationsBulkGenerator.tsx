@@ -244,7 +244,7 @@ export function TemplateVariationsBulkGenerator({
           <CollapsibleContent>
             <CardContent className="space-y-4 pt-0">
               {/* Attribute Type Sections - Compact */}
-              <ScrollArea className="max-h-[180px]">
+              <ScrollArea className="max-h-[300px]">
                 <div className="space-y-3 pr-2">
                   {attributeTypes?.map((type) => {
                     const typeSelected = selectedValues[type.id] || [];
