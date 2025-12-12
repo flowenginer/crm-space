@@ -156,7 +156,7 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
@@ -165,15 +165,16 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
             <TabsTrigger value="info">Informações</TabsTrigger>
             <TabsTrigger value="variations" disabled={!isEditing}>
               Variações {template?.variations?.length ? `(${template.variations.length})` : ''}
             </TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="flex-1 h-[calc(90vh-220px)] mt-4">
-            <TabsContent value="info" className="m-0 space-y-4 pr-4">
+          <div className="flex-1 min-h-0 mt-4 overflow-hidden">
+            <ScrollArea className="h-full max-h-[calc(90vh-200px)]">
+              <TabsContent value="info" className="m-0 space-y-4 pr-4" forceMount={activeTab === 'info' ? true : undefined}>
               <Form {...form}>
                 <div className="space-y-4">
                   <FormField
@@ -314,7 +315,7 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
               </Form>
             </TabsContent>
 
-            <TabsContent value="variations" className="m-0 pr-4">
+            <TabsContent value="variations" className="m-0 pr-4" forceMount={activeTab === 'variations' ? true : undefined}>
               {effectiveTemplateId && attributeTypes && priceRules !== undefined && (
                 <TemplateVariationsBulkGenerator
                   templateId={effectiveTemplateId}
@@ -325,7 +326,8 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
                 />
               )}
             </TabsContent>
-          </ScrollArea>
+            </ScrollArea>
+          </div>
         </Tabs>
 
         {/* Footer fixo sempre visível */}
