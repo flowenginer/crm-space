@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Menu,
   LucideIcon,
+  UserCircle,
   CalendarClock,
   ClipboardList,
   Sun,
@@ -70,6 +71,7 @@ interface NavGroup {
  */
 const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard, permission: 'dashboard.view' },
+  { title: 'Meu Painel', href: '/seller-dashboard', icon: UserCircle, roles: ['vendedor', 'admin', 'supervisor'] },
   { title: 'Conversas', href: '/conversations', icon: MessageSquare, permission: 'conversations.view' },
   { title: 'Chat Interno', href: '/internal-chat', icon: MessagesSquare },
   { title: 'Requisições', href: '/conversations/requests', icon: GitPullRequest, permission: 'conversations.requests' },
