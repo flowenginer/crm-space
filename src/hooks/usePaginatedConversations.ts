@@ -506,27 +506,12 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         }
       }
 
-        // *** FILTRO POR LEAD STATUS DO CONTATO - SERVIDOR ***
-        // Buscar na tabela contacts (fonte de verdade) ao invés de conversations
-        if (leadStatusFilter) {
-          // Primeiro, buscar os IDs dos contatos com o lead_status desejado
-          const { data: matchingContacts } = await supabase
-            .from('contacts')
-            .select('id')
-            .eq('lead_status', leadStatusFilter);
-          
-          if (matchingContacts && matchingContacts.length > 0) {
-            const contactIds = matchingContacts.map(c => c.id);
-            query = query.in('contact_id', contactIds);
-          } else {
-            // Nenhum contato com esse status, retornar vazio
-            return {
-              conversations: [] as Conversation[],
-              nextPage: undefined,
-              pageParam: 0,
-            };
-          }
-        }
+      // *** FILTRO POR LEAD STATUS DO CONTATO - SERVIDOR ***
+      // Usa inner join filter para filtrar diretamente na tabela contacts (fonte de verdade)
+      // Isso evita URLs longas e é processado eficientemente no servidor
+      if (leadStatusFilter) {
+        query = query.eq('contact.lead_status', leadStatusFilter);
+      }
 
       // Apply sorting - THIS IS THE KEY: sorting happens on the SERVER
       switch (sortBy) {
