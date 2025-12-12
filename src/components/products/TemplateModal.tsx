@@ -164,7 +164,7 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
             <TabsTrigger value="info">Informações</TabsTrigger>
             <TabsTrigger value="variations" disabled={!isEditing}>
@@ -172,151 +172,149 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex-1 min-h-0 mt-4 overflow-hidden">
-            <ScrollArea className="h-full max-h-[calc(90vh-200px)]">
-              <TabsContent value="info" className="m-0 space-y-4 pr-4" forceMount={activeTab === 'info' ? true : undefined}>
-              <Form {...form}>
-                <div className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nome do Template</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Ex: Manga Longa" {...field} />
-                        </FormControl>
-                        <FormDescription>
-                          Nome que identificará este modelo de produto
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Descrição</FormLabel>
-                        <FormControl>
-                          <Textarea 
-                            placeholder="Descreva o template..." 
-                            {...field}
-                            value={field.value || ''}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Separator />
-
-                  {/* Hybrid approach toggle */}
-                  <FormField
-                    control={form.control}
-                    name="use_global_price_rules"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 bg-muted/50">
-                        <div className="space-y-0.5 flex-1">
-                          <div className="flex items-center gap-2">
-                            <FormLabel className="text-base">Usar Regras de Preço Globais</FormLabel>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
-                                  <p><strong>Ativado:</strong> Ajustes de preço das variações vêm das Regras de Preço globais (menu Regras de Preço)</p>
-                                  <p className="mt-1"><strong>Desativado:</strong> Cada variação tem seu próprio ajuste de preço definido aqui no template</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </div>
-                          <FormDescription>
-                            {field.value 
-                              ? 'Os preços serão calculados automaticamente com base nas regras globais cadastradas'
-                              : 'Você define o ajuste de preço para cada variação individualmente'
-                            }
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-
-                  <Separator />
-
-                  <div className="grid gap-4 md:grid-cols-2">
+          <ScrollArea className="flex-1 mt-4 h-[calc(90vh-220px)]">
+            <div className="pr-4">
+              {activeTab === 'info' && (
+                <Form {...form}>
+                  <div className="space-y-4">
                     <FormField
                       control={form.control}
-                      name="default_weight_kg"
+                      name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Peso Padrão (kg)</FormLabel>
+                          <FormLabel>Nome do Template</FormLabel>
                           <FormControl>
-                            <Input type="number" step="0.001" min="0" {...field} />
+                            <Input placeholder="Ex: Manga Longa" {...field} />
+                          </FormControl>
+                          <FormDescription>
+                            Nome que identificará este modelo de produto
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="description"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Descrição</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              placeholder="Descreva o template..." 
+                              {...field}
+                              value={field.value || ''}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
 
-                    <div className="grid grid-cols-3 gap-2">
+                    <Separator />
+
+                    <FormField
+                      control={form.control}
+                      name="use_global_price_rules"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 bg-muted/50">
+                          <div className="space-y-0.5 flex-1">
+                            <div className="flex items-center gap-2">
+                              <FormLabel className="text-base">Usar Regras de Preço Globais</FormLabel>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs">
+                                    <p><strong>Ativado:</strong> Ajustes de preço das variações vêm das Regras de Preço globais (menu Regras de Preço)</p>
+                                    <p className="mt-1"><strong>Desativado:</strong> Cada variação tem seu próprio ajuste de preço definido aqui no template</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                            <FormDescription>
+                              {field.value 
+                                ? 'Os preços serão calculados automaticamente com base nas regras globais cadastradas'
+                                : 'Você define o ajuste de preço para cada variação individualmente'
+                              }
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+
+                    <Separator />
+
+                    <div className="grid gap-4 md:grid-cols-2">
                       <FormField
                         control={form.control}
-                        name="default_height_cm"
+                        name="default_weight_kg"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Altura (cm)</FormLabel>
+                            <FormLabel>Peso Padrão (kg)</FormLabel>
                             <FormControl>
-                              <Input type="number" step="0.1" min="0" {...field} />
+                              <Input type="number" step="0.001" min="0" {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                      <FormField
-                        control={form.control}
-                        name="default_width_cm"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Largura (cm)</FormLabel>
-                            <FormControl>
-                              <Input type="number" step="0.1" min="0" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="default_length_cm"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Comp. (cm)</FormLabel>
-                            <FormControl>
-                              <Input type="number" step="0.1" min="0" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <FormField
+                          control={form.control}
+                          name="default_height_cm"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Altura (cm)</FormLabel>
+                              <FormControl>
+                                <Input type="number" step="0.1" min="0" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="default_width_cm"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Largura (cm)</FormLabel>
+                              <FormControl>
+                                <Input type="number" step="0.1" min="0" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="default_length_cm"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Comp. (cm)</FormLabel>
+                              <FormControl>
+                                <Input type="number" step="0.1" min="0" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Form>
-            </TabsContent>
+                </Form>
+              )}
 
-            <TabsContent value="variations" className="m-0 pr-4" forceMount={activeTab === 'variations' ? true : undefined}>
-              {effectiveTemplateId && attributeTypes && priceRules !== undefined && (
+              {activeTab === 'variations' && effectiveTemplateId && attributeTypes && priceRules !== undefined && (
                 <TemplateVariationsBulkGenerator
                   templateId={effectiveTemplateId}
                   attributeTypes={attributeTypes}
@@ -325,9 +323,8 @@ export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChan
                   useGlobalRules={useGlobalRules}
                 />
               )}
-            </TabsContent>
-            </ScrollArea>
-          </div>
+            </div>
+          </ScrollArea>
         </Tabs>
 
         {/* Footer fixo sempre visível */}
