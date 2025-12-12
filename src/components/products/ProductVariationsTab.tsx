@@ -38,8 +38,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ProductVariationsGenerator } from './ProductVariationsGenerator';
-import { Loader2, Plus, Pencil, Trash2, Package } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2, Package, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface ProductVariationsTabProps {
   productId: string;
@@ -150,6 +156,67 @@ export function ProductVariationsTab({ productId, productName, basePrice }: Prod
     });
   };
 
+  // Apply price rules to existing variations
+  const [isApplyingRules, setIsApplyingRules] = useState(false);
+  
+  const handleApplyPriceRules = async () => {
+    if (!variations || variations.length === 0 || !priceRules) return;
+    
+    const activePriceRules = priceRules.filter(r => r.is_active);
+    if (activePriceRules.length === 0) {
+      toast.info('Nenhuma regra de preço ativa para aplicar');
+      return;
+    }
+
+    // Create a map of attribute_value_id -> price rule
+    const ruleMap = new Map(activePriceRules.map(r => [r.attribute_value_id, r]));
+    
+    setIsApplyingRules(true);
+    let updatedCount = 0;
+    
+    try {
+      for (const variation of variations) {
+        if (!variation.attribute_value_ids) continue;
+        
+        // Calculate price adjustment based on rules
+        let priceAdjustment = 0;
+        for (const attrValueId of variation.attribute_value_ids) {
+          const rule = ruleMap.get(attrValueId);
+          if (rule) {
+            if (rule.adjustment_type === 'fixed') {
+              priceAdjustment += rule.adjustment_value;
+            } else if (rule.adjustment_type === 'percentage') {
+              priceAdjustment += (basePrice * rule.adjustment_value) / 100;
+            }
+          }
+        }
+        
+        const newPrice = basePrice + priceAdjustment;
+        
+        // Only update if price is different
+        if (variation.price !== newPrice) {
+          await updateVariation.mutateAsync({
+            id: variation.id,
+            price: newPrice,
+          });
+          updatedCount++;
+        }
+      }
+      
+      if (updatedCount > 0) {
+        toast.success(`${updatedCount} variações atualizadas com as regras de preço`);
+      } else {
+        toast.info('Nenhuma variação precisou ser atualizada');
+      }
+    } catch (error) {
+      toast.error('Erro ao aplicar regras de preço');
+    } finally {
+      setIsApplyingRules(false);
+    }
+  };
+
+  const activePriceRulesCount = priceRules?.filter(r => r.is_active).length || 0;
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -169,10 +236,36 @@ export function ProductVariationsTab({ productId, productName, basePrice }: Prod
             <Badge variant="secondary">{variations.length}</Badge>
           )}
         </div>
-        <Button size="sm" onClick={() => setShowAddDialog(true)}>
-          <Plus className="h-4 w-4 mr-1" />
-          Adicionar
-        </Button>
+        <div className="flex items-center gap-2">
+          {variations && variations.length > 0 && activePriceRulesCount > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={handleApplyPriceRules}
+                    disabled={isApplyingRules}
+                  >
+                    {isApplyingRules ? (
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-1" />
+                    )}
+                    Aplicar Regras
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Aplicar {activePriceRulesCount} regras de preço às variações</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <Button size="sm" onClick={() => setShowAddDialog(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Adicionar
+          </Button>
+        </div>
       </div>
 
       {/* Variations Table */}
