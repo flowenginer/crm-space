@@ -2244,17 +2244,19 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         }
       );
       
-      // 4. Atualiza no banco
+      // 4. Atualiza no banco (NÃO invalida conversations-paginated - já removido otimisticamente)
       updateConversation.mutate({ 
         id: conversationIdToClose, 
         status: 'closed',
         closed_at: new Date().toISOString(),
       });
       
-      // 5. Invalidar contagens para refletir a mudança
+      // 5. Invalidar apenas contagens (NÃO conversations-paginated!)
+      // A remoção otimista acima e o realtime cuidam da lista
       queryClient.invalidateQueries({ queryKey: ['conversation-total-counts'] });
       queryClient.invalidateQueries({ queryKey: ['sort-filter-counts'] });
       queryClient.invalidateQueries({ queryKey: ['all-conversation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-status-counts'] });
       
       toast.success('Conversa fechada');
     }
