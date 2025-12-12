@@ -218,14 +218,17 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
     queryFn: async ({ pageParam = 0 }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Se há filtro de data, precisamos usar INNER JOIN para filtrar no servidor
+      // Se há filtro de data OU lead status, precisamos usar INNER JOIN para filtrar no servidor
       const hasDateFilter = dateFilter && dateFilter !== 'all';
+      const hasLeadStatusFilter = !!leadStatusFilter;
       const dateRange = hasDateFilter ? await getDateRangeWithTimezone(dateFilter, customDateFrom, customDateTo) : null;
       
-      // Use !inner para forçar INNER JOIN quando filtrando por data
-      const contactJoin = hasDateFilter && dateRange 
-        ? 'contact:contacts!inner(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data)'
-        : 'contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data)';
+      // Use !inner para forçar INNER JOIN quando filtrando por data OU lead status
+      // Também inclui lead_status no select do contact
+      const needsInnerJoin = (hasDateFilter && dateRange) || hasLeadStatusFilter;
+      const contactJoin = needsInnerJoin
+        ? 'contact:contacts!inner(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data, lead_status)'
+        : 'contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data, lead_status)';
       
       const CONVERSATION_FIELDS_DYNAMIC = `
         id,
