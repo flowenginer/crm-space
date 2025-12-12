@@ -168,8 +168,14 @@ export function ProductVariationsTab({ productId, productName, basePrice }: Prod
       return;
     }
 
-    // Create a map of attribute_value_id -> price rule
-    const ruleMap = new Map(activePriceRules.map(r => [r.attribute_value_id, r]));
+    // Create a map with proper number conversion
+    const ruleMap = new Map(activePriceRules.map(r => [
+      r.attribute_value_id, 
+      {
+        ...r,
+        adjustment_value: Number(r.adjustment_value) // Garantir que é número
+      }
+    ]));
     
     setIsApplyingRules(true);
     let updatedCount = 0;
@@ -186,15 +192,16 @@ export function ProductVariationsTab({ productId, productName, basePrice }: Prod
             if (rule.adjustment_type === 'fixed') {
               priceAdjustment += rule.adjustment_value;
             } else if (rule.adjustment_type === 'percentage') {
-              priceAdjustment += (basePrice * rule.adjustment_value) / 100;
+              priceAdjustment += (Number(basePrice) * rule.adjustment_value) / 100;
             }
           }
         }
         
-        const newPrice = basePrice + priceAdjustment;
+        const newPrice = Number(basePrice) + priceAdjustment;
+        const currentPrice = Number(variation.price) || Number(basePrice);
         
-        // Only update if price is different
-        if (variation.price !== newPrice) {
+        // Compare with tolerance for float precision
+        if (Math.abs(currentPrice - newPrice) > 0.001) {
           await updateVariation.mutateAsync({
             id: variation.id,
             price: newPrice,
@@ -209,6 +216,7 @@ export function ProductVariationsTab({ productId, productName, basePrice }: Prod
         toast.info('Nenhuma variação precisou ser atualizada');
       }
     } catch (error) {
+      console.error('Erro ao aplicar regras:', error);
       toast.error('Erro ao aplicar regras de preço');
     } finally {
       setIsApplyingRules(false);
