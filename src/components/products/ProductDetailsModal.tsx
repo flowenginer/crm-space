@@ -43,6 +43,7 @@ import {
 import type { ProductWithCatalog } from '@/hooks/useProducts';
 import { useProductVariations } from '@/hooks/useProductVariations';
 import { useProductTemplatesWithVariations, useApplyTemplateToProduct } from '@/hooks/useProductTemplates';
+import { useAttributeTypes } from '@/hooks/useProductAttributes';
 import { toast } from 'sonner';
 
 interface ProductDetailsModalProps {
@@ -62,10 +63,27 @@ export function ProductDetailsModal({
     product?.id
   );
   const { data: templates } = useProductTemplatesWithVariations();
+  const { data: attributeTypes } = useAttributeTypes();
   const applyTemplate = useApplyTemplateToProduct();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
   const templatesWithVariations = templates?.filter(t => t.variations && t.variations.length > 0) || [];
+
+  // Build a map of attribute value id -> display name
+  const attrValueMap = new Map<string, string>();
+  attributeTypes?.forEach(type => {
+    type.values.forEach(val => {
+      attrValueMap.set(val.id, val.display_value || val.value);
+    });
+  });
+
+  // Get variation display name from attribute_value_ids
+  const getVariationDisplayName = (attributeValueIds: string[] | null): string => {
+    if (!attributeValueIds || attributeValueIds.length === 0) return '-';
+    return attributeValueIds
+      .map(id => attrValueMap.get(id) || id.slice(0, 4))
+      .join(' - ');
+  };
 
   if (!product) return null;
 
@@ -272,13 +290,12 @@ export function ProductDetailsModal({
                   )}
                 </div>
               ) : (
-                <div className="border rounded-md overflow-hidden">
+                <ScrollArea className="h-[300px] border rounded-md">
                   <Table>
-                    <TableHeader>
+                    <TableHeader className="sticky top-0 bg-background z-10">
                       <TableRow>
                         <TableHead>Variação</TableHead>
                         <TableHead>SKU</TableHead>
-                        <TableHead>Atributos</TableHead>
                         <TableHead className="text-right">Preço</TableHead>
                         <TableHead className="text-right">Estoque</TableHead>
                         <TableHead className="text-center">Status</TableHead>
@@ -293,14 +310,11 @@ export function ProductDetailsModal({
 
                         return (
                           <TableRow key={variation.id}>
-                            <TableCell className="font-medium">
-                              {variation.variation_name || '-'}
+                            <TableCell className="font-medium text-sm">
+                              {variation.variation_name || getVariationDisplayName(variation.attribute_value_ids)}
                             </TableCell>
                             <TableCell className="font-mono text-xs">
                               {variation.sku}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {formatAttributes(variation.attributes)}
                             </TableCell>
                             <TableCell className="text-right">
                               {formatPrice(finalPrice)}
@@ -330,7 +344,7 @@ export function ProductDetailsModal({
                       })}
                     </TableBody>
                   </Table>
-                </div>
+                </ScrollArea>
               )}
             </div>
 
