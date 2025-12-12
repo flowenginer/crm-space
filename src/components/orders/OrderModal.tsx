@@ -175,6 +175,8 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     await createOrder.mutateAsync({
       contact_id: contactId || undefined,
       conversation_id: conversationId,
+      store_id: storeId || undefined,
+      seller_id: sellerId || undefined,
       items: items.map(item => ({
         product_name: item.product_name,
         variation_name: item.variation_name,
@@ -182,9 +184,19 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
         sku: item.sku,
         unit_price: item.unit_price,
         quantity: item.quantity,
+        discount_amount: item.discount_type === 'fixed' ? item.discount : 0,
+        discount_percent: item.discount_type === 'percent' ? item.discount : 0,
       })),
       notes: customerNotes,
+      internal_notes: internalNotes,
       shipping_method: shippingMethod || undefined,
+      shipping_cost: shippingCost,
+      expected_delivery_date: expectedDeliveryDate || undefined,
+      payment_method: paymentMethod || undefined,
+      installments: installments,
+      paid_amount: paidAmount,
+      discount_amount: totalDiscountType === 'fixed' ? totalDiscount : 0,
+      discount_percent: totalDiscountType === 'percent' ? totalDiscount : 0,
     });
 
     onOpenChange(false);
