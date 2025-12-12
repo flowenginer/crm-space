@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
-import { Check, Info, Sparkles, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Info, Sparkles, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Tooltip,
   TooltipContent,
@@ -41,6 +42,7 @@ export function TemplateVariationsBulkGenerator({
   // Track selected values per attribute type
   const [selectedValues, setSelectedValues] = useState<Record<string, string[]>>({});
   const [justCreated, setJustCreated] = useState(false);
+  const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
 
   const createBulkVariations = useCreateBulkTemplateVariations();
   const deleteVariation = useDeleteTemplateVariation();
@@ -209,190 +211,172 @@ export function TemplateVariationsBulkGenerator({
 
   return (
     <div className="space-y-4">
-      {/* Bulk Generator Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            Geração em Massa de Variações
-          </CardTitle>
-          <CardDescription>
-            Selecione os atributos desejados e gere todas as combinações automaticamente
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Attribute Type Sections */}
-          {attributeTypes?.map((type) => {
-            const typeSelected = selectedValues[type.id] || [];
-            const allSelected = typeSelected.length === type.values.length && type.values.length > 0;
-            const someSelected = typeSelected.length > 0;
-
-            return (
-              <div key={type.id} className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    {type.name}
-                    {someSelected && (
-                      <Badge variant="secondary" className="text-xs">
-                        {typeSelected.length} selecionados
-                      </Badge>
-                    )}
-                  </label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleSelectAll(type.id, type.values)}
-                    className="text-xs"
-                  >
-                    {allSelected ? 'Desmarcar todos' : 'Selecionar todos'}
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {type.values.map((value) => {
-                    const isSelected = typeSelected.includes(value.id);
-                    const priceRule = priceRuleMap[value.id];
-
-                    return (
-                      <TooltipProvider key={value.id}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              onClick={() => toggleValue(type.id, value.id)}
-                              className={`
-                                relative flex items-center gap-2 px-3 py-2 rounded-lg border text-sm
-                                transition-all duration-200
-                                ${isSelected
-                                  ? 'border-primary bg-primary/10 text-primary'
-                                  : 'border-border bg-card hover:bg-muted'
-                                }
-                              `}
-                            >
-                              <Checkbox
-                                checked={isSelected}
-                                className="pointer-events-none"
-                              />
-                              <span>{getValueDisplayName(value)}</span>
-                              {priceRule && useGlobalRules && (
-                                <Badge variant="outline" className="text-xs ml-1 bg-amber-500/10 text-amber-600 border-amber-500/30">
-                                  {priceRule.adjustment_type === 'percentage'
-                                    ? `${priceRule.adjustment_value > 0 ? '+' : ''}${priceRule.adjustment_value}%`
-                                    : `${priceRule.adjustment_value > 0 ? '+' : ''}R$${priceRule.adjustment_value}`
-                                  }
-                                </Badge>
-                              )}
-                            </button>
-                          </TooltipTrigger>
-                          {priceRule && (
-                            <TooltipContent>
-                              <p>Regra de preço global: {priceRule.adjustment_type === 'percentage'
-                                ? `${priceRule.adjustment_value}%`
-                                : `R$ ${priceRule.adjustment_value.toFixed(2)}`
-                              }</p>
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
-                      </TooltipProvider>
-                    );
-                  })}
-                </div>
-                <Separator />
-              </div>
-            );
-          })}
-
-          {/* Preview Section */}
-          {generatedVariations.length > 0 && (
-            <div className="space-y-3">
+      {/* Bulk Generator Card - Collapsible */}
+      <Collapsible open={isGeneratorOpen} onOpenChange={setIsGeneratorOpen}>
+        <Card>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium">Preview das Combinações</h4>
-                <div className="flex items-center gap-2 text-sm">
-                  <Badge variant="outline">
-                    {generatedVariations.length} total
-                  </Badge>
-                  {newVariations.length < generatedVariations.length && (
-                    <Badge variant="secondary">
-                      {generatedVariations.length - newVariations.length} já existem
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Geração em Massa de Variações
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  {Object.values(selectedValues).some(v => v.length > 0) && (
+                    <Badge variant="secondary" className="text-xs">
+                      {newVariations.length} novas
                     </Badge>
                   )}
-                  <Badge className="bg-primary">
-                    {newVariations.length} novas
-                  </Badge>
+                  {isGeneratorOpen ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
                 </div>
               </div>
+              <CardDescription className="text-xs">
+                Clique para expandir e gerar combinações automaticamente
+              </CardDescription>
+            </CardHeader>
+          </CollapsibleTrigger>
+          
+          <CollapsibleContent>
+            <CardContent className="space-y-4 pt-0">
+              {/* Attribute Type Sections - Compact */}
+              <ScrollArea className="max-h-[200px]">
+                <div className="space-y-4 pr-2">
+                  {attributeTypes?.map((type) => {
+                    const typeSelected = selectedValues[type.id] || [];
+                    const allSelected = typeSelected.length === type.values.length && type.values.length > 0;
+                    const someSelected = typeSelected.length > 0;
 
-              <ScrollArea className="h-48 rounded-lg border">
-                <div className="p-2 space-y-1">
-                  {generatedVariations.map((variation, index) => {
-                    const exists = variationExists(variation.attributeValueIds);
                     return (
-                      <div
-                        key={index}
-                        className={`
-                          flex items-center justify-between p-2 rounded text-sm
-                          ${exists ? 'bg-muted/50 text-muted-foreground' : 'bg-primary/5'}
-                        `}
-                      >
-                        <div className="flex items-center gap-2">
-                          {exists && <Check className="h-3 w-3 text-green-500" />}
-                          <span className={exists ? 'line-through opacity-50' : ''}>
-                            {variation.name}
-                          </span>
+                      <div key={type.id} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-medium flex items-center gap-2">
+                            {type.name}
+                            {someSelected && (
+                              <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                                {typeSelected.length}
+                              </Badge>
+                            )}
+                          </label>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleSelectAll(type.id, type.values)}
+                            className="text-[10px] h-6 px-2"
+                          >
+                            {allSelected ? 'Desmarcar' : 'Selecionar todos'}
+                          </Button>
                         </div>
-                        {useGlobalRules && variation.priceAdjustment !== 0 && (
-                          <Badge variant="outline" className="text-xs">
-                            {formatPriceAdjustment(variation)}
-                          </Badge>
-                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {type.values.map((value) => {
+                            const isSelected = typeSelected.includes(value.id);
+                            const priceRule = priceRuleMap[value.id];
+
+                            return (
+                              <TooltipProvider key={value.id}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleValue(type.id, value.id)}
+                                      className={`
+                                        relative flex items-center gap-1.5 px-2 py-1 rounded border text-xs
+                                        transition-all duration-200
+                                        ${isSelected
+                                          ? 'border-primary bg-primary/10 text-primary'
+                                          : 'border-border bg-card hover:bg-muted'
+                                        }
+                                      `}
+                                    >
+                                      <Checkbox
+                                        checked={isSelected}
+                                        className="pointer-events-none h-3 w-3"
+                                      />
+                                      <span>{getValueDisplayName(value)}</span>
+                                      {priceRule && useGlobalRules && (
+                                        <Badge variant="outline" className="text-[9px] h-4 px-1 bg-amber-500/10 text-amber-600 border-amber-500/30">
+                                          {priceRule.adjustment_type === 'percentage'
+                                            ? `${priceRule.adjustment_value > 0 ? '+' : ''}${priceRule.adjustment_value}%`
+                                            : `${priceRule.adjustment_value > 0 ? '+' : ''}R$${priceRule.adjustment_value}`
+                                          }
+                                        </Badge>
+                                      )}
+                                    </button>
+                                  </TooltipTrigger>
+                                  {priceRule && (
+                                    <TooltipContent>
+                                      <p>Regra de preço global: {priceRule.adjustment_type === 'percentage'
+                                        ? `${priceRule.adjustment_value}%`
+                                        : `R$ ${priceRule.adjustment_value.toFixed(2)}`
+                                      }</p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          })}
+                        </div>
+                        <Separator className="mt-2" />
                       </div>
                     );
                   })}
                 </div>
               </ScrollArea>
 
-              <Button
-                onClick={handleGenerateVariations}
-                disabled={newVariations.length === 0 || createBulkVariations.isPending}
-                className="w-full"
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                {createBulkVariations.isPending
-                  ? 'Gerando...'
-                  : `Gerar ${newVariations.length} Variações`
-                }
-              </Button>
-            </div>
-          )}
-
-          {generatedVariations.length === 0 && (
-            <div className="text-center py-6 text-muted-foreground">
-              <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Selecione os valores dos atributos acima para gerar as combinações</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              {/* Generate Button */}
+              {generatedVariations.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Badge variant="outline">{generatedVariations.length} total</Badge>
+                    {newVariations.length < generatedVariations.length && (
+                      <Badge variant="secondary">{generatedVariations.length - newVariations.length} já existem</Badge>
+                    )}
+                    <Badge className="bg-primary">{newVariations.length} novas</Badge>
+                  </div>
+                  <Button
+                    onClick={handleGenerateVariations}
+                    disabled={newVariations.length === 0 || createBulkVariations.isPending}
+                    className="w-full h-8 text-sm"
+                    size="sm"
+                  >
+                    <Sparkles className="mr-2 h-3 w-3" />
+                    {createBulkVariations.isPending ? 'Gerando...' : `Gerar ${newVariations.length} Variações`}
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-center py-3 text-muted-foreground">
+                  <Info className="h-5 w-5 mx-auto mb-1 opacity-50" />
+                  <p className="text-xs">Selecione os valores dos atributos acima para gerar as combinações</p>
+                </div>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
       {/* Existing Variations Card */}
-      <Card className={justCreated ? 'ring-2 ring-green-500 ring-offset-2' : ''}>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
+      <Card className={`flex-1 ${justCreated ? 'ring-2 ring-green-500 ring-offset-2' : ''}`}>
+        <CardHeader className="py-3">
+          <CardTitle className="text-sm flex items-center gap-2">
             Variações do Template ({existingVariations.length})
             {justCreated && (
-              <Badge className="bg-green-600 text-white animate-pulse">
+              <Badge className="bg-green-600 text-white animate-pulse text-[10px]">
                 <Check className="h-3 w-3 mr-1" />
-                Variações criadas!
+                Criadas!
               </Badge>
             )}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0">
           {existingVariations.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4">
+            <p className="text-center text-muted-foreground py-4 text-sm">
               Nenhuma variação cadastrada
             </p>
           ) : (
-            <ScrollArea className="h-[300px]">
+            <ScrollArea className="h-[350px]">
               <div className="space-y-2 pr-4">
                 {existingVariations.map((variation) => (
                   <div
