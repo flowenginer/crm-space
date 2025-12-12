@@ -36,6 +36,7 @@ import Attributes from "@/pages/products/Attributes";
 import PriceRules from "@/pages/products/PriceRules";
 import Catalogs from "@/pages/products/Catalogs";
 import Products from "@/pages/products/Products";
+import Templates from "@/pages/products/Templates";
 import Orders from "@/pages/Orders";
 import Financial from "@/pages/Financial";
 import SellerDashboard from "@/pages/SellerDashboard";
@@ -175,6 +176,11 @@ const App = () => (
               <Route path="/products" element={
                 <ProtectedRoute permission="settings.view">
                   <Products />
+                </ProtectedRoute>
+              } />
+              <Route path="/products/templates" element={
+                <ProtectedRoute permission="settings.view">
+                  <Templates />
                 </ProtectedRoute>
               } />
               <Route path="/orders" element={

@@ -35,6 +35,7 @@ import {
   DollarSign,
   ShoppingCart,
   Wallet,
+  LayoutTemplate,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -104,6 +105,7 @@ const productNavGroup: NavGroup = {
   items: [
     { title: 'Catálogos', href: '/products/catalogs', icon: Layers },
     { title: 'Produtos', href: '/products', icon: Tags },
+    { title: 'Templates', href: '/products/templates', icon: LayoutTemplate },
     { title: 'Atributos', href: '/products/attributes', icon: Settings2 },
     { title: 'Regras de Preço', href: '/products/price-rules', icon: DollarSign },
   ],

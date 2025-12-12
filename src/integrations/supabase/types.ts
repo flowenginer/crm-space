@@ -3491,6 +3491,119 @@ export type Database = {
           },
         ]
       }
+      product_template_variations: {
+        Row: {
+          adjustment_type: string | null
+          attribute_value_ids: string[]
+          created_at: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          price_adjustment: number | null
+          template_id: string | null
+          tenant_id: string | null
+          variation_name: string | null
+          weight_override: number | null
+        }
+        Insert: {
+          adjustment_type?: string | null
+          attribute_value_ids?: string[]
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          price_adjustment?: number | null
+          template_id?: string | null
+          tenant_id?: string | null
+          variation_name?: string | null
+          weight_override?: number | null
+        }
+        Update: {
+          adjustment_type?: string | null
+          attribute_value_ids?: string[]
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          price_adjustment?: number | null
+          template_id?: string | null
+          tenant_id?: string | null
+          variation_name?: string | null
+          weight_override?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_template_variations_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "product_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_template_variations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_templates: {
+        Row: {
+          created_at: string | null
+          default_height_cm: number | null
+          default_length_cm: number | null
+          default_weight_kg: number | null
+          default_width_cm: number | null
+          description: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          name: string
+          slug: string
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          default_height_cm?: number | null
+          default_length_cm?: number | null
+          default_weight_kg?: number | null
+          default_width_cm?: number | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          slug: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          default_height_cm?: number | null
+          default_length_cm?: number | null
+          default_weight_kg?: number | null
+          default_width_cm?: number | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          slug?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_variations: {
         Row: {
           attribute_value_ids: string[] | null
@@ -3629,6 +3742,7 @@ export type Database = {
           sku: string | null
           slug: string | null
           tags: string[] | null
+          template_id: string | null
           tenant_id: string | null
           tipo_produto: string | null
           track_inventory: boolean | null
@@ -3686,6 +3800,7 @@ export type Database = {
           sku?: string | null
           slug?: string | null
           tags?: string[] | null
+          template_id?: string | null
           tenant_id?: string | null
           tipo_produto?: string | null
           track_inventory?: boolean | null
@@ -3743,6 +3858,7 @@ export type Database = {
           sku?: string | null
           slug?: string | null
           tags?: string[] | null
+          template_id?: string | null
           tenant_id?: string | null
           tipo_produto?: string | null
           track_inventory?: boolean | null
@@ -3756,6 +3872,13 @@ export type Database = {
             columns: ["catalog_id"]
             isOneToOne: false
             referencedRelation: "product_catalogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "product_templates"
             referencedColumns: ["id"]
           },
           {

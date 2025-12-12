@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -29,9 +29,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { useCreateProduct, useUpdateProduct, generateSlug, type ProductWithCatalog } from '@/hooks/useProducts';
 import { useProductCatalogs } from '@/hooks/useProductCatalogs';
-import { Loader2, Package, DollarSign, FileText, Calculator, Boxes } from 'lucide-react';
+import { useProductTemplatesWithVariations, useApplyTemplateToProduct, ProductTemplateWithVariations } from '@/hooks/useProductTemplates';
+import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   ORIGEM_OPTIONS,
   CST_ICMS_OPTIONS,
@@ -111,9 +114,14 @@ interface ProductModalProps {
 
 export function ProductModal({ open, onOpenChange, product }: ProductModalProps) {
   const { data: catalogs } = useProductCatalogs();
+  const { data: templates } = useProductTemplatesWithVariations();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
+  const applyTemplate = useApplyTemplateToProduct();
   const isEditing = !!product;
+  
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const selectedTemplate = templates?.find(t => t.id === selectedTemplateId);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -271,6 +279,13 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
     }
   }, [product, form]);
 
+  // Reset template selection when modal closes
+  useEffect(() => {
+    if (!open) {
+      setSelectedTemplateId(null);
+    }
+  }, [open]);
+
   const onSubmit = async (data: ProductFormData) => {
     const tags = data.tags
       ? data.tags.split(',').map((t) => t.trim()).filter(Boolean)
@@ -329,13 +344,33 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
     if (isEditing) {
       await updateProduct.mutateAsync({ id: product.id, ...payload });
     } else {
-      await createProduct.mutateAsync(payload);
+      const result = await createProduct.mutateAsync(payload);
+      
+      // Apply template if selected
+      if (selectedTemplateId && result?.id) {
+        await applyTemplate.mutateAsync({
+          productId: result.id,
+          templateId: selectedTemplateId,
+          basePrice: data.base_price,
+        });
+      }
     }
 
     onOpenChange(false);
   };
 
-  const isSubmitting = createProduct.isPending || updateProduct.isPending;
+  const isSubmitting = createProduct.isPending || updateProduct.isPending || applyTemplate.isPending;
+
+  // Handle template selection - apply template defaults
+  const handleTemplateChange = (templateId: string) => {
+    setSelectedTemplateId(templateId || null);
+    const template = templates?.find(t => t.id === templateId);
+    if (template) {
+      form.setValue('peso_bruto', template.default_weight_kg);
+      form.setValue('peso_liquido', template.default_weight_kg);
+      toast.info(`Template "${template.name}" selecionado. Peso e dimensões aplicados.`);
+    }
+  };
 
   // Auto-generate slug from name
   const watchName = form.watch('name');
@@ -382,6 +417,38 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
 
               {/* TAB BÁSICO */}
               <TabsContent value="basico" className="space-y-4 mt-4">
+                {/* Template Selector - only for new products */}
+                {!isEditing && templates && templates.length > 0 && (
+                  <div className="p-4 rounded-lg border border-primary/20 bg-primary/5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <LayoutTemplate className="h-5 w-5 text-primary" />
+                      <span className="font-medium">Usar Template</span>
+                      <Badge variant="secondary" className="text-xs">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        Agilize o cadastro
+                      </Badge>
+                    </div>
+                    <Select value={selectedTemplateId || ''} onValueChange={handleTemplateChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um template para aplicar variações automaticamente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templates.map((template) => (
+                          <SelectItem key={template.id} value={template.id}>
+                            {template.name} ({template.variations?.length || 0} variações)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedTemplate && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Peso: {selectedTemplate.default_weight_kg}kg | 
+                        Dimensões: {selectedTemplate.default_height_cm}x{selectedTemplate.default_width_cm}x{selectedTemplate.default_length_cm}cm | 
+                        {selectedTemplate.variations?.length || 0} variações serão criadas automaticamente
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
