@@ -83,45 +83,61 @@ export function useSellerMetrics(sellerId: string | undefined) {
   const monthEnd = endOfMonth(now);
   const todayStart = startOfDay(now);
   const todayEnd = endOfDay(now);
+  const isGeneralView = !sellerId;
 
   return useQuery({
-    queryKey: ['seller-metrics', sellerId, format(monthStart, 'yyyy-MM')],
+    queryKey: ['seller-metrics', sellerId || 'all', format(monthStart, 'yyyy-MM')],
     queryFn: async (): Promise<SellerMetrics> => {
-      if (!sellerId) throw new Error('Seller ID required');
+      // Get seller commission rate (only for individual view)
+      let commissionRate = 0;
+      if (sellerId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('commission_percent')
+          .eq('id', sellerId)
+          .single();
+        commissionRate = (profile?.commission_percent || 0) / 100;
+      }
 
-      // Get seller commission rate
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('commission_percent')
-        .eq('id', sellerId)
-        .single();
-
-      const commissionRate = (profile?.commission_percent || 0) / 100;
-
-      // Try to get orders data
-      const { data: orders } = await supabase
+      // Build orders query
+      let ordersQuery = supabase
         .from('orders')
         .select('id, total, payment_status, created_at')
-        .eq('seller_id', sellerId)
         .neq('status', 'canceled')
         .gte('created_at', monthStart.toISOString())
         .lte('created_at', monthEnd.toISOString());
+      
+      if (sellerId) {
+        ordersQuery = ordersQuery.eq('seller_id', sellerId);
+      }
+      
+      const { data: orders } = await ordersQuery;
 
-      // Get CRM-based metrics (contacts that converted this month)
-      const { data: conversions } = await supabase
+      // Build conversions query
+      let conversionsQuery = supabase
         .from('contacts')
         .select('id, negotiated_value, lead_status, updated_at')
-        .eq('assigned_to', sellerId)
         .in('lead_status', CLOSED_STATUSES)
         .gte('updated_at', monthStart.toISOString())
         .lte('updated_at', monthEnd.toISOString());
+      
+      if (sellerId) {
+        conversionsQuery = conversionsQuery.eq('assigned_to', sellerId);
+      }
+      
+      const { data: conversions } = await conversionsQuery;
 
-      // Get contacts in active pipeline
-      const { data: pipelineContacts } = await supabase
+      // Build pipeline query
+      let pipelineQuery = supabase
         .from('contacts')
         .select('id, negotiated_value')
-        .eq('assigned_to', sellerId)
         .in('lead_status', OPPORTUNITY_STATUSES);
+      
+      if (sellerId) {
+        pipelineQuery = pipelineQuery.eq('assigned_to', sellerId);
+      }
+      
+      const { data: pipelineContacts } = await pipelineQuery;
 
       const totalOrders = orders?.length || 0;
       const orderRevenue = orders?.reduce((sum, o) => sum + (o.total || 0), 0) || 0;
@@ -162,7 +178,7 @@ export function useSellerMetrics(sellerId: string | undefined) {
         conversions: conversions?.length || 0,
       };
     },
-    enabled: !!sellerId,
+    staleTime: 60000,
   });
 }
 
@@ -172,44 +188,45 @@ export function useSellerGoalProgress(sellerId: string | undefined) {
   const monthEnd = endOfMonth(now);
 
   return useQuery({
-    queryKey: ['seller-goal-progress', sellerId, format(monthStart, 'yyyy-MM')],
+    queryKey: ['seller-goal-progress', sellerId || 'all', format(monthStart, 'yyyy-MM')],
     queryFn: async (): Promise<SellerGoalProgress> => {
-      if (!sellerId) throw new Error('Seller ID required');
+      // For general view, we just return the total revenue without targets
+      let conversionsQuery = supabase
+        .from('contacts')
+        .select('negotiated_value')
+        .in('lead_status', CLOSED_STATUSES)
+        .gte('updated_at', monthStart.toISOString())
+        .lte('updated_at', monthEnd.toISOString());
+      
+      if (sellerId) {
+        conversionsQuery = conversionsQuery.eq('assigned_to', sellerId);
+      }
+      
+      const { data: conversions } = await conversionsQuery;
+      const crmRevenue = conversions?.reduce((sum, c) => sum + (c.negotiated_value || 0), 0) || 0;
+      const daysRemaining = differenceInDays(monthEnd, now) + 1;
+
+      // If no sellerId (general view), return just revenue without targets
+      if (!sellerId) {
+        return {
+          target1: { value: 0, bonus: 0, progress: 0, remaining: 0 },
+          target2: { value: 0, bonus: 0, progress: 0, remaining: 0 },
+          target3: { value: 0, bonus: 0, progress: 0, remaining: 0 },
+          daysRemaining,
+          dailyTarget: 0,
+          totalRevenue: crmRevenue,
+        };
+      }
 
       // Get seller targets
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile } = await supabase
         .from('profiles')
         .select('sales_target_1, sales_target_2, sales_target_3, bonus_target_1, bonus_target_2, bonus_target_3')
         .eq('id', sellerId)
         .single();
 
-      if (profileError) throw profileError;
-
-      // Get total revenue from orders this month (paid only)
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('total')
-        .eq('seller_id', sellerId)
-        .neq('status', 'canceled')
-        .eq('payment_status', 'paid')
-        .gte('created_at', monthStart.toISOString())
-        .lte('created_at', monthEnd.toISOString());
-
-      // Also get CRM conversions as backup
-      const { data: conversions } = await supabase
-        .from('contacts')
-        .select('negotiated_value')
-        .eq('assigned_to', sellerId)
-        .in('lead_status', CLOSED_STATUSES)
-        .gte('updated_at', monthStart.toISOString())
-        .lte('updated_at', monthEnd.toISOString());
-
-      const orderRevenue = orders?.reduce((sum, o) => sum + (o.total || 0), 0) || 0;
-      const crmRevenue = conversions?.reduce((sum, c) => sum + (c.negotiated_value || 0), 0) || 0;
-      const totalRevenue = orderRevenue > 0 ? orderRevenue : crmRevenue;
+      const totalRevenue = crmRevenue;
       
-      const daysRemaining = differenceInDays(monthEnd, now) + 1;
-
       const calculateProgress = (target: number) => {
         if (!target || target === 0) return { value: 0, bonus: 0, progress: 0, remaining: 0 };
         const progress = Math.min((totalRevenue / target) * 100, 100);
@@ -219,46 +236,37 @@ export function useSellerGoalProgress(sellerId: string | undefined) {
 
       const target1 = calculateProgress(profile?.sales_target_1 || 0);
       target1.bonus = profile?.bonus_target_1 || 0;
-
       const target2 = calculateProgress(profile?.sales_target_2 || 0);
       target2.bonus = profile?.bonus_target_2 || 0;
-
       const target3 = calculateProgress(profile?.sales_target_3 || 0);
       target3.bonus = profile?.bonus_target_3 || 0;
 
-      // Calculate daily target to hit target1
       const remaining1 = Math.max((profile?.sales_target_1 || 0) - totalRevenue, 0);
       const dailyTarget = daysRemaining > 0 ? remaining1 / daysRemaining : 0;
 
-      return {
-        target1,
-        target2,
-        target3,
-        daysRemaining,
-        dailyTarget,
-        totalRevenue,
-      };
+      return { target1, target2, target3, daysRemaining, dailyTarget, totalRevenue };
     },
-    enabled: !!sellerId,
+    staleTime: 60000,
   });
 }
 
 export function useSellerPendingOrders(sellerId: string | undefined) {
   return useQuery({
-    queryKey: ['seller-pending-orders', sellerId],
+    queryKey: ['seller-pending-orders', sellerId || 'all'],
     queryFn: async (): Promise<PendingOrder[]> => {
-      if (!sellerId) throw new Error('Seller ID required');
-
-      // Get contacts awaiting payment from CRM (lead_status = '06 - Aguardando pagamento')
-      const { data: contacts, error } = await supabase
+      let query = supabase
         .from('contacts')
         .select('id, full_name, phone, negotiated_value, updated_at')
-        .eq('assigned_to', sellerId)
         .eq('lead_status', '06 - Aguardando pagamento')
         .gt('negotiated_value', 0)
         .order('updated_at', { ascending: false })
-        .limit(10);
+        .limit(15);
 
+      if (sellerId) {
+        query = query.eq('assigned_to', sellerId);
+      }
+
+      const { data: contacts, error } = await query;
       if (error) throw error;
 
       return (contacts || []).map((c, index) => ({
@@ -270,26 +278,27 @@ export function useSellerPendingOrders(sellerId: string | undefined) {
         created_at: c.updated_at,
       }));
     },
-    enabled: !!sellerId,
+    staleTime: 60000,
   });
 }
 
 export function useSellerOpportunities(sellerId: string | undefined) {
   return useQuery({
-    queryKey: ['seller-opportunities', sellerId],
+    queryKey: ['seller-opportunities', sellerId || 'all'],
     queryFn: async (): Promise<Opportunity[]> => {
-      if (!sellerId) throw new Error('Seller ID required');
-
-      // Get contacts in hot opportunity stages
-      const { data, error } = await supabase
+      let query = supabase
         .from('contacts')
         .select('id, full_name, phone, negotiated_value, lead_status, last_interaction_at')
-        .eq('assigned_to', sellerId)
         .gt('negotiated_value', 0)
         .in('lead_status', ['05 - Orçamento', '04 - Layout'])
         .order('negotiated_value', { ascending: false })
-        .limit(10);
+        .limit(15);
 
+      if (sellerId) {
+        query = query.eq('assigned_to', sellerId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
       return (data || []).map(c => ({
@@ -301,42 +310,41 @@ export function useSellerOpportunities(sellerId: string | undefined) {
         last_interaction_at: c.last_interaction_at,
       }));
     },
-    enabled: !!sellerId,
+    staleTime: 60000,
   });
 }
 
 export function useSellerPipeline(sellerId: string | undefined) {
   return useQuery({
-    queryKey: ['seller-pipeline', sellerId],
+    queryKey: ['seller-pipeline', sellerId || 'all'],
     queryFn: async (): Promise<PipelineStage[]> => {
-      if (!sellerId) throw new Error('Seller ID required');
-
       const results: PipelineStage[] = [];
 
       for (const stage of PIPELINE_STAGES) {
-        const { data, error } = await supabase
+        let query = supabase
           .from('contacts')
           .select('id, negotiated_value')
-          .eq('assigned_to', sellerId)
           .eq('lead_status', stage.status);
 
-        if (error) throw error;
+        if (sellerId) {
+          query = query.eq('assigned_to', sellerId);
+        }
 
-        const count = data?.length || 0;
-        const value = data?.reduce((sum, c) => sum + (c.negotiated_value || 0), 0) || 0;
+        const { data, error } = await query;
+        if (error) throw error;
 
         results.push({
           status: stage.status,
           label: stage.label,
-          count,
-          value,
+          count: data?.length || 0,
+          value: data?.reduce((sum, c) => sum + (c.negotiated_value || 0), 0) || 0,
           color: stage.color,
         });
       }
 
       return results;
     },
-    enabled: !!sellerId,
+    staleTime: 60000,
   });
 }
 

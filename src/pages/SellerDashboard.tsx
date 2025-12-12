@@ -14,13 +14,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   ShoppingCart,
   DollarSign,
   Target,
@@ -38,7 +31,7 @@ import {
   BookOpen,
   UserCheck,
 } from 'lucide-react';
-import { format, differenceInDays } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const formatCurrency = (value: number) => {
@@ -68,19 +61,35 @@ export default function SellerDashboard() {
   const { user, profile } = useAuth();
   const isAdminOrSupervisor = profile?.role === 'admin' || profile?.role === 'supervisor';
   
-  const [selectedSellerId, setSelectedSellerId] = useState<string>(user?.id || '');
-  const activeSellerId = selectedSellerId || user?.id;
+  // null = Geral (soma de todos), string = vendedor específico
+  const [selectedSellerId, setSelectedSellerId] = useState<string | null>(
+    isAdminOrSupervisor ? null : (user?.id || null)
+  );
+  
+  // Para visualização "Geral", passamos undefined para os hooks buscarem todos
+  const activeSellerId = selectedSellerId || undefined;
+  const isGeneralView = selectedSellerId === null && isAdminOrSupervisor;
 
   const { data: sellers = [], isLoading: loadingSellers } = useSellers();
-  const { data: metrics, isLoading: loadingMetrics } = useSellerMetrics(activeSellerId);
-  const { data: goals, isLoading: loadingGoals } = useSellerGoalProgress(activeSellerId);
-  const { data: pendingOrders = [], isLoading: loadingPending } = useSellerPendingOrders(activeSellerId);
-  const { data: opportunities = [], isLoading: loadingOpportunities } = useSellerOpportunities(activeSellerId);
-  const { data: pipeline = [], isLoading: loadingPipeline } = useSellerPipeline(activeSellerId);
+  const { data: metrics, isLoading: loadingMetrics } = useSellerMetrics(
+    isGeneralView ? undefined : activeSellerId
+  );
+  const { data: goals, isLoading: loadingGoals } = useSellerGoalProgress(
+    isGeneralView ? undefined : activeSellerId
+  );
+  const { data: pendingOrders = [], isLoading: loadingPending } = useSellerPendingOrders(
+    isGeneralView ? undefined : activeSellerId
+  );
+  const { data: opportunities = [], isLoading: loadingOpportunities } = useSellerOpportunities(
+    isGeneralView ? undefined : activeSellerId
+  );
+  const { data: pipeline = [], isLoading: loadingPipeline } = useSellerPipeline(
+    isGeneralView ? undefined : activeSellerId
+  );
 
-  const isLoading = loadingMetrics || loadingGoals;
+  const isLoading = loadingMetrics || loadingGoals || loadingSellers;
 
-  if (isLoading) {
+  if (isLoading && !sellers.length) {
     return (
       <div className="flex items-center justify-center h-full min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -89,52 +98,74 @@ export default function SellerDashboard() {
   }
 
   const currentMonth = format(new Date(), 'MMMM yyyy', { locale: ptBR });
-  const selectedSellerName = sellers.find(s => s.id === activeSellerId)?.full_name || 'Vendedor';
+  const selectedSellerName = isGeneralView 
+    ? 'Todos os Vendedores' 
+    : sellers.find(s => s.id === activeSellerId)?.full_name || 'Vendedor';
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Dashboard do Vendedor</h1>
-          <p className="text-muted-foreground">Resultados de {currentMonth}</p>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          {/* Seller Filter - only for admin/supervisor */}
-          {isAdminOrSupervisor && (
-            <Select 
-              value={selectedSellerId || user?.id || ''} 
-              onValueChange={setSelectedSellerId}
-            >
-              <SelectTrigger className="w-[200px]">
-                <Users className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Selecionar vendedor" />
-              </SelectTrigger>
-              <SelectContent>
-                {sellers.map((seller) => (
-                  <SelectItem key={seller.id} value={seller.id}>
-                    {seller.full_name || 'Sem nome'}
-                    {seller.id === user?.id && ' (você)'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Dashboard do Vendedor</h1>
+            <p className="text-muted-foreground">Resultados de {currentMonth}</p>
+          </div>
           
           <Badge variant="outline" className="gap-2">
             <Calendar size={14} />
             {goals?.daysRemaining || 0} dias restantes
           </Badge>
         </div>
+
+        {/* Seller Filter Buttons - only for admin/supervisor */}
+        {isAdminOrSupervisor && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground font-medium mr-2">Vendedor:</span>
+            
+            {/* Geral button */}
+            <Button
+              variant={isGeneralView ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedSellerId(null)}
+              className={isGeneralView ? "bg-gradient-to-r from-primary to-accent text-white" : ""}
+            >
+              <Users className="h-4 w-4 mr-1" />
+              Geral
+            </Button>
+
+            {/* Individual seller buttons */}
+            {sellers.map((seller) => (
+              <Button
+                key={seller.id}
+                variant={selectedSellerId === seller.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedSellerId(seller.id)}
+                className={selectedSellerId === seller.id ? "bg-gradient-to-r from-primary to-accent text-white" : ""}
+              >
+                {seller.full_name?.split(' ')[0] || 'Vendedor'}
+                {seller.id === user?.id && ' (você)'}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Selected Seller Badge */}
-      {isAdminOrSupervisor && selectedSellerId && selectedSellerId !== user?.id && (
+      {isAdminOrSupervisor && !isGeneralView && selectedSellerId && selectedSellerId !== user?.id && (
         <div className="bg-muted/50 border border-border rounded-lg p-3 flex items-center gap-2">
           <Users className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">
             Visualizando dados de: <strong className="text-foreground">{selectedSellerName}</strong>
+          </span>
+        </div>
+      )}
+
+      {isGeneralView && (
+        <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 flex items-center gap-2">
+          <Users className="h-4 w-4 text-primary" />
+          <span className="text-sm text-primary">
+            <strong>Visão Geral</strong> - Soma de todos os vendedores
           </span>
         </div>
       )}
