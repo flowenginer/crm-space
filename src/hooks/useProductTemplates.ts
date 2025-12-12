@@ -474,7 +474,6 @@ export function useApplyTemplateToProduct() {
             stock_quantity: 0,
             weight_kg: tv.weight_override || template.default_weight_kg,
             attribute_value_ids: tv.attribute_value_ids,
-            display_order: index,
             is_active: true,
           };
         });
