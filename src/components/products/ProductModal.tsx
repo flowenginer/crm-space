@@ -34,6 +34,7 @@ import { useCreateProduct, useUpdateProduct, generateSlug, type ProductWithCatal
 import { useProductCatalogs } from '@/hooks/useProductCatalogs';
 import { useProductTemplatesWithVariations, useApplyTemplateToProduct, ProductTemplateWithVariations } from '@/hooks/useProductTemplates';
 import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles } from 'lucide-react';
+import { ProductImageUploader } from './ProductImageUploader';
 import { toast } from 'sonner';
 import {
   ORIGEM_OPTIONS,
@@ -539,9 +540,12 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
                   name="main_image_url"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>URL da Imagem Principal</FormLabel>
+                      <FormLabel>Imagem Principal</FormLabel>
                       <FormControl>
-                        <Input type="url" placeholder="https://..." {...field} />
+                        <ProductImageUploader
+                          value={field.value || ''}
+                          onChange={field.onChange}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
