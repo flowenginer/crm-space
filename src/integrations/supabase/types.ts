@@ -4165,6 +4165,223 @@ export type Database = {
           },
         ]
       }
+      quote_items: {
+        Row: {
+          created_at: string | null
+          discount_amount: number | null
+          discount_percent: number | null
+          id: string
+          product_id: string | null
+          product_name: string
+          quantity: number
+          quote_id: string
+          sku: string | null
+          subtotal: number | null
+          tenant_id: string | null
+          unit_price: number
+          variation_id: string | null
+          variation_name: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          id?: string
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          quote_id: string
+          sku?: string | null
+          subtotal?: number | null
+          tenant_id?: string | null
+          unit_price: number
+          variation_id?: string | null
+          variation_name?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          id?: string
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          quote_id?: string
+          sku?: string | null
+          subtotal?: number | null
+          tenant_id?: string | null
+          unit_price?: number
+          variation_id?: string | null
+          variation_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_items_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_items_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "product_variations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotes: {
+        Row: {
+          channel_id: string | null
+          contact_id: string | null
+          conversation_id: string | null
+          converted_at: string | null
+          converted_to_order_id: string | null
+          created_at: string | null
+          discount_amount: number | null
+          discount_percent: number | null
+          expected_delivery_date: string | null
+          id: string
+          installments: number | null
+          internal_notes: string | null
+          notes: string | null
+          payment_method: string | null
+          quote_number: string
+          seller_id: string | null
+          shipping_address: Json | null
+          shipping_cost: number | null
+          shipping_method: string | null
+          status: string
+          store_id: string | null
+          subtotal: number | null
+          tenant_id: string | null
+          total: number | null
+          updated_at: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          channel_id?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          converted_at?: string | null
+          converted_to_order_id?: string | null
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          expected_delivery_date?: string | null
+          id?: string
+          installments?: number | null
+          internal_notes?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          quote_number: string
+          seller_id?: string | null
+          shipping_address?: Json | null
+          shipping_cost?: number | null
+          shipping_method?: string | null
+          status?: string
+          store_id?: string | null
+          subtotal?: number | null
+          tenant_id?: string | null
+          total?: number | null
+          updated_at?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          channel_id?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          converted_at?: string | null
+          converted_to_order_id?: string | null
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          expected_delivery_date?: string | null
+          id?: string
+          installments?: number | null
+          internal_notes?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          quote_number?: string
+          seller_id?: string | null
+          shipping_address?: Json | null
+          shipping_cost?: number | null
+          shipping_method?: string | null
+          status?: string
+          store_id?: string | null
+          subtotal?: number | null
+          tenant_id?: string | null
+          total?: number | null
+          updated_at?: string | null
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_converted_to_order_id_fkey"
+            columns: ["converted_to_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_definitions: {
         Row: {
           color: string | null
@@ -5108,6 +5325,7 @@ export type Database = {
         }[]
       }
       generate_order_number: { Args: { p_tenant_id: string }; Returns: string }
+      generate_quote_number: { Args: { p_tenant_id: string }; Returns: string }
       get_agent_counts: {
         Args: {
           p_channel_id?: string
