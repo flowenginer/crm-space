@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -23,15 +24,26 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   ImageIcon,
   Package,
   Pencil,
   AlertTriangle,
   FileText,
   Layers,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import type { ProductWithCatalog } from '@/hooks/useProducts';
 import { useProductVariations } from '@/hooks/useProductVariations';
+import { useProductTemplatesWithVariations, useApplyTemplateToProduct } from '@/hooks/useProductTemplates';
+import { toast } from 'sonner';
 
 interface ProductDetailsModalProps {
   open: boolean;
@@ -46,9 +58,14 @@ export function ProductDetailsModal({
   product,
   onEdit,
 }: ProductDetailsModalProps) {
-  const { data: variations, isLoading: loadingVariations } = useProductVariations(
+  const { data: variations, isLoading: loadingVariations, refetch: refetchVariations } = useProductVariations(
     product?.id
   );
+  const { data: templates } = useProductTemplatesWithVariations();
+  const applyTemplate = useApplyTemplateToProduct();
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+
+  const templatesWithVariations = templates?.filter(t => t.variations && t.variations.length > 0) || [];
 
   if (!product) return null;
 
@@ -199,8 +216,59 @@ export function ProductDetailsModal({
               {loadingVariations ? (
                 <div className="text-sm text-muted-foreground">Carregando variações...</div>
               ) : !variations || variations.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-4 text-center border rounded-md bg-muted/30">
-                  Este produto não possui variações
+                <div className="space-y-3">
+                  <div className="text-sm text-muted-foreground py-4 text-center border rounded-md bg-muted/30">
+                    Este produto não possui variações
+                  </div>
+                  
+                  {/* Aplicar Template Section */}
+                  {product.has_variations && templatesWithVariations.length > 0 && (
+                    <div className="p-4 rounded-lg border border-primary/20 bg-primary/5">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Sparkles className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Aplicar Template</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Selecione um template" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {templatesWithVariations.map((template) => (
+                              <SelectItem key={template.id} value={template.id}>
+                                {template.name} ({template.variations?.length || 0} variações)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          disabled={!selectedTemplateId || applyTemplate.isPending}
+                          onClick={async () => {
+                            if (!selectedTemplateId || !product) return;
+                            try {
+                              await applyTemplate.mutateAsync({
+                                productId: product.id,
+                                templateId: selectedTemplateId,
+                                basePrice: product.base_price,
+                              });
+                              toast.success('Variações aplicadas com sucesso!');
+                              refetchVariations();
+                              setSelectedTemplateId('');
+                            } catch (error) {
+                              toast.error('Erro ao aplicar template');
+                            }
+                          }}
+                        >
+                          {applyTemplate.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            'Aplicar'
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="border rounded-md overflow-hidden">

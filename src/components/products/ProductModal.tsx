@@ -33,9 +33,10 @@ import { Badge } from '@/components/ui/badge';
 import { useCreateProduct, useUpdateProduct, generateSlug, type ProductWithCatalog } from '@/hooks/useProducts';
 import { useProductCatalogs } from '@/hooks/useProductCatalogs';
 import { useProductTemplatesWithVariations, useApplyTemplateToProduct, ProductTemplateWithVariations } from '@/hooks/useProductTemplates';
-import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles } from 'lucide-react';
+import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles, AlertTriangle } from 'lucide-react';
 import { ProductImageUploader } from './ProductImageUploader';
 import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   ORIGEM_OPTIONS,
   CST_ICMS_OPTIONS,
@@ -434,14 +435,33 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
                         <SelectValue placeholder="Selecione um template para aplicar variações automaticamente" />
                       </SelectTrigger>
                       <SelectContent>
-                        {templates.map((template) => (
-                          <SelectItem key={template.id} value={template.id}>
-                            {template.name} ({template.variations?.length || 0} variações)
-                          </SelectItem>
-                        ))}
+                        {templates.map((template) => {
+                          const hasNoVariations = !template.variations?.length;
+                          return (
+                            <SelectItem key={template.id} value={template.id}>
+                              <div className="flex items-center gap-2">
+                                {template.name} ({template.variations?.length || 0} variações)
+                                {hasNoVariations && (
+                                  <Badge variant="destructive" className="text-xs ml-1">
+                                    Sem variações
+                                  </Badge>
+                                )}
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
-                    {selectedTemplate && (
+                    {selectedTemplate && !selectedTemplate.variations?.length && (
+                      <Alert variant="destructive" className="mt-2">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                          Este template não possui variações cadastradas. As variações não serão criadas automaticamente.
+                          Edite o template primeiro para adicionar variações.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {selectedTemplate && selectedTemplate.variations?.length > 0 && (
                       <p className="text-xs text-muted-foreground mt-2">
                         Peso: {selectedTemplate.default_weight_kg}kg | 
                         Dimensões: {selectedTemplate.default_height_cm}x{selectedTemplate.default_width_cm}x{selectedTemplate.default_length_cm}cm | 

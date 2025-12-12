@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Package, Info } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -56,17 +57,35 @@ interface TemplateModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   templateId?: string | null;
+  onTemplateIdChange?: (id: string | null) => void;
 }
 
-export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalProps) {
-  const isEditing = !!templateId;
+export function TemplateModal({ open, onOpenChange, templateId, onTemplateIdChange }: TemplateModalProps) {
+  const [internalTemplateId, setInternalTemplateId] = useState<string | null>(templateId || null);
+  const effectiveTemplateId = templateId || internalTemplateId;
+  const isEditing = !!effectiveTemplateId;
   const [activeTab, setActiveTab] = useState('info');
 
-  const { data: template, isLoading: loadingTemplate } = useProductTemplate(templateId || undefined);
+  const { data: template, isLoading: loadingTemplate } = useProductTemplate(effectiveTemplateId || undefined);
   const { data: attributeTypes } = useAttributeTypes();
   const { data: priceRules } = usePriceRules();
   const createTemplate = useCreateProductTemplate();
   const updateTemplate = useUpdateProductTemplate();
+  
+  // Reset internal state when modal closes
+  useEffect(() => {
+    if (!open) {
+      setInternalTemplateId(null);
+      setActiveTab('info');
+    }
+  }, [open]);
+  
+  // Sync with external templateId
+  useEffect(() => {
+    if (templateId) {
+      setInternalTemplateId(templateId);
+    }
+  }, [templateId]);
 
   const form = useForm<TemplateFormData>({
     resolver: zodResolver(templateSchema),
@@ -109,19 +128,28 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
   const useGlobalRules = form.watch('use_global_price_rules');
 
   const onSubmit = async (data: TemplateFormData) => {
-    if (isEditing && templateId) {
-      await updateTemplate.mutateAsync({ id: templateId, ...data });
+    if (isEditing && effectiveTemplateId) {
+      await updateTemplate.mutateAsync({ id: effectiveTemplateId, ...data });
+      onOpenChange(false);
     } else {
-      await createTemplate.mutateAsync({
+      const result = await createTemplate.mutateAsync({
         name: data.name,
         description: data.description,
         default_weight_kg: data.default_weight_kg,
         default_height_cm: data.default_height_cm,
         default_width_cm: data.default_width_cm,
         default_length_cm: data.default_length_cm,
+        use_global_price_rules: data.use_global_price_rules,
       });
+      
+      // Auto-open in edit mode on variations tab
+      if (result?.id) {
+        setInternalTemplateId(result.id);
+        onTemplateIdChange?.(result.id);
+        setActiveTab('variations');
+        toast.info('Template criado! Agora adicione as variações.');
+      }
     }
-    onOpenChange(false);
   };
 
   const isPending = createTemplate.isPending || updateTemplate.isPending;
@@ -296,9 +324,9 @@ export function TemplateModal({ open, onOpenChange, templateId }: TemplateModalP
             </TabsContent>
 
             <TabsContent value="variations" className="m-0">
-              {templateId && attributeTypes && priceRules !== undefined && (
+              {effectiveTemplateId && attributeTypes && priceRules !== undefined && (
                 <TemplateVariationsBulkGenerator
-                  templateId={templateId}
+                  templateId={effectiveTemplateId}
                   attributeTypes={attributeTypes}
                   priceRules={priceRules || []}
                   existingVariations={template?.variations || []}
