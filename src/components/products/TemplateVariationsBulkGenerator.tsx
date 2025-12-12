@@ -378,47 +378,49 @@ export function TemplateVariationsBulkGenerator({
               Nenhuma variação cadastrada
             </p>
           ) : (
-            <div className="space-y-2">
-              {existingVariations.map((variation) => (
-                <div
-                  key={variation.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border bg-muted/50"
-                >
-                  <div className="flex-1">
-                    <div className="flex flex-wrap gap-1 mb-1">
-                      {variation.attribute_value_ids.map((valueId) => (
-                        <Badge key={valueId} variant="secondary" className="text-xs">
-                          {getAttributeValueName(valueId)}
-                        </Badge>
-                      ))}
-                    </div>
-                    {variation.variation_name && (
-                      <span className="text-sm text-muted-foreground">
-                        {variation.variation_name}
-                      </span>
-                    )}
-                  </div>
-                  {useGlobalRules ? (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      Regras Globais
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">{formatPriceAdjustment(variation)}</Badge>
-                  )}
-                  {variation.weight_override && (
-                    <Badge variant="outline">{variation.weight_override}kg</Badge>
-                  )}
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => handleDeleteVariation(variation.id)}
-                    disabled={deleteVariation.isPending}
+            <ScrollArea className="h-[300px]">
+              <div className="space-y-2 pr-4">
+                {existingVariations.map((variation) => (
+                  <div
+                    key={variation.id}
+                    className="flex items-center gap-3 p-3 rounded-lg border bg-muted/50"
                   >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-            </div>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {variation.attribute_value_ids.map((valueId) => (
+                          <Badge key={valueId} variant="secondary" className="text-xs">
+                            {getAttributeValueName(valueId)}
+                          </Badge>
+                        ))}
+                      </div>
+                      {variation.variation_name && (
+                        <span className="text-sm text-muted-foreground">
+                          {variation.variation_name}
+                        </span>
+                      )}
+                    </div>
+                    {useGlobalRules ? (
+                      <Badge variant="outline" className="text-muted-foreground">
+                        Regras Globais
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">{formatPriceAdjustment(variation)}</Badge>
+                    )}
+                    {variation.weight_override && (
+                      <Badge variant="outline">{variation.weight_override}kg</Badge>
+                    )}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => handleDeleteVariation(variation.id)}
+                      disabled={deleteVariation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
           )}
         </CardContent>
       </Card>
