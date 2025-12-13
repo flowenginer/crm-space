@@ -118,7 +118,7 @@ export function QuoteDetailsModal({ quote, open, onOpenChange }: QuoteDetailsMod
           </TabsList>
 
           <ScrollArea className="h-[55vh] mt-4">
-            <TabsContent value="details" className="space-y-6 pr-4">
+            <TabsContent value="details" className="space-y-6 px-4">
               {/* Cliente */}
               <div className="space-y-2">
                 <h4 className="font-medium flex items-center gap-2">
@@ -291,7 +291,7 @@ export function QuoteDetailsModal({ quote, open, onOpenChange }: QuoteDetailsMod
               )}
             </TabsContent>
 
-            <TabsContent value="items" className="space-y-4 pr-4">
+            <TabsContent value="items" className="space-y-4 px-4">
               {items.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">
                   Nenhum item no orçamento

@@ -331,7 +331,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
 
           <ScrollArea className="h-[55vh] mt-4">
             {/* ITEMS TAB */}
-            <TabsContent value="items" className="space-y-4 pr-4">
+            <TabsContent value="items" className="space-y-4 px-4">
               {/* Basic Info */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-2">
@@ -648,7 +648,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
             </TabsContent>
 
             {/* SHIPPING TAB */}
-            <TabsContent value="shipping" className="space-y-4 pr-4">
+            <TabsContent value="shipping" className="space-y-4 px-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Método de Entrega</Label>
@@ -690,7 +690,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
             </TabsContent>
 
             {/* PAYMENT TAB */}
-            <TabsContent value="payment" className="space-y-4 pr-4">
+            <TabsContent value="payment" className="space-y-4 px-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Forma de Pagamento</Label>
@@ -828,7 +828,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
             </TabsContent>
 
             {/* NOTES TAB */}
-            <TabsContent value="notes" className="space-y-4 pr-4">
+            <TabsContent value="notes" className="space-y-4 px-4">
               <div className="space-y-2">
                 <Label>Observações para o Cliente</Label>
                 <Textarea
