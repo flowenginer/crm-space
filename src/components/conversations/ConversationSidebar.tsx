@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
-  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2
+  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2, FileText, Package
 } from 'lucide-react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { toast } from 'sonner';
@@ -23,6 +23,9 @@ import { useLeadStatuses } from '@/hooks/useLeadKanban';
 import { useIsSharedWithMe, useUnshareConversation, useMySharesForConversation, useRemoveShare } from '@/hooks/useSharedConversations';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
+import { useERPEnabled } from '@/hooks/useERPEnabled';
+import { QuoteModal } from '@/components/quotes/QuoteModal';
+import { OrderModal } from '@/components/orders/OrderModal';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -44,6 +47,11 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [pendingContactForConversation, setPendingContactForConversation] = useState<{ id?: string; phone: string } | null>(null);
   const [localNegotiatedValue, setLocalNegotiatedValue] = useState<string>('');
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  
+  // Check if ERP module is enabled
+  const isERPEnabled = useERPEnabled();
   
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -890,6 +898,31 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
         </Button>
       </div>
 
+      {/* ERP Actions - Only visible when ERP module is active */}
+      {isERPEnabled && (
+        <div className="flex gap-1.5 p-3 border-b border-border bg-muted/30">
+          <Button
+            onClick={() => setShowQuoteModal(true)}
+            variant="outline"
+            size="sm"
+            className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2 text-amber-600 border-amber-200 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-800 dark:hover:bg-amber-900/20"
+          >
+            <FileText size={14} className="shrink-0" />
+            <span className="truncate">Orçamento</span>
+          </Button>
+          
+          <Button
+            onClick={() => setShowOrderModal(true)}
+            variant="outline"
+            size="sm"
+            className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2 text-green-600 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/20"
+          >
+            <Package size={14} className="shrink-0" />
+            <span className="truncate">Pedido</span>
+          </Button>
+        </div>
+      )}
+
       {/* Shares made by me (only visible to conversation owner) */}
       {conversation?.assigned_to === currentUser?.id && myShares.length > 0 && (
         <div className="px-3 py-2 bg-blue-50/50 dark:bg-blue-900/10 border-b border-border">
@@ -1315,6 +1348,24 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
         contactName={contact?.full_name || 'Contato'}
         conversationOwnerId={conversation?.assigned_to}
       />
+
+      {/* ERP Modals */}
+      {isERPEnabled && (
+        <>
+          <QuoteModal
+            open={showQuoteModal}
+            onOpenChange={setShowQuoteModal}
+            conversationId={conversationId}
+            contactId={contact?.id}
+          />
+          <OrderModal
+            open={showOrderModal}
+            onOpenChange={setShowOrderModal}
+            conversationId={conversationId}
+            contactId={contact?.id}
+          />
+        </>
+      )}
 
       {/* Channel Selector Modal */}
       <Dialog open={showChannelSelector} onOpenChange={setShowChannelSelector}>

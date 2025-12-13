@@ -125,6 +125,13 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
       setSellerId(user.id);
     }
   }, [user?.id]);
+
+  // Update contactId when initialContactId changes (e.g., when modal opens from conversation)
+  useEffect(() => {
+    if (open && initialContactId) {
+      setContactId(initialContactId);
+    }
+  }, [open, initialContactId]);
   
   const handleNewContactSuccess = (contact: Contact) => {
     setContactId(contact.id);
