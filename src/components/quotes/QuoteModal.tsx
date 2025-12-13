@@ -59,6 +59,12 @@ const PAYMENT_METHODS = [
   { value: 'transfer', label: 'Transferência' },
 ];
 
+const PAYMENT_CONDITIONS = [
+  { value: 'full', label: 'À Vista / Integral' },
+  { value: 'installments', label: 'Parcelado' },
+  { value: 'down_payment', label: 'Entrada + Parcelas' },
+];
+
 const SHIPPING_METHODS = [
   { value: 'sedex', label: 'Sedex' },
   { value: 'pac', label: 'PAC' },
@@ -89,7 +95,10 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
   
   // Payment
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [paymentCondition, setPaymentCondition] = useState('full');
   const [installments, setInstallments] = useState(1);
+  const [downPaymentType, setDownPaymentType] = useState<'percent' | 'fixed'>('percent');
+  const [downPaymentValue, setDownPaymentValue] = useState(0);
   
   // Quote specific
   const [validUntil, setValidUntil] = useState('');
@@ -188,6 +197,15 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
   const subtotalAfterDiscount = itemsSubtotal - totalDiscountValue;
   const total = subtotalAfterDiscount + shippingCost;
 
+  // Payment calculations
+  const downPaymentAmount = paymentCondition === 'down_payment'
+    ? (downPaymentType === 'percent' ? total * (downPaymentValue / 100) : downPaymentValue)
+    : 0;
+  const remainingAmount = total - downPaymentAmount;
+  const installmentAmount = paymentCondition !== 'full' && installments > 0 
+    ? remainingAmount / installments 
+    : total;
+
   const handleSubmit = async () => {
     if (items.some(item => !item.product_name || item.unit_price <= 0)) {
       return;
@@ -214,7 +232,10 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
       shipping_cost: shippingCost,
       expected_delivery_date: expectedDeliveryDate || undefined,
       payment_method: paymentMethod || undefined,
-      installments: installments,
+      payment_condition: paymentCondition,
+      installments: paymentCondition === 'full' ? 1 : installments,
+      down_payment_type: downPaymentType,
+      down_payment_value: downPaymentValue,
       discount_amount: totalDiscountType === 'fixed' ? totalDiscount : 0,
       discount_percent: totalDiscountType === 'percent' ? totalDiscount : 0,
       valid_until: validUntil || undefined,
@@ -235,7 +256,10 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
     setShippingCost(0);
     setExpectedDeliveryDate('');
     setPaymentMethod('');
+    setPaymentCondition('full');
     setInstallments(1);
+    setDownPaymentType('percent');
+    setDownPaymentValue(0);
     setValidUntil('');
     setCustomerNotes('');
     setInternalNotes('');
@@ -635,9 +659,60 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
                   </Select>
                 </div>
 
-                {paymentMethod === 'credit_card' && (
+                <div className="space-y-2">
+                  <Label>Condição de Pagamento</Label>
+                  <Select value={paymentCondition} onValueChange={setPaymentCondition}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_CONDITIONS.map((condition) => (
+                        <SelectItem key={condition.value} value={condition.value}>
+                          {condition.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {paymentCondition === 'down_payment' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Tipo de Entrada</Label>
+                      <Select 
+                        value={downPaymentType} 
+                        onValueChange={(v) => setDownPaymentType(v as 'percent' | 'fixed')}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="percent">Percentual (%)</SelectItem>
+                          <SelectItem value="fixed">Valor Fixo (R$)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>
+                        {downPaymentType === 'percent' ? 'Percentual da Entrada (%)' : 'Valor da Entrada (R$)'}
+                      </Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step={downPaymentType === 'percent' ? '1' : '0.01'}
+                        max={downPaymentType === 'percent' ? '100' : undefined}
+                        value={downPaymentValue}
+                        onChange={(e) => setDownPaymentValue(parseFloat(e.target.value) || 0)}
+                        placeholder={downPaymentType === 'percent' ? '50' : '0,00'}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {paymentCondition !== 'full' && (
                   <div className="space-y-2">
-                    <Label>Parcelas</Label>
+                    <Label>Número de Parcelas</Label>
                     <Select 
                       value={installments.toString()} 
                       onValueChange={(v) => setInstallments(parseInt(v))}
@@ -648,7 +723,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
                       <SelectContent>
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
                           <SelectItem key={n} value={n.toString()}>
-                            {n}x de {formatCurrency(total / n)}
+                            {n}x de {formatCurrency(installmentAmount)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -656,6 +731,44 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
                   </div>
                 )}
               </div>
+
+              {/* Payment Summary */}
+              {total > 0 && (
+                <div className="p-4 rounded-lg border bg-muted/30 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total:</span>
+                    <span className="font-medium">{formatCurrency(total)}</span>
+                  </div>
+                  
+                  {paymentCondition === 'down_payment' && downPaymentAmount > 0 && (
+                    <>
+                      <Separator />
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          Entrada ({downPaymentType === 'percent' ? `${downPaymentValue}%` : 'fixo'}):
+                        </span>
+                        <span className="font-medium text-primary">{formatCurrency(downPaymentAmount)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          + {installments}x de:
+                        </span>
+                        <span className="font-medium">{formatCurrency(installmentAmount)}</span>
+                      </div>
+                    </>
+                  )}
+                  
+                  {paymentCondition === 'installments' && installments > 1 && (
+                    <>
+                      <Separator />
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">{installments}x de:</span>
+                        <span className="font-medium">{formatCurrency(installmentAmount)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
               <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
                 <p className="text-sm text-amber-600 dark:text-amber-400">
