@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { format, addDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle, UserPlus } from 'lucide-react';
+import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle, UserPlus, CalendarIcon, Hash } from 'lucide-react';
 import { useCreateOrder } from '@/hooks/useOrders';
 import { useContactsForERP, type ERPContact } from '@/hooks/useContactsForERP';
 import { type Contact } from '@/hooks/useContacts';
@@ -30,6 +32,9 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ContactFormModal } from '@/components/contacts/ContactFormModal';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 
 interface OrderItem {
   product_name: string;
@@ -86,6 +91,9 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     { product_name: '', unit_price: 0, quantity: 1, discount: 0, discount_type: 'fixed' }
   ]);
   
+  // Order date (allows retroactive dates)
+  const [orderDate, setOrderDate] = useState<Date>(new Date());
+  
   // Discount
   const [totalDiscount, setTotalDiscount] = useState(0);
   const [totalDiscountType, setTotalDiscountType] = useState<'fixed' | 'percent'>('fixed');
@@ -94,6 +102,8 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   const [shippingMethod, setShippingMethod] = useState('');
   const [shippingCost, setShippingCost] = useState(0);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
+  const [deliveryDays, setDeliveryDays] = useState<number | ''>('');
+  const [deliveryDayType, setDeliveryDayType] = useState<'business' | 'calendar'>('business');
   
   // Payment
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -113,6 +123,35 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   
   // New contact modal
   const [showNewContactModal, setShowNewContactModal] = useState(false);
+  
+  // Calculate delivery date based on days (business or calendar)
+  const calculateDeliveryDate = (days: number, type: 'business' | 'calendar'): Date => {
+    const startDate = orderDate;
+    
+    if (type === 'calendar') {
+      return addDays(startDate, days);
+    } else {
+      // Business days - skip weekends
+      let result = startDate;
+      let daysAdded = 0;
+      while (daysAdded < days) {
+        result = addDays(result, 1);
+        const dayOfWeek = result.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+          daysAdded++;
+        }
+      }
+      return result;
+    }
+  };
+  
+  // Update expected delivery date when days change
+  useEffect(() => {
+    if (deliveryDays && typeof deliveryDays === 'number' && deliveryDays > 0) {
+      const calculatedDate = calculateDeliveryDate(deliveryDays, deliveryDayType);
+      setExpectedDeliveryDate(format(calculatedDate, 'yyyy-MM-dd'));
+    }
+  }, [deliveryDays, deliveryDayType, orderDate]);
 
   // Data hooks
   const { data: contacts = [], isLoading: isLoadingContacts } = useContactsForERP(contactSearch);
@@ -245,6 +284,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
       conversation_id: conversationId,
       store_id: storeId || undefined,
       seller_id: sellerId || undefined,
+      order_date: format(orderDate, 'yyyy-MM-dd'),
       items: items.map(item => ({
         product_name: item.product_name,
         variation_name: item.variation_name,
@@ -279,11 +319,14 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     setStoreId('');
     setSellerId(user?.id || '');
     setItems([{ product_name: '', unit_price: 0, quantity: 1, discount: 0, discount_type: 'fixed' }]);
+    setOrderDate(new Date());
     setTotalDiscount(0);
     setTotalDiscountType('fixed');
     setShippingMethod('');
     setShippingCost(0);
     setExpectedDeliveryDate('');
+    setDeliveryDays('');
+    setDeliveryDayType('business');
     setPaymentMethod('');
     setPaymentCondition('full');
     setInstallments(1);
@@ -325,6 +368,60 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
           <ScrollArea className="h-[55vh] mt-4">
             {/* ITEMS TAB */}
             <TabsContent value="items" className="space-y-4 pr-4">
+              {/* Order Date and Number */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg border">
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <CalendarIcon size={14} />
+                    Data do Pedido
+                  </Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !orderDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {orderDate ? format(orderDate, "dd/MM/yyyy", { locale: ptBR }) : "Selecione a data"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={orderDate}
+                        onSelect={(date) => date && setOrderDate(date)}
+                        disabled={(date) => date > new Date()}
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <p className="text-xs text-muted-foreground">
+                    Permite datas retroativas para lançamentos
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Hash size={14} />
+                    Número do Pedido
+                  </Label>
+                  <Input 
+                    value={`#${format(orderDate, 'yyyy')}-XXXXXX`} 
+                    disabled 
+                    className="bg-muted font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Gerado automaticamente ao salvar
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
               {/* Basic Info */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
@@ -661,14 +758,76 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                     placeholder="0,00"
                   />
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <Label>Previsão de Entrega</Label>
-                  <Input
-                    type="date"
-                    value={expectedDeliveryDate}
-                    onChange={(e) => setExpectedDeliveryDate(e.target.value)}
-                  />
+              {/* Delivery Date Calculation Section */}
+              <div className="p-4 bg-muted/30 rounded-lg border space-y-4">
+                <Label className="text-base font-semibold">Previsão de Entrega</Label>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm">Quantidade de Dias</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={deliveryDays}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? '' : parseInt(e.target.value) || 0;
+                        setDeliveryDays(val);
+                      }}
+                      placeholder="Ex: 5"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm">Tipo de Dias</Label>
+                    <Select value={deliveryDayType} onValueChange={(v) => setDeliveryDayType(v as 'business' | 'calendar')}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="business">Dias Úteis</SelectItem>
+                        <SelectItem value="calendar">Dias Corridos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm">Data Prevista</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={expectedDeliveryDate ? format(new Date(expectedDeliveryDate + 'T12:00:00'), 'dd/MM/yyyy') : ''}
+                        readOnly
+                        className="flex-1 bg-muted"
+                        placeholder="Calculada automaticamente"
+                      />
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="icon">
+                            <CalendarIcon className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                          <Calendar
+                            mode="single"
+                            selected={expectedDeliveryDate ? new Date(expectedDeliveryDate + 'T12:00:00') : undefined}
+                            onSelect={(date) => {
+                              if (date) {
+                                setExpectedDeliveryDate(format(date, 'yyyy-MM-dd'));
+                                setDeliveryDays(''); // Clear days when manually selecting
+                              }
+                            }}
+                            disabled={(date) => date < orderDate}
+                            initialFocus
+                            className="pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Preencha os dias ou selecione no calendário
+                    </p>
+                  </div>
                 </div>
               </div>
             </TabsContent>
