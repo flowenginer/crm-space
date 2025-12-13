@@ -376,8 +376,9 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
 
                 {items.map((item, index) => (
                   <div key={index} className="p-4 border rounded-lg space-y-3 bg-muted/30">
-                    <div className="grid grid-cols-12 gap-2 items-end">
-                      <div className="col-span-6">
+                    <div className="flex flex-wrap lg:flex-nowrap gap-2 items-end">
+                      {/* Produto - flexível */}
+                      <div className="flex-1 min-w-[200px]">
                         <Label className="text-xs">Produto</Label>
                         <Select
                           value={item.variation_id || item.product_id || ''}
@@ -431,7 +432,9 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="col-span-2">
+                      
+                      {/* Preço Unit. - largura fixa */}
+                      <div className="w-28 shrink-0">
                         <Label className="text-xs">Preço Unit.</Label>
                         <Input
                           type="number"
@@ -441,16 +444,21 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                           onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
                         />
                       </div>
-                      <div className="col-span-1">
+                      
+                      {/* Quantidade - adapta ao conteúdo */}
+                      <div className="w-20 shrink-0">
                         <Label className="text-xs">Qtd</Label>
                         <Input
                           type="number"
                           min="1"
                           value={item.quantity}
                           onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                          className="text-center"
                         />
                       </div>
-                      <div className="col-span-2">
+                      
+                      {/* Desconto - largura fixa */}
+                      <div className="w-32 shrink-0">
                         <Label className="text-xs">Desconto</Label>
                         <div className="flex gap-1">
                           <Input
@@ -465,7 +473,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                             value={item.discount_type}
                             onValueChange={(value: 'fixed' | 'percent') => updateItem(index, 'discount_type', value)}
                           >
-                            <SelectTrigger className="w-16">
+                            <SelectTrigger className="w-14 shrink-0">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -475,21 +483,22 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                           </Select>
                         </div>
                       </div>
-                      <div className="col-span-1 flex items-center justify-between gap-1">
-                        <span className="text-sm font-medium">
+                      
+                      {/* Total - não quebra linha */}
+                      <div className="min-w-[100px] shrink-0 flex items-center justify-end gap-2">
+                        <span className="text-sm font-semibold text-primary whitespace-nowrap">
                           {formatCurrency(getItemSubtotal(item))}
                         </span>
-                        {items.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeItem(index)}
-                            className="h-8 w-8"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeItem(index)}
+                          disabled={items.length === 1}
+                          className="h-8 w-8 text-destructive hover:text-destructive shrink-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   </div>
