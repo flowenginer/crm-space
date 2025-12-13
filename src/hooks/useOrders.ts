@@ -73,7 +73,10 @@ export interface CreateOrderData {
   shipping_cost?: number;
   expected_delivery_date?: string;
   payment_method?: string;
+  payment_condition?: string;
   installments?: number;
+  down_payment_type?: string;
+  down_payment_value?: number;
   paid_amount?: number;
   store_id?: string;
   seller_id?: string;
@@ -344,7 +347,10 @@ export function useCreateOrder() {
           shipping_cost: data.shipping_cost || 0,
           expected_delivery_date: data.expected_delivery_date || null,
           payment_method: data.payment_method,
+          payment_condition: data.payment_condition || 'full',
           installments: data.installments || 1,
+          down_payment_type: data.down_payment_type || 'percent',
+          down_payment_value: data.down_payment_value || 0,
           paid_amount: paidAmount,
           paid_at: paidAmount > 0 ? new Date().toISOString() : null,
           payment_status: paymentStatus,

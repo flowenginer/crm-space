@@ -66,7 +66,10 @@ export interface CreateQuoteData {
   shipping_cost?: number;
   expected_delivery_date?: string;
   payment_method?: string;
+  payment_condition?: string;
   installments?: number;
+  down_payment_type?: string;
+  down_payment_value?: number;
   store_id?: string;
   seller_id?: string;
   discount_amount?: number;
@@ -260,7 +263,10 @@ export function useCreateQuote() {
           shipping_cost: data.shipping_cost || 0,
           expected_delivery_date: data.expected_delivery_date || null,
           payment_method: data.payment_method,
+          payment_condition: data.payment_condition || 'full',
           installments: data.installments || 1,
+          down_payment_type: data.down_payment_type || 'percent',
+          down_payment_value: data.down_payment_value || 0,
           store_id: data.store_id || null,
           seller_id: data.seller_id || null,
           discount_amount: data.discount_amount || 0,

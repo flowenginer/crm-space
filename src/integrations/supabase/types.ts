@@ -3011,6 +3011,8 @@ export type Database = {
           discount_amount: number | null
           discount_percent: number | null
           discount_type: string | null
+          down_payment_type: string | null
+          down_payment_value: number | null
           expected_delivery_date: string | null
           fulfillment_status: string | null
           id: string
@@ -3022,6 +3024,7 @@ export type Database = {
           order_type: string | null
           paid_amount: number | null
           paid_at: string | null
+          payment_condition: string | null
           payment_method: string | null
           payment_status: string | null
           seller_id: string | null
@@ -3052,6 +3055,8 @@ export type Database = {
           discount_amount?: number | null
           discount_percent?: number | null
           discount_type?: string | null
+          down_payment_type?: string | null
+          down_payment_value?: number | null
           expected_delivery_date?: string | null
           fulfillment_status?: string | null
           id?: string
@@ -3063,6 +3068,7 @@ export type Database = {
           order_type?: string | null
           paid_amount?: number | null
           paid_at?: string | null
+          payment_condition?: string | null
           payment_method?: string | null
           payment_status?: string | null
           seller_id?: string | null
@@ -3093,6 +3099,8 @@ export type Database = {
           discount_amount?: number | null
           discount_percent?: number | null
           discount_type?: string | null
+          down_payment_type?: string | null
+          down_payment_value?: number | null
           expected_delivery_date?: string | null
           fulfillment_status?: string | null
           id?: string
@@ -3104,6 +3112,7 @@ export type Database = {
           order_type?: string | null
           paid_amount?: number | null
           paid_at?: string | null
+          payment_condition?: string | null
           payment_method?: string | null
           payment_status?: string | null
           seller_id?: string | null
@@ -4255,11 +4264,14 @@ export type Database = {
           created_at: string | null
           discount_amount: number | null
           discount_percent: number | null
+          down_payment_type: string | null
+          down_payment_value: number | null
           expected_delivery_date: string | null
           id: string
           installments: number | null
           internal_notes: string | null
           notes: string | null
+          payment_condition: string | null
           payment_method: string | null
           quote_number: string
           seller_id: string | null
@@ -4283,11 +4295,14 @@ export type Database = {
           created_at?: string | null
           discount_amount?: number | null
           discount_percent?: number | null
+          down_payment_type?: string | null
+          down_payment_value?: number | null
           expected_delivery_date?: string | null
           id?: string
           installments?: number | null
           internal_notes?: string | null
           notes?: string | null
+          payment_condition?: string | null
           payment_method?: string | null
           quote_number: string
           seller_id?: string | null
@@ -4311,11 +4326,14 @@ export type Database = {
           created_at?: string | null
           discount_amount?: number | null
           discount_percent?: number | null
+          down_payment_type?: string | null
+          down_payment_value?: number | null
           expected_delivery_date?: string | null
           id?: string
           installments?: number | null
           internal_notes?: string | null
           notes?: string | null
+          payment_condition?: string | null
           payment_method?: string | null
           quote_number?: string
           seller_id?: string | null
