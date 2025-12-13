@@ -3018,6 +3018,7 @@ export type Database = {
           id: string
           installments: number | null
           internal_notes: string | null
+          is_free_shipping: boolean | null
           item_discount: number | null
           notes: string | null
           order_date: string | null
@@ -3063,6 +3064,7 @@ export type Database = {
           id?: string
           installments?: number | null
           internal_notes?: string | null
+          is_free_shipping?: boolean | null
           item_discount?: number | null
           notes?: string | null
           order_date?: string | null
@@ -3108,6 +3110,7 @@ export type Database = {
           id?: string
           installments?: number | null
           internal_notes?: string | null
+          is_free_shipping?: boolean | null
           item_discount?: number | null
           notes?: string | null
           order_date?: string | null

@@ -103,6 +103,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   // Shipping
   const [shippingMethod, setShippingMethod] = useState('');
   const [shippingCost, setShippingCost] = useState(0);
+  const [isFreeShipping, setIsFreeShipping] = useState(false);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
   const [deliveryDays, setDeliveryDays] = useState<number | ''>('');
   const [deliveryDayType, setDeliveryDayType] = useState<'business' | 'calendar'>('business');
@@ -326,7 +327,8 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
       notes: customerNotes,
       internal_notes: internalNotes,
       shipping_method: shippingMethod || undefined,
-      shipping_cost: shippingCost,
+      shipping_cost: isFreeShipping ? 0 : shippingCost,
+      is_free_shipping: isFreeShipping,
       expected_delivery_date: expectedDeliveryDate || undefined,
       payment_method: paymentMethod || undefined,
       payment_condition: paymentCondition,
@@ -352,6 +354,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     setTotalDiscountType('fixed');
     setShippingMethod('');
     setShippingCost(0);
+    setIsFreeShipping(false);
     setExpectedDeliveryDate('');
     setDeliveryDays('');
     setDeliveryDayType('business');
@@ -794,7 +797,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
 
             {/* SHIPPING TAB */}
             <TabsContent value="shipping" className="space-y-4 px-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Método de Entrega</Label>
                   <Select value={shippingMethod} onValueChange={setShippingMethod}>
@@ -817,10 +820,33 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                     type="number"
                     min="0"
                     step="0.01"
-                    value={shippingCost}
+                    value={isFreeShipping ? 0 : shippingCost}
                     onChange={(e) => setShippingCost(parseFloat(e.target.value) || 0)}
                     placeholder="0,00"
+                    disabled={isFreeShipping}
+                    className={isFreeShipping ? 'bg-muted' : ''}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Frete Grátis</Label>
+                  <div className="flex items-center gap-3 h-10 px-3 border rounded-md bg-background">
+                    <input
+                      type="checkbox"
+                      id="free-shipping"
+                      checked={isFreeShipping}
+                      onChange={(e) => {
+                        setIsFreeShipping(e.target.checked);
+                        if (e.target.checked) {
+                          setShippingCost(0);
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-input accent-primary"
+                    />
+                    <label htmlFor="free-shipping" className="text-sm cursor-pointer select-none">
+                      Ativar frete grátis
+                    </label>
+                  </div>
                 </div>
               </div>
 

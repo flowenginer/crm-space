@@ -11,8 +11,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Package, Eye, BarChart3, Star, AlertTriangle } from 'lucide-react';
-import { useOrdersAdvanced, useContactOrderCounts, Order } from '@/hooks/useOrders';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Plus, Package, Eye, BarChart3, Star, AlertTriangle, Pencil, Gift, Truck } from 'lucide-react';
+import { useOrdersAdvanced, useContactOrderPositions, useUpdateOrderStatus, Order } from '@/hooks/useOrders';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { OrderModal } from '@/components/orders/OrderModal';
@@ -39,6 +46,14 @@ const paymentStatusConfig: Record<string, { label: string; variant: 'default' | 
   partial: { label: 'Parcial', variant: 'secondary' },
 };
 
+const SHIPPING_METHODS: Record<string, string> = {
+  sedex: 'Sedex',
+  pac: 'PAC',
+  motoboy: 'Motoboy',
+  pickup: 'Retirada',
+  other: 'Outro',
+};
+
 export default function Orders() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
@@ -46,6 +61,7 @@ export default function Orders() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   // Converter filtros do componente para o hook
   const hookFilters = useMemo(() => ({
@@ -73,8 +89,10 @@ export default function Orders() {
   }), [filters]);
 
   const { data: orders = [], isLoading } = useOrdersAdvanced(hookFilters);
+  const updateOrderStatus = useUpdateOrderStatus();
 
-  // Obter IDs dos contatos para verificar primeira compra
+  // Obter IDs dos contatos e pedidos para calcular posições
+  const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
   const contactIds = useMemo(() => 
     orders
       .map(o => o.contact_id)
@@ -82,7 +100,7 @@ export default function Orders() {
     [orders]
   );
 
-  const { data: orderCounts = {} } = useContactOrderCounts(contactIds);
+  const { data: orderPositions = {} } = useContactOrderPositions(orderIds, contactIds);
 
   // Filtrar por busca textual e primeira compra
   const filteredOrders = useMemo(() => {
@@ -100,14 +118,14 @@ export default function Orders() {
       }
       
       // Filtro de primeira compra
-      if (filters.isFirstPurchase && order.contact_id) {
-        const count = orderCounts[order.contact_id] || 0;
-        if (count > 1) return false;
+      if (filters.isFirstPurchase) {
+        const position = orderPositions[order.id] || 0;
+        if (position !== 1) return false;
       }
       
       return true;
     });
-  }, [orders, filters.search, filters.isFirstPurchase, orderCounts]);
+  }, [orders, filters.search, filters.isFirstPurchase, orderPositions]);
 
   // Excluir cancelados do kanban
   const kanbanOrders = filteredOrders.filter(o => o.status !== 'canceled');
@@ -127,9 +145,15 @@ export default function Orders() {
     return order.contact?.phone || null;
   };
 
-  const isFirstPurchase = (order: Order) => {
-    if (!order.contact_id) return false;
-    return (orderCounts[order.contact_id] || 0) === 1;
+  const getOrderPosition = (order: Order) => {
+    return orderPositions[order.id] || 0;
+  };
+
+  const getPositionLabel = (position: number) => {
+    if (position === 1) return '1ª compra';
+    if (position === 2) return '2º pedido';
+    if (position === 3) return '3º pedido';
+    return `${position}º pedido`;
   };
 
   const isContactComplete = (contact: Order['contact']) => {
@@ -146,9 +170,29 @@ export default function Orders() {
     );
   };
 
+  const getRemainingAmount = (order: Order) => {
+    const total = order.total || 0;
+    const paid = order.paid_amount || 0;
+    return total - paid;
+  };
+
   const handleViewOrder = (order: Order) => {
     setSelectedOrder(order);
     setIsDetailsOpen(true);
+  };
+
+  const handleRowClick = (order: Order) => {
+    handleViewOrder(order);
+  };
+
+  const handleStatusChange = async (orderId: string, newStatus: string) => {
+    await updateOrderStatus.mutateAsync({ orderId, status: newStatus });
+  };
+
+  const handleEditOrder = (order: Order) => {
+    setEditingOrder(order);
+    // TODO: Implementar modo de edição no OrderModal
+    setIsModalOpen(true);
   };
 
   return (
@@ -159,7 +203,7 @@ export default function Orders() {
             <h1 className="text-3xl font-bold">Pedidos</h1>
             <p className="text-muted-foreground">Gerencie seus pedidos e vendas</p>
           </div>
-          <Button onClick={() => setIsModalOpen(true)}>
+          <Button onClick={() => { setEditingOrder(null); setIsModalOpen(true); }}>
             <Plus className="h-4 w-4 mr-2" />
             Novo Pedido
           </Button>
@@ -222,82 +266,168 @@ export default function Orders() {
                           <TableHead>Cliente</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Pagamento</TableHead>
+                          <TableHead>Frete</TableHead>
                           <TableHead className="text-right">Total</TableHead>
                           <TableHead>Data</TableHead>
-                          <TableHead className="w-12"></TableHead>
+                          <TableHead className="w-20"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredOrders.map((order) => (
-                          <TableRow key={order.id}>
-                            <TableCell className="font-medium">
-                              #{order.order_number}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <div>
-                                  <div className="font-medium">
-                                    {getContactName(order)}
+                        {filteredOrders.map((order) => {
+                          const position = getOrderPosition(order);
+                          const remainingAmount = getRemainingAmount(order);
+                          
+                          return (
+                            <TableRow 
+                              key={order.id}
+                              className="cursor-pointer hover:bg-muted/50 transition-colors"
+                              onClick={() => handleRowClick(order)}
+                            >
+                              <TableCell className="font-medium">
+                                #{order.order_number}
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{getContactName(order)}</span>
+                                    {!isContactComplete(order.contact) && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger>
+                                            <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Cadastro incompleto para envio</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
                                   </div>
                                   {getContactPhone(order) && (
                                     <div className="text-sm text-muted-foreground">
                                       {getContactPhone(order)}
                                     </div>
                                   )}
+                                  {position > 0 && (
+                                    <div className="flex items-center gap-1">
+                                      <Badge 
+                                        variant={position === 1 ? 'default' : 'secondary'} 
+                                        className={position === 1 ? 'bg-amber-500 hover:bg-amber-600 text-white' : ''}
+                                      >
+                                        {position === 1 && <Star className="h-3 w-3 mr-1 fill-current" />}
+                                        {getPositionLabel(position)}
+                                      </Badge>
+                                    </div>
+                                  )}
                                 </div>
-                                {isFirstPurchase(order) && (
+                              </TableCell>
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <Select
+                                  value={order.status}
+                                  onValueChange={(value) => handleStatusChange(order.id, value)}
+                                >
+                                  <SelectTrigger className="w-[130px] h-8">
+                                    <SelectValue>
+                                      <Badge variant={statusConfig[order.status]?.variant || 'secondary'} className="pointer-events-none">
+                                        {statusConfig[order.status]?.label || order.status}
+                                      </Badge>
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Object.entries(statusConfig).map(([value, config]) => (
+                                      <SelectItem key={value} value={value}>
+                                        <Badge variant={config.variant}>
+                                          {config.label}
+                                        </Badge>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <Badge variant={paymentStatusConfig[order.payment_status || 'pending']?.variant || 'outline'}>
+                                    {paymentStatusConfig[order.payment_status || 'pending']?.label || order.payment_status}
+                                  </Badge>
+                                  {order.payment_status !== 'paid' && remainingAmount > 0 && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Falta: {formatCurrency(remainingAmount)}
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  {order.is_free_shipping ? (
+                                    <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                                      <Gift className="h-3 w-3 mr-1" />
+                                      Grátis
+                                    </Badge>
+                                  ) : (
+                                    <>
+                                      {(order.shipping_cost || 0) > 0 && (
+                                        <div className="text-sm font-medium">
+                                          {formatCurrency(order.shipping_cost)}
+                                        </div>
+                                      )}
+                                      {order.shipping_method && (
+                                        <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                          <Truck className="h-3 w-3" />
+                                          {SHIPPING_METHODS[order.shipping_method] || order.shipping_method}
+                                        </div>
+                                      )}
+                                      {!order.shipping_method && (order.shipping_cost || 0) === 0 && (
+                                        <span className="text-xs text-muted-foreground">-</span>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatCurrency(order.total)}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {order.created_at && format(new Date(order.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                              </TableCell>
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center gap-1">
                                   <TooltipProvider>
                                     <Tooltip>
-                                      <TooltipTrigger>
-                                        <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleEditOrder(order)}
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                        </Button>
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        <p>Primeira compra</p>
+                                        <p>Editar pedido</p>
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
-                                )}
-                                {!isContactComplete(order.contact) && (
                                   <TooltipProvider>
                                     <Tooltip>
-                                      <TooltipTrigger>
-                                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleViewOrder(order)}
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                        </Button>
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        <p>Cadastro incompleto para envio</p>
+                                        <p>Visualizar pedido</p>
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={statusConfig[order.status]?.variant || 'secondary'}>
-                                {statusConfig[order.status]?.label || order.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={paymentStatusConfig[order.payment_status || 'pending']?.variant || 'outline'}>
-                                {paymentStatusConfig[order.payment_status || 'pending']?.label || order.payment_status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(order.total)}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {order.created_at && format(new Date(order.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleViewOrder(order)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   )}
