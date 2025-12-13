@@ -19,7 +19,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle, Calendar, UserPlus } from 'lucide-react';
 import { useCreateQuote } from '@/hooks/useQuotes';
-import { useContacts, type Contact } from '@/hooks/useContacts';
+import { useContactsForERP, type ERPContact } from '@/hooks/useContactsForERP';
+import { type Contact } from '@/hooks/useContacts';
 import { useProductsForOrders } from '@/hooks/useProductsForOrders';
 import { useActiveStores } from '@/hooks/useStores';
 import { useTeam } from '@/hooks/useTeam';
@@ -104,7 +105,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
   const [showNewContactModal, setShowNewContactModal] = useState(false);
 
   // Data hooks
-  const { data: contacts = [] } = useContacts();
+  const { data: contacts = [], isLoading: isLoadingContacts } = useContactsForERP(contactSearch);
   const { data: products = [] } = useProductsForOrders(productSearch);
   const { data: stores = [] } = useActiveStores();
   const { data: teamMembers = [] } = useTeam();
@@ -124,11 +125,6 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
       setValidUntil(defaultDate.toISOString().split('T')[0]);
     }
   }, [open]);
-
-  const filteredContacts = contacts.filter(c => 
-    c.full_name.toLowerCase().includes(contactSearch.toLowerCase()) ||
-    c.phone.includes(contactSearch)
-  );
   
   const handleNewContactSuccess = (contact: Contact) => {
     setContactId(contact.id);
@@ -294,12 +290,16 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
                             className="mb-2"
                           />
                         </div>
-                        {filteredContacts.length === 0 && contactSearch.length > 0 ? (
+                        {isLoadingContacts ? (
+                          <div className="p-3 text-center text-sm text-muted-foreground">
+                            Buscando...
+                          </div>
+                        ) : contacts.length === 0 && contactSearch.length > 0 ? (
                           <div className="p-3 text-center text-sm text-muted-foreground">
                             Nenhum cliente encontrado
                           </div>
                         ) : (
-                          filteredContacts.slice(0, 10).map((contact) => (
+                          contacts.slice(0, 10).map((contact) => (
                             <SelectItem key={contact.id} value={contact.id}>
                               {contact.full_name} - {contact.phone}
                             </SelectItem>
