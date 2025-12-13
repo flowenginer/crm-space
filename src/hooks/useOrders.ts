@@ -453,7 +453,7 @@ export function useCreateOrder() {
           unit_cost: item.unit_cost || 0,
           discount_amount: item.discount_amount || 0,
           discount_percent: item.discount_percent || 0,
-          subtotal: item.unit_price * item.quantity - (item.discount_amount || 0),
+          // subtotal é calculado automaticamente pelo banco (STORED GENERATED)
         }));
 
         const { error: itemsError } = await supabase
