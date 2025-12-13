@@ -5925,6 +5925,18 @@ export type Database = {
         }
         Returns: string
       }
+      search_contacts_for_erp: {
+        Args: { result_limit?: number; search_term?: string }
+        Returns: {
+          city: string
+          cpf_cnpj: string
+          email: string
+          full_name: string
+          id: string
+          phone: string
+          state: string
+        }[]
+      }
       search_contacts_paginated: {
         Args: {
           p_assigned_to?: string

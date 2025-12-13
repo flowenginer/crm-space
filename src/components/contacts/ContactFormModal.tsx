@@ -16,7 +16,8 @@ import { useCreateContact, useUpdateContact, type Contact } from '@/hooks/useCon
 import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
 import { useLeadStatuses } from '@/hooks/useLeadKanban';
-
+import { fetchAddressByCEP } from '@/utils/cep';
+import { Loader2, Search } from 'lucide-react';
 const brazilianStates = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
@@ -44,6 +45,53 @@ export function ContactFormModal({
   const { data: team = [] } = useTeam();
   const { data: departments = [] } = useDepartments();
   const { data: leadStatuses = [] } = useLeadStatuses();
+
+  const [isLoadingCEP, setIsLoadingCEP] = useState(false);
+
+  const handleCEPSearch = async (cep: string) => {
+    const cleanCEP = cep.replace(/\D/g, '');
+    if (cleanCEP.length !== 8) {
+      toast.error('CEP deve ter 8 dígitos');
+      return;
+    }
+
+    setIsLoadingCEP(true);
+    try {
+      const address = await fetchAddressByCEP(cleanCEP);
+      if (address) {
+        setFormData(prev => ({
+          ...prev,
+          street: address.street,
+          neighborhood: address.neighborhood,
+          city: address.city,
+          state: address.state,
+        }));
+        toast.success('Endereço encontrado!');
+      } else {
+        toast.error('CEP não encontrado');
+      }
+    } catch (error) {
+      toast.error('Erro ao buscar CEP');
+    } finally {
+      setIsLoadingCEP(false);
+    }
+  };
+
+  // Auto-busca quando CEP tem 8 dígitos
+  const handleCEPChange = (value: string) => {
+    const cleanValue = value.replace(/\D/g, '');
+    // Formata o CEP
+    let formattedCEP = cleanValue;
+    if (cleanValue.length > 5) {
+      formattedCEP = cleanValue.slice(0, 5) + '-' + cleanValue.slice(5, 8);
+    }
+    setFormData(prev => ({ ...prev, zip_code: formattedCEP }));
+    
+    // Auto-busca quando completar 8 dígitos
+    if (cleanValue.length === 8) {
+      handleCEPSearch(cleanValue);
+    }
+  };
 
   const [formData, setFormData] = useState({
     full_name: '',
@@ -381,12 +429,27 @@ export function ContactFormModal({
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <Label>CEP</Label>
-                  <Input
-                    placeholder="00000-000"
-                    value={formData.zip_code}
-                    onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
-                    className="mt-1"
-                  />
+                  <div className="flex gap-2 mt-1">
+                    <Input
+                      placeholder="00000-000"
+                      value={formData.zip_code}
+                      onChange={(e) => handleCEPChange(e.target.value)}
+                      maxLength={9}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleCEPSearch(formData.zip_code)}
+                      disabled={isLoadingCEP}
+                    >
+                      {isLoadingCEP ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Search className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <Label>Logradouro</Label>
