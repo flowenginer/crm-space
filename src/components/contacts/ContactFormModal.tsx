@@ -14,6 +14,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
 import { useCreateContact, useUpdateContact, type Contact } from '@/hooks/useContacts';
 import { useDepartments } from '@/hooks/useDepartments';
@@ -22,9 +24,10 @@ import { useLeadStatuses } from '@/hooks/useLeadKanban';
 import { useContactHistory } from '@/hooks/useContactHistory';
 import { useERPEnabled } from '@/hooks/useERPEnabled';
 import { fetchAddressByCEP } from '@/utils/cep';
-import { Loader2, Search, FileText, Package, ShoppingCart, DollarSign } from 'lucide-react';
+import { Loader2, Search, FileText, Package, ShoppingCart, DollarSign, CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 const brazilianStates = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
@@ -370,12 +373,38 @@ export function ContactFormModal({
 
                 <div>
                   <Label>Data de nascimento</Label>
-                  <Input
-                    type="date"
-                    value={formData.birth_date}
-                    onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
-                    className="mt-1"
-                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal mt-1",
+                          !formData.birth_date && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {formData.birth_date 
+                          ? format(new Date(formData.birth_date + 'T00:00:00'), "dd/MM/yyyy")
+                          : "dd/mm/aaaa"
+                        }
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        captionLayout="dropdown-buttons"
+                        fromYear={1920}
+                        toYear={new Date().getFullYear()}
+                        selected={formData.birth_date ? new Date(formData.birth_date + 'T00:00:00') : undefined}
+                        onSelect={(date) => setFormData({ 
+                          ...formData, 
+                          birth_date: date ? format(date, "yyyy-MM-dd") : "" 
+                        })}
+                        locale={ptBR}
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 <div>
