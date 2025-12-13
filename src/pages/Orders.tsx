@@ -18,8 +18,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Package, Eye, BarChart3, Star, AlertTriangle, Pencil, Gift, Truck } from 'lucide-react';
-import { useOrdersAdvanced, useContactOrderPositions, useUpdateOrderStatus, Order } from '@/hooks/useOrders';
+import { Plus, Package, Eye, BarChart3, Star, AlertTriangle, Pencil, Gift, Truck, Trash2, ChevronDown } from 'lucide-react';
+import { useOrdersAdvanced, useContactOrderPositions, useUpdateOrderStatus, useDeleteOrder, Order } from '@/hooks/useOrders';
+import { usePermissions } from '@/hooks/usePermissions';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { OrderModal } from '@/components/orders/OrderModal';
@@ -101,6 +113,10 @@ export default function Orders() {
   );
 
   const { data: orderPositions = {} } = useContactOrderPositions(orderIds, contactIds);
+  const deleteOrder = useDeleteOrder();
+  const { hasPermission, isAdmin, isSupervisor } = usePermissions();
+
+  const canDeleteOrder = isAdmin || isSupervisor || hasPermission('orders', 'delete');
 
   // Filtrar por busca textual e primeira compra
   const filteredOrders = useMemo(() => {
@@ -326,12 +342,11 @@ export default function Orders() {
                                   value={order.status}
                                   onValueChange={(value) => handleStatusChange(order.id, value)}
                                 >
-                                  <SelectTrigger className="w-[130px] h-8">
-                                    <SelectValue>
-                                      <Badge variant={statusConfig[order.status]?.variant || 'secondary'} className="pointer-events-none">
-                                        {statusConfig[order.status]?.label || order.status}
-                                      </Badge>
-                                    </SelectValue>
+                                  <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 shadow-none focus:ring-0 [&>svg]:hidden">
+                                    <Badge variant={statusConfig[order.status]?.variant || 'secondary'} className="cursor-pointer gap-1">
+                                      {statusConfig[order.status]?.label || order.status}
+                                      <ChevronDown className="h-3 w-3" />
+                                    </Badge>
                                   </SelectTrigger>
                                   <SelectContent>
                                     {Object.entries(statusConfig).map(([value, config]) => (
@@ -423,6 +438,45 @@ export default function Orders() {
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
+                                  {canDeleteOrder && (
+                                    <AlertDialog>
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <AlertDialogTrigger asChild>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                              >
+                                                <Trash2 className="h-4 w-4" />
+                                              </Button>
+                                            </AlertDialogTrigger>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Excluir pedido</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Excluir Pedido</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Tem certeza que deseja excluir o pedido #{order.order_number}? Esta ação não pode ser desfeita.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => deleteOrder.mutate(order.id)}
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                          >
+                                            Excluir
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  )}
                                 </div>
                               </TableCell>
                             </TableRow>
