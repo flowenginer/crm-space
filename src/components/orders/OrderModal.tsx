@@ -1059,9 +1059,13 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                 <Label>Observações para o Cliente</Label>
                 <Textarea
                   value={customerNotes}
-                  onChange={(e) => setCustomerNotes(e.target.value)}
+                  onChange={(e) => {
+                    setCustomerNotes(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = e.target.scrollHeight + 'px';
+                  }}
                   placeholder="Observações que serão visíveis para o cliente..."
-                  rows={4}
+                  className="min-h-[100px] resize-none overflow-hidden"
                 />
               </div>
 
@@ -1069,9 +1073,13 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                 <Label>Observações Internas</Label>
                 <Textarea
                   value={internalNotes}
-                  onChange={(e) => setInternalNotes(e.target.value)}
+                  onChange={(e) => {
+                    setInternalNotes(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = e.target.scrollHeight + 'px';
+                  }}
                   placeholder="Observações internas (visíveis apenas para a equipe)..."
-                  rows={4}
+                  className="min-h-[100px] resize-none overflow-hidden"
                 />
               </div>
             </TabsContent>

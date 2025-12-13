@@ -343,6 +343,7 @@ export function useCreateOrder() {
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
+          tenant_id: tenantId,
           order_number: orderNumber,
           order_date: data.order_date || new Date().toISOString().split('T')[0],
           contact_id: data.contact_id,
@@ -379,6 +380,7 @@ export function useCreateOrder() {
       // Criar itens
       if (data.items.length > 0) {
         const items = data.items.map(item => ({
+          tenant_id: tenantId,
           order_id: order.id,
           product_id: item.product_id,
           variation_id: item.variation_id,
@@ -412,6 +414,7 @@ export function useCreateOrder() {
           dueDate.setMonth(dueDate.getMonth() + i);
 
           payments.push({
+            tenant_id: tenantId,
             order_id: order.id,
             amount: installmentValue,
             payment_method: data.payment_method,
