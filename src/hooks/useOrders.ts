@@ -678,3 +678,35 @@ export function useUpdateOrderPayment() {
     },
   });
 }
+
+export function useDeleteOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      // Primeiro deletar itens do pedido
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .delete()
+        .eq('order_id', orderId);
+
+      if (itemsError) throw itemsError;
+
+      // Depois deletar o pedido
+      const { error } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', orderId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-advanced'] });
+      toast.success('Pedido excluído com sucesso');
+    },
+    onError: () => {
+      toast.error('Erro ao excluir pedido');
+    },
+  });
+}
