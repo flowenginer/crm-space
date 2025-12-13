@@ -79,6 +79,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   
   // Form state
   const [contactId, setContactId] = useState(initialContactId || '');
+  const [selectedContact, setSelectedContact] = useState<Pick<ERPContact, 'id' | 'full_name' | 'phone'> | null>(null);
   const [storeId, setStoreId] = useState('');
   const [sellerId, setSellerId] = useState(user?.id || '');
   const [items, setItems] = useState<OrderItem[]>([
@@ -126,16 +127,45 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     }
   }, [user?.id]);
 
-  // Update contactId when initialContactId changes (e.g., when modal opens from conversation)
+  // Fetch contact details when initialContactId is provided (from conversation)
   useEffect(() => {
-    if (open && initialContactId) {
-      setContactId(initialContactId);
+    if (open && initialContactId && !selectedContact) {
+      const fetchContact = async () => {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data } = await supabase
+          .from('contacts')
+          .select('id, full_name, phone')
+          .eq('id', initialContactId)
+          .single();
+        
+        if (data) {
+          setSelectedContact(data as ERPContact);
+          setContactId(data.id);
+        }
+      };
+      fetchContact();
     }
   }, [open, initialContactId]);
+
+  // Reset selectedContact when modal closes
+  useEffect(() => {
+    if (!open) {
+      setSelectedContact(null);
+    }
+  }, [open]);
   
   const handleNewContactSuccess = (contact: Contact) => {
     setContactId(contact.id);
+    setSelectedContact({ id: contact.id, full_name: contact.full_name, phone: contact.phone });
     setShowNewContactModal(false);
+  };
+
+  const handleContactChange = (value: string) => {
+    setContactId(value);
+    const contact = contacts.find(c => c.id === value);
+    if (contact) {
+      setSelectedContact(contact);
+    }
   };
 
   const addItem = () => {
@@ -303,9 +333,16 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                     Cliente
                   </Label>
                   <div className="flex gap-2">
-                    <Select value={contactId} onValueChange={setContactId}>
+                    <Select value={contactId} onValueChange={handleContactChange}>
                       <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Selecione um cliente" />
+                        <SelectValue placeholder="Selecione um cliente">
+                          {selectedContact 
+                            ? `${selectedContact.full_name} - ${selectedContact.phone}`
+                            : contactId 
+                              ? 'Carregando...' 
+                              : undefined
+                          }
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <div className="p-2">
@@ -316,6 +353,11 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                             className="mb-2"
                           />
                         </div>
+                        {selectedContact && (
+                          <SelectItem key={selectedContact.id} value={selectedContact.id}>
+                            {selectedContact.full_name} - {selectedContact.phone}
+                          </SelectItem>
+                        )}
                         {isLoadingContacts ? (
                           <div className="p-3 text-center text-sm text-muted-foreground">
                             Buscando...
@@ -325,7 +367,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                             Nenhum cliente encontrado
                           </div>
                         ) : (
-                          contacts.slice(0, 10).map((contact) => (
+                          contacts.filter(c => c.id !== selectedContact?.id).slice(0, 10).map((contact) => (
                             <SelectItem key={contact.id} value={contact.id}>
                               {contact.full_name} - {contact.phone}
                             </SelectItem>
