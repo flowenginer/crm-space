@@ -66,6 +66,7 @@ export interface CreateOrderData {
   conversation_id?: string;
   channel_id?: string;
   order_type?: string;
+  order_date?: string; // Format: 'yyyy-MM-dd', allows retroactive dates
   notes?: string;
   internal_notes?: string;
   shipping_address?: Record<string, unknown>;
@@ -336,6 +337,7 @@ export function useCreateOrder() {
         .from('orders')
         .insert({
           order_number: orderNumber,
+          order_date: data.order_date || new Date().toISOString().split('T')[0],
           contact_id: data.contact_id,
           conversation_id: data.conversation_id,
           channel_id: data.channel_id,

@@ -3020,6 +3020,7 @@ export type Database = {
           internal_notes: string | null
           item_discount: number | null
           notes: string | null
+          order_date: string | null
           order_number: string
           order_type: string | null
           paid_amount: number | null
@@ -3064,6 +3065,7 @@ export type Database = {
           internal_notes?: string | null
           item_discount?: number | null
           notes?: string | null
+          order_date?: string | null
           order_number: string
           order_type?: string | null
           paid_amount?: number | null
@@ -3108,6 +3110,7 @@ export type Database = {
           internal_notes?: string | null
           item_discount?: number | null
           notes?: string | null
+          order_date?: string | null
           order_number?: string
           order_type?: string | null
           paid_amount?: number | null
