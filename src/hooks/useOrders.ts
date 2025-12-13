@@ -35,6 +35,7 @@ export interface Order {
   updated_at: string | null;
   canceled_at: string | null;
   canceled_reason: string | null;
+  is_free_shipping?: boolean | null;
   contact?: {
     id: string;
     full_name: string;
@@ -79,6 +80,7 @@ export interface CreateOrderData {
   shipping_address?: Record<string, unknown>;
   shipping_method?: string;
   shipping_cost?: number;
+  is_free_shipping?: boolean;
   expected_delivery_date?: string;
   payment_method?: string;
   payment_condition?: string;
@@ -321,6 +323,39 @@ export function useContactOrderCounts(contactIds: string[]) {
   });
 }
 
+// Hook para obter a posição cronológica de cada pedido por contato
+export function useContactOrderPositions(orderIds: string[], contactIds: string[]) {
+  return useQuery({
+    queryKey: ['contact-order-positions', orderIds, contactIds],
+    queryFn: async () => {
+      if (contactIds.length === 0) return {};
+      
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, contact_id, created_at')
+        .in('contact_id', contactIds)
+        .neq('status', 'canceled')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      
+      // Calcular a posição de cada pedido por contato
+      const positions: Record<string, number> = {};
+      const contactCounters: Record<string, number> = {};
+      
+      data?.forEach(order => {
+        if (order.contact_id) {
+          contactCounters[order.contact_id] = (contactCounters[order.contact_id] || 0) + 1;
+          positions[order.id] = contactCounters[order.contact_id];
+        }
+      });
+      
+      return positions;
+    },
+    enabled: contactIds.length > 0 && orderIds.length > 0,
+  });
+}
+
 export function useOrder(orderId: string | null) {
   return useQuery({
     queryKey: ['order', orderId],
@@ -415,7 +450,8 @@ export function useCreateOrder() {
           internal_notes: data.internal_notes,
           shipping_address: data.shipping_address,
           shipping_method: data.shipping_method,
-          shipping_cost: data.shipping_cost || 0,
+          shipping_cost: data.is_free_shipping ? 0 : (data.shipping_cost || 0),
+          is_free_shipping: data.is_free_shipping || false,
           expected_delivery_date: data.expected_delivery_date || null,
           payment_method: data.payment_method,
           payment_condition: data.payment_condition || 'full',
