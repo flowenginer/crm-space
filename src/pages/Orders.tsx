@@ -60,6 +60,16 @@ export default function Orders() {
     max_total: filters.maxTotal ? parseFloat(filters.maxTotal) : undefined,
     has_discount: filters.hasDiscount || undefined,
     has_conversation: filters.hasConversation || undefined,
+    // Novos filtros
+    store_id: filters.storeId !== 'all' ? filters.storeId : undefined,
+    order_type: filters.orderType !== 'all' ? filters.orderType : undefined,
+    fulfillment_status: filters.fulfillmentStatus !== 'all' ? filters.fulfillmentStatus : undefined,
+    installments: filters.installments !== 'all' ? filters.installments : undefined,
+    has_tracking: filters.hasTracking || undefined,
+    expected_delivery_from: filters.expectedDeliveryFrom || undefined,
+    expected_delivery_to: filters.expectedDeliveryTo || undefined,
+    use_order_date: filters.useOrderDate || undefined,
+    payment_condition: filters.paymentCondition !== 'all' ? filters.paymentCondition : undefined,
   }), [filters]);
 
   const { data: orders = [], isLoading } = useOrdersAdvanced(hookFilters);

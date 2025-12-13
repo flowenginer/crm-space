@@ -29,12 +29,14 @@ import {
   CalendarIcon, 
   ChevronDown,
   LayoutGrid,
-  List
+  List,
+  Package
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useTeam } from '@/hooks/useTeam';
+import { useActiveStores } from '@/hooks/useStores';
 
 export interface OrderFiltersState {
   search: string;
@@ -50,9 +52,19 @@ export interface OrderFiltersState {
   isFirstPurchase: boolean;
   hasDiscount: boolean;
   hasConversation: boolean;
+  // Novos filtros
+  storeId: string;
+  orderType: string;
+  fulfillmentStatus: string;
+  installments: string;
+  hasTracking: boolean;
+  expectedDeliveryFrom: string;
+  expectedDeliveryTo: string;
+  useOrderDate: boolean;
+  paymentCondition: string;
 }
 
-const initialFilters: OrderFiltersState = {
+export const initialFilters: OrderFiltersState = {
   search: '',
   status: 'all',
   paymentStatus: 'all',
@@ -66,6 +78,16 @@ const initialFilters: OrderFiltersState = {
   isFirstPurchase: false,
   hasDiscount: false,
   hasConversation: false,
+  // Novos filtros
+  storeId: 'all',
+  orderType: 'all',
+  fulfillmentStatus: 'all',
+  installments: 'all',
+  hasTracking: false,
+  expectedDeliveryFrom: '',
+  expectedDeliveryTo: '',
+  useOrderDate: false,
+  paymentCondition: 'all',
 };
 
 const statusOptions = [
@@ -103,6 +125,36 @@ const shippingMethodOptions = [
   { value: 'delivery', label: 'Entrega' },
   { value: 'correios', label: 'Correios' },
   { value: 'motoboy', label: 'Motoboy' },
+];
+
+const orderTypeOptions = [
+  { value: 'all', label: 'Todos' },
+  { value: 'sale', label: 'Venda' },
+  { value: 'exchange', label: 'Troca' },
+  { value: 'return', label: 'Devolução' },
+  { value: 'quote', label: 'Orçamento' },
+];
+
+const fulfillmentStatusOptions = [
+  { value: 'all', label: 'Todos' },
+  { value: 'pending', label: 'Não separado' },
+  { value: 'partial', label: 'Parcialmente separado' },
+  { value: 'fulfilled', label: 'Totalmente separado' },
+];
+
+const installmentsOptions = [
+  { value: 'all', label: 'Todas' },
+  { value: '1', label: 'À vista (1x)' },
+  { value: '2', label: '2x' },
+  { value: '3', label: '3x' },
+  { value: '4+', label: '4x ou mais' },
+];
+
+const paymentConditionOptions = [
+  { value: 'all', label: 'Todas' },
+  { value: 'cash', label: 'À vista' },
+  { value: 'installments', label: 'Parcelado' },
+  { value: 'down_payment', label: 'Com entrada' },
 ];
 
 const quickDateRanges = [
@@ -162,8 +214,11 @@ export function OrderFilters({
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [dateFromOpen, setDateFromOpen] = useState(false);
   const [dateToOpen, setDateToOpen] = useState(false);
+  const [deliveryFromOpen, setDeliveryFromOpen] = useState(false);
+  const [deliveryToOpen, setDeliveryToOpen] = useState(false);
   
   const { data: team = [] } = useTeam();
+  const { data: stores = [] } = useActiveStores();
 
   const updateFilter = <K extends keyof OrderFiltersState>(
     key: K, 
@@ -185,6 +240,8 @@ export function OrderFilters({
 
   const parsedDateFrom = filters.dateFrom ? new Date(filters.dateFrom + 'T12:00:00') : undefined;
   const parsedDateTo = filters.dateTo ? new Date(filters.dateTo + 'T12:00:00') : undefined;
+  const parsedDeliveryFrom = filters.expectedDeliveryFrom ? new Date(filters.expectedDeliveryFrom + 'T12:00:00') : undefined;
+  const parsedDeliveryTo = filters.expectedDeliveryTo ? new Date(filters.expectedDeliveryTo + 'T12:00:00') : undefined;
 
   return (
     <div className="space-y-4">
@@ -350,6 +407,21 @@ export function OrderFilters({
           </SelectContent>
         </Select>
 
+        {/* Loja */}
+        <Select value={filters.storeId} onValueChange={(v) => updateFilter('storeId', v)}>
+          <SelectTrigger className="w-[150px] h-9">
+            <SelectValue placeholder="Loja" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as lojas</SelectItem>
+            {stores.map((store) => (
+              <SelectItem key={store.id} value={store.id}>
+                {store.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         {/* Primeira Compra Toggle */}
         <Button
           variant={filters.isFirstPurchase ? 'secondary' : 'outline'}
@@ -437,6 +509,86 @@ export function OrderFilters({
               </Select>
             </div>
 
+            {/* Tipo de Pedido */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Tipo de Pedido</Label>
+              <Select 
+                value={filters.orderType} 
+                onValueChange={(v) => updateFilter('orderType', v)}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {orderTypeOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Status de Fulfillment */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Status Separação</Label>
+              <Select 
+                value={filters.fulfillmentStatus} 
+                onValueChange={(v) => updateFilter('fulfillmentStatus', v)}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {fulfillmentStatusOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Parcelas */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Parcelas</Label>
+              <Select 
+                value={filters.installments} 
+                onValueChange={(v) => updateFilter('installments', v)}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {installmentsOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Condição de Pagamento */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Condição Pagamento</Label>
+              <Select 
+                value={filters.paymentCondition} 
+                onValueChange={(v) => updateFilter('paymentCondition', v)}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentConditionOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Valor Mínimo */}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Valor Mínimo</Label>
@@ -459,6 +611,72 @@ export function OrderFilters({
                 onChange={(e) => updateFilter('maxTotal', e.target.value)}
                 className="h-9"
               />
+            </div>
+
+            {/* Previsão de Entrega De */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Entrega prevista de</Label>
+              <Popover open={deliveryFromOpen} onOpenChange={setDeliveryFromOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      'h-9 w-full justify-start text-left font-normal text-xs',
+                      !filters.expectedDeliveryFrom && 'text-muted-foreground'
+                    )}
+                  >
+                    <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                    {parsedDeliveryFrom ? format(parsedDeliveryFrom, 'dd/MM/yyyy', { locale: ptBR }) : 'Selecionar'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={parsedDeliveryFrom}
+                    onSelect={(date) => {
+                      if (date) updateFilter('expectedDeliveryFrom', format(date, 'yyyy-MM-dd'));
+                      setDeliveryFromOpen(false);
+                    }}
+                    initialFocus
+                    locale={ptBR}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Previsão de Entrega Até */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Entrega prevista até</Label>
+              <Popover open={deliveryToOpen} onOpenChange={setDeliveryToOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      'h-9 w-full justify-start text-left font-normal text-xs',
+                      !filters.expectedDeliveryTo && 'text-muted-foreground'
+                    )}
+                  >
+                    <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                    {parsedDeliveryTo ? format(parsedDeliveryTo, 'dd/MM/yyyy', { locale: ptBR }) : 'Selecionar'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={parsedDeliveryTo}
+                    onSelect={(date) => {
+                      if (date) updateFilter('expectedDeliveryTo', format(date, 'yyyy-MM-dd'));
+                      setDeliveryToOpen(false);
+                    }}
+                    initialFocus
+                    locale={ptBR}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Checkboxes */}
@@ -486,7 +704,32 @@ export function OrderFilters({
                     }
                   />
                   <Label htmlFor="hasConversation" className="text-sm cursor-pointer">
-                    Com conversa vinculada
+                    Com conversa
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="hasTracking"
+                    checked={filters.hasTracking}
+                    onCheckedChange={(checked) => 
+                      updateFilter('hasTracking', checked === true)
+                    }
+                  />
+                  <Label htmlFor="hasTracking" className="text-sm cursor-pointer">
+                    <Package className="h-3.5 w-3.5 inline mr-1" />
+                    Com rastreio
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="useOrderDate"
+                    checked={filters.useOrderDate}
+                    onCheckedChange={(checked) => 
+                      updateFilter('useOrderDate', checked === true)
+                    }
+                  />
+                  <Label htmlFor="useOrderDate" className="text-sm cursor-pointer">
+                    Filtrar por data do pedido
                   </Label>
                 </div>
               </div>
@@ -497,5 +740,3 @@ export function OrderFilters({
     </div>
   );
 }
-
-export { initialFilters };
