@@ -27,6 +27,26 @@ export interface ContactOrder {
 }
 
 export function useContactHistory(contactId: string | null) {
+  // Fetch final order statuses (is_final = true)
+  const { data: finalStatuses = [] } = useQuery({
+    queryKey: ['order-statuses-final'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('order_statuses')
+        .select('value')
+        .eq('is_final', true)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('Error fetching final statuses:', error);
+        return [];
+      }
+
+      return data.map(s => s.value);
+    },
+    staleTime: 60000,
+  });
+
   // Fetch quotes for the contact
   const { data: quotes = [], isLoading: isLoadingQuotes } = useQuery({
     queryKey: ['contact-quotes', contactId],
@@ -94,12 +114,10 @@ export function useContactHistory(contactId: string | null) {
     enabled: !!contactId,
   });
 
-  // Calculate summary
+  // Calculate summary using dynamic final statuses
   const quotesCount = quotes.length;
   const ordersCount = orders.length;
-  const completedOrders = orders.filter(o => 
-    o.status === 'delivered' || o.status === 'completed'
-  );
+  const completedOrders = orders.filter(o => finalStatuses.includes(o.status));
   const totalPurchased = completedOrders.reduce((sum, o) => sum + (o.total || 0), 0);
   const totalOrdered = orders.reduce((sum, o) => sum + (o.total || 0), 0);
 

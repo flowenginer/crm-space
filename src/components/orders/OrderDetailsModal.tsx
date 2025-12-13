@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -16,23 +17,17 @@ import {
 } from '@/components/ui/select';
 import { Order, useOrderItems, useUpdateOrderStatus } from '@/hooks/useOrders';
 import { useCreateTransaction } from '@/hooks/useFinancial';
+import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Package, User, CreditCard, Calendar, Receipt, History } from 'lucide-react';
+import { Package, User, CreditCard, Calendar, Receipt, History, Download, Printer, Send } from 'lucide-react';
 import { OrderTimeline } from './OrderTimeline';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-
-const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  draft: { label: 'Rascunho', variant: 'secondary' },
-  pending: { label: 'Pendente', variant: 'outline' },
-  confirmed: { label: 'Confirmado', variant: 'default' },
-  processing: { label: 'Processando', variant: 'default' },
-  shipped: { label: 'Enviado', variant: 'default' },
-  delivered: { label: 'Entregue', variant: 'default' },
-  canceled: { label: 'Cancelado', variant: 'destructive' },
-};
+import { useGeneratePDF, PDFDocumentData } from '@/hooks/useGeneratePDF';
+import { SendDocumentModal } from './SendDocumentModal';
+import { useConversations } from '@/hooks/useConversations';
 
 interface OrderDetailsModalProps {
   order: Order | null;
@@ -41,11 +36,27 @@ interface OrderDetailsModalProps {
 }
 
 export function OrderDetailsModal({ order, open, onOpenChange }: OrderDetailsModalProps) {
+  const [showSendModal, setShowSendModal] = useState(false);
   const { data: items = [] } = useOrderItems(order?.id || null);
+  const { data: orderStatuses = [] } = useOrderStatuses();
   const updateStatus = useUpdateOrderStatus();
   const createTransaction = useCreateTransaction();
+  const { downloadPDF, printPDF } = useGeneratePDF();
+  const { data: conversations = [] } = useConversations();
 
   if (!order) return null;
+
+  // Find active statuses for dropdown
+  const activeStatuses = orderStatuses.filter(s => s.is_active);
+  
+  // Find current status config
+  const currentStatusConfig = orderStatuses.find(s => s.value === order.status);
+  
+  // Check if current status is final
+  const isFinalStatus = currentStatusConfig?.is_final ?? false;
+
+  // Find conversation for this contact
+  const conversation = conversations.find(c => c.contact_id === order.contact_id);
 
   const formatCurrency = (value: number | null) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -76,14 +87,60 @@ export function OrderDetailsModal({ order, open, onOpenChange }: OrderDetailsMod
     toast.success('Conta a receber gerada com sucesso!');
   };
 
+  // Helper to get badge variant from color
+  const getVariantFromColor = (color?: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    if (!color) return 'secondary';
+    if (color.includes('red') || color.includes('rose')) return 'destructive';
+    if (color.includes('gray') || color.includes('slate')) return 'outline';
+    return 'default';
+  };
+
+  // Prepare PDF data
+  const preparePDFData = (): PDFDocumentData => ({
+    type: 'order',
+    number: order.order_number,
+    date: order.created_at ? format(new Date(order.created_at), 'dd/MM/yyyy', { locale: ptBR }) : '',
+    contact: {
+      name: order.contact?.full_name || 'Cliente não informado',
+      phone: order.contact?.phone,
+    },
+    items: items.map(item => ({
+      name: item.product_name,
+      variation: item.variation_name || undefined,
+      sku: item.sku || undefined,
+      quantity: item.quantity,
+      unitPrice: item.unit_price,
+      subtotal: item.subtotal,
+    })),
+    subtotal: order.subtotal || 0,
+    discount: order.discount_amount || undefined,
+    shipping: order.shipping_cost || undefined,
+    total: order.total || 0,
+    paymentMethod: order.payment_method || undefined,
+    notes: order.notes || undefined,
+  });
+
+  const handleDownloadPDF = () => {
+    downloadPDF(preparePDFData(), `pedido_${order.order_number}.pdf`);
+    toast.success('PDF baixado com sucesso!');
+  };
+
+  const handlePrintPDF = () => {
+    printPDF(preparePDFData());
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <span>Pedido #{order.order_number}</span>
-            <Badge variant={statusConfig[order.status]?.variant || 'secondary'}>
-              {statusConfig[order.status]?.label || order.status}
+            <Badge 
+              variant={getVariantFromColor(currentStatusConfig?.color)}
+              style={currentStatusConfig?.color ? { backgroundColor: currentStatusConfig.color, color: 'white' } : undefined}
+            >
+              {currentStatusConfig?.name || order.status}
             </Badge>
           </DialogTitle>
         </DialogHeader>
@@ -204,7 +261,7 @@ export function OrderDetailsModal({ order, open, onOpenChange }: OrderDetailsMod
                 )}
 
                 {/* Alterar Status */}
-                {order.status !== 'canceled' && order.status !== 'delivered' && (
+                {!isFinalStatus && (
                   <div className="p-4 border rounded-lg">
                     <h3 className="font-medium mb-3">Alterar Status</h3>
                     <Select value={order.status} onValueChange={handleStatusChange}>
@@ -212,9 +269,9 @@ export function OrderDetailsModal({ order, open, onOpenChange }: OrderDetailsMod
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {Object.entries(statusConfig).map(([key, config]) => (
-                          <SelectItem key={key} value={key}>
-                            {config.label}
+                        {activeStatuses.map((status) => (
+                          <SelectItem key={status.value} value={status.value}>
+                            {status.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -234,20 +291,54 @@ export function OrderDetailsModal({ order, open, onOpenChange }: OrderDetailsMod
           </TabsContent>
         </Tabs>
 
-        <div className="flex justify-between gap-2 pt-4 border-t">
-          <Button
-            variant="outline"
-            onClick={handleGenerateReceivable}
-            disabled={createTransaction.isPending}
-          >
-            <Receipt className="h-4 w-4 mr-2" />
-            Gerar Conta a Receber
-          </Button>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Fechar
-          </Button>
+        <div className="flex flex-wrap justify-between gap-2 pt-4 border-t">
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleDownloadPDF}>
+              <Download className="h-4 w-4 mr-2" />
+              PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={handlePrintPDF}>
+              <Printer className="h-4 w-4 mr-2" />
+              Imprimir
+            </Button>
+            {order.contact?.phone && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowSendModal(true)}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                WhatsApp
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleGenerateReceivable}
+              disabled={createTransaction.isPending}
+            >
+              <Receipt className="h-4 w-4 mr-2" />
+              Gerar Conta
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Fechar
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Send Document Modal */}
+    <SendDocumentModal
+      open={showSendModal}
+      onOpenChange={setShowSendModal}
+      documentData={preparePDFData()}
+      contactPhone={order.contact?.phone || ''}
+      channelId={conversation?.channel_id || null}
+      conversationId={conversation?.id}
+    />
+    </>
   );
 }

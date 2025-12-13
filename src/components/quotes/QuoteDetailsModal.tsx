@@ -34,16 +34,22 @@ import {
   Calendar, 
   CreditCard, 
   Truck, 
-  Store,
   ShoppingCart,
   ArrowRight,
   Clock,
-  ExternalLink
+  ExternalLink,
+  Download,
+  Printer,
+  Send
 } from 'lucide-react';
 import { Quote, useQuoteItems, useUpdateQuoteStatus, useConvertQuoteToOrder } from '@/hooks/useQuotes';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { useGeneratePDF, PDFDocumentData } from '@/hooks/useGeneratePDF';
+import { SendDocumentModal } from '@/components/orders/SendDocumentModal';
+import { useConversations } from '@/hooks/useConversations';
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   draft: { label: 'Rascunho', variant: 'secondary' },
@@ -62,10 +68,18 @@ interface QuoteDetailsModalProps {
 
 export function QuoteDetailsModal({ quote, open, onOpenChange }: QuoteDetailsModalProps) {
   const navigate = useNavigate();
+  const [showSendModal, setShowSendModal] = useState(false);
   const { data: items = [] } = useQuoteItems(quote?.id || null);
   const updateStatus = useUpdateQuoteStatus();
   const convertToOrder = useConvertQuoteToOrder();
   const [selectedStatus, setSelectedStatus] = useState(quote?.status || 'draft');
+  const { downloadPDF, printPDF } = useGeneratePDF();
+  const { data: conversations = [] } = useConversations();
+
+  if (!quote) return null;
+
+  // Find conversation for this contact
+  const conversation = conversations.find(c => c.contact_id === quote.contact_id);
 
   if (!quote) return null;
 
@@ -96,7 +110,45 @@ export function QuoteDetailsModal({ quote, open, onOpenChange }: QuoteDetailsMod
   const isExpired = quote.valid_until && new Date(quote.valid_until) < new Date();
   const canConvert = quote.status === 'approved' && !isExpired;
 
+  // Prepare PDF data
+  const preparePDFData = (): PDFDocumentData => ({
+    type: 'quote',
+    number: quote.quote_number,
+    date: quote.created_at ? format(new Date(quote.created_at), 'dd/MM/yyyy', { locale: ptBR }) : '',
+    validUntil: quote.valid_until ? format(new Date(quote.valid_until), 'dd/MM/yyyy', { locale: ptBR }) : undefined,
+    contact: {
+      name: quote.contact?.full_name || 'Cliente não informado',
+      phone: quote.contact?.phone,
+      email: quote.contact?.email,
+    },
+    items: items.map(item => ({
+      name: item.product_name,
+      variation: item.variation_name || undefined,
+      sku: item.sku || undefined,
+      quantity: item.quantity,
+      unitPrice: item.unit_price,
+      subtotal: item.subtotal,
+    })),
+    subtotal: quote.subtotal || 0,
+    discount: quote.discount_amount || undefined,
+    shipping: quote.shipping_cost || undefined,
+    total: quote.total || 0,
+    paymentMethod: quote.payment_method || undefined,
+    installments: quote.installments || undefined,
+    notes: quote.notes || undefined,
+  });
+
+  const handleDownloadPDF = () => {
+    downloadPDF(preparePDFData(), `orcamento_${quote.quote_number}.pdf`);
+    toast.success('PDF baixado com sucesso!');
+  };
+
+  const handlePrintPDF = () => {
+    printPDF(preparePDFData());
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
@@ -321,15 +373,36 @@ export function QuoteDetailsModal({ quote, open, onOpenChange }: QuoteDetailsMod
           </ScrollArea>
         </Tabs>
 
-        <div className="flex justify-between items-center pt-4 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Fechar
-          </Button>
+        <div className="flex flex-wrap justify-between items-center gap-2 pt-4 border-t">
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleDownloadPDF}>
+              <Download className="h-4 w-4 mr-2" />
+              PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={handlePrintPDF}>
+              <Printer className="h-4 w-4 mr-2" />
+              Imprimir
+            </Button>
+            {quote.contact?.phone && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowSendModal(true)}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                WhatsApp
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Fechar
+            </Button>
           
           {canConvert && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button className="gap-2">
+                <Button size="sm" className="gap-2">
                   <ArrowRight className="h-4 w-4" />
                   Converter em Pedido
                 </Button>
@@ -354,8 +427,20 @@ export function QuoteDetailsModal({ quote, open, onOpenChange }: QuoteDetailsMod
               </AlertDialogContent>
             </AlertDialog>
           )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Send Document Modal */}
+    <SendDocumentModal
+      open={showSendModal}
+      onOpenChange={setShowSendModal}
+      documentData={preparePDFData()}
+      contactPhone={quote.contact?.phone || ''}
+      channelId={conversation?.channel_id || null}
+      conversationId={conversation?.id}
+    />
+    </>
   );
 }
