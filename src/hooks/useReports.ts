@@ -253,183 +253,126 @@ export function useReportAttendance(dateRange: DateRange | undefined) {
   });
 }
 
-// ============ Sales Report Hooks ============
+// ============ Sales Report Hooks (Based on Orders) ============
 
-const CONVERSION_STATUSES = ['07 - Pedido Fechado', '12 - Entregue'];
-const SALES_FUNNEL_STAGES = [
-  { id: 'new', name: 'Leads', statuses: ['01 - Novo Lead', '02 - Contato Inicial'] },
-  { id: 'qualified', name: 'Qualificados', statuses: ['03 - Engajado', '04 - Layout'] },
-  { id: 'proposal', name: 'Em Negociação', statuses: ['05 - Orçamento', '06 - Aguardando pagamento'] },
-  { id: 'won', name: 'Fechados', statuses: CONVERSION_STATUSES },
-];
-
-interface SalesAgentData {
+export interface SalesAgentData {
   rank: number;
   agent_id: string;
   name: string;
   avatar_url: string | null;
-  total_leads: number;
-  conversions: number;
+  orders_count: number;
   revenue: number;
-  conversion_rate: number;
   avg_ticket: number;
 }
 
-interface FunnelStage {
-  stage: string;
-  value: number;
-  percentage: number;
+interface SalesTimeline {
+  date: string;
+  vendas: number;
+  quantidade: number;
 }
 
-export function useReportSales(dateRange: DateRange | undefined) {
+export function useReportSales(dateRange: DateRange | undefined, userId?: string, canViewAll?: boolean) {
   return useQuery({
-    queryKey: ['report-sales', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
+    queryKey: ['report-sales-orders', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), userId, canViewAll],
     queryFn: async (): Promise<{
       sellers: SalesAgentData[];
-      funnel: FunnelStage[];
-      timeline: { date: string; vendas: number; meta: number; quantidade: number }[];
+      timeline: SalesTimeline[];
       totalRevenue: number;
       totalConversions: number;
+      myStats: SalesAgentData | null;
     }> => {
       if (!dateRange?.from || !dateRange?.to) {
-        return { sellers: [], funnel: [], timeline: [], totalRevenue: 0, totalConversions: 0 };
+        return { sellers: [], timeline: [], totalRevenue: 0, totalConversions: 0, myStats: null };
       }
 
       const startDate = startOfDay(dateRange.from).toISOString();
       const endDate = endOfDay(dateRange.to).toISOString();
 
-      // Fetch contacts with assigned sellers
-      const { data: contacts } = await supabase
-        .from('contacts')
+      // Build query - filter by seller if user doesn't have view_all permission
+      let query = supabase
+        .from('orders')
         .select(`
           id,
-          lead_status,
-          assigned_to,
-          negotiated_value,
+          order_number,
+          total,
+          status,
+          seller_id,
           created_at,
-          profiles:assigned_to(id, full_name, avatar_url)
+          profiles:seller_id(id, full_name, avatar_url)
         `)
+        .neq('status', 'canceled')
         .gte('created_at', startDate)
         .lte('created_at', endDate);
 
-      // Fetch deals for revenue
-      const { data: deals } = await supabase
-        .from('deals')
-        .select(`
-          id,
-          value,
-          status,
-          assigned_to,
-          closed_at,
-          profiles:assigned_to(id, full_name, avatar_url)
-        `)
-        .eq('status', 'won')
-        .gte('closed_at', startDate)
-        .lte('closed_at', endDate);
+      const { data: orders, error } = await query;
+
+      if (error) {
+        console.error('Error fetching orders for sales report:', error);
+        return { sellers: [], timeline: [], totalRevenue: 0, totalConversions: 0, myStats: null };
+      }
 
       // Aggregate by seller
       const sellerMap = new Map<string, {
         agent_id: string;
         name: string;
         avatar_url: string | null;
-        total_leads: number;
-        conversions: number;
+        orders_count: number;
         revenue: number;
       }>();
 
-      // Count leads and conversions from contacts
-      (contacts || []).forEach((contact: any) => {
-        if (contact.assigned_to && contact.profiles) {
-          const sellerId = contact.assigned_to;
+      // Timeline aggregation
+      const timelineMap = new Map<string, { vendas: number; quantidade: number }>();
+
+      (orders || []).forEach((order: any) => {
+        // Seller aggregation
+        if (order.seller_id && order.profiles) {
+          const sellerId = order.seller_id;
           if (!sellerMap.has(sellerId)) {
             sellerMap.set(sellerId, {
               agent_id: sellerId,
-              name: contact.profiles.full_name || 'Sem nome',
-              avatar_url: contact.profiles.avatar_url,
-              total_leads: 0,
-              conversions: 0,
+              name: order.profiles.full_name || 'Sem nome',
+              avatar_url: order.profiles.avatar_url,
+              orders_count: 0,
               revenue: 0,
             });
           }
           const seller = sellerMap.get(sellerId)!;
-          seller.total_leads++;
-          if (CONVERSION_STATUSES.includes(contact.lead_status)) {
-            seller.conversions++;
-            seller.revenue += contact.negotiated_value || 0;
-          }
+          seller.orders_count++;
+          seller.revenue += order.total || 0;
         }
+
+        // Timeline aggregation
+        const dateKey = format(new Date(order.created_at), 'dd/MM');
+        if (!timelineMap.has(dateKey)) {
+          timelineMap.set(dateKey, { vendas: 0, quantidade: 0 });
+        }
+        const t = timelineMap.get(dateKey)!;
+        t.vendas += order.total || 0;
+        t.quantidade++;
       });
 
-      // Add revenue from deals
-      (deals || []).forEach((deal: any) => {
-        if (deal.assigned_to && deal.profiles) {
-          const sellerId = deal.assigned_to;
-          if (sellerMap.has(sellerId)) {
-            sellerMap.get(sellerId)!.revenue += deal.value || 0;
-          } else {
-            sellerMap.set(sellerId, {
-              agent_id: sellerId,
-              name: deal.profiles.full_name || 'Sem nome',
-              avatar_url: deal.profiles.avatar_url,
-              total_leads: 0,
-              conversions: 1,
-              revenue: deal.value || 0,
-            });
-          }
-        }
-      });
-
-      // Convert to array and calculate metrics
+      // Convert to array and calculate metrics, sorted by revenue
       const sellers: SalesAgentData[] = Array.from(sellerMap.values())
-        .map((s, idx) => ({
-          rank: idx + 1,
+        .map((s) => ({
+          rank: 0,
           ...s,
-          conversion_rate: s.total_leads > 0 ? Math.round((s.conversions / s.total_leads) * 100) : 0,
-          avg_ticket: s.conversions > 0 ? Math.round(s.revenue / s.conversions) : 0,
+          avg_ticket: s.orders_count > 0 ? Math.round(s.revenue / s.orders_count) : 0,
         }))
         .sort((a, b) => b.revenue - a.revenue)
         .map((s, idx) => ({ ...s, rank: idx + 1 }));
 
-      // Calculate funnel
-      const funnelCounts = new Map<string, number>();
-      SALES_FUNNEL_STAGES.forEach(stage => funnelCounts.set(stage.name, 0));
-
-      (contacts || []).forEach((contact: any) => {
-        SALES_FUNNEL_STAGES.forEach(stage => {
-          if (stage.statuses.includes(contact.lead_status)) {
-            funnelCounts.set(stage.name, (funnelCounts.get(stage.name) || 0) + 1);
-          }
-        });
-      });
-
-      const totalLeads = contacts?.length || 1;
-      const funnel: FunnelStage[] = SALES_FUNNEL_STAGES.map(stage => ({
-        stage: stage.name,
-        value: funnelCounts.get(stage.name) || 0,
-        percentage: Math.round(((funnelCounts.get(stage.name) || 0) / totalLeads) * 100),
-      }));
-
-      // Timeline by date
-      const timelineMap = new Map<string, { vendas: number; quantidade: number }>();
-      (contacts || []).filter((c: any) => CONVERSION_STATUSES.includes(c.lead_status))
-        .forEach((c: any) => {
-          const dateKey = format(new Date(c.created_at), 'dd/MM');
-          if (!timelineMap.has(dateKey)) {
-            timelineMap.set(dateKey, { vendas: 0, quantidade: 0 });
-          }
-          const t = timelineMap.get(dateKey)!;
-          t.vendas += c.negotiated_value || 0;
-          t.quantidade++;
-        });
-
+      // Timeline sorted by date
       const timeline = Array.from(timelineMap.entries())
-        .map(([date, data]) => ({ date, ...data, meta: 4000 }))
+        .map(([date, data]) => ({ date, ...data }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
       const totalRevenue = sellers.reduce((s, a) => s + a.revenue, 0);
-      const totalConversions = sellers.reduce((s, a) => s + a.conversions, 0);
+      const totalConversions = sellers.reduce((s, a) => s + a.orders_count, 0);
 
-      return { sellers, funnel, timeline, totalRevenue, totalConversions };
+      // Find current user's stats
+      const myStats = userId ? sellers.find(s => s.agent_id === userId) || null : null;
+
+      return { sellers, timeline, totalRevenue, totalConversions, myStats };
     },
     enabled: !!dateRange?.from && !!dateRange?.to,
     staleTime: 5 * 60 * 1000,
@@ -517,14 +460,19 @@ export function useReportPerformance(dateRange: DateRange | undefined, selectedA
         }
       });
 
-      // Count sales
-      (contacts || []).forEach((contact: any) => {
-        if (contact.assigned_to && agentMap.has(contact.assigned_to)) {
-          if (CONVERSION_STATUSES.includes(contact.lead_status)) {
-            const agent = agentMap.get(contact.assigned_to)!;
-            agent.total_sales++;
-            agent.revenue += contact.negotiated_value || 0;
-          }
+      // Count sales from orders table
+      const { data: ordersByAgent } = await supabase
+        .from('orders')
+        .select('seller_id, total')
+        .neq('status', 'canceled')
+        .gte('created_at', startDate)
+        .lte('created_at', endDate);
+
+      (ordersByAgent || []).forEach((order: any) => {
+        if (order.seller_id && agentMap.has(order.seller_id)) {
+          const agent = agentMap.get(order.seller_id)!;
+          agent.total_sales++;
+          agent.revenue += order.total || 0;
         }
       });
 
@@ -547,12 +495,13 @@ export function useReportPerformance(dateRange: DateRange | undefined, selectedA
 
       const selectedAgent = selectedAgentId ? agents.find(a => a.agent_id === selectedAgentId) || null : null;
 
-      // Mock weekly data (would need more complex date grouping)
+      // Calculate weekly data based on orders
+      const ordersCount = ordersByAgent?.length || 0;
       const weeklyData = [
-        { week: 'Sem 1', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor((contacts?.filter((c: any) => CONVERSION_STATUSES.includes(c.lead_status)).length || 0) / 4), sla: avgSla },
-        { week: 'Sem 2', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor((contacts?.filter((c: any) => CONVERSION_STATUSES.includes(c.lead_status)).length || 0) / 4), sla: avgSla },
-        { week: 'Sem 3', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor((contacts?.filter((c: any) => CONVERSION_STATUSES.includes(c.lead_status)).length || 0) / 4), sla: avgSla },
-        { week: 'Sem 4', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor((contacts?.filter((c: any) => CONVERSION_STATUSES.includes(c.lead_status)).length || 0) / 4), sla: avgSla },
+        { week: 'Sem 1', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor(ordersCount / 4), sla: avgSla },
+        { week: 'Sem 2', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor(ordersCount / 4), sla: avgSla },
+        { week: 'Sem 3', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor(ordersCount / 4), sla: avgSla },
+        { week: 'Sem 4', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor(ordersCount / 4), sla: avgSla },
       ];
 
       return {

@@ -17,7 +17,7 @@ import {
   TrendingUp,
   Target,
   ShoppingBag,
-  Star,
+  Trophy,
   ShoppingCart,
   Package,
   Headphones,
@@ -100,7 +100,8 @@ const datePresets = [
 
 export default function Reports() {
   const navigate = useNavigate();
-  const { hasPermission, isAdmin, isLoading: permissionsLoading } = usePermissions();
+  const { hasPermission, isAdmin, isLoading: permissionsLoading, profile } = usePermissions();
+  const canViewAllReports = isAdmin || hasPermission('reports', 'view_all');
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 6),
@@ -114,7 +115,11 @@ export default function Reports() {
   // Real data hooks
   const { data: slaData, isLoading: slaLoading } = useReportSLA(dateRange as { from: Date; to: Date } | undefined);
   const { data: attendanceData, isLoading: attendanceLoading } = useReportAttendance(dateRange as { from: Date; to: Date } | undefined);
-  const { data: salesData, isLoading: salesLoading } = useReportSales(dateRange as { from: Date; to: Date } | undefined);
+  const { data: salesData, isLoading: salesLoading } = useReportSales(
+    dateRange as { from: Date; to: Date } | undefined,
+    profile?.id,
+    canViewAllReports
+  );
   const { data: performanceData, isLoading: performanceLoading } = useReportPerformance(
     dateRange as { from: Date; to: Date } | undefined,
     selectedAgentId || undefined
@@ -753,77 +758,33 @@ export default function Reports() {
               </div>
             )}
 
-            {/* Funnel */}
-            <div className="grid grid-cols-2 gap-6">
-              <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-foreground mb-6">Funil de Conversão</h3>
-                {salesLoading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-12" />)}
-                  </div>
-                ) : (salesData?.funnel?.length || 0) > 0 ? (
-                  <div className="space-y-4">
-                    {salesData?.funnel.map((stage, idx) => (
-                      <div key={stage.stage}>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-foreground">{stage.stage}</span>
-                          <span className="text-sm text-foreground">
-                            <strong>{stage.value}</strong>
-                            <span className="text-muted-foreground ml-1">({stage.percentage}%)</span>
-                          </span>
-                        </div>
-                        <div className="h-8 bg-muted rounded-lg overflow-hidden">
-                          <div
-                            className="h-full rounded-lg transition-all duration-500 flex items-center justify-end pr-3"
-                            style={{
-                              width: `${Math.max(stage.percentage, 5)}%`,
-                              backgroundColor: idx === (salesData?.funnel?.length || 0) - 1 ? '#10B981' : COLORS[idx % COLORS.length],
-                            }}
-                          >
-                            {stage.percentage > 20 && (
-                              <span className="text-xs font-bold text-white">{stage.value}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-                    <Info size={32} className="mb-2" />
-                    <p className="text-sm">Sem dados no período</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Sales Timeline */}
-              <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-foreground mb-6">Evolução de Vendas</h3>
-                {salesLoading ? (
-                  <Skeleton className="h-64" />
-                ) : (salesData?.timeline?.length || 0) > 0 ? (
-                  <ResponsiveContainer width="100%" height={280}>
-                    <ComposedChart data={salesData?.timeline}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                      <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                      <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar yAxisId="left" dataKey="vendas" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Vendas (R$)" />
-                      <Line yAxisId="right" type="monotone" dataKey="quantidade" stroke="#10B981" strokeWidth={2} name="Quantidade" />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-                    <Info size={32} className="mb-2" />
-                    <p className="text-sm">Sem dados no período</p>
-                  </div>
-                )}
-              </div>
+            {/* Sales Timeline & Ranking */}
+            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-foreground mb-6">Evolução de Vendas</h3>
+              {salesLoading ? (
+                <Skeleton className="h-64" />
+              ) : (salesData?.timeline?.length || 0) > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <ComposedChart data={salesData?.timeline}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar yAxisId="left" dataKey="vendas" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Vendas (R$)" />
+                    <Line yAxisId="right" type="monotone" dataKey="quantidade" stroke="#10B981" strokeWidth={2} name="Quantidade" />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                  <Info size={32} className="mb-2" />
+                  <p className="text-sm">Sem dados no período</p>
+                </div>
+              )}
             </div>
 
-            {/* Top Sellers Table */}
+            {/* Top Sellers Table with Trophies */}
             <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
               <div className="p-6 border-b border-border">
                 <h3 className="text-lg font-semibold text-foreground">Ranking de Vendedores</h3>
@@ -838,25 +799,32 @@ export default function Reports() {
                     <tr className="bg-muted/50 border-b border-border">
                       <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">#</th>
                       <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Vendedor</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Leads</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Vendas</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Pedidos</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Faturamento</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Ticket Médio</th>
-                      <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Conversão</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {salesData?.sellers.map((seller) => (
                       <tr key={seller.agent_id} className="hover:bg-muted/30">
                         <td className="px-6 py-4">
-                          <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                            seller.rank === 1 ? 'bg-status-warning/20 text-status-warning' :
-                            seller.rank === 2 ? 'bg-neutral-200 text-neutral-600' :
-                            seller.rank === 3 ? 'bg-orange-100 text-orange-700' :
-                            'bg-muted text-muted-foreground'
-                          }`}>
-                            {seller.rank}
-                          </span>
+                          {seller.rank === 1 ? (
+                            <div className="flex items-center justify-center w-10 h-10">
+                              <Trophy size={28} className="text-yellow-500 fill-yellow-500" />
+                            </div>
+                          ) : seller.rank === 2 ? (
+                            <div className="flex items-center justify-center w-10 h-10">
+                              <Trophy size={24} className="text-gray-400 fill-gray-400" />
+                            </div>
+                          ) : seller.rank === 3 ? (
+                            <div className="flex items-center justify-center w-10 h-10">
+                              <Trophy size={22} className="text-orange-600 fill-orange-600" />
+                            </div>
+                          ) : (
+                            <span className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold bg-muted text-muted-foreground">
+                              {seller.rank}
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -869,18 +837,12 @@ export default function Reports() {
                             <span className="font-medium text-foreground">{seller.name}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-center text-foreground">{seller.total_leads}</td>
-                        <td className="px-6 py-4 text-center font-medium text-foreground">{seller.conversions}</td>
+                        <td className="px-6 py-4 text-center font-medium text-foreground">{seller.orders_count}</td>
                         <td className="px-6 py-4 text-center font-medium text-status-success">
                           R$ {seller.revenue.toLocaleString()}
                         </td>
                         <td className="px-6 py-4 text-center text-foreground">
                           R$ {seller.avg_ticket.toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="px-2 py-1 bg-primary/10 text-primary rounded-full text-xs font-bold">
-                            {seller.conversion_rate}%
-                          </span>
                         </td>
                       </tr>
                     ))}
