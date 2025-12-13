@@ -17,9 +17,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle, UserPlus } from 'lucide-react';
 import { useCreateOrder } from '@/hooks/useOrders';
-import { useContacts } from '@/hooks/useContacts';
+import { useContacts, type Contact } from '@/hooks/useContacts';
 import { useProductsForOrders, ProductForOrder } from '@/hooks/useProductsForOrders';
 import { useActiveStores } from '@/hooks/useStores';
 import { useTeam } from '@/hooks/useTeam';
@@ -28,6 +28,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ContactFormModal } from '@/components/contacts/ContactFormModal';
 
 interface OrderItem {
   product_name: string;
@@ -97,6 +98,9 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   // Search states
   const [contactSearch, setContactSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  
+  // New contact modal
+  const [showNewContactModal, setShowNewContactModal] = useState(false);
 
   // Data hooks
   const { data: contacts = [] } = useContacts();
@@ -115,6 +119,11 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     c.full_name.toLowerCase().includes(contactSearch.toLowerCase()) ||
     c.phone.includes(contactSearch)
   );
+  
+  const handleNewContactSuccess = (contact: Contact) => {
+    setContactId(contact.id);
+    setShowNewContactModal(false);
+  };
 
   const addItem = () => {
     setItems([...items, { product_name: '', unit_price: 0, quantity: 1, discount: 0, discount_type: 'fixed' }]);
@@ -264,26 +273,52 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                     <User size={14} />
                     Cliente
                   </Label>
-                  <Select value={contactId} onValueChange={setContactId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um cliente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <div className="p-2">
-                        <Input
-                          placeholder="Buscar cliente..."
-                          value={contactSearch}
-                          onChange={(e) => setContactSearch(e.target.value)}
-                          className="mb-2"
-                        />
-                      </div>
-                      {filteredContacts.slice(0, 10).map((contact) => (
-                        <SelectItem key={contact.id} value={contact.id}>
-                          {contact.full_name} - {contact.phone}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex gap-2">
+                    <Select value={contactId} onValueChange={setContactId}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Selecione um cliente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <div className="p-2">
+                          <Input
+                            placeholder="Buscar cliente..."
+                            value={contactSearch}
+                            onChange={(e) => setContactSearch(e.target.value)}
+                            className="mb-2"
+                          />
+                        </div>
+                        {filteredContacts.length === 0 && contactSearch.length > 0 ? (
+                          <div className="p-3 text-center text-sm text-muted-foreground">
+                            Nenhum cliente encontrado
+                          </div>
+                        ) : (
+                          filteredContacts.slice(0, 10).map((contact) => (
+                            <SelectItem key={contact.id} value={contact.id}>
+                              {contact.full_name} - {contact.phone}
+                            </SelectItem>
+                          ))
+                        )}
+                        <Separator className="my-1" />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewContactModal(true)}
+                          className="w-full flex items-center gap-2 px-2 py-2 text-sm text-primary hover:bg-muted rounded-sm transition-colors"
+                        >
+                          <UserPlus size={14} />
+                          Criar novo cliente
+                        </button>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowNewContactModal(true)}
+                      title="Novo cliente"
+                    >
+                      <UserPlus size={16} />
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -648,6 +683,13 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
           </div>
         </div>
       </DialogContent>
+      
+      <ContactFormModal
+        open={showNewContactModal}
+        onOpenChange={setShowNewContactModal}
+        onSuccess={handleNewContactSuccess}
+        simplified
+      />
     </Dialog>
   );
 }
