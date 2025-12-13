@@ -98,7 +98,7 @@ export function OrderDetailsModal({ order, open, onOpenChange }: OrderDetailsMod
           </TabsList>
 
           <TabsContent value="details">
-            <ScrollArea className="max-h-[60vh] pr-4">
+            <ScrollArea className="max-h-[60vh] px-4">
               <div className="space-y-6 pt-4">
                 {/* Cliente */}
                 <div className="flex items-start gap-3 p-4 bg-muted rounded-lg">
