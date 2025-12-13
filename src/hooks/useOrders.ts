@@ -117,6 +117,16 @@ export interface OrderFilters {
   has_discount?: boolean;
   has_conversation?: boolean;
   shipping_method?: string;
+  // Novos filtros
+  store_id?: string;
+  order_type?: string;
+  fulfillment_status?: string;
+  installments?: string;
+  has_tracking?: boolean;
+  expected_delivery_from?: string;
+  expected_delivery_to?: string;
+  use_order_date?: boolean;
+  payment_condition?: string;
 }
 
 export function useOrders(filters?: { status?: string; contact_id?: string }) {
@@ -193,14 +203,23 @@ export function useOrdersAdvanced(filters: OrderFilters) {
         query = query.eq('shipping_method', filters.shipping_method);
       }
 
-      // Filtro por data inicial
+      // Filtro por data inicial (usa order_date ou created_at)
+      const dateField = filters.use_order_date ? 'order_date' : 'created_at';
       if (filters.date_from) {
-        query = query.gte('created_at', filters.date_from + 'T00:00:00');
+        if (filters.use_order_date) {
+          query = query.gte(dateField, filters.date_from);
+        } else {
+          query = query.gte(dateField, filters.date_from + 'T00:00:00');
+        }
       }
 
       // Filtro por data final
       if (filters.date_to) {
-        query = query.lte('created_at', filters.date_to + 'T23:59:59');
+        if (filters.use_order_date) {
+          query = query.lte(dateField, filters.date_to);
+        } else {
+          query = query.lte(dateField, filters.date_to + 'T23:59:59');
+        }
       }
 
       // Filtro por valor mínimo
@@ -221,6 +240,48 @@ export function useOrdersAdvanced(filters: OrderFilters) {
       // Filtro por conversa vinculada
       if (filters.has_conversation) {
         query = query.not('conversation_id', 'is', null);
+      }
+
+      // Filtro por loja
+      if (filters.store_id && filters.store_id !== 'all') {
+        query = query.eq('store_id', filters.store_id);
+      }
+
+      // Filtro por tipo de pedido
+      if (filters.order_type && filters.order_type !== 'all') {
+        query = query.eq('order_type', filters.order_type);
+      }
+
+      // Filtro por status de fulfillment
+      if (filters.fulfillment_status && filters.fulfillment_status !== 'all') {
+        query = query.eq('fulfillment_status', filters.fulfillment_status);
+      }
+
+      // Filtro por parcelas
+      if (filters.installments && filters.installments !== 'all') {
+        if (filters.installments === '4+') {
+          query = query.gte('installments', 4);
+        } else {
+          query = query.eq('installments', parseInt(filters.installments));
+        }
+      }
+
+      // Filtro por código de rastreio
+      if (filters.has_tracking) {
+        query = query.not('tracking_code', 'is', null);
+      }
+
+      // Filtro por previsão de entrega
+      if (filters.expected_delivery_from) {
+        query = query.gte('expected_delivery_date', filters.expected_delivery_from);
+      }
+      if (filters.expected_delivery_to) {
+        query = query.lte('expected_delivery_date', filters.expected_delivery_to);
+      }
+
+      // Filtro por condição de pagamento
+      if (filters.payment_condition && filters.payment_condition !== 'all') {
+        query = query.eq('payment_condition', filters.payment_condition);
       }
 
       const { data, error } = await query;
