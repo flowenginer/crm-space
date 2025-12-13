@@ -101,7 +101,7 @@ export function RoleManagement() {
       color: role.color || '#8B5CF6',
       permissions: (role.permissions || {}) as Record<string, Record<string, boolean>>,
     });
-    setExpandedCategories(Object.keys(permissionsByCategory));
+    setExpandedCategories([]);
     setShowModal(true);
   };
 
