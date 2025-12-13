@@ -684,28 +684,46 @@ export function useDeleteOrder() {
 
   return useMutation({
     mutationFn: async (orderId: string) => {
-      // Primeiro deletar itens do pedido
+      // 1. Deletar transações financeiras relacionadas
+      const { error: financialError } = await supabase
+        .from('financial_transactions')
+        .delete()
+        .eq('order_id', orderId);
+      if (financialError) throw financialError;
+
+      // 2. Deletar pagamentos do pedido
+      const { error: paymentsError } = await supabase
+        .from('order_payments')
+        .delete()
+        .eq('order_id', orderId);
+      if (paymentsError) throw paymentsError;
+
+      // 3. Deletar histórico de status
+      const { error: historyError } = await supabase
+        .from('order_status_history')
+        .delete()
+        .eq('order_id', orderId);
+      if (historyError) throw historyError;
+
+      // 4. Deletar itens do pedido
       const { error: itemsError } = await supabase
         .from('order_items')
         .delete()
         .eq('order_id', orderId);
-
       if (itemsError) throw itemsError;
 
-      // Depois deletar o pedido
-      const { error } = await supabase
-        .from('orders')
-        .delete()
-        .eq('id', orderId);
-
+      // 5. Finalmente, deletar o pedido
+      const { error } = await supabase.from('orders').delete().eq('id', orderId);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['orders-advanced'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-transactions'] });
       toast.success('Pedido excluído com sucesso');
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('Erro ao excluir pedido:', error);
       toast.error('Erro ao excluir pedido');
     },
   });
