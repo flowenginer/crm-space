@@ -80,13 +80,15 @@ function buildMenuHierarchy(items: MenuItem[]): MenuItem[] {
     }
   });
 
-  // Ordenar children por position
-  roots.forEach(root => {
-    if (root.children) {
-      root.children.sort((a, b) => a.position - b.position);
+  // Função recursiva para ordenar todos os níveis de children
+  const sortChildrenRecursive = (item: MenuItem) => {
+    if (item.children && item.children.length > 0) {
+      item.children.sort((a, b) => a.position - b.position);
+      item.children.forEach(sortChildrenRecursive);
     }
-  });
+  };
 
+  roots.forEach(sortChildrenRecursive);
   return roots.sort((a, b) => a.position - b.position);
 }
 

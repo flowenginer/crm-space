@@ -159,16 +159,14 @@ function SortableMenuItem({
             className="data-[state=checked]:bg-green-500"
           />
           
-          {!item.parent_id && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onAddSubmenu(item.id)}
-              title="Adicionar submenu"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onAddSubmenu(item.id)}
+            title="Adicionar submenu"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
 
           <Button
             variant="ghost"
@@ -208,6 +206,12 @@ function SortableMenuItem({
                   onEdit={onEdit}
                   onDelete={onDelete}
                   onToggleActive={onToggleActive}
+                  onAddSubmenu={onAddSubmenu}
+                  expandedItems={expandedItems}
+                  toggleExpanded={toggleExpanded}
+                  sensors={sensors}
+                  onSubmenuDragEnd={onSubmenuDragEnd}
+                  depth={1}
                 />
               ))}
             </div>
@@ -218,12 +222,18 @@ function SortableMenuItem({
   );
 }
 
-// Componente para submenu arrastável
+// Componente para submenu arrastável com suporte a hierarquia recursiva
 interface SortableSubmenuItemProps {
   item: MenuItem;
   onEdit: (item: MenuItem) => void;
   onDelete: (item: MenuItem) => void;
   onToggleActive: (item: MenuItem) => void;
+  onAddSubmenu: (parentId: string) => void;
+  expandedItems: Set<string>;
+  toggleExpanded: (id: string) => void;
+  sensors: ReturnType<typeof useSensors>;
+  onSubmenuDragEnd: (event: DragEndEvent, parentId: string, children: MenuItem[]) => void;
+  depth?: number;
 }
 
 function SortableSubmenuItem({
@@ -231,6 +241,12 @@ function SortableSubmenuItem({
   onEdit,
   onDelete,
   onToggleActive,
+  onAddSubmenu,
+  expandedItems,
+  toggleExpanded,
+  sensors,
+  onSubmenuDragEnd,
+  depth = 1,
 }: SortableSubmenuItemProps) {
   const {
     attributes,
@@ -246,58 +262,127 @@ function SortableSubmenuItem({
     transition,
   };
 
+  const hasChildren = item.children && item.children.length > 0;
+  const isExpanded = expandedItems.has(item.id);
+  const isCascadeMenu = !item.href && hasChildren;
+  const maxDepth = 3; // Máximo de 3 níveis de profundidade
+
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        'flex items-center gap-2 p-2 rounded-lg border bg-card/50',
-        isDragging && 'opacity-50 shadow-lg z-50',
-        !item.is_active && 'opacity-60'
-      )}
-    >
-      <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab hover:bg-muted p-1 rounded"
-      >
-        <GripVertical className="h-3 w-3 text-muted-foreground" />
-      </button>
-
-      <div className="flex items-center justify-center w-6 h-6 rounded bg-muted">
-        <DynamicIcon name={item.icon} className="h-3 w-3" />
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium truncate">{item.title}</span>
-        {item.href && (
-          <span className="text-xs text-muted-foreground ml-2">{item.href}</span>
+    <div ref={setNodeRef} style={style}>
+      <div
+        className={cn(
+          'flex items-center gap-2 p-2 rounded-lg border bg-card/50',
+          isDragging && 'opacity-50 shadow-lg z-50',
+          !item.is_active && 'opacity-60'
         )}
+      >
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab hover:bg-muted p-1 rounded"
+        >
+          <GripVertical className="h-3 w-3 text-muted-foreground" />
+        </button>
+
+        {hasChildren && (
+          <button
+            onClick={() => toggleExpanded(item.id)}
+            className="p-1 hover:bg-muted rounded"
+          >
+            {isExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </button>
+        )}
+
+        <div className="flex items-center justify-center w-6 h-6 rounded bg-muted">
+          <DynamicIcon name={item.icon} className="h-3 w-3" />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate">{item.title}</span>
+            {isCascadeMenu && (
+              <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
+                cascata
+              </span>
+            )}
+          </div>
+          {item.href && (
+            <span className="text-xs text-muted-foreground">{item.href}</span>
+          )}
+        </div>
+
+        <Switch
+          checked={item.is_active}
+          onCheckedChange={() => onToggleActive(item)}
+          className="scale-75"
+        />
+
+        {depth < maxDepth && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => onAddSubmenu(item.id)}
+            title="Adicionar submenu"
+          >
+            <Plus className="h-3 w-3" />
+          </Button>
+        )}
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => onEdit(item)}
+        >
+          <Pencil className="h-3 w-3" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-destructive hover:text-destructive"
+          onClick={() => onDelete(item)}
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
       </div>
 
-      <Switch
-        checked={item.is_active}
-        onCheckedChange={() => onToggleActive(item)}
-        className="scale-75"
-      />
-
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7"
-        onClick={() => onEdit(item)}
-      >
-        <Pencil className="h-3 w-3" />
-      </Button>
-
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 text-destructive hover:text-destructive"
-        onClick={() => onDelete(item)}
-      >
-        <Trash2 className="h-3 w-3" />
-      </Button>
+      {/* Renderizar filhos recursivamente */}
+      {isExpanded && hasChildren && (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={(event) => onSubmenuDragEnd(event, item.id, item.children!)}
+        >
+          <SortableContext
+            items={item.children!.map(child => child.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="ml-6 mt-2 space-y-2 border-l-2 border-primary/20 pl-4">
+              {item.children!.map((child) => (
+                <SortableSubmenuItem
+                  key={child.id}
+                  item={child}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onToggleActive={onToggleActive}
+                  onAddSubmenu={onAddSubmenu}
+                  expandedItems={expandedItems}
+                  toggleExpanded={toggleExpanded}
+                  sensors={sensors}
+                  onSubmenuDragEnd={onSubmenuDragEnd}
+                  depth={depth + 1}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
     </div>
   );
 }
