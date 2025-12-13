@@ -4,8 +4,15 @@ import { supabase } from '@/integrations/supabase/client';
 export interface CompanySettings {
   id: string;
   company_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  cnpj: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  logo_url: string | null;
   conversion_status_ids: string[];
-  // ... other fields from company_settings
   timezone: string | null;
   sla_first_response_minutes: number | null;
   sla_resolution_minutes: number | null;
