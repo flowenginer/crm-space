@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Package, Eye, BarChart3, Star } from 'lucide-react';
+import { Plus, Package, Eye, BarChart3, Star, AlertTriangle } from 'lucide-react';
 import { useOrdersAdvanced, useContactOrderCounts, Order } from '@/hooks/useOrders';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -122,6 +122,20 @@ export default function Orders() {
     return (orderCounts[order.contact_id] || 0) === 1;
   };
 
+  const isContactComplete = (contact: Order['contact']) => {
+    if (!contact) return false;
+    return !!(
+      contact.full_name &&
+      contact.cpf_cnpj &&
+      contact.zip_code &&
+      contact.street &&
+      contact.number &&
+      contact.neighborhood &&
+      contact.city &&
+      contact.state
+    );
+  };
+
   const handleViewOrder = (order: Order) => {
     setSelectedOrder(order);
     setIsDetailsOpen(true);
@@ -229,6 +243,18 @@ export default function Orders() {
                                       </TooltipTrigger>
                                       <TooltipContent>
                                         <p>Primeira compra</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                                {!isContactComplete(order.contact) && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger>
+                                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Cadastro incompleto para envio</p>
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>

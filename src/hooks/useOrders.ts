@@ -39,6 +39,13 @@ export interface Order {
     id: string;
     full_name: string;
     phone: string;
+    cpf_cnpj?: string | null;
+    zip_code?: string | null;
+    street?: string | null;
+    number?: string | null;
+    neighborhood?: string | null;
+    city?: string | null;
+    state?: string | null;
   };
 }
 
@@ -122,7 +129,7 @@ export function useOrders(filters?: { status?: string; contact_id?: string }) {
         .from('orders')
         .select(`
           *,
-          contact:contacts(id, full_name, phone)
+          contact:contacts(id, full_name, phone, cpf_cnpj, zip_code, street, number, neighborhood, city, state)
         `)
         .order('created_at', { ascending: false });
 
@@ -152,7 +159,7 @@ export function useOrdersAdvanced(filters: OrderFilters) {
         .from('orders')
         .select(`
           *,
-          contact:contacts(id, full_name, phone)
+          contact:contacts(id, full_name, phone, cpf_cnpj, zip_code, street, number, neighborhood, city, state)
         `)
         .order('created_at', { ascending: false });
 

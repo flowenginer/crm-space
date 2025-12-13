@@ -19,9 +19,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle, UserPlus, CalendarIcon, Hash } from 'lucide-react';
+import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle, UserPlus, CalendarIcon, Hash, Pencil } from 'lucide-react';
 import { useCreateOrder } from '@/hooks/useOrders';
 import { useContactsForERP, type ERPContact } from '@/hooks/useContactsForERP';
+import { validateContactForShipping } from '@/hooks/useContactValidation';
 import { type Contact } from '@/hooks/useContacts';
 import { useProductsForOrders, ProductForOrder } from '@/hooks/useProductsForOrders';
 import { useActiveStores } from '@/hooks/useStores';
@@ -35,6 +36,7 @@ import { ContactFormModal } from '@/components/contacts/ContactFormModal';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 interface OrderItem {
   product_name: string;
@@ -84,7 +86,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   
   // Form state
   const [contactId, setContactId] = useState(initialContactId || '');
-  const [selectedContact, setSelectedContact] = useState<Pick<ERPContact, 'id' | 'full_name' | 'phone'> | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ERPContact | null>(null);
   const [storeId, setStoreId] = useState('');
   const [sellerId, setSellerId] = useState(user?.id || '');
   const [items, setItems] = useState<OrderItem[]>([
@@ -121,8 +123,12 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   const [contactSearch, setContactSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   
-  // New contact modal
+  // Contact modals
   const [showNewContactModal, setShowNewContactModal] = useState(false);
+  const [showEditContactModal, setShowEditContactModal] = useState(false);
+  
+  // Contact validation
+  const contactValidation = validateContactForShipping(selectedContact);
   
   // Calculate delivery date based on days (business or calendar)
   const calculateDeliveryDate = (days: number, type: 'business' | 'calendar'): Date => {
@@ -170,10 +176,9 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   useEffect(() => {
     if (open && initialContactId && !selectedContact) {
       const fetchContact = async () => {
-        const { supabase } = await import('@/integrations/supabase/client');
         const { data } = await supabase
           .from('contacts')
-          .select('id, full_name, phone')
+          .select('id, full_name, phone, email, cpf_cnpj, zip_code, street, number, neighborhood, city, state')
           .eq('id', initialContactId)
           .single();
         
@@ -193,10 +198,33 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     }
   }, [open]);
   
-  const handleNewContactSuccess = (contact: Contact) => {
-    setContactId(contact.id);
-    setSelectedContact({ id: contact.id, full_name: contact.full_name, phone: contact.phone });
+  const handleNewContactSuccess = async (contact: Contact) => {
+    // Fetch complete contact data after creation
+    const { data } = await supabase
+      .from('contacts')
+      .select('id, full_name, phone, email, cpf_cnpj, zip_code, street, number, neighborhood, city, state')
+      .eq('id', contact.id)
+      .single();
+    
+    if (data) {
+      setContactId(data.id);
+      setSelectedContact(data as ERPContact);
+    }
     setShowNewContactModal(false);
+  };
+
+  const handleEditContactSuccess = async (contact: Contact) => {
+    // Fetch updated contact data
+    const { data } = await supabase
+      .from('contacts')
+      .select('id, full_name, phone, email, cpf_cnpj, zip_code, street, number, neighborhood, city, state')
+      .eq('id', contact.id)
+      .single();
+    
+    if (data) {
+      setSelectedContact(data as ERPContact);
+    }
+    setShowEditContactModal(false);
   };
 
   const handleContactChange = (value: string) => {
@@ -481,6 +509,17 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                         </button>
                       </SelectContent>
                     </Select>
+                    {selectedContact && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setShowEditContactModal(true)}
+                        title="Editar cadastro do cliente"
+                      >
+                        <Pencil size={16} />
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -491,6 +530,31 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                       <UserPlus size={16} />
                     </Button>
                   </div>
+                  
+                  {/* Alerta de cadastro incompleto */}
+                  {selectedContact && !contactValidation.isComplete && (
+                    <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-md mt-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-yellow-700 dark:text-yellow-300 font-medium">
+                          Cadastro incompleto para envio
+                        </p>
+                        <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5">
+                          Campos faltantes: {contactValidation.missingFields.join(', ')}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="flex-shrink-0 border-yellow-500/50 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-500/20"
+                        onClick={() => setShowEditContactModal(true)}
+                      >
+                        <Pencil size={12} className="mr-1" />
+                        Completar
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1038,6 +1102,28 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
         onSuccess={handleNewContactSuccess}
         simplified
       />
+
+      {selectedContact && (
+        <ContactFormModal
+          open={showEditContactModal}
+          onOpenChange={setShowEditContactModal}
+          mode="edit"
+          initialData={{
+            id: selectedContact.id,
+            full_name: selectedContact.full_name,
+            phone: selectedContact.phone,
+            email: selectedContact.email,
+            cpf_cnpj: selectedContact.cpf_cnpj,
+            zip_code: selectedContact.zip_code,
+            street: selectedContact.street,
+            number: selectedContact.number,
+            neighborhood: selectedContact.neighborhood,
+            city: selectedContact.city,
+            state: selectedContact.state,
+          } as Contact}
+          onSuccess={handleEditContactSuccess}
+        />
+      )}
     </Dialog>
   );
 }
