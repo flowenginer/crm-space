@@ -38,6 +38,7 @@ import Catalogs from "@/pages/products/Catalogs";
 import Products from "@/pages/products/Products";
 import Templates from "@/pages/products/Templates";
 import Orders from "@/pages/Orders";
+import OrderSettings from "@/pages/orders/Settings";
 import Quotes from "@/pages/Quotes";
 import Financial from "@/pages/Financial";
 import SellerDashboard from "@/pages/SellerDashboard";
@@ -185,8 +186,13 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/orders" element={
-                <ProtectedRoute permission="deals.view">
+                <ProtectedRoute permission="orders.view">
                   <Orders />
+                </ProtectedRoute>
+              } />
+              <Route path="/orders/settings" element={
+                <ProtectedRoute permission="orders.manage_settings">
+                  <OrderSettings />
                 </ProtectedRoute>
               } />
               <Route path="/quotes" element={

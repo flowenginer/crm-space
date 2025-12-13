@@ -182,6 +182,7 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
       { key: 'orders.create', name: 'Criar Pedido', description: 'Adicionar novos pedidos' },
       { key: 'orders.update', name: 'Editar Pedido', description: 'Modificar pedidos existentes' },
       { key: 'orders.delete', name: 'Cancelar Pedido', description: 'Cancelar pedidos' },
+      { key: 'orders.manage_settings', name: 'Gerenciar Configurações', description: 'Configurar status e opções de pedidos' },
     ],
   },
   {

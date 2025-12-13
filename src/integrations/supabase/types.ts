@@ -2997,6 +2997,45 @@ export type Database = {
           },
         ]
       }
+      order_statuses: {
+        Row: {
+          can_edit_order: boolean | null
+          color: string | null
+          created_at: string | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          is_final: boolean | null
+          name: string
+          order_position: number | null
+          value: string
+        }
+        Insert: {
+          can_edit_order?: boolean | null
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_final?: boolean | null
+          name: string
+          order_position?: number | null
+          value: string
+        }
+        Update: {
+          can_edit_order?: boolean | null
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_final?: boolean | null
+          name?: string
+          order_position?: number | null
+          value?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           assigned_to: string | null

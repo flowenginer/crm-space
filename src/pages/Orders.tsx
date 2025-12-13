@@ -18,8 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Package, Eye, BarChart3, Star, AlertTriangle, Pencil, Gift, Truck, Trash2, ChevronDown } from 'lucide-react';
+import { Plus, Package, Eye, BarChart3, Star, AlertTriangle, Pencil, Gift, Truck, Trash2, ChevronDown, Settings } from 'lucide-react';
 import { useOrdersAdvanced, useContactOrderPositions, useUpdateOrderStatus, useDeleteOrder, Order } from '@/hooks/useOrders';
+import { useOrderStatuses } from '@/hooks/useOrderStatuses';
+import { Link } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   AlertDialog,
@@ -41,15 +43,15 @@ import { OrderKanban } from '@/components/orders/OrderKanban';
 import { OrderFilters, OrderFiltersState, initialFilters } from '@/components/orders/OrderFilters';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  draft: { label: 'Rascunho', variant: 'secondary' },
-  pending: { label: 'Pendente', variant: 'outline' },
-  confirmed: { label: 'Confirmado', variant: 'default' },
-  processing: { label: 'Processando', variant: 'default' },
-  shipped: { label: 'Enviado', variant: 'default' },
-  delivered: { label: 'Entregue', variant: 'default' },
-  canceled: { label: 'Cancelado', variant: 'destructive' },
-};
+// Status config será carregado dinamicamente do banco
+
+// Função para converter cor hex para classe de variant do Badge
+function getVariantFromColor(color: string, isFinal: boolean): 'default' | 'secondary' | 'destructive' | 'outline' {
+  if (isFinal && color === '#ef4444') return 'destructive';
+  if (color === '#6b7280') return 'secondary';
+  if (color === '#f59e0b') return 'outline';
+  return 'default';
+}
 
 const paymentStatusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'outline' },
@@ -101,7 +103,21 @@ export default function Orders() {
   }), [filters]);
 
   const { data: orders = [], isLoading } = useOrdersAdvanced(hookFilters);
+  const { data: orderStatuses = [] } = useOrderStatuses(true);
   const updateOrderStatus = useUpdateOrderStatus();
+
+  // Criar mapa de status para acesso rápido
+  const statusConfig = useMemo(() => {
+    const config: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; color: string }> = {};
+    orderStatuses.forEach(status => {
+      config[status.value] = {
+        label: status.name,
+        variant: getVariantFromColor(status.color, status.is_final),
+        color: status.color,
+      };
+    });
+    return config;
+  }, [orderStatuses]);
 
   // Obter IDs dos contatos e pedidos para calcular posições
   const orderIds = useMemo(() => orders.map(o => o.id), [orders]);
@@ -219,10 +235,18 @@ export default function Orders() {
             <h1 className="text-3xl font-bold">Pedidos</h1>
             <p className="text-muted-foreground">Gerencie seus pedidos e vendas</p>
           </div>
-          <Button onClick={() => { setEditingOrder(null); setIsModalOpen(true); }}>
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Pedido
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/orders/settings">
+                <Settings className="h-4 w-4 mr-2" />
+                Configurações
+              </Link>
+            </Button>
+            <Button onClick={() => { setEditingOrder(null); setIsModalOpen(true); }}>
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Pedido
+            </Button>
+          </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
