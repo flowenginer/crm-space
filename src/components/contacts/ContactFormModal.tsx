@@ -11,13 +11,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Card, CardContent } from '@/components/ui/card';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useCreateContact, useUpdateContact, type Contact } from '@/hooks/useContacts';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
 import { useLeadStatuses } from '@/hooks/useLeadKanban';
+import { useContactHistory } from '@/hooks/useContactHistory';
+import { useERPEnabled } from '@/hooks/useERPEnabled';
 import { fetchAddressByCEP } from '@/utils/cep';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, FileText, Package, ShoppingCart, DollarSign } from 'lucide-react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 const brazilianStates = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
@@ -45,6 +52,18 @@ export function ContactFormModal({
   const { data: team = [] } = useTeam();
   const { data: departments = [] } = useDepartments();
   const { data: leadStatuses = [] } = useLeadStatuses();
+  const isERPEnabled = useERPEnabled();
+  
+  // Contact history (only for edit mode)
+  const { 
+    quotes, 
+    orders, 
+    quotesCount, 
+    ordersCount, 
+    totalPurchased,
+    totalOrdered,
+    isLoading: isLoadingHistory 
+  } = useContactHistory(mode === 'edit' && initialData ? initialData.id : null);
 
   const [isLoadingCEP, setIsLoadingCEP] = useState(false);
 
@@ -292,10 +311,13 @@ export function ContactFormModal({
         </DialogHeader>
 
         <Tabs defaultValue="basic" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className={`grid w-full ${mode === 'edit' && isERPEnabled ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <TabsTrigger value="basic">Informações</TabsTrigger>
             <TabsTrigger value="address">Endereço</TabsTrigger>
             <TabsTrigger value="crm">CRM</TabsTrigger>
+            {mode === 'edit' && isERPEnabled && (
+              <TabsTrigger value="history">Histórico</TabsTrigger>
+            )}
           </TabsList>
 
           <ScrollArea className="h-[50vh] mt-4 pr-4">
@@ -602,6 +624,151 @@ export function ContactFormModal({
                 </div>
               </div>
             </TabsContent>
+
+            {/* History Tab - Only visible in edit mode with ERP enabled */}
+            {mode === 'edit' && isERPEnabled && (
+              <TabsContent value="history" className="space-y-4">
+                {isLoadingHistory ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <Card>
+                        <CardContent className="p-4 text-center">
+                          <FileText className="w-5 h-5 mx-auto mb-1 text-amber-500" />
+                          <div className="text-2xl font-bold">{quotesCount}</div>
+                          <div className="text-xs text-muted-foreground">Orçamentos</div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-4 text-center">
+                          <Package className="w-5 h-5 mx-auto mb-1 text-green-500" />
+                          <div className="text-2xl font-bold">{ordersCount}</div>
+                          <div className="text-xs text-muted-foreground">Pedidos</div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-4 text-center">
+                          <DollarSign className="w-5 h-5 mx-auto mb-1 text-blue-500" />
+                          <div className="text-lg font-bold">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalOrdered)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">Total em Pedidos</div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Quotes and Orders Lists */}
+                    <Accordion type="multiple" defaultValue={['quotes', 'orders']} className="space-y-2">
+                      <AccordionItem value="quotes" className="border rounded-lg">
+                        <AccordionTrigger className="px-4 hover:no-underline">
+                          <span className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-amber-500" />
+                            Orçamentos ({quotesCount})
+                          </span>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-4 pb-4">
+                          {quotes.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              Nenhum orçamento encontrado
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              {quotes.map((quote) => (
+                                <div key={quote.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                                  <div>
+                                    <span className="font-medium text-sm">#{quote.quote_number}</span>
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      {format(new Date(quote.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                                    </span>
+                                    <Badge variant="outline" className="ml-2 text-xs">
+                                      {quote.status === 'pending' ? 'Pendente' :
+                                       quote.status === 'approved' ? 'Aprovado' :
+                                       quote.status === 'rejected' ? 'Rejeitado' :
+                                       quote.status === 'converted' ? 'Convertido' : quote.status}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="font-medium text-sm">
+                                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(quote.total)}
+                                    </div>
+                                    {quote.seller_profile?.full_name && (
+                                      <div className="text-xs text-muted-foreground">
+                                        por {quote.seller_profile.full_name}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      <AccordionItem value="orders" className="border rounded-lg">
+                        <AccordionTrigger className="px-4 hover:no-underline">
+                          <span className="flex items-center gap-2">
+                            <Package className="w-4 h-4 text-green-500" />
+                            Pedidos ({ordersCount})
+                          </span>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-4 pb-4">
+                          {orders.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              Nenhum pedido encontrado
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              {orders.map((order) => (
+                                <div key={order.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                                  <div>
+                                    <span className="font-medium text-sm">#{order.order_number}</span>
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      {format(new Date(order.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                                    </span>
+                                    <Badge 
+                                      variant="outline" 
+                                      className={`ml-2 text-xs ${
+                                        order.status === 'delivered' || order.status === 'completed' 
+                                          ? 'border-green-500 text-green-500' 
+                                          : order.status === 'cancelled' 
+                                          ? 'border-red-500 text-red-500' 
+                                          : ''
+                                      }`}
+                                    >
+                                      {order.status === 'pending' ? 'Pendente' :
+                                       order.status === 'confirmed' ? 'Confirmado' :
+                                       order.status === 'processing' ? 'Em Preparo' :
+                                       order.status === 'shipped' ? 'Enviado' :
+                                       order.status === 'delivered' ? 'Entregue' :
+                                       order.status === 'completed' ? 'Concluído' :
+                                       order.status === 'cancelled' ? 'Cancelado' : order.status}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="font-medium text-sm">
+                                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.total)}
+                                    </div>
+                                    {order.seller_profile?.full_name && (
+                                      <div className="text-xs text-muted-foreground">
+                                        por {order.seller_profile.full_name}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  </>
+                )}
+              </TabsContent>
+            )}
           </ScrollArea>
         </Tabs>
 

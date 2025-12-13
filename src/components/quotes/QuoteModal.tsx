@@ -127,6 +127,13 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
     }
   }, [user?.id]);
 
+  // Update contactId when initialContactId changes (e.g., when modal opens from conversation)
+  useEffect(() => {
+    if (open && initialContactId) {
+      setContactId(initialContactId);
+    }
+  }, [open, initialContactId]);
+
   // Set default validity (7 days)
   useEffect(() => {
     if (open && !validUntil) {
