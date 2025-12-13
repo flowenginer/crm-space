@@ -23,6 +23,7 @@
 import {
   LayoutDashboard,
   MessageSquare,
+  MessagesSquare,
   Radio,
   FileText,
   CalendarClock,
@@ -39,6 +40,8 @@ import {
   LucideIcon,
   ShoppingCart,
   Wallet,
+  Package,
+  UserCircle,
 } from 'lucide-react';
 
 export interface PermissionDefinition {
@@ -71,6 +74,16 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     ],
   },
   {
+    key: 'seller',
+    label: 'Meu Painel',
+    icon: UserCircle,
+    order: 1.5,
+    permissions: [
+      { key: 'seller.view', name: 'Ver Meu Painel', description: 'Acessar painel individual do vendedor' },
+      { key: 'seller.view_goals', name: 'Ver Metas', description: 'Visualizar metas de vendas individuais' },
+    ],
+  },
+  {
     key: 'conversations',
     label: 'Conversas',
     icon: MessageSquare,
@@ -85,6 +98,16 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
       { key: 'conversations.transfer', name: 'Transferir Conversa', description: 'Transferir para outro atendente/departamento' },
       { key: 'conversations.close', name: 'Fechar Conversa', description: 'Fechar atendimentos' },
       { key: 'conversations.requests', name: 'Gerenciar Requisições', description: 'Visualizar e gerenciar requisições de contato' },
+    ],
+  },
+  {
+    key: 'internal_chat',
+    label: 'Chat Interno',
+    icon: MessagesSquare,
+    order: 2.5,
+    permissions: [
+      { key: 'internal_chat.view', name: 'Acessar Chat Interno', description: 'Usar o chat entre equipe' },
+      { key: 'internal_chat.send', name: 'Enviar Mensagens', description: 'Enviar mensagens no chat interno' },
     ],
   },
   {
@@ -158,6 +181,35 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
       { key: 'orders.create', name: 'Criar Pedido', description: 'Adicionar novos pedidos' },
       { key: 'orders.update', name: 'Editar Pedido', description: 'Modificar pedidos existentes' },
       { key: 'orders.delete', name: 'Cancelar Pedido', description: 'Cancelar pedidos' },
+    ],
+  },
+  {
+    key: 'products',
+    label: 'Produtos',
+    icon: Package,
+    order: 8.5,
+    permissions: [
+      { key: 'products.view', name: 'Ver Produtos', description: 'Acessar módulo de produtos' },
+      { key: 'products.create', name: 'Criar Produto', description: 'Adicionar novos produtos' },
+      { key: 'products.update', name: 'Editar Produto', description: 'Modificar produtos existentes' },
+      { key: 'products.delete', name: 'Excluir Produto', description: 'Remover produtos' },
+      { key: 'products.manage_catalogs', name: 'Gerenciar Catálogos', description: 'Criar e editar catálogos' },
+      { key: 'products.manage_templates', name: 'Gerenciar Templates', description: 'Criar e editar templates de produtos' },
+      { key: 'products.manage_attributes', name: 'Gerenciar Atributos', description: 'Criar e editar atributos de variação' },
+      { key: 'products.manage_price_rules', name: 'Gerenciar Regras de Preço', description: 'Configurar regras de precificação' },
+    ],
+  },
+  {
+    key: 'quotes',
+    label: 'Orçamentos',
+    icon: FileText,
+    order: 8.6,
+    permissions: [
+      { key: 'quotes.view', name: 'Ver Orçamentos', description: 'Visualizar orçamentos' },
+      { key: 'quotes.create', name: 'Criar Orçamento', description: 'Gerar novos orçamentos' },
+      { key: 'quotes.update', name: 'Editar Orçamento', description: 'Modificar orçamentos' },
+      { key: 'quotes.delete', name: 'Cancelar Orçamento', description: 'Cancelar orçamentos' },
+      { key: 'quotes.convert', name: 'Converter em Pedido', description: 'Converter orçamento em pedido' },
     ],
   },
   {
