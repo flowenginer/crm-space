@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Eye, User, AlertTriangle } from 'lucide-react';
 import { Order, useUpdateOrderStatus } from '@/hooks/useOrders';
+import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -14,15 +15,6 @@ interface OrderKanbanProps {
   orders: Order[];
   onViewOrder: (order: Order) => void;
 }
-
-const statusColumns = [
-  { key: 'draft', label: 'Rascunho', color: 'bg-slate-500' },
-  { key: 'pending', label: 'Pendente', color: 'bg-amber-500' },
-  { key: 'confirmed', label: 'Confirmado', color: 'bg-blue-500' },
-  { key: 'processing', label: 'Processando', color: 'bg-purple-500' },
-  { key: 'shipped', label: 'Enviado', color: 'bg-cyan-500' },
-  { key: 'delivered', label: 'Entregue', color: 'bg-emerald-500' },
-];
 
 const formatCurrency = (value: number | null) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
@@ -44,8 +36,12 @@ const isContactComplete = (contact: Order['contact']) => {
 };
 
 export function OrderKanban({ orders, onViewOrder }: OrderKanbanProps) {
+  const { data: orderStatuses = [] } = useOrderStatuses(true);
   const updateStatus = useUpdateOrderStatus();
   const [draggedOrder, setDraggedOrder] = useState<Order | null>(null);
+
+  // Filtrar status não-finais para o kanban (exceto cancelado)
+  const statusColumns = orderStatuses.filter(s => !s.is_final);
 
   const handleDragStart = (order: Order) => {
     setDraggedOrder(order);
@@ -57,8 +53,11 @@ export function OrderKanban({ orders, onViewOrder }: OrderKanbanProps) {
 
   const handleDrop = async (status: string) => {
     if (draggedOrder && draggedOrder.status !== status) {
+      // Get the current status config
+      const currentStatus = orderStatuses.find(s => s.value === draggedOrder.status);
+      
       // Block status change if contact registration is incomplete (except for draft)
-      if (status !== 'draft' && draggedOrder.status === 'draft') {
+      if (status !== 'draft' && currentStatus?.value === 'draft') {
         if (!isContactComplete(draggedOrder.contact)) {
           toast.error('Cadastro do cliente incompleto', {
             description: 'Complete o cadastro do cliente antes de alterar o status do pedido.',
@@ -80,24 +79,35 @@ export function OrderKanban({ orders, onViewOrder }: OrderKanbanProps) {
     return 'Cliente não informado';
   };
 
+  if (statusColumns.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-8 text-muted-foreground">
+        Carregando status...
+      </div>
+    );
+  }
+
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
       {statusColumns.map((column) => {
-        const columnOrders = orders.filter(o => o.status === column.key);
+        const columnOrders = orders.filter(o => o.status === column.value);
         
         return (
           <div
-            key={column.key}
+            key={column.value}
             className="flex-shrink-0 w-72"
             onDragOver={handleDragOver}
-            onDrop={() => handleDrop(column.key)}
+            onDrop={() => handleDrop(column.value)}
           >
             <Card className="h-full">
               <CardHeader className="py-3">
                 <CardTitle className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${column.color}`} />
-                    <span>{column.label}</span>
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: column.color }}
+                    />
+                    <span>{column.name}</span>
                   </div>
                   <Badge variant="secondary" className="text-xs">
                     {columnOrders.length}

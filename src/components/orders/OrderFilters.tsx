@@ -37,6 +37,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useTeam } from '@/hooks/useTeam';
 import { useActiveStores } from '@/hooks/useStores';
+import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 
 export interface OrderFiltersState {
   search: string;
@@ -90,16 +91,7 @@ export const initialFilters: OrderFiltersState = {
   paymentCondition: 'all',
 };
 
-const statusOptions = [
-  { value: 'all', label: 'Todos os status' },
-  { value: 'draft', label: 'Rascunho' },
-  { value: 'pending', label: 'Pendente' },
-  { value: 'confirmed', label: 'Confirmado' },
-  { value: 'processing', label: 'Processando' },
-  { value: 'shipped', label: 'Enviado' },
-  { value: 'delivered', label: 'Entregue' },
-  { value: 'canceled', label: 'Cancelado' },
-];
+// Status options agora são carregados dinamicamente
 
 const paymentStatusOptions = [
   { value: 'all', label: 'Todos' },
@@ -219,6 +211,13 @@ export function OrderFilters({
   
   const { data: team = [] } = useTeam();
   const { data: stores = [] } = useActiveStores();
+  const { data: orderStatuses = [] } = useOrderStatuses();
+
+  // Criar opções de status dinamicamente
+  const statusOptions = [
+    { value: 'all', label: 'Todos os status' },
+    ...orderStatuses.map(s => ({ value: s.value, label: s.name }))
+  ];
 
   const updateFilter = <K extends keyof OrderFiltersState>(
     key: K, 
