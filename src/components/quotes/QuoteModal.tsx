@@ -33,6 +33,7 @@ import { ContactFormModal } from '@/components/contacts/ContactFormModal';
 interface QuoteItem {
   product_name: string;
   variation_name?: string;
+  display_name?: string;
   variation_id?: string;
   product_id?: string;
   sku?: string;
@@ -157,6 +158,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
         product_id: product.product_id,
         product_name: product.product_name,
         variation_name: product.variation_name,
+        display_name: product.display_name,
         sku: product.sku || '',
         unit_price: product.price,
       };
@@ -401,7 +403,9 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
                           onValueChange={(value) => selectProduct(index, value)}
                         >
                           <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Selecione um produto" />
+                            <SelectValue placeholder="Selecione um produto">
+                              {item.display_name || 'Selecione um produto'}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent className="max-w-[500px]">
                             <div className="p-2">
