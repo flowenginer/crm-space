@@ -177,7 +177,8 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     icon: ShoppingCart,
     order: 8,
     permissions: [
-      { key: 'orders.view', name: 'Ver Pedidos', description: 'Visualizar pedidos' },
+      { key: 'orders.view', name: 'Ver Pedidos', description: 'Visualizar seus próprios pedidos' },
+      { key: 'orders.view_all', name: 'Ver Todos os Pedidos', description: 'Ver pedidos de todos os usuários' },
       { key: 'orders.create', name: 'Criar Pedido', description: 'Adicionar novos pedidos' },
       { key: 'orders.update', name: 'Editar Pedido', description: 'Modificar pedidos existentes' },
       { key: 'orders.delete', name: 'Cancelar Pedido', description: 'Cancelar pedidos' },
@@ -205,7 +206,8 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     icon: FileText,
     order: 8.6,
     permissions: [
-      { key: 'quotes.view', name: 'Ver Orçamentos', description: 'Visualizar orçamentos' },
+      { key: 'quotes.view', name: 'Ver Orçamentos', description: 'Visualizar seus próprios orçamentos' },
+      { key: 'quotes.view_all', name: 'Ver Todos os Orçamentos', description: 'Ver orçamentos de todos os usuários' },
       { key: 'quotes.create', name: 'Criar Orçamento', description: 'Gerar novos orçamentos' },
       { key: 'quotes.update', name: 'Editar Orçamento', description: 'Modificar orçamentos' },
       { key: 'quotes.delete', name: 'Cancelar Orçamento', description: 'Cancelar orçamentos' },
