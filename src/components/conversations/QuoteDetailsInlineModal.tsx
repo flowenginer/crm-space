@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -226,192 +226,194 @@ export function QuoteDetailsInlineModal({
                 )}
               </div>
 
-              <Tabs defaultValue="details" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="details">Detalhes</TabsTrigger>
-                  <TabsTrigger value="items">Itens ({items.length})</TabsTrigger>
-                </TabsList>
-
-                <ScrollArea className="h-[40vh] mt-4">
-                  <TabsContent value="details" className="space-y-6 px-4">
-                    {/* Cliente */}
-                    <div className="space-y-2">
-                      <h4 className="font-medium flex items-center gap-2">
-                        <User className="h-4 w-4" />
-                        Cliente
-                      </h4>
-                      {quote.contact ? (
-                        <div className="bg-muted/50 p-3 rounded-lg">
-                          <p className="font-medium">{quote.contact.full_name}</p>
-                          <p className="text-sm text-muted-foreground">{quote.contact.phone}</p>
-                          {quote.contact.email && (
-                            <p className="text-sm text-muted-foreground">{quote.contact.email}</p>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-muted-foreground">Nenhum cliente vinculado</p>
-                      )}
-                    </div>
-
-                    <Separator />
-
-                    {/* Valores */}
-                    <div className="space-y-2">
-                      <h4 className="font-medium flex items-center gap-2">
-                        <ShoppingCart className="h-4 w-4" />
-                        Valores
-                      </h4>
-                      <div className="bg-muted/50 p-3 rounded-lg space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Subtotal:</span>
-                          <span>{formatCurrency(quote.subtotal)}</span>
-                        </div>
-                        {(quote.discount_amount || quote.discount_percent) && (
-                          <div className="flex justify-between text-destructive">
-                            <span>Desconto:</span>
-                            <span>-{formatCurrency(quote.discount_amount || 0)}</span>
-                          </div>
-                        )}
-                        {quote.shipping_cost && quote.shipping_cost > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Frete:</span>
-                            <span>+{formatCurrency(quote.shipping_cost)}</span>
-                          </div>
-                        )}
-                        <Separator />
-                        <div className="flex justify-between font-bold text-lg">
-                          <span>Total:</span>
-                          <span className="text-primary">{formatCurrency(quote.total)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Datas */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <h4 className="font-medium flex items-center gap-2">
-                          <Calendar className="h-4 w-4" />
-                          Data de Criação
-                        </h4>
-                        <p className="text-sm">
-                          {quote.created_at 
-                            ? format(new Date(quote.created_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
-                            : '-'}
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <h4 className="font-medium flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          Validade
-                        </h4>
-                        <p className={`text-sm ${isExpired ? 'text-destructive' : ''}`}>
-                          {quote.valid_until 
-                            ? format(new Date(quote.valid_until), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
-                            : 'Sem validade definida'}
-                          {isExpired && ' (Expirado)'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Pagamento e Entrega */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <h4 className="font-medium flex items-center gap-2">
-                          <CreditCard className="h-4 w-4" />
-                          Forma de Pagamento
-                        </h4>
-                        <p className="text-sm capitalize">
-                          {quote.payment_method?.replace('_', ' ') || 'Não definida'}
-                          {quote.installments && quote.installments > 1 && ` (${quote.installments}x)`}
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <h4 className="font-medium flex items-center gap-2">
-                          <Truck className="h-4 w-4" />
-                          Entrega
-                        </h4>
-                        <p className="text-sm capitalize">
-                          {quote.shipping_method || 'Não definida'}
-                        </p>
-                        {quote.expected_delivery_date && (
-                          <p className="text-xs text-muted-foreground">
-                            Previsão: {format(new Date(quote.expected_delivery_date), 'dd/MM/yyyy')}
-                          </p>
+              <ScrollArea className="h-[40vh] mt-4">
+                <div className="space-y-6 px-4">
+                  {/* Cliente */}
+                  <div className="space-y-2">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Cliente
+                    </h4>
+                    {quote.contact ? (
+                      <div className="bg-muted/50 p-3 rounded-lg">
+                        <p className="font-medium">{quote.contact.full_name}</p>
+                        <p className="text-sm text-muted-foreground">{quote.contact.phone}</p>
+                        {quote.contact.email && (
+                          <p className="text-sm text-muted-foreground">{quote.contact.email}</p>
                         )}
                       </div>
-                    </div>
-
-                    {/* Notas */}
-                    {quote.notes && (
-                      <>
-                        <Separator />
-                        <div className="space-y-2">
-                          <h4 className="font-medium">Observações</h4>
-                          <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                            {quote.notes}
-                          </p>
-                        </div>
-                      </>
+                    ) : (
+                      <p className="text-muted-foreground">Nenhum cliente vinculado</p>
                     )}
+                  </div>
 
-                    {/* Status */}
-                    {quote.status !== 'converted' && (
-                      <>
-                        <Separator />
-                        <div className="space-y-2">
-                          <h4 className="font-medium">Alterar Status</h4>
-                          <Select value={selectedStatus} onValueChange={handleStatusChange}>
-                            <SelectTrigger className="w-full">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="draft">Rascunho</SelectItem>
-                              <SelectItem value="sent">Enviado</SelectItem>
-                              <SelectItem value="approved">Aprovado</SelectItem>
-                              <SelectItem value="rejected">Rejeitado</SelectItem>
-                              <SelectItem value="expired">Expirado</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </>
-                    )}
-                  </TabsContent>
+                  <Separator />
 
-                  <TabsContent value="items" className="space-y-4 px-4">
+                  {/* Itens do Orçamento */}
+                  <div className="space-y-2">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Itens do Orçamento ({items.length})
+                    </h4>
                     {items.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-8">
+                      <p className="text-center text-muted-foreground py-4">
                         Nenhum item no orçamento
                       </p>
                     ) : (
-                      items.map((item) => (
-                        <div key={item.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                          <div className="flex-1">
-                            <p className="font-medium">{item.product_name}</p>
-                            {item.variation_name && (
-                              <p className="text-sm text-muted-foreground">{item.variation_name}</p>
-                            )}
-                            {item.sku && (
-                              <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
-                            )}
+                      <div className="space-y-2">
+                        {items.map((item) => (
+                          <div key={item.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                            <div className="flex-1">
+                              <p className="font-medium">{item.product_name}</p>
+                              {item.variation_name && (
+                                <p className="text-sm text-muted-foreground">{item.variation_name}</p>
+                              )}
+                              {item.sku && (
+                                <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium">{formatCurrency(item.subtotal)}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {item.quantity}x {formatCurrency(item.unit_price)}
+                              </p>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="font-medium">{formatCurrency(item.subtotal)}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {item.quantity}x {formatCurrency(item.unit_price)}
-                            </p>
-                          </div>
-                        </div>
-                      ))
+                        ))}
+                      </div>
                     )}
-                  </TabsContent>
-                </ScrollArea>
-              </Tabs>
+                  </div>
+
+                  <Separator />
+
+                  {/* Valores */}
+                  <div className="space-y-2">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <ShoppingCart className="h-4 w-4" />
+                      Valores
+                    </h4>
+                    <div className="bg-muted/50 p-3 rounded-lg space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Subtotal:</span>
+                        <span>{formatCurrency(quote.subtotal)}</span>
+                      </div>
+                      {(quote.discount_amount || quote.discount_percent) && (
+                        <div className="flex justify-between text-destructive">
+                          <span>Desconto:</span>
+                          <span>-{formatCurrency(quote.discount_amount || 0)}</span>
+                        </div>
+                      )}
+                      {quote.shipping_cost && quote.shipping_cost > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Frete:</span>
+                          <span>+{formatCurrency(quote.shipping_cost)}</span>
+                        </div>
+                      )}
+                      <Separator />
+                      <div className="flex justify-between font-bold text-lg">
+                        <span>Total:</span>
+                        <span className="text-primary">{formatCurrency(quote.total)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Datas */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        Data de Criação
+                      </h4>
+                      <p className="text-sm">
+                        {quote.created_at 
+                          ? format(new Date(quote.created_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
+                          : '-'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Validade
+                      </h4>
+                      <p className={`text-sm ${isExpired ? 'text-destructive' : ''}`}>
+                        {quote.valid_until 
+                          ? format(new Date(quote.valid_until), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
+                          : 'Sem validade definida'}
+                        {isExpired && ' (Expirado)'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Pagamento e Entrega */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <CreditCard className="h-4 w-4" />
+                        Forma de Pagamento
+                      </h4>
+                      <p className="text-sm capitalize">
+                        {quote.payment_method?.replace('_', ' ') || 'Não definida'}
+                        {quote.installments && quote.installments > 1 && ` (${quote.installments}x)`}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <Truck className="h-4 w-4" />
+                        Entrega
+                      </h4>
+                      <p className="text-sm capitalize">
+                        {quote.shipping_method || 'Não definida'}
+                      </p>
+                      {quote.expected_delivery_date && (
+                        <p className="text-xs text-muted-foreground">
+                          Previsão: {format(new Date(quote.expected_delivery_date), 'dd/MM/yyyy')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Notas */}
+                  {quote.notes && (
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Observações</h4>
+                        <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
+                          {quote.notes}
+                        </p>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Status */}
+                  {quote.status !== 'converted' && (
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Alterar Status</h4>
+                        <Select value={selectedStatus} onValueChange={handleStatusChange}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="draft">Rascunho</SelectItem>
+                            <SelectItem value="sent">Enviado</SelectItem>
+                            <SelectItem value="approved">Aprovado</SelectItem>
+                            <SelectItem value="rejected">Rejeitado</SelectItem>
+                            <SelectItem value="expired">Expirado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </ScrollArea>
 
               <div className="flex flex-wrap justify-between items-center gap-2 pt-4 border-t">
                 <div className="flex gap-2">
