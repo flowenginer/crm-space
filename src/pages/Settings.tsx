@@ -52,7 +52,8 @@ import { StoreManagement } from '@/components/settings/StoreManagement';
 import { SalesGoalsManagement } from '@/components/settings/SalesGoalsManagement';
 import { MenuConfiguration } from '@/components/settings/MenuConfiguration';
 import { CompanySettings } from '@/components/settings/CompanySettings';
-import { Facebook, UserCheck, Unlock, Store } from 'lucide-react';
+import { SharedBoxManagement } from '@/components/settings/SharedBoxManagement';
+import { Facebook, UserCheck, Unlock, Store, Package } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
@@ -129,6 +130,7 @@ const TAB_METADATA: Record<string, TabMetadata> = {
   'general': { icon: Palette, permission: ['settings', 'update'] },
   'tools': { icon: Wrench, permission: ['settings', 'update'] },
   'metrics': { icon: Target, permission: ['settings', 'update'] },
+  'shared-boxes': { icon: Package, permission: ['settings', 'update'] },
 };
 
 export default function Settings() {
@@ -660,6 +662,13 @@ export default function Settings() {
         {isTabAvailable('origin-patterns') && (
           <TabsContent value="origin-patterns" className="space-y-6">
             <AdMessagePatternsSettings />
+          </TabsContent>
+        )}
+
+        {/* TAB: Shared Boxes */}
+        {isTabAvailable('shared-boxes') && (
+          <TabsContent value="shared-boxes" className="space-y-6">
+            <SharedBoxManagement />
           </TabsContent>
         )}
 

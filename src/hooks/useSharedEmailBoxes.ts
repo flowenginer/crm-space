@@ -46,7 +46,7 @@ export interface EmailActivityLog {
   };
 }
 
-// Hook para buscar caixas compartilhadas do usuário
+// Hook para buscar caixas compartilhadas onde o usuário é membro (para sidebar)
 export function useUserSharedBoxes() {
   return useQuery({
     queryKey: ['user-shared-boxes'],
@@ -54,13 +54,48 @@ export function useUserSharedBoxes() {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return [];
 
+      // Primeiro busca as caixas onde o usuário é membro
+      const { data: memberships, error: memberError } = await supabase
+        .from('email_shared_box_members')
+        .select('shared_box_id')
+        .eq('user_id', userData.user.id)
+        .eq('is_active', true);
+
+      if (memberError) throw memberError;
+      
+      const memberBoxIds = memberships?.map(m => m.shared_box_id) || [];
+      
+      if (memberBoxIds.length === 0) return [];
+
+      // Busca os detalhes das caixas
       const { data, error } = await supabase
         .from('email_shared_boxes')
         .select(`
           *,
           department:departments(id, name, color)
         `)
+        .in('id', memberBoxIds)
         .eq('is_active', true);
+
+      if (error) throw error;
+      return data as EmailSharedBox[];
+    }
+  });
+}
+
+// Hook para buscar todas as caixas compartilhadas (para composição e administração)
+export function useAllSharedBoxes() {
+  return useQuery({
+    queryKey: ['all-shared-boxes'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('email_shared_boxes')
+        .select(`
+          *,
+          department:departments(id, name, color)
+        `)
+        .eq('is_active', true)
+        .order('name');
 
       if (error) throw error;
       return data as EmailSharedBox[];
