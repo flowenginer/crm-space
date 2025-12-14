@@ -56,7 +56,17 @@ export interface InternalEmail {
   sent_at: string | null;
   created_at: string;
   updated_at: string;
+  // Campos de caixa compartilhada
+  shared_box_id: string | null;
+  claimed_by: string | null;
+  claimed_at: string | null;
+  workflow_status: 'pending' | 'in_progress' | 'completed';
   sender?: {
+    id: string;
+    full_name: string;
+    avatar_url: string | null;
+  };
+  claimed_by_user?: {
     id: string;
     full_name: string;
     avatar_url: string | null;
@@ -70,6 +80,10 @@ export interface InternalEmail {
   quote?: {
     id: string;
     quote_number: string;
+  } | null;
+  shared_box?: {
+    id: string;
+    name: string;
   } | null;
   // For recipient-specific data
   recipient_data?: {

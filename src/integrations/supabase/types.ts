@@ -1258,6 +1258,131 @@ export type Database = {
         }
         Relationships: []
       }
+      email_activity_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string | null
+          details: Json | null
+          email_id: string
+          id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          email_id: string
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          email_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_activity_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_activity_log_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "internal_emails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_shared_box_members: {
+        Row: {
+          created_at: string | null
+          is_active: boolean | null
+          order_position: number | null
+          shared_box_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          is_active?: boolean | null
+          order_position?: number | null
+          shared_box_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          is_active?: boolean | null
+          order_position?: number | null
+          shared_box_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_shared_box_members_shared_box_id_fkey"
+            columns: ["shared_box_id"]
+            isOneToOne: false
+            referencedRelation: "email_shared_boxes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_shared_box_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_shared_boxes: {
+        Row: {
+          created_at: string | null
+          current_position: number | null
+          department_id: string | null
+          description: string | null
+          distribution_type: string
+          id: string
+          is_active: boolean | null
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_position?: number | null
+          department_id?: string | null
+          description?: string | null
+          distribution_type?: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_position?: number | null
+          department_id?: string | null
+          description?: string | null
+          distribution_type?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_shared_boxes_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_accounts: {
         Row: {
           account_number: string | null
@@ -2131,6 +2256,8 @@ export type Database = {
           body: string
           body_html: string | null
           category: string | null
+          claimed_at: string | null
+          claimed_by: string | null
           contact_id: string | null
           conversation_id: string | null
           created_at: string | null
@@ -2142,16 +2269,20 @@ export type Database = {
           scheduled_at: string | null
           sender_id: string
           sent_at: string | null
+          shared_box_id: string | null
           status: string | null
           subject: string
           tenant_id: string | null
           thread_id: string | null
           updated_at: string | null
+          workflow_status: string | null
         }
         Insert: {
           body: string
           body_html?: string | null
           category?: string | null
+          claimed_at?: string | null
+          claimed_by?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
@@ -2163,16 +2294,20 @@ export type Database = {
           scheduled_at?: string | null
           sender_id: string
           sent_at?: string | null
+          shared_box_id?: string | null
           status?: string | null
           subject: string
           tenant_id?: string | null
           thread_id?: string | null
           updated_at?: string | null
+          workflow_status?: string | null
         }
         Update: {
           body?: string
           body_html?: string | null
           category?: string | null
+          claimed_at?: string | null
+          claimed_by?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
@@ -2184,13 +2319,22 @@ export type Database = {
           scheduled_at?: string | null
           sender_id?: string
           sent_at?: string | null
+          shared_box_id?: string | null
           status?: string | null
           subject?: string
           tenant_id?: string | null
           thread_id?: string | null
           updated_at?: string | null
+          workflow_status?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "internal_emails_claimed_by_fkey"
+            columns: ["claimed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "internal_emails_contact_id_fkey"
             columns: ["contact_id"]
@@ -2231,6 +2375,13 @@ export type Database = {
             columns: ["sender_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_emails_shared_box_id_fkey"
+            columns: ["shared_box_id"]
+            isOneToOne: false
+            referencedRelation: "email_shared_boxes"
             referencedColumns: ["id"]
           },
           {
