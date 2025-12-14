@@ -64,12 +64,22 @@ export interface CreateQuoteData {
   shipping_address?: Record<string, unknown>;
   shipping_method?: string;
   shipping_cost?: number;
+  is_free_shipping?: boolean;
   expected_delivery_date?: string;
   payment_method?: string;
   payment_condition?: string;
   installments?: number;
   down_payment_type?: string;
   down_payment_value?: number;
+  down_payment_date?: string;
+  first_installment_date?: string;
+  payment_schedule?: Array<{
+    type: string;
+    label: string;
+    amount: number;
+    date: string | null;
+    number?: number;
+  }>;
   store_id?: string;
   seller_id?: string;
   discount_amount?: number;

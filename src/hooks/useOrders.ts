@@ -87,6 +87,15 @@ export interface CreateOrderData {
   installments?: number;
   down_payment_type?: string;
   down_payment_value?: number;
+  down_payment_date?: string;
+  first_installment_date?: string;
+  payment_schedule?: Array<{
+    type: string;
+    label: string;
+    amount: number;
+    date: string | null;
+    number?: number;
+  }>;
   paid_amount?: number;
   store_id?: string;
   seller_id?: string;

@@ -3050,9 +3050,11 @@ export type Database = {
           discount_amount: number | null
           discount_percent: number | null
           discount_type: string | null
+          down_payment_date: string | null
           down_payment_type: string | null
           down_payment_value: number | null
           expected_delivery_date: string | null
+          first_installment_date: string | null
           fulfillment_status: string | null
           id: string
           installments: number | null
@@ -3067,6 +3069,7 @@ export type Database = {
           paid_at: string | null
           payment_condition: string | null
           payment_method: string | null
+          payment_schedule: Json | null
           payment_status: string | null
           seller_id: string | null
           shipped_at: string | null
@@ -3096,9 +3099,11 @@ export type Database = {
           discount_amount?: number | null
           discount_percent?: number | null
           discount_type?: string | null
+          down_payment_date?: string | null
           down_payment_type?: string | null
           down_payment_value?: number | null
           expected_delivery_date?: string | null
+          first_installment_date?: string | null
           fulfillment_status?: string | null
           id?: string
           installments?: number | null
@@ -3113,6 +3118,7 @@ export type Database = {
           paid_at?: string | null
           payment_condition?: string | null
           payment_method?: string | null
+          payment_schedule?: Json | null
           payment_status?: string | null
           seller_id?: string | null
           shipped_at?: string | null
@@ -3142,9 +3148,11 @@ export type Database = {
           discount_amount?: number | null
           discount_percent?: number | null
           discount_type?: string | null
+          down_payment_date?: string | null
           down_payment_type?: string | null
           down_payment_value?: number | null
           expected_delivery_date?: string | null
+          first_installment_date?: string | null
           fulfillment_status?: string | null
           id?: string
           installments?: number | null
@@ -3159,6 +3167,7 @@ export type Database = {
           paid_at?: string | null
           payment_condition?: string | null
           payment_method?: string | null
+          payment_schedule?: Json | null
           payment_status?: string | null
           seller_id?: string | null
           shipped_at?: string | null
@@ -4383,9 +4392,11 @@ export type Database = {
           created_at: string | null
           discount_amount: number | null
           discount_percent: number | null
+          down_payment_date: string | null
           down_payment_type: string | null
           down_payment_value: number | null
           expected_delivery_date: string | null
+          first_installment_date: string | null
           id: string
           installments: number | null
           internal_notes: string | null
@@ -4397,6 +4408,7 @@ export type Database = {
           notifications_paused_by: string | null
           payment_condition: string | null
           payment_method: string | null
+          payment_schedule: Json | null
           quote_number: string
           seller_id: string | null
           shipping_address: Json | null
@@ -4419,9 +4431,11 @@ export type Database = {
           created_at?: string | null
           discount_amount?: number | null
           discount_percent?: number | null
+          down_payment_date?: string | null
           down_payment_type?: string | null
           down_payment_value?: number | null
           expected_delivery_date?: string | null
+          first_installment_date?: string | null
           id?: string
           installments?: number | null
           internal_notes?: string | null
@@ -4433,6 +4447,7 @@ export type Database = {
           notifications_paused_by?: string | null
           payment_condition?: string | null
           payment_method?: string | null
+          payment_schedule?: Json | null
           quote_number: string
           seller_id?: string | null
           shipping_address?: Json | null
@@ -4455,9 +4470,11 @@ export type Database = {
           created_at?: string | null
           discount_amount?: number | null
           discount_percent?: number | null
+          down_payment_date?: string | null
           down_payment_type?: string | null
           down_payment_value?: number | null
           expected_delivery_date?: string | null
+          first_installment_date?: string | null
           id?: string
           installments?: number | null
           internal_notes?: string | null
@@ -4469,6 +4486,7 @@ export type Database = {
           notifications_paused_by?: string | null
           payment_condition?: string | null
           payment_method?: string | null
+          payment_schedule?: Json | null
           quote_number?: string
           seller_id?: string | null
           shipping_address?: Json | null
