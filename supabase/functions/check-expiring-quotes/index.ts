@@ -42,24 +42,8 @@ serve(async (req) => {
     for (const config of configs || []) {
       try {
         console.log(`Processing tenant: ${config.tenant_id}`);
-
-        // Get the notification channel
-        if (!config.notification_channel_id) {
-          console.log(`Tenant ${config.tenant_id} has no notification channel configured`);
-          continue;
-        }
-
-        const { data: channel, error: channelError } = await supabase
-          .from('whatsapp_channels')
-          .select('*, provider:providers(*)')
-          .eq('id', config.notification_channel_id)
-          .eq('status', 'connected')
-          .single();
-
-        if (channelError || !channel) {
-          console.log(`Channel not found or not connected for tenant ${config.tenant_id}`);
-          continue;
-        }
+        
+        const useClientChannel = config.use_client_channel ?? true;
 
         // Get expiring quotes for each configured day
         const notificationDays = config.quote_expiration_days || [3, 1];
@@ -114,6 +98,61 @@ serve(async (req) => {
               continue;
             }
 
+            // Determine which channel to use
+            let channelToUse: any = null;
+            let usedClientChannel = false;
+
+            if (useClientChannel) {
+              // Try to find the last conversation channel for this contact
+              const { data: lastConversation, error: convError } = await supabase
+                .from('conversations')
+                .select('channel_id')
+                .eq('contact_id', quote.contact_id)
+                .not('channel_id', 'is', null)
+                .order('last_message_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (!convError && lastConversation?.channel_id) {
+                // Get the channel details
+                const { data: clientChannel, error: chError } = await supabase
+                  .from('whatsapp_channels')
+                  .select('*, provider:providers(*)')
+                  .eq('id', lastConversation.channel_id)
+                  .eq('status', 'connected')
+                  .single();
+
+                if (!chError && clientChannel) {
+                  channelToUse = clientChannel;
+                  usedClientChannel = true;
+                  console.log(`Using client's last channel: ${clientChannel.name} for quote ${quote.quote_number}`);
+                }
+              }
+            }
+
+            // If no client channel found or use_client_channel is false, use the fallback/default channel
+            if (!channelToUse) {
+              if (!config.notification_channel_id) {
+                console.log(`No channel available for quote ${quote.quote_number} (no client channel and no fallback configured)`);
+                continue;
+              }
+
+              const { data: fallbackChannel, error: fbError } = await supabase
+                .from('whatsapp_channels')
+                .select('*, provider:providers(*)')
+                .eq('id', config.notification_channel_id)
+                .eq('status', 'connected')
+                .single();
+
+              if (fbError || !fallbackChannel) {
+                console.log(`Fallback channel not found or not connected for tenant ${config.tenant_id}`);
+                continue;
+              }
+
+              channelToUse = fallbackChannel;
+              console.log(`Using fallback channel: ${fallbackChannel.name} for quote ${quote.quote_number}`);
+            }
+
             // Create notification record
             const { data: notification, error: notifError } = await supabase
               .from('quote_expiration_notifications')
@@ -121,7 +160,7 @@ serve(async (req) => {
                 tenant_id: config.tenant_id,
                 quote_id: quote.id,
                 contact_id: quote.contact_id,
-                channel_id: config.notification_channel_id,
+                channel_id: channelToUse.id,
                 notification_type: `expiring_${daysBeforeExpiry}days`,
                 days_before: daysBeforeExpiry,
                 scheduled_for: new Date().toISOString(),
@@ -169,7 +208,7 @@ serve(async (req) => {
 
             // Send WhatsApp message
             try {
-              const provider = channel.provider as any;
+              const provider = channelToUse.provider as any;
               let sendSuccess = false;
               let errorMessage = '';
 
@@ -181,7 +220,7 @@ serve(async (req) => {
 
               // Send based on provider
               if (provider?.code === 'zapi') {
-                const response = await fetch(`https://api.z-api.io/instances/${channel.instance_id}/token/${channel.api_token}/send-text`, {
+                const response = await fetch(`https://api.z-api.io/instances/${channelToUse.instance_id}/token/${channelToUse.api_token}/send-text`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -197,12 +236,12 @@ serve(async (req) => {
                   errorMessage = errorData.error || 'Unknown ZAPI error';
                 }
               } else if (provider?.code === 'evolution') {
-                const apiUrl = channel.api_url?.replace(/\/$/, '');
-                const response = await fetch(`${apiUrl}/message/sendText/${channel.instance_id}`, {
+                const apiUrl = channelToUse.api_url?.replace(/\/$/, '');
+                const response = await fetch(`${apiUrl}/message/sendText/${channelToUse.instance_id}`, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
-                    'apikey': channel.api_token || '',
+                    'apikey': channelToUse.api_token || '',
                   },
                   body: JSON.stringify({
                     number: phone,
@@ -217,11 +256,11 @@ serve(async (req) => {
                   errorMessage = errorData.message || 'Unknown Evolution error';
                 }
               } else if (provider?.code === 'uazapi') {
-                const response = await fetch(`${channel.api_url}/chat/send`, {
+                const response = await fetch(`${channelToUse.api_url}/chat/send`, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${channel.api_token}`,
+                    'Authorization': `Bearer ${channelToUse.api_token}`,
                   },
                   body: JSON.stringify({
                     phone: phone,
@@ -249,7 +288,7 @@ serve(async (req) => {
 
               if (sendSuccess) {
                 results.notifications_sent++;
-                console.log(`Notification sent for quote ${quote.quote_number}`);
+                console.log(`Notification sent for quote ${quote.quote_number} via ${usedClientChannel ? 'client channel' : 'fallback channel'}: ${channelToUse.name}`);
               } else {
                 console.error(`Failed to send notification for quote ${quote.quote_number}: ${errorMessage}`);
                 results.errors.push(`Quote ${quote.quote_number}: ${errorMessage}`);
