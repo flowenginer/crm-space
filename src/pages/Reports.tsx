@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -101,6 +102,8 @@ const datePresets = [
 export default function Reports() {
   const navigate = useNavigate();
   const { hasPermission, isAdmin, isLoading: permissionsLoading, profile } = usePermissions();
+  const [searchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get('tab');
   const canViewAllReports = isAdmin || hasPermission('reports', 'view_all');
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -143,7 +146,14 @@ export default function Reports() {
   }, [isAdmin, hasPermission]);
 
   const canExport = isAdmin || hasPermission('reports', 'export');
-  const defaultTab = availableTabs.length > 0 ? availableTabs[0].value : 'sla';
+  
+  // Define a aba ativa baseada na URL ou primeira disponível
+  const defaultTab = useMemo(() => {
+    if (tabFromUrl && availableTabs.some(tab => tab.value === tabFromUrl)) {
+      return tabFromUrl;
+    }
+    return availableTabs.length > 0 ? availableTabs[0].value : 'sla';
+  }, [tabFromUrl, availableTabs]);
 
   const formatDateRange = (range: DateRange | undefined) => {
     if (!range?.from) return 'Selecionar período';
@@ -315,7 +325,7 @@ export default function Reports() {
           </p>
         </div>
       ) : (
-        <Tabs defaultValue={defaultTab} className="w-full">
+        <Tabs key={defaultTab} defaultValue={defaultTab} className="w-full">
           <TabsList className="bg-card border border-border rounded-xl p-1 shadow-sm w-full flex mb-6">
             {availableTabs.map((tab) => {
               const IconComponent = tab.icon;

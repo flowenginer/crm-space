@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Users,
   Building2,
@@ -136,6 +137,8 @@ const SETTINGS_TABS: SettingsTab[] = [
 export default function Settings() {
   const { user } = useAuth();
   const { hasPermission, isAdmin, isFullyLoaded } = usePermissions();
+  const [searchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get('tab');
   
   // Filtra abas disponíveis baseado nas permissões do usuário
   const availableTabs = useMemo(() => {
@@ -157,8 +160,13 @@ export default function Settings() {
     });
   }, [isFullyLoaded, isAdmin, hasPermission]);
 
-  // Define a primeira aba disponível como default
-  const defaultTab = availableTabs.length > 0 ? availableTabs[0].value : 'notifications';
+  // Define a aba ativa baseada na URL ou primeira disponível
+  const defaultTab = useMemo(() => {
+    if (tabFromUrl && availableTabs.some(tab => tab.value === tabFromUrl)) {
+      return tabFromUrl;
+    }
+    return availableTabs.length > 0 ? availableTabs[0].value : 'notifications';
+  }, [tabFromUrl, availableTabs]);
   
   // Fetch real data
   const { data: teamMembers = [], isLoading: loadingTeam } = useTeam();
@@ -521,7 +529,7 @@ export default function Settings() {
       </div>
 
       {/* Tabs - Apenas exibe as abas que o usuário tem permissão */}
-      <Tabs defaultValue={defaultTab} className="w-full">
+      <Tabs key={defaultTab} defaultValue={defaultTab} className="w-full">
         <TabsList className="bg-card border border-border rounded-xl p-2 shadow-sm w-full flex flex-wrap gap-1.5 mb-6 h-auto">
           {availableTabs.map(tab => {
             const Icon = tab.icon;
