@@ -641,35 +641,13 @@ export function useInternalEmailRealtime() {
       queryClient.invalidateQueries({ queryKey: ['internal-email'] });
     };
 
-    // Canal para recipients (inbox do usuário)
+    // Canal para recipients - simplificado para invalidar em qualquer mudança
     const recipientsChannel = supabase
       .channel('internal-email-recipients-realtime')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'internal_email_recipients' },
-        (payload) => {
-          if (payload.new && (payload.new as { user_id: string }).user_id === user) {
-            invalidateAll();
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'internal_email_recipients' },
-        (payload) => {
-          if (payload.new && (payload.new as { user_id: string }).user_id === user) {
-            invalidateAll();
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'internal_email_recipients' },
-        (payload) => {
-          if (payload.old && (payload.old as { user_id: string }).user_id === user) {
-            invalidateAll();
-          }
-        }
+        { event: '*', schema: 'public', table: 'internal_email_recipients' },
+        () => invalidateAll()
       )
       .subscribe();
 
