@@ -10,11 +10,13 @@ import {
   Package,
   Scale,
   Ruler,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -38,8 +40,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
 import { TemplateModal } from '@/components/products/TemplateModal';
 import {
   useProductTemplates,
@@ -52,6 +56,10 @@ export default function Templates() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Bulk selection
+  const [selectedTemplates, setSelectedTemplates] = useState<string[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
   const { data: templates, isLoading } = useProductTemplates();
   const deleteTemplate = useDeleteProductTemplate();
@@ -80,6 +88,38 @@ export default function Templates() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingTemplate(null);
+  };
+
+  // Bulk selection handlers
+  const handleSelectAll = () => {
+    if (selectedTemplates.length === (filteredTemplates?.length || 0)) {
+      setSelectedTemplates([]);
+    } else {
+      setSelectedTemplates(filteredTemplates?.map(t => t.id) || []);
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    setSelectedTemplates(prev => 
+      prev.includes(id) 
+        ? prev.filter(x => x !== id) 
+        : [...prev, id]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    let deleted = 0;
+    for (const id of selectedTemplates) {
+      try {
+        await deleteTemplate.mutateAsync(id);
+        deleted++;
+      } catch (e) {
+        console.error('Error deleting template', id, e);
+      }
+    }
+    setSelectedTemplates([]);
+    setShowBulkDeleteDialog(false);
+    toast.success(`${deleted} template(s) excluído(s)`);
   };
 
   return (
@@ -154,6 +194,12 @@ export default function Templates() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={(filteredTemplates?.length || 0) > 0 && selectedTemplates.length === (filteredTemplates?.length || 0)}
+                  onCheckedChange={handleSelectAll}
+                />
+              </TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Descrição</TableHead>
               <TableHead className="text-center">Peso (kg)</TableHead>
@@ -166,6 +212,7 @@ export default function Templates() {
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
+                  <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-48" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-16 mx-auto" /></TableCell>
@@ -176,13 +223,19 @@ export default function Templates() {
               ))
             ) : filteredTemplates?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   Nenhum template encontrado.
                 </TableCell>
               </TableRow>
             ) : (
               filteredTemplates?.map((template) => (
                 <TableRow key={template.id}>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedTemplates.includes(template.id)}
+                      onCheckedChange={() => handleSelectOne(template.id)}
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">{template.name}</TableCell>
                   <TableCell className="text-muted-foreground max-w-xs truncate">
                     {template.description || '-'}
@@ -252,6 +305,42 @@ export default function Templates() {
         onOpenChange={handleCloseModal}
         templateId={editingTemplate}
       />
+
+      {/* Bulk Selection Bar */}
+      {selectedTemplates.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-lg px-4 py-3 flex items-center gap-4">
+          <span className="text-sm font-medium">{selectedTemplates.length} selecionado(s)</span>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedTemplates([])}>
+            <X className="h-4 w-4 mr-1" />
+            Limpar
+          </Button>
+          <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="h-4 w-4 mr-1" />
+                Excluir
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir {selectedTemplates.length} template(s)?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação não pode ser desfeita. Os templates serão removidos permanentemente.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleBulkDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Excluir Todos
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deletingId} onOpenChange={() => setDeletingId(null)}>

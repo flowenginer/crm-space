@@ -39,7 +39,8 @@ import {
   Play,
   Trash2,
   CalendarDays,
-  RefreshCw
+  RefreshCw,
+  X
 } from 'lucide-react';
 import { format, addDays, differenceInDays, parseISO, setHours, setMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -96,6 +97,10 @@ export function QuoteNotificationsPanel() {
 
   // Collapsible state - collapsed by default
   const [configOpen, setConfigOpen] = useState(false);
+
+  // Bulk selection for notifications
+  const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
   // Update local state when config loads
   useEffect(() => {
@@ -470,6 +475,40 @@ export function QuoteNotificationsPanel() {
       toast.error('Erro ao excluir: ' + (error.message || 'Erro desconhecido'));
     }
   });
+
+  // Bulk selection handlers
+  const handleSelectAllNotifications = () => {
+    const selectableNotifications = upcomingNotifications.filter(n => n.fromDatabase && n.id);
+    if (selectedNotifications.length === selectableNotifications.length) {
+      setSelectedNotifications([]);
+    } else {
+      setSelectedNotifications(selectableNotifications.map(n => n.id!));
+    }
+  };
+
+  const handleSelectOneNotification = (id: string | null) => {
+    if (!id) return;
+    setSelectedNotifications(prev => 
+      prev.includes(id) 
+        ? prev.filter(x => x !== id) 
+        : [...prev, id]
+    );
+  };
+
+  const handleBulkDeleteNotifications = async () => {
+    let deleted = 0;
+    for (const id of selectedNotifications) {
+      try {
+        await deleteMutation.mutateAsync(id);
+        deleted++;
+      } catch (e) {
+        console.error('Error deleting notification', id, e);
+      }
+    }
+    setSelectedNotifications([]);
+    setShowBulkDeleteDialog(false);
+    toast.success(`${deleted} notificação(ões) excluída(s)`);
+  };
 
   // Create database record for a notification that doesn't exist yet
   const createNotificationRecord = useMutation({
@@ -1036,6 +1075,13 @@ export function QuoteNotificationsPanel() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead className="w-10">
+                            <Checkbox
+                              checked={upcomingNotifications.filter(n => n.fromDatabase && n.id).length > 0 && 
+                                       selectedNotifications.length === upcomingNotifications.filter(n => n.fromDatabase && n.id).length}
+                              onCheckedChange={handleSelectAllNotifications}
+                            />
+                          </TableHead>
                           <TableHead>Orçamento</TableHead>
                           <TableHead>Cliente</TableHead>
                           <TableHead>Vendedor</TableHead>
@@ -1051,6 +1097,13 @@ export function QuoteNotificationsPanel() {
                             key={item.notificationKey}
                             className={item.paused ? 'opacity-50' : ''}
                           >
+                            <TableCell>
+                              <Checkbox
+                                checked={item.id ? selectedNotifications.includes(item.id) : false}
+                                onCheckedChange={() => handleSelectOneNotification(item.id)}
+                                disabled={!item.fromDatabase || !item.id}
+                              />
+                            </TableCell>
                             <TableCell className="font-medium">
                               <div className="flex items-center gap-2">
                                 ORC-{String(item.quote_number).padStart(3, '0')}
@@ -1337,6 +1390,42 @@ export function QuoteNotificationsPanel() {
           </Tabs>
         </CardHeader>
       </Card>
+
+      {/* Bulk Selection Bar for Notifications */}
+      {selectedNotifications.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-lg px-4 py-3 flex items-center gap-4">
+          <span className="text-sm font-medium">{selectedNotifications.length} selecionado(s)</span>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedNotifications([])}>
+            <X className="h-4 w-4 mr-1" />
+            Limpar
+          </Button>
+          <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="h-4 w-4 mr-1" />
+                Excluir
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir {selectedNotifications.length} notificação(ões)?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação não pode ser desfeita. As notificações selecionadas serão canceladas.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleBulkDeleteNotifications}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Excluir Todos
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
     </div>
   );
 }

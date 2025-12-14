@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -36,6 +37,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from 'sonner';
 import {
   Plus,
   Search,
@@ -51,6 +53,7 @@ import {
   Clock,
   AlertTriangle,
   Bell,
+  X,
 } from 'lucide-react';
 import { useQuotesAdvanced, Quote, QuoteFilters, useUpdateQuoteStatus, useDeleteQuote, useConvertQuoteToOrder } from '@/hooks/useQuotes';
 import { QuoteModal } from '@/components/quotes/QuoteModal';
@@ -91,6 +94,10 @@ export default function Quotes() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  // Bulk selection
+  const [selectedQuotes, setSelectedQuotes] = useState<string[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
   const filters: QuoteFilters = useMemo(() => ({
     status: statusFilter !== 'all' ? statusFilter : undefined,
@@ -141,6 +148,38 @@ export default function Quotes() {
 
   const handleDeleteQuote = async (quoteId: string) => {
     await deleteQuote.mutateAsync(quoteId);
+  };
+
+  // Bulk selection handlers
+  const handleSelectAll = () => {
+    if (selectedQuotes.length === filteredQuotes.length) {
+      setSelectedQuotes([]);
+    } else {
+      setSelectedQuotes(filteredQuotes.map(q => q.id));
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    setSelectedQuotes(prev => 
+      prev.includes(id) 
+        ? prev.filter(x => x !== id) 
+        : [...prev, id]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    let deleted = 0;
+    for (const id of selectedQuotes) {
+      try {
+        await deleteQuote.mutateAsync(id);
+        deleted++;
+      } catch (e) {
+        console.error('Error deleting quote', id, e);
+      }
+    }
+    setSelectedQuotes([]);
+    setShowBulkDeleteDialog(false);
+    toast.success(`${deleted} orçamento(s) excluído(s)`);
   };
 
   const getContactName = (quote: Quote) => {
@@ -285,6 +324,12 @@ export default function Quotes() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={filteredQuotes.length > 0 && selectedQuotes.length === filteredQuotes.length}
+                            onCheckedChange={handleSelectAll}
+                          />
+                        </TableHead>
                         <TableHead>Número</TableHead>
                         <TableHead>Cliente</TableHead>
                         <TableHead>Vendedor</TableHead>
@@ -299,7 +344,7 @@ export default function Quotes() {
                     <TableBody>
                       {filteredQuotes.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                             Nenhum orçamento encontrado
                           </TableCell>
                         </TableRow>
@@ -311,6 +356,13 @@ export default function Quotes() {
                           
                           return (
                             <TableRow key={quote.id}>
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={selectedQuotes.includes(quote.id)}
+                                  onCheckedChange={() => handleSelectOne(quote.id)}
+                                  disabled={quote.status === 'converted'}
+                                />
+                              </TableCell>
                               <TableCell className="font-medium">
                                 {quote.quote_number}
                               </TableCell>
@@ -514,6 +566,42 @@ export default function Quotes() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Bulk Selection Bar */}
+      {selectedQuotes.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-lg px-4 py-3 flex items-center gap-4">
+          <span className="text-sm font-medium">{selectedQuotes.length} selecionado(s)</span>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedQuotes([])}>
+            <X className="h-4 w-4 mr-1" />
+            Limpar
+          </Button>
+          <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="h-4 w-4 mr-1" />
+                Excluir
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir {selectedQuotes.length} orçamento(s)?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação não pode ser desfeita. Os orçamentos selecionados serão removidos permanentemente.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleBulkDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Excluir Todos
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
 
       {/* Modals */}
       <QuoteModal

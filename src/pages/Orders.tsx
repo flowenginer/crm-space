@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -18,7 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Package, Eye, BarChart3, Star, AlertTriangle, Pencil, Gift, Truck, Trash2, ChevronDown, Settings } from 'lucide-react';
+import { Plus, Package, Eye, BarChart3, Star, AlertTriangle, Pencil, Gift, Truck, Trash2, ChevronDown, Settings, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { useOrdersAdvanced, useContactOrderPositions, useUpdateOrderStatus, useDeleteOrder, Order } from '@/hooks/useOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { Link } from 'react-router-dom';
@@ -76,6 +78,10 @@ export default function Orders() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  // Bulk selection
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
   // Converter filtros do componente para o hook
   const hookFilters = useMemo(() => ({
@@ -227,6 +233,38 @@ export default function Orders() {
     setIsModalOpen(true);
   };
 
+  // Bulk selection handlers
+  const handleSelectAll = () => {
+    if (selectedOrders.length === filteredOrders.length) {
+      setSelectedOrders([]);
+    } else {
+      setSelectedOrders(filteredOrders.map(o => o.id));
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    setSelectedOrders(prev => 
+      prev.includes(id) 
+        ? prev.filter(x => x !== id) 
+        : [...prev, id]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    let deleted = 0;
+    for (const id of selectedOrders) {
+      try {
+        await deleteOrder.mutateAsync(id);
+        deleted++;
+      } catch (e) {
+        console.error('Error deleting order', id, e);
+      }
+    }
+    setSelectedOrders([]);
+    setShowBulkDeleteDialog(false);
+    toast.success(`${deleted} pedido(s) excluído(s)`);
+  };
+
   return (
     <>
       <div className="space-y-6 p-6">
@@ -302,6 +340,12 @@ export default function Orders() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead className="w-10">
+                            <Checkbox
+                              checked={filteredOrders.length > 0 && selectedOrders.length === filteredOrders.length}
+                              onCheckedChange={handleSelectAll}
+                            />
+                          </TableHead>
                           <TableHead>Pedido</TableHead>
                           <TableHead>Cliente</TableHead>
                           <TableHead>Status</TableHead>
@@ -323,6 +367,12 @@ export default function Orders() {
                               className="cursor-pointer hover:bg-muted/50 transition-colors"
                               onClick={() => handleRowClick(order)}
                             >
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={selectedOrders.includes(order.id)}
+                                  onCheckedChange={() => handleSelectOne(order.id)}
+                                />
+                              </TableCell>
                               <TableCell className="font-medium">
                                 #{order.order_number}
                               </TableCell>
@@ -515,6 +565,42 @@ export default function Orders() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Bulk Selection Bar */}
+      {selectedOrders.length > 0 && canDeleteOrder && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-lg px-4 py-3 flex items-center gap-4">
+          <span className="text-sm font-medium">{selectedOrders.length} selecionado(s)</span>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedOrders([])}>
+            <X className="h-4 w-4 mr-1" />
+            Limpar
+          </Button>
+          <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="h-4 w-4 mr-1" />
+                Excluir
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir {selectedOrders.length} pedido(s)?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação não pode ser desfeita. Os pedidos selecionados serão removidos permanentemente.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleBulkDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Excluir Todos
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
 
       <OrderModal
         open={isModalOpen}

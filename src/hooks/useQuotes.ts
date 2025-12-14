@@ -548,6 +548,7 @@ export function useConvertQuoteToOrder() {
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
+          tenant_id: tenantId,
           order_number: orderNumber,
           contact_id: quote.contact_id,
           conversation_id: quote.conversation_id,
