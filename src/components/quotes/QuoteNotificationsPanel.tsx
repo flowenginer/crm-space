@@ -375,13 +375,27 @@ export function QuoteNotificationsPanel() {
       const quote = quotes?.find(q => q.id === quoteId);
       if (!quote) throw new Error('Orçamento não encontrado');
 
+      // Use first configured time or default to 09:00
+      const timeToUse = sendTimes[0] || '09:00';
+      const [hours, minutes] = timeToUse.split(':').map(Number);
+      
+      // Create date with explicit local time
+      const scheduledDateTime = new Date(
+        scheduledDate.getFullYear(),
+        scheduledDate.getMonth(),
+        scheduledDate.getDate(),
+        hours,
+        minutes,
+        0
+      );
+
       const { data, error } = await supabase
         .from('quote_expiration_notifications')
         .insert({
           quote_id: quoteId,
           contact_id: quote.contact_id,
           days_before: triggerDay,
-          scheduled_for: scheduledDate.toISOString(),
+          scheduled_for: scheduledDateTime.toISOString(),
           status: 'pending',
           paused: false,
           notification_type: triggerType === 'before_expiry' ? 'expiration' : 'followup',
@@ -410,31 +424,42 @@ export function QuoteNotificationsPanel() {
         const daysToUse = triggerType === 'before_expiry' ? expirationDays : daysAfterSent;
         
         for (const day of daysToUse) {
-          let scheduledDate: Date;
+          let baseScheduledDate: Date;
           
           if (triggerType === 'before_expiry') {
             if (!quote.valid_until) continue;
             const validUntil = parseISO(quote.valid_until);
             const daysUntilExpiry = differenceInDays(validUntil, new Date());
             if (day > daysUntilExpiry) continue;
-            scheduledDate = addDays(new Date(), daysUntilExpiry - day);
+            baseScheduledDate = addDays(new Date(), daysUntilExpiry - day);
           } else {
             if (!quote.created_at) continue;
             const sentDate = parseISO(quote.created_at);
             const daysSinceSent = differenceInDays(new Date(), sentDate);
             if (day <= daysSinceSent) continue;
-            scheduledDate = addDays(sentDate, day);
+            baseScheduledDate = addDays(sentDate, day);
           }
 
-          // Set default time
-          const [hours, minutes] = (sendTimes[0] || '09:00').split(':').map(Number);
-          scheduledDate = setMinutes(setHours(scheduledDate, hours), minutes);
+          // Distribute times among configured send times
+          const timeIndex = recordsToCreate.length % sendTimes.length;
+          const timeToUse = sendTimes[timeIndex] || '09:00';
+          const [hours, minutes] = timeToUse.split(':').map(Number);
+          
+          // Create date with explicit local time (avoiding timezone issues)
+          const scheduledDateTime = new Date(
+            baseScheduledDate.getFullYear(),
+            baseScheduledDate.getMonth(),
+            baseScheduledDate.getDate(),
+            hours,
+            minutes,
+            0
+          );
 
           recordsToCreate.push({
             quote_id: quote.id,
             contact_id: quote.contact_id,
             days_before: day,
-            scheduled_for: scheduledDate.toISOString(),
+            scheduled_for: scheduledDateTime.toISOString(),
           });
         }
       }
@@ -889,7 +914,7 @@ export function QuoteNotificationsPanel() {
                     <p className="text-sm">Orçamentos enviados aparecerão aqui quando estiverem próximos do vencimento</p>
                   </div>
                 ) : (
-                  <ScrollArea className="max-h-[400px]">
+                  <ScrollArea className="h-[450px]">
                     <Table>
                       <TableHeader>
                         <TableRow>
