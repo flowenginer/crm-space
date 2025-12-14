@@ -476,33 +476,35 @@ export function QuoteNotificationsPanel() {
     }
   });
 
-  // Bulk selection handlers
+  // Bulk selection handlers - use notificationKey for all items (works for both database and dynamic)
   const handleSelectAllNotifications = () => {
-    const selectableNotifications = upcomingNotifications.filter(n => n.fromDatabase && n.id);
-    if (selectedNotifications.length === selectableNotifications.length) {
+    if (selectedNotifications.length === upcomingNotifications.length) {
       setSelectedNotifications([]);
     } else {
-      setSelectedNotifications(selectableNotifications.map(n => n.id!));
+      setSelectedNotifications(upcomingNotifications.map(n => n.notificationKey));
     }
   };
 
-  const handleSelectOneNotification = (id: string | null) => {
-    if (!id) return;
+  const handleSelectOneNotification = (key: string) => {
     setSelectedNotifications(prev => 
-      prev.includes(id) 
-        ? prev.filter(x => x !== id) 
-        : [...prev, id]
+      prev.includes(key) 
+        ? prev.filter(x => x !== key) 
+        : [...prev, key]
     );
   };
 
   const handleBulkDeleteNotifications = async () => {
     let deleted = 0;
-    for (const id of selectedNotifications) {
-      try {
-        await deleteMutation.mutateAsync(id);
-        deleted++;
-      } catch (e) {
-        console.error('Error deleting notification', id, e);
+    for (const key of selectedNotifications) {
+      // Find the notification by notificationKey
+      const notification = upcomingNotifications.find(n => n.notificationKey === key);
+      if (notification?.id) {
+        try {
+          await deleteMutation.mutateAsync(notification.id);
+          deleted++;
+        } catch (e) {
+          console.error('Error deleting notification', key, e);
+        }
       }
     }
     setSelectedNotifications([]);
@@ -1077,8 +1079,8 @@ export function QuoteNotificationsPanel() {
                         <TableRow>
                           <TableHead className="w-10">
                             <Checkbox
-                              checked={upcomingNotifications.filter(n => n.fromDatabase && n.id).length > 0 && 
-                                       selectedNotifications.length === upcomingNotifications.filter(n => n.fromDatabase && n.id).length}
+                              checked={upcomingNotifications.length > 0 && 
+                                       selectedNotifications.length === upcomingNotifications.length}
                               onCheckedChange={handleSelectAllNotifications}
                             />
                           </TableHead>
@@ -1099,9 +1101,8 @@ export function QuoteNotificationsPanel() {
                           >
                             <TableCell>
                               <Checkbox
-                                checked={item.id ? selectedNotifications.includes(item.id) : false}
-                                onCheckedChange={() => handleSelectOneNotification(item.id)}
-                                disabled={!item.fromDatabase || !item.id}
+                                checked={selectedNotifications.includes(item.notificationKey)}
+                                onCheckedChange={() => handleSelectOneNotification(item.notificationKey)}
                               />
                             </TableCell>
                             <TableCell className="font-medium">
