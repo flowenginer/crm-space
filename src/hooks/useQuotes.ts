@@ -671,7 +671,31 @@ export function useDeleteQuote() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (quoteId: string) => {
+    mutationFn: async ({ quoteId, quoteData }: { quoteId: string; quoteData?: Quote }) => {
+      // Se for um orçamento convertido, registrar no log de atividades
+      if (quoteData?.status === 'converted') {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          await supabase
+            .from('activity_log')
+            .insert({
+              user_id: user.id,
+              action: 'delete_converted_quote',
+              entity_type: 'quote',
+              entity_id: quoteId,
+              old_values: {
+                quote_number: quoteData.quote_number,
+                status: quoteData.status,
+                total: quoteData.total,
+                contact_name: quoteData.contact?.full_name,
+                contact_phone: quoteData.contact?.phone,
+              },
+              description: `Orçamento convertido #${quoteData.quote_number} excluído por administrador`,
+            });
+        }
+      }
+
       const { error } = await supabase
         .from('quotes')
         .delete()
@@ -680,7 +704,7 @@ export function useDeleteQuote() {
       if (error) throw error;
       return quoteId;
     },
-    onMutate: async (quoteId) => {
+    onMutate: async ({ quoteId }) => {
       // Cancelar queries em andamento
       await queryClient.cancelQueries({ queryKey: ['quotes'] });
       await queryClient.cancelQueries({ queryKey: ['quotes-advanced'] });
@@ -699,7 +723,7 @@ export function useDeleteQuote() {
       
       return { previousQuotes, previousAdvancedQueries };
     },
-    onError: (error, quoteId, context) => {
+    onError: (error, _, context) => {
       // Rollback em caso de erro
       if (context?.previousQuotes) {
         queryClient.setQueryData(['quotes'], context.previousQuotes);
