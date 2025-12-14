@@ -4230,6 +4230,9 @@ export type Database = {
       }
       quote_expiration_notifications: {
         Row: {
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
           channel_id: string | null
           contact_id: string | null
           created_at: string | null
@@ -4244,6 +4247,9 @@ export type Database = {
           tenant_id: string | null
         }
         Insert: {
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           channel_id?: string | null
           contact_id?: string | null
           created_at?: string | null
@@ -4258,6 +4264,9 @@ export type Database = {
           tenant_id?: string | null
         }
         Update: {
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           channel_id?: string | null
           contact_id?: string | null
           created_at?: string | null
@@ -4272,6 +4281,13 @@ export type Database = {
           tenant_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "quote_expiration_notifications_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "quote_expiration_notifications_channel_id_fkey"
             columns: ["channel_id"]

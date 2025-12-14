@@ -427,7 +427,7 @@ serve(async (req) => {
 
           // Check if converted to order
           if (quote.converted_to_order_id) {
-            console.log(`Quote ${quote.quote_number}: already converted to order, auto-pausing`);
+            console.log(`Quote ${quote.quote_number}: already converted to order, auto-pausing and cancelling pending notifications`);
             await supabase
               .from('quotes')
               .update({
@@ -435,12 +435,23 @@ serve(async (req) => {
                 notifications_auto_pause_reason: 'converted',
               })
               .eq('id', quote.id);
+            
+            // Cancel all pending notifications for this quote
+            await supabase
+              .from('quote_expiration_notifications')
+              .update({
+                status: 'cancelled',
+                cancelled_at: new Date().toISOString(),
+                cancel_reason: 'quote_converted',
+              })
+              .eq('quote_id', quote.id)
+              .eq('status', 'pending');
             continue;
           }
 
           // Check if quote status changed to non-notifiable
           if (['negotiating', 'rejected', 'converted', 'cancelled'].includes(quote.status)) {
-            console.log(`Quote ${quote.quote_number}: status is ${quote.status}, auto-pausing`);
+            console.log(`Quote ${quote.quote_number}: status is ${quote.status}, auto-pausing and cancelling pending notifications`);
             await supabase
               .from('quotes')
               .update({
@@ -448,6 +459,17 @@ serve(async (req) => {
                 notifications_auto_pause_reason: 'status_changed',
               })
               .eq('id', quote.id);
+            
+            // Cancel all pending notifications for this quote
+            await supabase
+              .from('quote_expiration_notifications')
+              .update({
+                status: 'cancelled',
+                cancelled_at: new Date().toISOString(),
+                cancel_reason: 'quote_status_changed',
+              })
+              .eq('quote_id', quote.id)
+              .eq('status', 'pending');
             continue;
           }
 
@@ -462,7 +484,7 @@ serve(async (req) => {
               .limit(1);
 
             if (clientMessages && clientMessages.length > 0) {
-              console.log(`Quote ${quote.quote_number}: client responded after quote creation, auto-pausing`);
+              console.log(`Quote ${quote.quote_number}: client responded after quote creation, auto-pausing and cancelling all pending notifications`);
               await supabase
                 .from('quotes')
                 .update({
@@ -470,6 +492,17 @@ serve(async (req) => {
                   notifications_auto_pause_reason: 'client_responded',
                 })
                 .eq('id', quote.id);
+              
+              // Cancel ALL pending notifications for this contact (not just this quote)
+              await supabase
+                .from('quote_expiration_notifications')
+                .update({
+                  status: 'cancelled',
+                  cancelled_at: new Date().toISOString(),
+                  cancel_reason: 'client_responded',
+                })
+                .eq('contact_id', quote.contact_id)
+                .eq('status', 'pending');
               continue;
             }
           }
