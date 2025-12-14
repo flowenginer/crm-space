@@ -342,6 +342,7 @@ export function useCreateQuote() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-advanced'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
@@ -377,6 +378,7 @@ export function useUpdateQuoteStatus() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-advanced'] });
       queryClient.invalidateQueries({ queryKey: ['quote'] });
       toast.success('Status atualizado');
     },
@@ -500,6 +502,7 @@ export function useUpdateQuote() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-advanced'] });
       queryClient.invalidateQueries({ queryKey: ['quote'] });
       queryClient.invalidateQueries({ queryKey: ['quote-items'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
@@ -648,8 +651,10 @@ export function useConvertQuoteToOrder() {
     },
     onSuccess: ({ order }) => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-advanced'] });
       queryClient.invalidateQueries({ queryKey: ['quote'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-advanced'] });
       queryClient.invalidateQueries({ queryKey: ['financial-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
