@@ -286,10 +286,19 @@ export function EmailList({ folder, searchQuery, onSearchChange, onSelectEmail, 
                     className={cn(
                       'group flex items-center gap-2 px-3 py-2 cursor-pointer transition-all duration-100',
                       'hover:shadow-sm',
-                      !isRead ? 'bg-primary/5 hover:bg-primary/8' : 'hover:bg-muted/50',
+                      !isRead 
+                        ? 'bg-primary/8 border-l-2 border-primary hover:bg-primary/12' 
+                        : 'border-l-2 border-transparent hover:bg-muted/50',
                       isSelected && 'bg-primary/10 hover:bg-primary/12'
                     )}
                   >
+                    {/* Unread indicator (blue dot) */}
+                    <div className="shrink-0 w-2 flex justify-center">
+                      {!isRead && (
+                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      )}
+                    </div>
+
                     {/* Checkbox */}
                     <div 
                       className="shrink-0"
@@ -321,7 +330,7 @@ export function EmailList({ folder, searchQuery, onSearchChange, onSelectEmail, 
                       {/* Sender name - fixed width */}
                       <span className={cn(
                         'text-sm w-40 shrink-0 truncate',
-                        !isRead ? 'font-semibold text-foreground' : 'text-muted-foreground'
+                        !isRead ? 'font-bold text-foreground' : 'text-muted-foreground'
                       )}>
                         {senderName}
                       </span>
@@ -330,7 +339,7 @@ export function EmailList({ folder, searchQuery, onSearchChange, onSelectEmail, 
                       <div className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
                         <span className={cn(
                           'text-sm truncate shrink-0 max-w-[300px]',
-                          !isRead ? 'font-medium text-foreground' : 'text-foreground/80'
+                          !isRead ? 'font-semibold text-foreground' : 'text-foreground/80'
                         )}>
                           {email.subject}
                         </span>

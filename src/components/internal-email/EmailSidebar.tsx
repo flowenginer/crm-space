@@ -100,7 +100,12 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
           <div className="space-y-0.5">
             {folderItems.map((item) => {
               const count = counts?.[item.id] || 0;
+              const unreadCount = counts?.inbox_unread || 0;
               const isActive = currentFolder === item.id;
+              const isInbox = item.id === 'inbox';
+              
+              // For inbox, show unread count; for others, show total count
+              const displayCount = isInbox ? unreadCount : count;
               
               return (
                 <button
@@ -115,14 +120,19 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                 >
                   <div className="flex items-center gap-2.5">
                     {item.icon}
-                    <span>{item.label}</span>
+                    <span className={cn(isInbox && unreadCount > 0 && !isActive && 'font-semibold text-foreground')}>
+                      {item.label}
+                    </span>
                   </div>
-                  {count > 0 && (
+                  {displayCount > 0 && (
                     <Badge 
                       variant={isActive ? 'secondary' : 'outline'} 
-                      className="h-5 min-w-[20px] justify-center text-xs"
+                      className={cn(
+                        "h-5 min-w-[20px] justify-center text-xs",
+                        isInbox && !isActive && unreadCount > 0 && "bg-primary text-primary-foreground border-primary"
+                      )}
                     >
-                      {count}
+                      {displayCount}
                     </Badge>
                   )}
                 </button>
