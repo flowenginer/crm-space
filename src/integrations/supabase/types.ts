@@ -391,6 +391,7 @@ export type Database = {
           owner_agent_inactivity_days: number | null
           owner_agent_on_reopen: boolean | null
           owner_agent_reopen_reasons: string[] | null
+          payment_gateway_config: Json | null
           phone: string | null
           response_alert_minutes: number | null
           sla_first_response_minutes: number | null
@@ -422,6 +423,7 @@ export type Database = {
           owner_agent_inactivity_days?: number | null
           owner_agent_on_reopen?: boolean | null
           owner_agent_reopen_reasons?: string[] | null
+          payment_gateway_config?: Json | null
           phone?: string | null
           response_alert_minutes?: number | null
           sla_first_response_minutes?: number | null
@@ -453,6 +455,7 @@ export type Database = {
           owner_agent_inactivity_days?: number | null
           owner_agent_on_reopen?: boolean | null
           owner_agent_reopen_reasons?: string[] | null
+          payment_gateway_config?: Json | null
           phone?: string | null
           response_alert_minutes?: number | null
           sla_first_response_minutes?: number | null
@@ -3232,6 +3235,132 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_links: {
+        Row: {
+          amount: number
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string | null
+          created_by: string | null
+          customer_document: string | null
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          description: string | null
+          expires_at: string | null
+          external_id: string | null
+          gateway_response: Json | null
+          id: string
+          installments_used: number | null
+          max_installments: number | null
+          order_id: string | null
+          paid_amount: number | null
+          paid_at: string | null
+          payment_method_used: string | null
+          payment_methods: string[] | null
+          payment_url: string | null
+          provider: string
+          quote_id: string | null
+          status: string | null
+          updated_at: string | null
+          webhook_received_at: string | null
+        }
+        Insert: {
+          amount: number
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          customer_document?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          description?: string | null
+          expires_at?: string | null
+          external_id?: string | null
+          gateway_response?: Json | null
+          id?: string
+          installments_used?: number | null
+          max_installments?: number | null
+          order_id?: string | null
+          paid_amount?: number | null
+          paid_at?: string | null
+          payment_method_used?: string | null
+          payment_methods?: string[] | null
+          payment_url?: string | null
+          provider?: string
+          quote_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+          webhook_received_at?: string | null
+        }
+        Update: {
+          amount?: number
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          customer_document?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          description?: string | null
+          expires_at?: string | null
+          external_id?: string | null
+          gateway_response?: Json | null
+          id?: string
+          installments_used?: number | null
+          max_installments?: number | null
+          order_id?: string | null
+          paid_amount?: number | null
+          paid_at?: string | null
+          payment_method_used?: string | null
+          payment_methods?: string[] | null
+          payment_url?: string | null
+          provider?: string
+          quote_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+          webhook_received_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_links_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_links_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_links_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_links_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
             referencedColumns: ["id"]
           },
         ]

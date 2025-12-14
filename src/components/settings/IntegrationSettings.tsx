@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Save, ExternalLink, CheckCircle, XCircle, Loader2, Plug } from 'lucide-react';
+import { RedePaymentSettings } from './RedePaymentSettings';
 
 interface ProviderWithConfig {
   id: string;
@@ -118,6 +119,9 @@ export function IntegrationSettings() {
 
   return (
     <div className="space-y-6">
+      {/* Payment Gateway - Rede */}
+      <RedePaymentSettings />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
