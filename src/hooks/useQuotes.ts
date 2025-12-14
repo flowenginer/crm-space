@@ -30,6 +30,10 @@ export interface Quote {
   converted_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  // Notification status fields
+  notifications_paused: boolean | null;
+  notifications_auto_paused: boolean | null;
+  notifications_auto_pause_reason: string | null;
   contact?: {
     id: string;
     full_name: string;
