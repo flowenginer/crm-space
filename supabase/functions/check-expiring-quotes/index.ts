@@ -161,9 +161,13 @@ serve(async (req) => {
         phone = '55' + phone;
       }
 
+      console.log(`Sending via provider: ${provider?.code}, base_url: ${provider?.base_url}, instance: ${channelToUse.instance_id}`);
+
       try {
         if (provider?.code === 'zapi') {
-          const response = await fetch(`https://api.z-api.io/instances/${channelToUse.instance_id}/token/${channelToUse.api_token}/send-text`, {
+          // ZAPI usa instance_id e instance_token do canal
+          const token = channelToUse.instance_token || provider.admin_token;
+          const response = await fetch(`https://api.z-api.io/instances/${channelToUse.instance_id}/token/${token}/send-text`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone, message }),
@@ -174,12 +178,18 @@ serve(async (req) => {
             errorMessage = errorData.error || 'Erro ZAPI';
           }
         } else if (provider?.code === 'evolution') {
-          const apiUrl = channelToUse.api_url?.replace(/\/$/, '');
+          // Evolution usa base_url do provider e admin_token
+          const apiUrl = provider.base_url?.replace(/\/$/, '');
+          const apiToken = channelToUse.instance_token || provider.admin_token;
+          if (!apiUrl) {
+            throw new Error('Provider Evolution sem URL da API configurada');
+          }
+          console.log(`Evolution API URL: ${apiUrl}/message/sendText/${channelToUse.instance_id}`);
           const response = await fetch(`${apiUrl}/message/sendText/${channelToUse.instance_id}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'apikey': channelToUse.api_token || '',
+              'apikey': apiToken || '',
             },
             body: JSON.stringify({ number: phone, text: message }),
           });
@@ -189,11 +199,17 @@ serve(async (req) => {
             errorMessage = errorData.message || 'Erro Evolution';
           }
         } else if (provider?.code === 'uazapi') {
-          const response = await fetch(`${channelToUse.api_url}/chat/send`, {
+          // UAZAPI usa base_url do provider
+          const apiUrl = provider.base_url?.replace(/\/$/, '');
+          const apiToken = channelToUse.instance_token || provider.admin_token;
+          if (!apiUrl) {
+            throw new Error('Provider UAZAPI sem URL da API configurada');
+          }
+          const response = await fetch(`${apiUrl}/chat/send`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${channelToUse.api_token}`,
+              'Authorization': `Bearer ${apiToken}`,
             },
             body: JSON.stringify({ phone, message }),
           });
@@ -610,7 +626,8 @@ serve(async (req) => {
             }
 
             if (provider?.code === 'zapi') {
-              const response = await fetch(`https://api.z-api.io/instances/${channelToUse.instance_id}/token/${channelToUse.api_token}/send-text`, {
+              const token = channelToUse.instance_token || provider.admin_token;
+              const response = await fetch(`https://api.z-api.io/instances/${channelToUse.instance_id}/token/${token}/send-text`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ phone, message }),
@@ -621,12 +638,16 @@ serve(async (req) => {
                 errorMessage = errorData.error || 'Unknown ZAPI error';
               }
             } else if (provider?.code === 'evolution') {
-              const apiUrl = channelToUse.api_url?.replace(/\/$/, '');
+              const apiUrl = provider.base_url?.replace(/\/$/, '');
+              const apiToken = channelToUse.instance_token || provider.admin_token;
+              if (!apiUrl) {
+                throw new Error('Provider Evolution sem URL da API configurada');
+              }
               const response = await fetch(`${apiUrl}/message/sendText/${channelToUse.instance_id}`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'apikey': channelToUse.api_token || '',
+                  'apikey': apiToken || '',
                 },
                 body: JSON.stringify({ number: phone, text: message }),
               });
@@ -636,11 +657,16 @@ serve(async (req) => {
                 errorMessage = errorData.message || 'Unknown Evolution error';
               }
             } else if (provider?.code === 'uazapi') {
-              const response = await fetch(`${channelToUse.api_url}/chat/send`, {
+              const apiUrl = provider.base_url?.replace(/\/$/, '');
+              const apiToken = channelToUse.instance_token || provider.admin_token;
+              if (!apiUrl) {
+                throw new Error('Provider UAZAPI sem URL da API configurada');
+              }
+              const response = await fetch(`${apiUrl}/chat/send`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${channelToUse.api_token}`,
+                  'Authorization': `Bearer ${apiToken}`,
                 },
                 body: JSON.stringify({ phone, message }),
               });
