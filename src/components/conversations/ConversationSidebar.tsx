@@ -35,6 +35,7 @@ import { useContactHistory, ContactQuote, ContactOrder } from '@/hooks/useContac
 import { useUpdateQuoteStatus } from '@/hooks/useQuotes';
 import { useUpdateOrderStatus } from '@/hooks/useOrders';
 import { useContactQuotesNotificationStatus, useToggleContactQuotesNotifications, getAutoPauseReasonText } from '@/hooks/useQuoteNotifications';
+import { useQuoteNotificationConfig } from '@/hooks/useQuoteNotificationConfig';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -134,9 +135,11 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
     : null;
   const { quotes: contactQuotes = [], orders: contactOrders = [] } = useContactHistory(conversationContactId);
   
-  // Quote notifications status
+  // Quote notifications status and global config
   const { data: quoteNotificationsStatus } = useContactQuotesNotificationStatus(conversationContactId);
   const toggleQuoteNotifications = useToggleContactQuotesNotifications();
+  const { data: quoteNotificationConfig } = useQuoteNotificationConfig();
+  const isNotificationsGloballyEnabled = quoteNotificationConfig?.quote_expiration_enabled ?? false;
 
   // Fetch all tags (with visibility filter) - campos específicos
   const { data: allTags = [] } = useQuery({
@@ -961,7 +964,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
                       size="icon"
                       className="h-9 w-9 shrink-0"
                       onClick={() => {
-                        if (conversationContactId) {
+                        if (conversationContactId && isNotificationsGloballyEnabled) {
                           const isPaused = quoteNotificationsStatus?.anyPaused ?? false;
                           toggleQuoteNotifications.mutate({
                             contactId: conversationContactId,
@@ -969,19 +972,27 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
                           });
                         }
                       }}
-                      disabled={toggleQuoteNotifications.isPending}
+                      disabled={toggleQuoteNotifications.isPending || !isNotificationsGloballyEnabled}
                     >
                       {toggleQuoteNotifications.isPending ? (
                         <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                      ) : !isNotificationsGloballyEnabled ? (
+                        <Play size={14} className="text-muted-foreground" />
                       ) : quoteNotificationsStatus?.anyPaused ? (
-                        <Pause size={14} className="text-red-500" />
-                      ) : (
                         <Play size={14} className="text-green-500" />
+                      ) : (
+                        <Pause size={14} className="text-red-500" />
                       )}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    {quoteNotificationsStatus?.anyPaused ? (
+                    {!isNotificationsGloballyEnabled ? (
+                      <span className="text-xs">
+                        Notificações desativadas nas configurações
+                        <br />
+                        <span className="text-muted-foreground">Ative em Orçamentos → Notificações</span>
+                      </span>
+                    ) : quoteNotificationsStatus?.anyPaused ? (
                       <span className="text-xs">
                         Notificações pausadas
                         {quoteNotificationsStatus.quotes.some(q => q.status.isAutoPaused) && (
