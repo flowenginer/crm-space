@@ -234,6 +234,9 @@ export function OrderModal({ open, onOpenChange, order, conversationId, contactI
           setItems(orderItems.map(item => ({
             product_name: item.product_name,
             variation_name: item.variation_name || undefined,
+            display_name: item.variation_name 
+              ? `${item.product_name} - ${item.variation_name}` 
+              : item.product_name,
             variation_id: item.variation_id || undefined,
             product_id: item.product_id || undefined,
             sku: item.sku || undefined,
