@@ -277,6 +277,9 @@ export function useCreateQuote() {
           installments: data.installments || 1,
           down_payment_type: data.down_payment_type || 'percent',
           down_payment_value: data.down_payment_value || 0,
+          down_payment_date: data.down_payment_date || null,
+          first_installment_date: data.first_installment_date || null,
+          payment_schedule: data.payment_schedule || [],
           store_id: data.store_id || null,
           seller_id: data.seller_id || null,
           discount_amount: data.discount_amount || 0,
@@ -329,11 +332,18 @@ export function useCreateQuote() {
 
       return quote;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      // Invalidate conversation details to update sidebar (lead status + negotiated value)
+      if (variables.conversation_id) {
+        queryClient.invalidateQueries({ queryKey: ['conversation-details', variables.conversation_id] });
+      }
+      if (variables.contact_id) {
+        queryClient.invalidateQueries({ queryKey: ['contact', variables.contact_id] });
+      }
       toast.success('Orçamento criado com sucesso');
     },
     onError: (error) => {
