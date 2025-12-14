@@ -343,6 +343,106 @@ export function useUpdateQuoteStatus() {
   });
 }
 
+export function useUpdateQuote() {
+  const queryClient = useQueryClient();
+  const { data: tenantId } = useCurrentTenantId();
+
+  return useMutation({
+    mutationFn: async ({ quoteId, data }: { quoteId: string; data: CreateQuoteData }) => {
+      if (!tenantId) throw new Error('Tenant não encontrado');
+
+      // Calcular subtotal e total
+      const itemsSubtotal = data.items.reduce((sum, item) => {
+        const itemTotal = item.unit_price * item.quantity;
+        const itemDiscount = item.discount_percent 
+          ? itemTotal * (item.discount_percent / 100)
+          : (item.discount_amount || 0);
+        return sum + (itemTotal - itemDiscount);
+      }, 0);
+
+      const totalDiscount = data.discount_percent 
+        ? itemsSubtotal * (data.discount_percent / 100)
+        : (data.discount_amount || 0);
+
+      const total = itemsSubtotal - totalDiscount + (data.shipping_cost || 0);
+
+      // Atualizar orçamento
+      const { error: quoteError } = await supabase
+        .from('quotes')
+        .update({
+          contact_id: data.contact_id,
+          conversation_id: data.conversation_id,
+          channel_id: data.channel_id,
+          notes: data.notes,
+          internal_notes: data.internal_notes,
+          shipping_address: data.shipping_address,
+          shipping_method: data.shipping_method,
+          shipping_cost: data.shipping_cost || 0,
+          expected_delivery_date: data.expected_delivery_date || null,
+          payment_method: data.payment_method,
+          payment_condition: data.payment_condition || 'full',
+          installments: data.installments || 1,
+          down_payment_type: data.down_payment_type || 'percent',
+          down_payment_value: data.down_payment_value || 0,
+          store_id: data.store_id || null,
+          seller_id: data.seller_id || null,
+          discount_amount: data.discount_amount || 0,
+          discount_percent: data.discount_percent || 0,
+          subtotal: itemsSubtotal,
+          total: total,
+          valid_until: data.valid_until || null,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq('id', quoteId);
+
+      if (quoteError) throw quoteError;
+
+      // Deletar itens antigos
+      const { error: deleteError } = await supabase
+        .from('quote_items')
+        .delete()
+        .eq('quote_id', quoteId);
+
+      if (deleteError) throw deleteError;
+
+      // Criar novos itens
+      if (data.items.length > 0) {
+        const items = data.items.map(item => ({
+          tenant_id: tenantId,
+          quote_id: quoteId,
+          product_id: item.product_id,
+          variation_id: item.variation_id,
+          product_name: item.product_name,
+          variation_name: item.variation_name,
+          sku: item.sku,
+          unit_price: item.unit_price,
+          quantity: item.quantity,
+          discount_amount: item.discount_amount || 0,
+          discount_percent: item.discount_percent || 0,
+          subtotal: item.unit_price * item.quantity - (item.discount_amount || 0),
+        }));
+
+        const { error: itemsError } = await supabase
+          .from('quote_items')
+          .insert(items as any);
+
+        if (itemsError) throw itemsError;
+      }
+
+      return { id: quoteId };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quote'] });
+      queryClient.invalidateQueries({ queryKey: ['quote-items'] });
+      toast.success('Orçamento atualizado com sucesso');
+    },
+    onError: (error) => {
+      toast.error('Erro ao atualizar orçamento: ' + error.message);
+    },
+  });
+}
+
 export function useConvertQuoteToOrder() {
   const queryClient = useQueryClient();
   const { data: tenantId } = useCurrentTenantId();
