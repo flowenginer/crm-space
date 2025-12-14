@@ -24,6 +24,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   MessagesSquare,
+  Mail,
   Radio,
   FileText,
   CalendarClock,
@@ -108,6 +109,17 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
     permissions: [
       { key: 'internal_chat.view', name: 'Acessar Chat Interno', description: 'Usar o chat entre equipe' },
       { key: 'internal_chat.send', name: 'Enviar Mensagens', description: 'Enviar mensagens no chat interno' },
+    ],
+  },
+  {
+    key: 'internal_email',
+    label: 'E-mail Interno',
+    icon: Mail,
+    order: 2.6,
+    permissions: [
+      { key: 'internal_email.view', name: 'Ver E-mails', description: 'Acessar módulo de e-mail interno' },
+      { key: 'internal_email.send', name: 'Enviar E-mails', description: 'Enviar e-mails internos' },
+      { key: 'internal_email.delete', name: 'Excluir E-mails', description: 'Mover e-mails para lixeira' },
     ],
   },
   {

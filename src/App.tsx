@@ -72,12 +72,12 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/internal-chat" element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="internal_chat.view">
                   <InternalChat />
                 </ProtectedRoute>
               } />
               <Route path="/internal-email" element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="internal_email.view">
                   <InternalEmail />
                 </ProtectedRoute>
               } />
@@ -167,27 +167,27 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/products/attributes" element={
-                <ProtectedRoute permission="settings.view">
+                <ProtectedRoute permission="products.view">
                   <Attributes />
                 </ProtectedRoute>
               } />
               <Route path="/products/price-rules" element={
-                <ProtectedRoute permission="settings.view">
+                <ProtectedRoute permission="products.view">
                   <PriceRules />
                 </ProtectedRoute>
               } />
               <Route path="/products/catalogs" element={
-                <ProtectedRoute permission="settings.view">
+                <ProtectedRoute permission="products.view">
                   <Catalogs />
                 </ProtectedRoute>
               } />
               <Route path="/products" element={
-                <ProtectedRoute permission="settings.view">
+                <ProtectedRoute permission="products.view">
                   <Products />
                 </ProtectedRoute>
               } />
               <Route path="/products/templates" element={
-                <ProtectedRoute permission="settings.view">
+                <ProtectedRoute permission="products.view">
                   <Templates />
                 </ProtectedRoute>
               } />
@@ -202,17 +202,17 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/quotes" element={
-                <ProtectedRoute permission="deals.view">
+                <ProtectedRoute permission="quotes.view">
                   <Quotes />
                 </ProtectedRoute>
               } />
               <Route path="/financial" element={
-                <ProtectedRoute permission="deals.view">
+                <ProtectedRoute permission="financial.view">
                   <Financial />
                 </ProtectedRoute>
               } />
               <Route path="/seller-dashboard" element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="seller.view">
                   <SellerDashboard />
                 </ProtectedRoute>
               } />
