@@ -477,6 +477,7 @@ export function QuoteDetailsInlineModal({
           contactPhone={contactPhone}
           channelId={channelId}
           conversationId={conversationId}
+          documentId={quoteId || undefined}
         />
       )}
     </>

@@ -447,6 +447,7 @@ export function QuoteDetailsModal({ quote, open, onOpenChange }: QuoteDetailsMod
       contactPhone={quote.contact?.phone || ''}
       channelId={conversation?.channel_id || null}
       conversationId={conversation?.id}
+      documentId={quote.id}
     />
     </>
   );
