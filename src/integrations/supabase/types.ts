@@ -1971,6 +1971,277 @@ export type Database = {
           },
         ]
       }
+      internal_email_attachments: {
+        Row: {
+          created_at: string | null
+          email_id: string
+          file_name: string
+          file_size: number | null
+          file_url: string
+          id: string
+          is_layout_file: boolean | null
+          layout_version: number | null
+          mime_type: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email_id: string
+          file_name: string
+          file_size?: number | null
+          file_url: string
+          id?: string
+          is_layout_file?: boolean | null
+          layout_version?: number | null
+          mime_type?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email_id?: string
+          file_name?: string
+          file_size?: number | null
+          file_url?: string
+          id?: string
+          is_layout_file?: boolean | null
+          layout_version?: number | null
+          mime_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_email_attachments_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "internal_emails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      internal_email_labels: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          created_by: string | null
+          icon: string | null
+          id: string
+          is_system: boolean | null
+          name: string
+          tenant_id: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          name: string
+          tenant_id?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          name?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_email_labels_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_email_labels_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      internal_email_recipients: {
+        Row: {
+          created_at: string | null
+          deleted_at: string | null
+          email_id: string
+          folder: string | null
+          id: string
+          is_archived: boolean | null
+          is_deleted: boolean | null
+          is_read: boolean | null
+          is_starred: boolean | null
+          labels: string[] | null
+          read_at: string | null
+          recipient_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          deleted_at?: string | null
+          email_id: string
+          folder?: string | null
+          id?: string
+          is_archived?: boolean | null
+          is_deleted?: boolean | null
+          is_read?: boolean | null
+          is_starred?: boolean | null
+          labels?: string[] | null
+          read_at?: string | null
+          recipient_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          deleted_at?: string | null
+          email_id?: string
+          folder?: string | null
+          id?: string
+          is_archived?: boolean | null
+          is_deleted?: boolean | null
+          is_read?: boolean | null
+          is_starred?: boolean | null
+          labels?: string[] | null
+          read_at?: string | null
+          recipient_type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_email_recipients_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "internal_emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_email_recipients_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      internal_emails: {
+        Row: {
+          body: string
+          body_html: string | null
+          category: string | null
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string | null
+          id: string
+          order_id: string | null
+          parent_email_id: string | null
+          priority: string | null
+          quote_id: string | null
+          scheduled_at: string | null
+          sender_id: string
+          sent_at: string | null
+          status: string | null
+          subject: string
+          tenant_id: string | null
+          thread_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          body: string
+          body_html?: string | null
+          category?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          order_id?: string | null
+          parent_email_id?: string | null
+          priority?: string | null
+          quote_id?: string | null
+          scheduled_at?: string | null
+          sender_id: string
+          sent_at?: string | null
+          status?: string | null
+          subject: string
+          tenant_id?: string | null
+          thread_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          body?: string
+          body_html?: string | null
+          category?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          order_id?: string | null
+          parent_email_id?: string | null
+          priority?: string | null
+          quote_id?: string | null
+          scheduled_at?: string | null
+          sender_id?: string
+          sent_at?: string | null
+          status?: string | null
+          subject?: string
+          tenant_id?: string | null
+          thread_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_emails_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_emails_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_emails_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_emails_parent_email_id_fkey"
+            columns: ["parent_email_id"]
+            isOneToOne: false
+            referencedRelation: "internal_emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_emails_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_emails_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_emails_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       internal_notes: {
         Row: {
           author_id: string
@@ -5967,6 +6238,10 @@ export type Database = {
         }[]
       }
       get_internal_chat_unread_count: {
+        Args: { p_user_id: string }
+        Returns: number
+      }
+      get_internal_email_unread_count: {
         Args: { p_user_id: string }
         Returns: number
       }

@@ -1,0 +1,670 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useEffect } from 'react';
+
+// Types
+export interface EmailAttachment {
+  id: string;
+  email_id: string;
+  file_name: string;
+  file_url: string;
+  file_size: number | null;
+  mime_type: string | null;
+  is_layout_file: boolean;
+  layout_version: number;
+  created_at: string;
+}
+
+export interface EmailRecipient {
+  id: string;
+  email_id: string;
+  user_id: string;
+  recipient_type: 'to' | 'cc';
+  is_read: boolean;
+  read_at: string | null;
+  is_starred: boolean;
+  is_archived: boolean;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  labels: string[];
+  folder: 'inbox' | 'starred' | 'archive' | 'trash';
+  created_at: string;
+  user?: {
+    id: string;
+    full_name: string;
+    avatar_url: string | null;
+  };
+}
+
+export interface InternalEmail {
+  id: string;
+  tenant_id: string | null;
+  sender_id: string;
+  subject: string;
+  body: string;
+  body_html: string | null;
+  priority: 'low' | 'normal' | 'high';
+  status: 'draft' | 'sent' | 'scheduled';
+  category: string;
+  order_id: string | null;
+  quote_id: string | null;
+  contact_id: string | null;
+  conversation_id: string | null;
+  parent_email_id: string | null;
+  thread_id: string | null;
+  scheduled_at: string | null;
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+  sender?: {
+    id: string;
+    full_name: string;
+    avatar_url: string | null;
+  };
+  recipients?: EmailRecipient[];
+  attachments?: EmailAttachment[];
+  order?: {
+    id: string;
+    order_number: string;
+  } | null;
+  quote?: {
+    id: string;
+    quote_number: string;
+  } | null;
+  // For recipient-specific data
+  recipient_data?: {
+    is_read: boolean;
+    is_starred: boolean;
+    folder: string;
+    labels: string[];
+  };
+}
+
+export interface EmailLabel {
+  id: string;
+  tenant_id: string | null;
+  name: string;
+  color: string;
+  icon: string;
+  is_system: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type EmailFolder = 'inbox' | 'sent' | 'drafts' | 'starred' | 'archive' | 'trash';
+
+// Hook para buscar e-mails por pasta
+export function useInternalEmails(folder: EmailFolder, search?: string) {
+  const { data: user } = useCurrentUserId();
+
+  return useQuery({
+    queryKey: ['internal-emails', folder, search, user],
+    queryFn: async () => {
+      if (!user) return [];
+
+      let query;
+
+      if (folder === 'sent') {
+        // E-mails enviados pelo usuário
+        query = supabase
+          .from('internal_emails')
+          .select(`
+            *,
+            sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url)
+          `)
+          .eq('sender_id', user)
+          .eq('status', 'sent')
+          .order('sent_at', { ascending: false });
+      } else if (folder === 'drafts') {
+        // Rascunhos do usuário
+        query = supabase
+          .from('internal_emails')
+          .select(`
+            *,
+            sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url)
+          `)
+          .eq('sender_id', user)
+          .eq('status', 'draft')
+          .order('updated_at', { ascending: false });
+      } else {
+        // Inbox, starred, archive, trash - busca pelos recipients
+        const { data: recipientEmails, error: recError } = await supabase
+          .from('internal_email_recipients')
+          .select('email_id, is_read, is_starred, folder, labels')
+          .eq('user_id', user)
+          .eq('is_deleted', folder === 'trash')
+          .eq('folder', folder === 'starred' ? 'inbox' : folder === 'trash' ? 'trash' : folder === 'archive' ? 'archive' : 'inbox');
+
+        if (recError) throw recError;
+
+        // Filtra starred se necessário
+        let emailIds = recipientEmails?.map(r => r.email_id) || [];
+        if (folder === 'starred') {
+          emailIds = recipientEmails?.filter(r => r.is_starred).map(r => r.email_id) || [];
+        }
+
+        if (emailIds.length === 0) return [];
+
+        const { data, error } = await supabase
+          .from('internal_emails')
+          .select(`
+            *,
+            sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url)
+          `)
+          .in('id', emailIds)
+          .eq('status', 'sent')
+          .order('sent_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Adiciona dados do recipient
+        return (data || []).map(email => {
+          const recipientData = recipientEmails?.find(r => r.email_id === email.id);
+          return {
+            ...email,
+            recipient_data: recipientData ? {
+              is_read: recipientData.is_read,
+              is_starred: recipientData.is_starred,
+              folder: recipientData.folder,
+              labels: recipientData.labels || []
+            } : undefined
+          };
+        }) as InternalEmail[];
+      }
+
+      if (search) {
+        query = query.or(`subject.ilike.%${search}%,body.ilike.%${search}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as InternalEmail[];
+    },
+    enabled: !!user
+  });
+}
+
+// Hook para buscar um e-mail específico com detalhes completos
+export function useInternalEmail(emailId: string | null) {
+  return useQuery({
+    queryKey: ['internal-email', emailId],
+    queryFn: async () => {
+      if (!emailId) return null;
+
+      // Busca o e-mail
+      const { data: email, error } = await supabase
+        .from('internal_emails')
+        .select(`
+          *,
+          sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url)
+        `)
+        .eq('id', emailId)
+        .single();
+
+      if (error) throw error;
+
+      // Busca recipients
+      const { data: recipients } = await supabase
+        .from('internal_email_recipients')
+        .select(`
+          *,
+          user:profiles!internal_email_recipients_user_id_fkey(id, full_name, avatar_url)
+        `)
+        .eq('email_id', emailId);
+
+      // Busca attachments
+      const { data: attachments } = await supabase
+        .from('internal_email_attachments')
+        .select('*')
+        .eq('email_id', emailId);
+
+      // Busca ordem/orçamento se vinculado
+      let order = null;
+      let quote = null;
+
+      if (email.order_id) {
+        const { data } = await supabase
+          .from('orders')
+          .select('id, order_number')
+          .eq('id', email.order_id)
+          .single();
+        order = data;
+      }
+
+      if (email.quote_id) {
+        const { data } = await supabase
+          .from('quotes')
+          .select('id, quote_number')
+          .eq('id', email.quote_id)
+          .single();
+        quote = data;
+      }
+
+      return {
+        ...email,
+        recipients: recipients || [],
+        attachments: attachments || [],
+        order,
+        quote
+      } as InternalEmail;
+    },
+    enabled: !!emailId
+  });
+}
+
+// Hook para contagem de não lidos
+export function useInternalEmailUnreadCount() {
+  const { data: user } = useCurrentUserId();
+
+  return useQuery({
+    queryKey: ['internal-email-unread-count', user],
+    queryFn: async () => {
+      if (!user) return 0;
+
+      const { count, error } = await supabase
+        .from('internal_email_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user)
+        .eq('is_read', false)
+        .eq('is_deleted', false)
+        .eq('folder', 'inbox');
+
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!user,
+    refetchInterval: 30000
+  });
+}
+
+// Hook para contagem por pasta
+export function useInternalEmailFolderCounts() {
+  const { data: user } = useCurrentUserId();
+
+  return useQuery({
+    queryKey: ['internal-email-folder-counts', user],
+    queryFn: async () => {
+      if (!user) return { inbox: 0, sent: 0, drafts: 0, starred: 0, archive: 0, trash: 0 };
+
+      // Inbox count
+      const { count: inboxCount } = await supabase
+        .from('internal_email_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user)
+        .eq('folder', 'inbox')
+        .eq('is_deleted', false);
+
+      // Sent count
+      const { count: sentCount } = await supabase
+        .from('internal_emails')
+        .select('*', { count: 'exact', head: true })
+        .eq('sender_id', user)
+        .eq('status', 'sent');
+
+      // Drafts count
+      const { count: draftsCount } = await supabase
+        .from('internal_emails')
+        .select('*', { count: 'exact', head: true })
+        .eq('sender_id', user)
+        .eq('status', 'draft');
+
+      // Starred count
+      const { count: starredCount } = await supabase
+        .from('internal_email_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user)
+        .eq('is_starred', true)
+        .eq('is_deleted', false);
+
+      // Archive count
+      const { count: archiveCount } = await supabase
+        .from('internal_email_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user)
+        .eq('folder', 'archive')
+        .eq('is_deleted', false);
+
+      // Trash count
+      const { count: trashCount } = await supabase
+        .from('internal_email_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user)
+        .eq('is_deleted', true);
+
+      return {
+        inbox: inboxCount || 0,
+        sent: sentCount || 0,
+        drafts: draftsCount || 0,
+        starred: starredCount || 0,
+        archive: archiveCount || 0,
+        trash: trashCount || 0
+      };
+    },
+    enabled: !!user
+  });
+}
+
+// Hook para enviar e-mail
+export function useSendInternalEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      subject: string;
+      body: string;
+      body_html?: string;
+      priority?: 'low' | 'normal' | 'high';
+      category?: string;
+      recipients_to: string[];
+      recipients_cc?: string[];
+      order_id?: string;
+      quote_id?: string;
+      parent_email_id?: string;
+      attachments?: { file_name: string; file_url: string; file_size?: number; mime_type?: string }[];
+      status?: 'draft' | 'sent';
+    }) => {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error('Usuário não autenticado');
+
+      // Criar o e-mail
+      const { data: email, error: emailError } = await supabase
+        .from('internal_emails')
+        .insert({
+          sender_id: userData.user.id,
+          subject: data.subject,
+          body: data.body,
+          body_html: data.body_html,
+          priority: data.priority || 'normal',
+          category: data.category || 'general',
+          order_id: data.order_id,
+          quote_id: data.quote_id,
+          parent_email_id: data.parent_email_id,
+          status: data.status || 'sent',
+          sent_at: data.status === 'draft' ? null : new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (emailError) throw emailError;
+
+      // Criar recipients "to"
+      if (data.recipients_to.length > 0) {
+        const { error: toError } = await supabase
+          .from('internal_email_recipients')
+          .insert(
+            data.recipients_to.map(userId => ({
+              email_id: email.id,
+              user_id: userId,
+              recipient_type: 'to' as const
+            }))
+          );
+        if (toError) throw toError;
+      }
+
+      // Criar recipients "cc"
+      if (data.recipients_cc && data.recipients_cc.length > 0) {
+        const { error: ccError } = await supabase
+          .from('internal_email_recipients')
+          .insert(
+            data.recipients_cc.map(userId => ({
+              email_id: email.id,
+              user_id: userId,
+              recipient_type: 'cc' as const
+            }))
+          );
+        if (ccError) throw ccError;
+      }
+
+      // Criar attachments
+      if (data.attachments && data.attachments.length > 0) {
+        const { error: attachError } = await supabase
+          .from('internal_email_attachments')
+          .insert(
+            data.attachments.map(att => ({
+              email_id: email.id,
+              file_name: att.file_name,
+              file_url: att.file_url,
+              file_size: att.file_size,
+              mime_type: att.mime_type
+            }))
+          );
+        if (attachError) throw attachError;
+      }
+
+      return email;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+    }
+  });
+}
+
+// Hook para marcar como lido
+export function useMarkEmailAsRead() {
+  const queryClient = useQueryClient();
+  const { data: user } = useCurrentUserId();
+
+  return useMutation({
+    mutationFn: async (emailId: string) => {
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const { error } = await supabase
+        .from('internal_email_recipients')
+        .update({ is_read: true, read_at: new Date().toISOString() })
+        .eq('email_id', emailId)
+        .eq('user_id', user);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-email-unread-count'] });
+    }
+  });
+}
+
+// Hook para alternar favorito
+export function useToggleEmailStar() {
+  const queryClient = useQueryClient();
+  const { data: user } = useCurrentUserId();
+
+  return useMutation({
+    mutationFn: async ({ emailId, isStarred }: { emailId: string; isStarred: boolean }) => {
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const { error } = await supabase
+        .from('internal_email_recipients')
+        .update({ is_starred: isStarred })
+        .eq('email_id', emailId)
+        .eq('user_id', user);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+    }
+  });
+}
+
+// Hook para mover para lixeira
+export function useMoveEmailToTrash() {
+  const queryClient = useQueryClient();
+  const { data: user } = useCurrentUserId();
+
+  return useMutation({
+    mutationFn: async (emailId: string) => {
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const { error } = await supabase
+        .from('internal_email_recipients')
+        .update({ is_deleted: true, deleted_at: new Date().toISOString(), folder: 'trash' })
+        .eq('email_id', emailId)
+        .eq('user_id', user);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+    }
+  });
+}
+
+// Hook para arquivar
+export function useArchiveEmail() {
+  const queryClient = useQueryClient();
+  const { data: user } = useCurrentUserId();
+
+  return useMutation({
+    mutationFn: async (emailId: string) => {
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const { error } = await supabase
+        .from('internal_email_recipients')
+        .update({ is_archived: true, folder: 'archive' })
+        .eq('email_id', emailId)
+        .eq('user_id', user);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+    }
+  });
+}
+
+// Hook para buscar labels
+export function useInternalEmailLabels() {
+  return useQuery({
+    queryKey: ['internal-email-labels'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('internal_email_labels')
+        .select('*')
+        .order('is_system', { ascending: false })
+        .order('name');
+
+      if (error) throw error;
+      return data as EmailLabel[];
+    }
+  });
+}
+
+// Hook para buscar membros da equipe (para seletor de destinatários)
+export function useEmailRecipientOptions() {
+  const { data: user } = useCurrentUserId();
+
+  return useQuery({
+    queryKey: ['email-recipient-options', user],
+    queryFn: async () => {
+      if (!user) return [];
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, role, department_id')
+        .eq('is_active', true)
+        .neq('id', user)
+        .order('full_name');
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user
+  });
+}
+
+// Hook para upload de anexo
+export function useUploadEmailAttachment() {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${crypto.randomUUID()}.${fileExt}`;
+      const filePath = `attachments/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('internal-email-attachments')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('internal-email-attachments')
+        .getPublicUrl(filePath);
+
+      return {
+        file_name: file.name,
+        file_url: urlData.publicUrl,
+        file_size: file.size,
+        mime_type: file.type
+      };
+    }
+  });
+}
+
+// Hook para realtime
+export function useInternalEmailRealtime() {
+  const queryClient = useQueryClient();
+  const { data: user } = useCurrentUserId();
+
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('internal-emails-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'internal_email_recipients',
+          filter: `user_id=eq.${user}`
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
+          queryClient.invalidateQueries({ queryKey: ['internal-email-unread-count'] });
+          queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, queryClient]);
+}
+
+// Helper hook para obter user id
+function useCurrentUserId() {
+  return useQuery({
+    queryKey: ['current-user-id'],
+    queryFn: async () => {
+      const { data } = await supabase.auth.getUser();
+      return data.user?.id || null;
+    },
+    staleTime: Infinity
+  });
+}
+
+// Hook para deletar rascunho
+export function useDeleteDraft() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (emailId: string) => {
+      const { error } = await supabase
+        .from('internal_emails')
+        .delete()
+        .eq('id', emailId)
+        .eq('status', 'draft');
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+    }
+  });
+}
