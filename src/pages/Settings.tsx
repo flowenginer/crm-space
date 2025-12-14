@@ -50,6 +50,7 @@ import { LeadDistributionSettings } from '@/components/settings/LeadDistribution
 import { StoreManagement } from '@/components/settings/StoreManagement';
 import { SalesGoalsManagement } from '@/components/settings/SalesGoalsManagement';
 import { MenuConfiguration } from '@/components/settings/MenuConfiguration';
+import { CompanySettings } from '@/components/settings/CompanySettings';
 import { Facebook, UserCheck, Unlock, Store } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -108,6 +109,7 @@ interface SettingsTab {
 }
 
 const SETTINGS_TABS: SettingsTab[] = [
+  { value: 'company', label: 'Empresa', icon: Building2, permission: ['settings', 'update'] },
   { value: 'team', label: 'Equipe', icon: Users, permission: ['settings', 'users'] },
   { value: 'roles', label: 'Perfis', icon: Shield, permission: null, adminOnly: true },
   { value: 'access-permissions', label: 'Acesso Especial', icon: Unlock, permission: null, adminOnly: true },
@@ -535,6 +537,13 @@ export default function Settings() {
             );
           })}
         </TabsList>
+
+        {/* TAB: Company Settings */}
+        {isTabAvailable('company') && (
+          <TabsContent value="company" className="space-y-6">
+            <CompanySettings />
+          </TabsContent>
+        )}
 
         {/* TAB 1: Team Management */}
         {isTabAvailable('team') && (
