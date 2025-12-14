@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Paperclip, Trash2, Loader2, Package } from 'lucide-react';
+import { X, Paperclip, Loader2, Package } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -40,6 +40,7 @@ import {
   useInternalEmail
 } from '@/hooks/useInternalEmail';
 import { useAllSharedBoxes } from '@/hooks/useSharedEmailBoxes';
+import { EmailAttachmentPreview } from './EmailAttachmentPreview';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -481,27 +482,27 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
                     multiple
                     className="hidden"
                     onChange={handleFileUpload}
+                    accept="*/*"
                   />
-                  <Button variant="outline" size="sm" asChild>
+                  <Button variant="outline" size="sm" asChild disabled={uploadAttachment.isPending}>
                     <span>
-                      <Paperclip className="h-4 w-4 mr-2" />
+                      {uploadAttachment.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Paperclip className="h-4 w-4 mr-2" />
+                      )}
                       Adicionar arquivo
                     </span>
                   </Button>
                 </label>
               </div>
               {attachments.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {attachments.map((att, i) => (
-                    <Badge key={i} variant="secondary" className="gap-1 pr-1">
-                      <Paperclip className="h-3 w-3" />
-                      {att.file_name}
-                      <button onClick={() => handleRemoveAttachment(i)} className="ml-1 hover:bg-muted rounded p-0.5">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
+                <EmailAttachmentPreview 
+                  attachments={attachments}
+                  showRemove
+                  onRemove={handleRemoveAttachment}
+                  compact
+                />
               )}
             </div>
           </div>
