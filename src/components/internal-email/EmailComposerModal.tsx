@@ -39,7 +39,7 @@ import {
   useUploadEmailAttachment,
   useInternalEmail
 } from '@/hooks/useInternalEmail';
-import { useAllSharedBoxes } from '@/hooks/useSharedEmailBoxes';
+import { useVisibleSharedBoxes } from '@/hooks/useSharedEmailBoxes';
 import { EmailAttachmentPreview } from './EmailAttachmentPreview';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -86,7 +86,7 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
   const [ccOpen, setCcOpen] = useState(false);
 
   const { data: recipientOptions } = useEmailRecipientOptions();
-  const { data: sharedBoxes } = useAllSharedBoxes();
+  const { data: sharedBoxes } = useVisibleSharedBoxes();
   const { data: replyEmail } = useInternalEmail(replyTo?.emailId || null);
   const sendEmail = useSendInternalEmail();
   const uploadAttachment = useUploadEmailAttachment();

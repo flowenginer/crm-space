@@ -1383,6 +1383,44 @@ export type Database = {
           },
         ]
       }
+      email_visibility_rules: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_allowed: boolean | null
+          source_role: string
+          target_role: string | null
+          target_shared_box_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_allowed?: boolean | null
+          source_role: string
+          target_role?: string | null
+          target_shared_box_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_allowed?: boolean | null
+          source_role?: string
+          target_role?: string | null
+          target_shared_box_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_visibility_rules_target_shared_box_id_fkey"
+            columns: ["target_shared_box_id"]
+            isOneToOne: false
+            referencedRelation: "email_shared_boxes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_accounts: {
         Row: {
           account_number: string | null

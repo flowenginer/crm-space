@@ -670,6 +670,7 @@ export function useInternalEmailLabels() {
 }
 
 // Hook para buscar membros da equipe (para seletor de destinatários)
+// Aplica filtro baseado nas regras de visibilidade
 export function useEmailRecipientOptions() {
   const { data: user } = useCurrentUserId();
 
@@ -678,7 +679,20 @@ export function useEmailRecipientOptions() {
     queryFn: async () => {
       if (!user) return [];
 
-      const { data, error } = await supabase
+      // Busca o role do usuário atual
+      const { data: currentProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user)
+        .single();
+
+      const currentRole = currentProfile?.role;
+
+      // Admin e Supervisor têm acesso total
+      const isAdminOrSupervisor = ['admin', 'supervisor'].includes(currentRole || '');
+
+      // Busca todos os profiles
+      const { data: profiles, error } = await supabase
         .from('profiles')
         .select('id, full_name, avatar_url, role, department_id')
         .eq('is_active', true)
@@ -686,7 +700,28 @@ export function useEmailRecipientOptions() {
         .order('full_name');
 
       if (error) throw error;
-      return data;
+
+      // Se é admin/supervisor, retorna todos
+      if (isAdminOrSupervisor) {
+        return profiles;
+      }
+
+      // Busca as regras de visibilidade para o role atual
+      const { data: rules } = await supabase
+        .from('email_visibility_rules')
+        .select('target_role')
+        .eq('source_role', currentRole || '')
+        .eq('is_allowed', true)
+        .not('target_role', 'is', null);
+
+      // Se não há regras, também bloqueia (por segurança)
+      const allowedRoles = rules?.map(r => r.target_role) || [];
+      
+      // Admin e Supervisor sempre podem receber (são destinatários válidos)
+      allowedRoles.push('admin', 'supervisor');
+
+      // Filtra profiles baseado nas regras
+      return profiles?.filter(p => allowedRoles.includes(p.role)) || [];
     },
     enabled: !!user
   });

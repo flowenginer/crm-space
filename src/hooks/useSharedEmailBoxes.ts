@@ -103,6 +103,57 @@ export function useAllSharedBoxes() {
   });
 }
 
+// Hook para buscar caixas compartilhadas visíveis para o usuário atual (baseado nas regras de visibilidade)
+export function useVisibleSharedBoxes() {
+  return useQuery({
+    queryKey: ['visible-shared-boxes'],
+    queryFn: async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return [];
+
+      // Busca o role do usuário atual
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userData.user.id)
+        .single();
+
+      const currentRole = profile?.role;
+      const isAdminOrSupervisor = ['admin', 'supervisor'].includes(currentRole || '');
+
+      // Busca todas as caixas compartilhadas
+      const { data: boxes, error } = await supabase
+        .from('email_shared_boxes')
+        .select(`
+          *,
+          department:departments(id, name, color)
+        `)
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+
+      // Admin/Supervisor vê todas
+      if (isAdminOrSupervisor) {
+        return boxes as EmailSharedBox[];
+      }
+
+      // Busca regras de visibilidade para caixas compartilhadas
+      const { data: rules } = await supabase
+        .from('email_visibility_rules')
+        .select('target_shared_box_id')
+        .eq('source_role', currentRole || '')
+        .eq('is_allowed', true)
+        .not('target_shared_box_id', 'is', null);
+
+      const allowedBoxIds = rules?.map(r => r.target_shared_box_id) || [];
+
+      // Filtra caixas baseado nas regras
+      return (boxes as EmailSharedBox[]).filter(box => allowedBoxIds.includes(box.id));
+    }
+  });
+}
+
 // Hook para buscar membros de uma caixa compartilhada
 export function useSharedBoxMembers(sharedBoxId: string | null) {
   return useQuery({
