@@ -4861,8 +4861,12 @@ export type Database = {
       tenant_notification_config: {
         Row: {
           created_at: string | null
+          daily_limit: number | null
           id: string
+          min_interval_hours: number | null
           notification_channel_id: string | null
+          notification_send_time: string | null
+          pause_on_weekends: boolean | null
           quote_expiration_days: number[] | null
           quote_expiration_enabled: boolean | null
           quote_expiration_template: string | null
@@ -4871,8 +4875,12 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          daily_limit?: number | null
           id?: string
+          min_interval_hours?: number | null
           notification_channel_id?: string | null
+          notification_send_time?: string | null
+          pause_on_weekends?: boolean | null
           quote_expiration_days?: number[] | null
           quote_expiration_enabled?: boolean | null
           quote_expiration_template?: string | null
@@ -4881,8 +4889,12 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          daily_limit?: number | null
           id?: string
+          min_interval_hours?: number | null
           notification_channel_id?: string | null
+          notification_send_time?: string | null
+          pause_on_weekends?: boolean | null
           quote_expiration_days?: number[] | null
           quote_expiration_enabled?: boolean | null
           quote_expiration_template?: string | null

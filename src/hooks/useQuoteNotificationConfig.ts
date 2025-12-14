@@ -10,6 +10,10 @@ export interface QuoteNotificationConfig {
   quote_expiration_days: number[];
   quote_expiration_template: string;
   notification_channel_id: string | null;
+  notification_send_time: string;
+  daily_limit: number;
+  min_interval_hours: number;
+  pause_on_weekends: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -45,6 +49,10 @@ export function useQuoteNotificationConfig() {
           quote_expiration_days: [3, 1],
           quote_expiration_template: DEFAULT_TEMPLATE,
           notification_channel_id: null,
+          notification_send_time: '09:00',
+          daily_limit: 50,
+          min_interval_hours: 24,
+          pause_on_weekends: false,
           created_at: '',
           updated_at: '',
         } as QuoteNotificationConfig;
