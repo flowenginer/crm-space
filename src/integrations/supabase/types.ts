@@ -4884,10 +4884,13 @@ export type Database = {
         Row: {
           created_at: string | null
           daily_limit: number | null
+          days_after_sent: number[] | null
           id: string
           min_interval_hours: number | null
           notification_channel_id: string | null
           notification_send_time: string | null
+          notification_send_times: string[] | null
+          notification_trigger_type: string | null
           pause_on_weekends: boolean | null
           quote_expiration_days: number[] | null
           quote_expiration_enabled: boolean | null
@@ -4899,10 +4902,13 @@ export type Database = {
         Insert: {
           created_at?: string | null
           daily_limit?: number | null
+          days_after_sent?: number[] | null
           id?: string
           min_interval_hours?: number | null
           notification_channel_id?: string | null
           notification_send_time?: string | null
+          notification_send_times?: string[] | null
+          notification_trigger_type?: string | null
           pause_on_weekends?: boolean | null
           quote_expiration_days?: number[] | null
           quote_expiration_enabled?: boolean | null
@@ -4914,10 +4920,13 @@ export type Database = {
         Update: {
           created_at?: string | null
           daily_limit?: number | null
+          days_after_sent?: number[] | null
           id?: string
           min_interval_hours?: number | null
           notification_channel_id?: string | null
           notification_send_time?: string | null
+          notification_send_times?: string[] | null
+          notification_trigger_type?: string | null
           pause_on_weekends?: boolean | null
           quote_expiration_days?: number[] | null
           quote_expiration_enabled?: boolean | null

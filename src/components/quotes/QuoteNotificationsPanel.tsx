@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,42 +9,32 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Bell, 
   Settings, 
   Clock, 
   Calendar, 
-  Send, 
-  RefreshCw, 
-  Eye, 
-  CheckCircle2, 
-  XCircle, 
+  Shield,
   AlertCircle,
-  MessageSquare,
   Loader2,
-  Save
+  Save,
+  Info
 } from 'lucide-react';
-import { format, addDays, differenceInDays, parseISO, isWeekend } from 'date-fns';
+import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useQuoteNotificationConfig, useUpdateQuoteNotificationConfig } from '@/hooks/useQuoteNotificationConfig';
 import { useChannels } from '@/hooks/useChannels';
 import { useQuotes } from '@/hooks/useQuotes';
-import { toast } from 'sonner';
 
 const SEND_TIME_OPTIONS = [
-  { value: '08:00', label: '08:00' },
-  { value: '09:00', label: '09:00' },
-  { value: '10:00', label: '10:00' },
-  { value: '11:00', label: '11:00' },
-  { value: '12:00', label: '12:00' },
-  { value: '14:00', label: '14:00' },
-  { value: '15:00', label: '15:00' },
-  { value: '16:00', label: '16:00' },
-  { value: '17:00', label: '17:00' },
-  { value: '18:00', label: '18:00' },
+  '08:00', '09:00', '10:00', '11:00', '12:00', 
+  '14:00', '15:00', '16:00', '17:00', '18:00'
 ];
+
+const DAYS_BEFORE_OPTIONS = [7, 5, 3, 2, 1, 0];
+const DAYS_AFTER_OPTIONS = [1, 2, 3, 5, 7];
 
 const DEFAULT_TEMPLATE = `Olá {cliente_nome}! 👋
 
@@ -61,36 +51,58 @@ export function QuoteNotificationsPanel() {
   const { data: quotes } = useQuotes();
 
   // Local state for form
-  const [enabled, setEnabled] = useState(config?.quote_expiration_enabled ?? false);
-  const [useClientChannel, setUseClientChannel] = useState((config as any)?.use_client_channel ?? true);
-  const [channelId, setChannelId] = useState(config?.notification_channel_id ?? '');
-  const [sendTime, setSendTime] = useState(config?.notification_send_time ?? '09:00');
-  const [dailyLimit, setDailyLimit] = useState(config?.daily_limit ?? 50);
-  const [minIntervalHours, setMinIntervalHours] = useState(config?.min_interval_hours ?? 24);
-  const [pauseOnWeekends, setPauseOnWeekends] = useState(config?.pause_on_weekends ?? false);
-  const [expirationDays, setExpirationDays] = useState<number[]>(config?.quote_expiration_days ?? [3, 1]);
-  const [template, setTemplate] = useState(config?.quote_expiration_template ?? DEFAULT_TEMPLATE);
+  const [enabled, setEnabled] = useState(false);
+  const [useClientChannel, setUseClientChannel] = useState(true);
+  const [channelId, setChannelId] = useState('');
+  const [sendTimes, setSendTimes] = useState<string[]>(['09:00']);
+  const [triggerType, setTriggerType] = useState<'before_expiry' | 'after_sent'>('before_expiry');
+  const [expirationDays, setExpirationDays] = useState<number[]>([3, 1]);
+  const [daysAfterSent, setDaysAfterSent] = useState<number[]>([1, 3]);
+  const [dailyLimit, setDailyLimit] = useState(50);
+  const [minIntervalHours, setMinIntervalHours] = useState(24);
+  const [pauseOnWeekends, setPauseOnWeekends] = useState(false);
+  const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
 
   // Update local state when config loads
-  useState(() => {
+  useEffect(() => {
     if (config) {
       setEnabled(config.quote_expiration_enabled);
-      setUseClientChannel((config as any).use_client_channel ?? true);
+      setUseClientChannel(config.use_client_channel ?? true);
       setChannelId(config.notification_channel_id ?? '');
-      setSendTime((config as any).notification_send_time ?? '09:00');
-      setDailyLimit((config as any).daily_limit ?? 50);
-      setMinIntervalHours((config as any).min_interval_hours ?? 24);
-      setPauseOnWeekends((config as any).pause_on_weekends ?? false);
+      setSendTimes(config.notification_send_times ?? ['09:00']);
+      setTriggerType(config.notification_trigger_type ?? 'before_expiry');
       setExpirationDays(config.quote_expiration_days ?? [3, 1]);
+      setDaysAfterSent(config.days_after_sent ?? [1, 3]);
+      setDailyLimit(config.daily_limit ?? 50);
+      setMinIntervalHours(config.min_interval_hours ?? 24);
+      setPauseOnWeekends(config.pause_on_weekends ?? false);
       setTemplate(config.quote_expiration_template ?? DEFAULT_TEMPLATE);
     }
-  });
+  }, [config]);
 
-  const handleDayToggle = (day: number) => {
+  const handleTimeToggle = (time: string) => {
+    if (sendTimes.includes(time)) {
+      if (sendTimes.length > 1) {
+        setSendTimes(sendTimes.filter(t => t !== time));
+      }
+    } else {
+      setSendTimes([...sendTimes, time].sort());
+    }
+  };
+
+  const handleDayBeforeToggle = (day: number) => {
     if (expirationDays.includes(day)) {
       setExpirationDays(expirationDays.filter(d => d !== day));
     } else {
       setExpirationDays([...expirationDays, day].sort((a, b) => b - a));
+    }
+  };
+
+  const handleDayAfterToggle = (day: number) => {
+    if (daysAfterSent.includes(day)) {
+      setDaysAfterSent(daysAfterSent.filter(d => d !== day));
+    } else {
+      setDaysAfterSent([...daysAfterSent, day].sort((a, b) => a - b));
     }
   };
 
@@ -99,11 +111,13 @@ export function QuoteNotificationsPanel() {
       quote_expiration_enabled: enabled,
       use_client_channel: useClientChannel,
       notification_channel_id: channelId || null,
-      notification_send_time: sendTime,
+      notification_send_times: sendTimes,
+      notification_trigger_type: triggerType,
+      quote_expiration_days: expirationDays,
+      days_after_sent: daysAfterSent,
       daily_limit: dailyLimit,
       min_interval_hours: minIntervalHours,
       pause_on_weekends: pauseOnWeekends,
-      quote_expiration_days: expirationDays,
       quote_expiration_template: template,
     } as any);
   };
@@ -132,29 +146,6 @@ export function QuoteNotificationsPanel() {
     };
   }).filter(q => q.nextNotificationDay !== undefined) || [];
 
-  // Mock notification history (would come from useQuoteNotificationHistory)
-  const notificationHistory = [
-    {
-      id: '1',
-      created_at: new Date().toISOString(),
-      quote_number: 'ORC-001',
-      contact_name: 'João Silva',
-      contact_phone: '5511999999999',
-      days_before: 3,
-      status: 'sent',
-    },
-    {
-      id: '2',
-      created_at: new Date(Date.now() - 86400000).toISOString(),
-      quote_number: 'ORC-002',
-      contact_name: 'Maria Santos',
-      contact_phone: '5511888888888',
-      days_before: 1,
-      status: 'failed',
-      error_message: 'Número inválido',
-    },
-  ];
-
   const connectedChannels = channels?.filter(c => c.status === 'connected') || [];
 
   if (configLoading) {
@@ -175,7 +166,7 @@ export function QuoteNotificationsPanel() {
             Configurações de Notificação
           </CardTitle>
           <CardDescription>
-            Configure como e quando os clientes serão notificados sobre orçamentos próximos do vencimento
+            Configure como e quando os clientes serão notificados sobre orçamentos
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -184,13 +175,10 @@ export function QuoteNotificationsPanel() {
             <div className="space-y-0.5">
               <Label className="text-base font-medium">Ativar notificações automáticas</Label>
               <p className="text-sm text-muted-foreground">
-                Enviar lembretes por WhatsApp quando orçamentos estiverem próximos do vencimento
+                Enviar lembretes por WhatsApp automaticamente
               </p>
             </div>
-            <Switch
-              checked={enabled}
-              onCheckedChange={setEnabled}
-            />
+            <Switch checked={enabled} onCheckedChange={setEnabled} />
           </div>
 
           {enabled && (
@@ -211,7 +199,7 @@ export function QuoteNotificationsPanel() {
                       Responder pelo mesmo canal do cliente
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      O sistema identifica automaticamente o canal da última conversa do cliente e envia a notificação pelo mesmo canal.
+                      O sistema envia pelo canal da última conversa do cliente.
                     </p>
                   </div>
                 </div>
@@ -230,104 +218,175 @@ export function QuoteNotificationsPanel() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {useClientChannel 
-                      ? 'Usado apenas se o cliente não tiver conversa anterior' 
-                      : 'Todas as notificações serão enviadas por este canal'}
-                  </p>
                 </div>
               </div>
 
-              {/* Time and Limit Settings */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Horário de Envio</Label>
-                  <Select value={sendTime} onValueChange={setSendTime}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SEND_TIME_OPTIONS.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              {/* Send Times - Multi Select */}
+              <div className="space-y-3 p-4 border rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-base font-medium">Horários de Envio</Label>
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Limite Diário</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={500}
-                    value={dailyLimit}
-                    onChange={e => setDailyLimit(Number(e.target.value))}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Máximo de notificações enviadas por dia
-                  </p>
-                </div>
-              </div>
-
-              {/* Advanced Settings */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Intervalo mínimo entre notificações (horas)</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={168}
-                    value={minIntervalHours}
-                    onChange={e => setMinIntervalHours(Number(e.target.value))}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Evita enviar múltiplas notificações em curto período
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-0.5">
-                    <Label>Pausar nos fins de semana</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Não enviar notificações aos sábados e domingos
-                    </p>
-                  </div>
-                  <Switch
-                    checked={pauseOnWeekends}
-                    onCheckedChange={setPauseOnWeekends}
-                  />
-                </div>
-              </div>
-
-              {/* Notification Days */}
-              <div className="space-y-3">
-                <Label>Quando notificar (dias antes do vencimento)</Label>
                 <div className="flex flex-wrap gap-2">
-                  {[7, 5, 3, 2, 1, 0].map(day => (
+                  {SEND_TIME_OPTIONS.map(time => (
                     <div
-                      key={day}
-                      className={`flex items-center gap-2 px-4 py-2 border rounded-lg cursor-pointer transition-colors ${
-                        expirationDays.includes(day) 
+                      key={time}
+                      className={`flex items-center gap-2 px-3 py-1.5 border rounded-md cursor-pointer transition-colors text-sm ${
+                        sendTimes.includes(time) 
                           ? 'bg-primary text-primary-foreground border-primary' 
                           : 'hover:bg-muted'
                       }`}
-                      onClick={() => handleDayToggle(day)}
+                      onClick={() => handleTimeToggle(time)}
                     >
                       <Checkbox 
-                        checked={expirationDays.includes(day)} 
-                        onCheckedChange={() => handleDayToggle(day)}
+                        checked={sendTimes.includes(time)} 
+                        onCheckedChange={() => handleTimeToggle(time)}
+                        className="h-3.5 w-3.5"
                       />
-                      <span>{day === 0 ? 'No dia' : `${day} dia${day > 1 ? 's' : ''}`}</span>
+                      <span>{time}</span>
                     </div>
                   ))}
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Info className="h-3.5 w-3.5" />
+                  <span>As notificações serão distribuídas entre os horários selecionados</span>
+                </div>
+              </div>
+
+              {/* When to Notify - Trigger Type */}
+              <div className="space-y-4 p-4 border rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-base font-medium">Quando Notificar?</Label>
+                </div>
+
+                <RadioGroup 
+                  value={triggerType} 
+                  onValueChange={(v) => setTriggerType(v as 'before_expiry' | 'after_sent')}
+                  className="space-y-4"
+                >
+                  {/* Before Expiry Option */}
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="before_expiry" id="before_expiry" />
+                      <Label htmlFor="before_expiry" className="font-medium cursor-pointer">
+                        Dias ANTES do vencimento
+                      </Label>
+                    </div>
+                    {triggerType === 'before_expiry' && (
+                      <div className="flex flex-wrap gap-2 ml-6">
+                        {DAYS_BEFORE_OPTIONS.map(day => (
+                          <div
+                            key={day}
+                            className={`flex items-center gap-2 px-3 py-1.5 border rounded-md cursor-pointer transition-colors text-sm ${
+                              expirationDays.includes(day) 
+                                ? 'bg-primary text-primary-foreground border-primary' 
+                                : 'hover:bg-muted'
+                            }`}
+                            onClick={() => handleDayBeforeToggle(day)}
+                          >
+                            <Checkbox 
+                              checked={expirationDays.includes(day)} 
+                              onCheckedChange={() => handleDayBeforeToggle(day)}
+                              className="h-3.5 w-3.5"
+                            />
+                            <span>{day === 0 ? 'No dia' : `${day} dia${day > 1 ? 's' : ''}`}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* After Sent Option */}
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="after_sent" id="after_sent" />
+                      <Label htmlFor="after_sent" className="font-medium cursor-pointer">
+                        Dias APÓS o envio do orçamento (acompanhamento)
+                      </Label>
+                    </div>
+                    {triggerType === 'after_sent' && (
+                      <div className="flex flex-wrap gap-2 ml-6">
+                        {DAYS_AFTER_OPTIONS.map(day => (
+                          <div
+                            key={day}
+                            className={`flex items-center gap-2 px-3 py-1.5 border rounded-md cursor-pointer transition-colors text-sm ${
+                              daysAfterSent.includes(day) 
+                                ? 'bg-primary text-primary-foreground border-primary' 
+                                : 'hover:bg-muted'
+                            }`}
+                            onClick={() => handleDayAfterToggle(day)}
+                          >
+                            <Checkbox 
+                              checked={daysAfterSent.includes(day)} 
+                              onCheckedChange={() => handleDayAfterToggle(day)}
+                              className="h-3.5 w-3.5"
+                            />
+                            <span>{day} dia{day > 1 ? 's' : ''}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </RadioGroup>
+
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Info className="h-3.5 w-3.5" />
+                  <span>Escolha um tipo de gatilho para as notificações</span>
+                </div>
+              </div>
+
+              {/* Limits and Protections */}
+              <div className="space-y-4 p-4 border rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-base font-medium">Limites e Proteções</Label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Limite Diário</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={dailyLimit}
+                      onChange={e => setDailyLimit(Number(e.target.value))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Intervalo Mínimo por Cliente</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={168}
+                        value={minIntervalHours}
+                        onChange={e => setMinIntervalHours(Number(e.target.value))}
+                      />
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">horas</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="pauseWeekends"
+                      checked={pauseOnWeekends}
+                      onCheckedChange={(checked) => setPauseOnWeekends(checked === true)}
+                    />
+                    <Label htmlFor="pauseWeekends" className="cursor-pointer">
+                      Pausar nos fins de semana
+                    </Label>
+                  </div>
                 </div>
               </div>
 
               {/* Message Template */}
-              <div className="space-y-3">
-                <Label>Modelo da Mensagem</Label>
+              <div className="space-y-3 p-4 border rounded-lg">
+                <Label className="text-base font-medium">Modelo da Mensagem</Label>
                 <Textarea
                   rows={6}
                   value={template}
@@ -341,18 +400,18 @@ export function QuoteNotificationsPanel() {
                   <Badge variant="outline">{'{dias_restantes}'}</Badge>
                   <Badge variant="outline">{'{data_validade}'}</Badge>
                 </div>
-              </div>
 
-              {/* Preview */}
-              <div className="p-4 bg-muted rounded-lg">
-                <Label className="text-sm text-muted-foreground mb-2 block">Prévia da mensagem</Label>
-                <div className="bg-background p-3 rounded-lg border whitespace-pre-wrap text-sm">
-                  {template
-                    .replace('{cliente_nome}', 'João Silva')
-                    .replace('{numero}', 'ORC-001')
-                    .replace('{valor}', 'R$ 1.500,00')
-                    .replace('{dias_restantes}', '3 dias')
-                    .replace('{data_validade}', format(addDays(new Date(), 3), 'dd/MM/yyyy'))}
+                {/* Preview */}
+                <div className="p-3 bg-muted rounded-lg mt-2">
+                  <Label className="text-xs text-muted-foreground mb-2 block">Prévia</Label>
+                  <div className="bg-background p-3 rounded-lg border whitespace-pre-wrap text-sm">
+                    {template
+                      .replace('{cliente_nome}', 'João Silva')
+                      .replace('{numero}', 'ORC-001')
+                      .replace('{valor}', 'R$ 1.500,00')
+                      .replace('{dias_restantes}', '3 dias')
+                      .replace('{data_validade}', format(addDays(new Date(), 3), 'dd/MM/yyyy'))}
+                  </div>
                 </div>
               </div>
             </>
@@ -382,7 +441,7 @@ export function QuoteNotificationsPanel() {
                 Próximas Notificações
               </CardTitle>
               <CardDescription>
-                Orçamentos que receberão notificação nos próximos dias
+                Orçamentos que receberão notificação
               </CardDescription>
             </div>
             <Badge variant="secondary" className="text-lg">
@@ -407,7 +466,6 @@ export function QuoteNotificationsPanel() {
                     <TableHead>Validade</TableHead>
                     <TableHead>Dias Restantes</TableHead>
                     <TableHead>Próximo Envio</TableHead>
-                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -429,113 +487,9 @@ export function QuoteNotificationsPanel() {
                         {item.scheduledDate && (
                           <div className="flex items-center gap-1 text-sm">
                             <Clock className="h-3 w-3" />
-                            {format(item.scheduledDate, 'dd/MM')} {sendTime}
+                            {format(item.scheduledDate, 'dd/MM')} às {sendTimes[0] || '09:00'}
                           </div>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          Agendado
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Notification History */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
-                Histórico de Notificações
-              </CardTitle>
-              <CardDescription>
-                Registro de todas as notificações enviadas
-              </CardDescription>
-            </div>
-            <Button variant="outline" size="sm">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Atualizar
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {notificationHistory.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Bell className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>Nenhuma notificação enviada ainda</p>
-            </div>
-          ) : (
-            <ScrollArea className="max-h-[400px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data/Hora</TableHead>
-                    <TableHead>Orçamento</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Telefone</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {notificationHistory.map(notification => (
-                    <TableRow key={notification.id}>
-                      <TableCell className="text-sm">
-                        {format(parseISO(notification.created_at), 'dd/MM HH:mm', { locale: ptBR })}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {notification.quote_number}
-                      </TableCell>
-                      <TableCell>{notification.contact_name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {notification.contact_phone}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {notification.days_before === 0 
-                            ? 'No dia' 
-                            : `${notification.days_before} dia${notification.days_before > 1 ? 's' : ''} antes`}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {notification.status === 'sent' ? (
-                          <Badge variant="default" className="bg-green-500 gap-1">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Enviado
-                          </Badge>
-                        ) : (
-                          <Badge variant="destructive" className="gap-1">
-                            <XCircle className="h-3 w-3" />
-                            Falhou
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {notification.status === 'failed' && (
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8"
-                              onClick={() => toast.info('Reenviando notificação...')}
-                            >
-                              <RefreshCw className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
