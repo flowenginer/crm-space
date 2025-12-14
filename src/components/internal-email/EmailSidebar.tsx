@@ -21,13 +21,14 @@ import {
   Users,
   Clock,
   CheckCircle2,
-  Mail
+  Mail,
+  Settings
 } from 'lucide-react';
 import { useInternalEmailFolderCounts, useInternalEmailLabels, type EmailFolder } from '@/hooks/useInternalEmail';
 import { useUserSharedBoxes, useAllSharedBoxesCounts } from '@/hooks/useSharedEmailBoxes';
 import { usePermissions } from '@/hooks/usePermissions';
 
-export type ExtendedEmailFolder = EmailFolder | 'all' | `shared_${string}` | `shared_${string}_pending` | `shared_${string}_progress` | `shared_${string}_completed`;
+export type ExtendedEmailFolder = EmailFolder | 'all' | 'settings' | `shared_${string}` | `shared_${string}_pending` | `shared_${string}_progress` | `shared_${string}_completed`;
 
 interface EmailSidebarProps {
   currentFolder: ExtendedEmailFolder;
@@ -265,6 +266,25 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
               </button>
             ))}
           </div>
+
+          {/* Botão de Configurações para Admin/Supervisor */}
+          {showAllEmails && (
+            <>
+              <Separator className="my-3" />
+              <button
+                onClick={() => onFolderChange('settings')}
+                className={cn(
+                  'w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors',
+                  currentFolder === 'settings'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Settings className="h-4 w-4" />
+                <span>Configurações</span>
+              </button>
+            </>
+          )}
         </div>
       </ScrollArea>
     </div>
