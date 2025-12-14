@@ -827,7 +827,60 @@ export function QuoteNotificationsPanel() {
       case 'quote_converted': return 'Orçamento convertido';
       case 'quote_status_changed': return 'Status do orçamento alterado';
       case 'manual': return 'Cancelamento manual';
+      case 'manual_sent': return 'Envio manual';
+      case 'manual_override': return 'Substituído';
       default: return reason || 'Motivo não especificado';
+    }
+  };
+
+  const getCancelReasonBadge = (reason: string | null | undefined) => {
+    switch (reason) {
+      case 'client_responded':
+        return (
+          <Badge className="bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
+            <MessageCircle className="h-3 w-3 mr-1" />
+            Cliente respondeu
+          </Badge>
+        );
+      case 'quote_converted':
+        return (
+          <Badge className="bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800">
+            <CheckCircle2 className="h-3 w-3 mr-1" />
+            Convertido
+          </Badge>
+        );
+      case 'quote_status_changed':
+        return (
+          <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800">
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Status alterado
+          </Badge>
+        );
+      case 'manual':
+        return (
+          <Badge className="bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-800/50 dark:text-gray-300 dark:border-gray-700">
+            <Pause className="h-3 w-3 mr-1" />
+            Cancelamento manual
+          </Badge>
+        );
+      case 'manual_sent':
+        return (
+          <Badge className="bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800">
+            <Send className="h-3 w-3 mr-1" />
+            Envio manual
+          </Badge>
+        );
+      case 'manual_override':
+        return (
+          <Badge className="bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700">
+            <Ban className="h-3 w-3 mr-1" />
+            Substituído
+          </Badge>
+        );
+      default:
+        return reason ? (
+          <Badge variant="outline" className="text-xs">{reason}</Badge>
+        ) : null;
     }
   };
 
@@ -1458,24 +1511,22 @@ export function QuoteNotificationsPanel() {
                               }
                             </TableCell>
                             <TableCell className="text-sm">
-                              {notif.error_message && (
-                                <Tooltip>
-                                  <TooltipTrigger>
-                                    <Badge variant="destructive" className="text-xs cursor-help">
-                                      <AlertCircle className="h-3 w-3 mr-1" />
-                                      Erro
-                                    </Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-xs">
-                                    <p>{notif.error_message}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                              {notif.cancel_reason && (
-                                <span className="text-muted-foreground text-xs">
-                                  {getCancelReasonText(notif.cancel_reason)}
-                                </span>
-                              )}
+                              <div className="flex flex-col gap-1">
+                                {notif.error_message && (
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Badge variant="destructive" className="text-xs cursor-help">
+                                        <AlertCircle className="h-3 w-3 mr-1" />
+                                        Erro
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p>{notif.error_message}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {notif.cancel_reason && getCancelReasonBadge(notif.cancel_reason)}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
