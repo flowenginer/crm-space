@@ -305,8 +305,8 @@ export default function Quotes() {
                       ) : (
                         filteredQuotes.map((quote) => {
                           const expiration = getExpirationStatus(quote.valid_until);
-                          const shippingCost = quote.shipping_cost || 0;
-                          const isFreeShipping = shippingCost === 0;
+                          const shippingCost = quote.shipping_cost;
+                          const isFreeShipping = (quote as any).is_free_shipping === true;
                           
                           return (
                             <TableRow key={quote.id}>
@@ -355,7 +355,7 @@ export default function Quotes() {
                                     <Gift className="h-3 w-3 mr-1" />
                                     Grátis
                                   </Badge>
-                                ) : (
+                                ) : shippingCost && shippingCost > 0 ? (
                                   <div className="space-y-1">
                                     <div className="text-sm font-medium">
                                       {formatCurrency(shippingCost)}
@@ -367,6 +367,11 @@ export default function Quotes() {
                                       </div>
                                     )}
                                   </div>
+                                ) : (
+                                  <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-700">
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    A definir
+                                  </Badge>
                                 )}
                               </TableCell>
                               <TableCell className="text-right font-medium">
