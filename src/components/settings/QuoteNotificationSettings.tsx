@@ -137,7 +137,7 @@ export function QuoteNotificationSettings() {
                     ) : (
                       connectedChannels.map(channel => (
                         <SelectItem key={channel.id} value={channel.id}>
-                          {channel.name} ({channel.phone_number || 'Sem número'})
+                          {channel.name} ({channel.phone || 'Sem número'})
                         </SelectItem>
                       ))
                     )}

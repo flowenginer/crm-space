@@ -4219,6 +4219,80 @@ export type Database = {
           },
         ]
       }
+      quote_expiration_notifications: {
+        Row: {
+          channel_id: string | null
+          contact_id: string | null
+          created_at: string | null
+          days_before: number
+          error_message: string | null
+          id: string
+          notification_type: string
+          quote_id: string | null
+          scheduled_for: string | null
+          sent_at: string | null
+          status: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          channel_id?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          days_before: number
+          error_message?: string | null
+          id?: string
+          notification_type: string
+          quote_id?: string | null
+          scheduled_for?: string | null
+          sent_at?: string | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          channel_id?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          days_before?: number
+          error_message?: string | null
+          id?: string
+          notification_type?: string
+          quote_id?: string | null
+          scheduled_for?: string | null
+          sent_at?: string | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_expiration_notifications_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_expiration_notifications_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_expiration_notifications_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_expiration_notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quote_items: {
         Row: {
           created_at: string | null
@@ -4780,6 +4854,54 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "template_folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_notification_config: {
+        Row: {
+          created_at: string | null
+          id: string
+          notification_channel_id: string | null
+          quote_expiration_days: number[] | null
+          quote_expiration_enabled: boolean | null
+          quote_expiration_template: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          notification_channel_id?: string | null
+          quote_expiration_days?: number[] | null
+          quote_expiration_enabled?: boolean | null
+          quote_expiration_template?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          notification_channel_id?: string | null
+          quote_expiration_days?: number[] | null
+          quote_expiration_enabled?: boolean | null
+          quote_expiration_template?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_notification_config_notification_channel_id_fkey"
+            columns: ["notification_channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_notification_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
