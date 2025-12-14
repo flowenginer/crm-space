@@ -32,6 +32,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   Tag,
+  Link as LinkIcon,
 } from 'lucide-react';
 import {
   useFinancialTransactions,
@@ -48,6 +49,7 @@ import { AccountsPanel } from '@/components/financial/AccountsPanel';
 import { CategoryManagement } from '@/components/financial/CategoryManagement';
 import { TransferModal } from '@/components/financial/TransferModal';
 import { FinancialCharts } from '@/components/financial/FinancialCharts';
+import { PaymentLinksPanel } from '@/components/financial/PaymentLinksPanel';
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof Clock }> = {
   pending: { label: 'Pendente', variant: 'outline', icon: Clock },
@@ -240,6 +242,10 @@ export default function Financial() {
               <CreditCard className="h-4 w-4" />
               Transações
             </TabsTrigger>
+            <TabsTrigger value="payments" className="gap-2">
+              <LinkIcon className="h-4 w-4" />
+              Cobranças
+            </TabsTrigger>
             <TabsTrigger value="accounts" className="gap-2">
               <Wallet className="h-4 w-4" />
               Contas
@@ -410,6 +416,10 @@ export default function Financial() {
 
           <TabsContent value="categories">
             <CategoryManagement />
+          </TabsContent>
+
+          <TabsContent value="payments">
+            <PaymentLinksPanel />
           </TabsContent>
         </Tabs>
       </div>

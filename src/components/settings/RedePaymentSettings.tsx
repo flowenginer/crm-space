@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { 
   Save, 
@@ -18,7 +17,16 @@ import {
   Wallet
 } from 'lucide-react';
 import { usePaymentGatewayConfig, useUpdatePaymentGatewayConfig } from '@/hooks/usePaymentLinks';
-import { supabase } from '@/integrations/supabase/client';
+
+// Rede Logo SVG inline
+const RedeLogo = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="120" height="40" rx="4" fill="#FF6600"/>
+    <text x="60" y="26" textAnchor="middle" fill="white" fontFamily="Arial, sans-serif" fontWeight="bold" fontSize="18">
+      rede
+    </text>
+  </svg>
+);
 
 const PAYMENT_METHODS = [
   { id: 'credit_card', label: 'Cartão de Crédito', icon: CreditCard },
@@ -138,7 +146,7 @@ export function RedePaymentSettings() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#FF6600]" />
       </div>
     );
   }
@@ -146,31 +154,31 @@ export function RedePaymentSettings() {
   const isConfigured = config?.is_configured && connectionStatus === 'success';
 
   return (
-    <Card className={isConfigured ? 'border-green-500/50' : ''}>
+    <Card className={`transition-all duration-300 ${isConfigured ? 'border-[#FF6600]/50 shadow-[0_0_20px_rgba(255,102,0,0.1)]' : ''}`}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-              isConfigured ? 'bg-green-500/10' : 'bg-muted'
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center overflow-hidden ${
+              isConfigured ? 'bg-[#FF6600]/10' : 'bg-muted'
             }`}>
-              {isConfigured ? (
-                <CheckCircle size={20} className="text-green-500" />
-              ) : (
-                <CreditCard size={20} className="text-muted-foreground" />
-              )}
+              <RedeLogo className="w-10 h-8" />
             </div>
             <div>
-              <CardTitle className="text-lg">Gateway de Pagamentos - Rede</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-lg">Gateway de Pagamentos</CardTitle>
+                <span className="text-[#FF6600] font-bold text-lg">Rede</span>
+              </div>
               <CardDescription>
                 Gere links de pagamento e receba via cartão ou PIX
               </CardDescription>
             </div>
           </div>
-          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+          <span className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
             isConfigured 
-              ? 'bg-green-500/10 text-green-500' 
+              ? 'bg-[#FF6600]/10 text-[#FF6600] border border-[#FF6600]/30' 
               : 'bg-muted text-muted-foreground'
           }`}>
+            {isConfigured && <CheckCircle size={14} />}
             {isConfigured ? 'Configurado' : 'Não configurado'}
           </span>
         </div>
@@ -186,7 +194,7 @@ export function RedePaymentSettings() {
               setFormData(prev => ({ ...prev, environment: value }))
             }
           >
-            <SelectTrigger>
+            <SelectTrigger className="focus:ring-[#FF6600]/30">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -206,6 +214,7 @@ export function RedePaymentSettings() {
             value={formData.clientId}
             onChange={(e) => setFormData(prev => ({ ...prev, clientId: e.target.value }))}
             placeholder="8d3d08f3-7188-4a6d-8db9-d655dcd92486"
+            className="focus-visible:ring-[#FF6600]/30"
           />
           <p className="text-xs text-muted-foreground">
             Encontrado no portal{' '}
@@ -213,7 +222,7 @@ export function RedePaymentSettings() {
               href="https://developer.userede.com.br/" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="text-primary hover:underline"
+              className="text-[#FF6600] hover:underline"
             >
               developer.userede.com.br
               <ExternalLink size={12} className="inline ml-1" />
@@ -229,6 +238,7 @@ export function RedePaymentSettings() {
             value={formData.clientSecret}
             onChange={(e) => setFormData(prev => ({ ...prev, clientSecret: e.target.value }))}
             placeholder="••••••••••"
+            className="focus-visible:ring-[#FF6600]/30"
           />
         </div>
 
@@ -237,16 +247,16 @@ export function RedePaymentSettings() {
           variant="outline"
           onClick={handleTestConnection}
           disabled={testing || !formData.clientId || !formData.clientSecret}
-          className="w-full"
+          className="w-full border-[#FF6600]/30 hover:bg-[#FF6600]/5 hover:border-[#FF6600]/50"
         >
           {testing ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#FF6600]" />
           ) : connectionStatus === 'success' ? (
-            <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+            <CheckCircle className="mr-2 h-4 w-4 text-[#FF6600]" />
           ) : connectionStatus === 'error' ? (
             <XCircle className="mr-2 h-4 w-4 text-destructive" />
           ) : (
-            <TestTube2 className="mr-2 h-4 w-4" />
+            <TestTube2 className="mr-2 h-4 w-4 text-[#FF6600]" />
           )}
           Testar Conexão
         </Button>
@@ -255,21 +265,27 @@ export function RedePaymentSettings() {
         <div className="space-y-3">
           <Label>Métodos de Pagamento Habilitados</Label>
           <div className="grid gap-3">
-            {PAYMENT_METHODS.map((method) => (
-              <div
-                key={method.id}
-                className="flex items-center justify-between p-3 border rounded-lg"
-              >
-                <div className="flex items-center gap-3">
-                  <method.icon className="h-5 w-5 text-muted-foreground" />
-                  <span>{method.label}</span>
+            {PAYMENT_METHODS.map((method) => {
+              const isEnabled = formData.enabledMethods.includes(method.id);
+              return (
+                <div
+                  key={method.id}
+                  className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${
+                    isEnabled ? 'border-[#FF6600]/30 bg-[#FF6600]/5' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <method.icon className={`h-5 w-5 ${isEnabled ? 'text-[#FF6600]' : 'text-muted-foreground'}`} />
+                    <span>{method.label}</span>
+                  </div>
+                  <Switch
+                    checked={isEnabled}
+                    onCheckedChange={() => handleMethodToggle(method.id)}
+                    className="data-[state=checked]:bg-[#FF6600]"
+                  />
                 </div>
-                <Switch
-                  checked={formData.enabledMethods.includes(method.id)}
-                  onCheckedChange={() => handleMethodToggle(method.id)}
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -283,7 +299,7 @@ export function RedePaymentSettings() {
                 setFormData(prev => ({ ...prev, maxInstallments: parseInt(value) }))
               }
             >
-              <SelectTrigger>
+              <SelectTrigger className="focus:ring-[#FF6600]/30">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -306,7 +322,7 @@ export function RedePaymentSettings() {
               setFormData(prev => ({ ...prev, defaultExpirationDays: parseInt(value) }))
             }
           >
-            <SelectTrigger>
+            <SelectTrigger className="focus:ring-[#FF6600]/30">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -324,6 +340,7 @@ export function RedePaymentSettings() {
           <Button
             onClick={handleSave}
             disabled={updateConfig.isPending}
+            className="bg-[#FF6600] hover:bg-[#E65C00] text-white"
           >
             {updateConfig.isPending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -186,6 +186,22 @@ export const useUpdatePaymentGatewayConfig = () => {
   });
 };
 
+// Fetch all payment links (for financial panel)
+export const useAllPaymentLinks = () => {
+  return useQuery({
+    queryKey: ['payment-links', 'all'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('payment_links')
+        .select('*, contact:contacts(full_name, phone)')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return (data || []) as PaymentLink[];
+    },
+  });
+};
+
 // Check if gateway is configured
 export const useIsPaymentGatewayConfigured = () => {
   const { data: config, isLoading } = usePaymentGatewayConfig();
