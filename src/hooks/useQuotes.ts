@@ -305,12 +305,13 @@ export function useCreateQuote() {
         if (itemsError) throw itemsError;
       }
 
-      // Atualizar valor negociado do contato automaticamente
-      if (data.contact_id && total > 0) {
+      // Atualizar valor negociado e status de lead do contato automaticamente
+      if (data.contact_id) {
         await supabase
           .from('contacts')
           .update({ 
-            negotiated_value: total,
+            negotiated_value: total > 0 ? total : undefined,
+            lead_status: '05 - Orçamento',
             updated_at: new Date().toISOString()
           })
           .eq('id', data.contact_id);
@@ -322,6 +323,7 @@ export function useCreateQuote() {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       toast.success('Orçamento criado com sucesso');
     },
     onError: (error) => {
@@ -599,12 +601,13 @@ export function useConvertQuoteToOrder() {
 
       if (updateError) throw updateError;
 
-      // Atualizar valor negociado do contato com o valor do pedido
-      if (quote.contact_id && (order.total || 0) > 0) {
+      // Atualizar valor negociado e status de lead do contato com o valor do pedido
+      if (quote.contact_id) {
         await supabase
           .from('contacts')
           .update({ 
-            negotiated_value: order.total,
+            negotiated_value: (order.total || 0) > 0 ? order.total : undefined,
+            lead_status: '07 - Pedido Fechado',
             updated_at: new Date().toISOString()
           })
           .eq('id', quote.contact_id);
@@ -619,6 +622,7 @@ export function useConvertQuoteToOrder() {
       queryClient.invalidateQueries({ queryKey: ['financial-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       toast.success(`Orçamento convertido para Pedido #${order.order_number}`);
     },
     onError: (error) => {
