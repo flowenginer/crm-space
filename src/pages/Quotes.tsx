@@ -149,8 +149,8 @@ export default function Quotes() {
     await convertToOrder.mutateAsync(quoteId);
   };
 
-  const handleDeleteQuote = async (quoteId: string) => {
-    await deleteQuote.mutateAsync(quoteId);
+  const handleDeleteQuote = async (quote: Quote) => {
+    await deleteQuote.mutateAsync({ quoteId: quote.id, quoteData: quote });
   };
 
   // Bulk selection handlers
@@ -174,7 +174,8 @@ export default function Quotes() {
     let deleted = 0;
     for (const id of selectedQuotes) {
       try {
-        await deleteQuote.mutateAsync(id);
+        const quote = filteredQuotes.find(q => q.id === id);
+        await deleteQuote.mutateAsync({ quoteId: id, quoteData: quote });
         deleted++;
       } catch (e) {
         console.error('Error deleting quote', id, e);
@@ -491,7 +492,7 @@ export default function Quotes() {
                                           variant="ghost"
                                           size="icon"
                                           onClick={() => handleEditQuote(quote)}
-                                          disabled={quote.status === 'converted'}
+                                          disabled={quote.status === 'converted' && !isAdmin}
                                           className="h-8 w-8"
                                         >
                                           <Pencil className="h-4 w-4" />
@@ -549,7 +550,7 @@ export default function Quotes() {
                                         <AlertDialogFooter>
                                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                           <AlertDialogAction
-                                            onClick={() => handleDeleteQuote(quote.id)}
+                                            onClick={() => handleDeleteQuote(quote)}
                                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                           >
                                             Excluir
