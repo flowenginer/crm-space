@@ -4390,6 +4390,11 @@ export type Database = {
           installments: number | null
           internal_notes: string | null
           notes: string | null
+          notifications_auto_pause_reason: string | null
+          notifications_auto_paused: boolean | null
+          notifications_paused: boolean | null
+          notifications_paused_at: string | null
+          notifications_paused_by: string | null
           payment_condition: string | null
           payment_method: string | null
           quote_number: string
@@ -4421,6 +4426,11 @@ export type Database = {
           installments?: number | null
           internal_notes?: string | null
           notes?: string | null
+          notifications_auto_pause_reason?: string | null
+          notifications_auto_paused?: boolean | null
+          notifications_paused?: boolean | null
+          notifications_paused_at?: string | null
+          notifications_paused_by?: string | null
           payment_condition?: string | null
           payment_method?: string | null
           quote_number: string
@@ -4452,6 +4462,11 @@ export type Database = {
           installments?: number | null
           internal_notes?: string | null
           notes?: string | null
+          notifications_auto_pause_reason?: string | null
+          notifications_auto_paused?: boolean | null
+          notifications_paused?: boolean | null
+          notifications_paused_at?: string | null
+          notifications_paused_by?: string | null
           payment_condition?: string | null
           payment_method?: string | null
           quote_number?: string
@@ -4494,6 +4509,13 @@ export type Database = {
             columns: ["converted_to_order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_notifications_paused_by_fkey"
+            columns: ["notifications_paused_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
