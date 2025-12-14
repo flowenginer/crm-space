@@ -26,6 +26,10 @@ import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
 import { useERPEnabled } from '@/hooks/useERPEnabled';
 import { QuoteModal } from '@/components/quotes/QuoteModal';
 import { OrderModal } from '@/components/orders/OrderModal';
+import { QuoteSelectionModal } from './QuoteSelectionModal';
+import { QuoteDetailsInlineModal } from './QuoteDetailsInlineModal';
+import { useContactHistory, ContactQuote } from '@/hooks/useContactHistory';
+import { useUpdateQuoteStatus } from '@/hooks/useQuotes';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -49,6 +53,9 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   const [localNegotiatedValue, setLocalNegotiatedValue] = useState<string>('');
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const [showQuoteSelectionModal, setShowQuoteSelectionModal] = useState(false);
+  const [showQuoteDetailsModal, setShowQuoteDetailsModal] = useState(false);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   
   // Check if ERP module is enabled
   const isERPEnabled = useERPEnabled();
@@ -725,6 +732,10 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
     ? conversation.contact[0] 
     : conversation.contact;
   
+  // Fetch contact quote history for ERP
+  const { quotes: contactQuotes = [] } = useContactHistory(contact?.id || null);
+  const updateQuoteStatus = useUpdateQuoteStatus();
+  
   console.log('[ConversationSidebar] Contact data:', { 
     id: contact?.id, 
     negotiated_value: contact?.negotiated_value,
@@ -902,13 +913,25 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
       {isERPEnabled && (
         <div className="flex gap-1.5 p-3 border-b border-border bg-muted/30">
           <Button
-            onClick={() => setShowQuoteModal(true)}
+            onClick={() => {
+              // If contact has quotes, show selection modal, otherwise create new
+              if (contactQuotes.length > 0) {
+                setShowQuoteSelectionModal(true);
+              } else {
+                setShowQuoteModal(true);
+              }
+            }}
             variant="outline"
             size="sm"
             className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2 text-amber-600 border-amber-200 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-800 dark:hover:bg-amber-900/20"
           >
             <FileText size={14} className="shrink-0" />
             <span className="truncate">Orçamento</span>
+            {contactQuotes.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                {contactQuotes.length}
+              </span>
+            )}
           </Button>
           
           <Button
@@ -1352,11 +1375,43 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
       {/* ERP Modals */}
       {isERPEnabled && (
         <>
+          <QuoteSelectionModal
+            open={showQuoteSelectionModal}
+            onOpenChange={setShowQuoteSelectionModal}
+            contactId={contact?.id || null}
+            contactName={contact?.full_name}
+            onSelectQuote={(quote) => {
+              setSelectedQuoteId(quote.id);
+              setShowQuoteDetailsModal(true);
+            }}
+            onCreateNew={() => setShowQuoteModal(true)}
+            onReopenQuote={async (quote) => {
+              await updateQuoteStatus.mutateAsync({ quoteId: quote.id, status: 'draft' });
+              setSelectedQuoteId(quote.id);
+              setShowQuoteDetailsModal(true);
+            }}
+          />
           <QuoteModal
             open={showQuoteModal}
             onOpenChange={setShowQuoteModal}
             conversationId={conversationId}
             contactId={contact?.id}
+            onQuoteCreated={(quoteId) => {
+              setSelectedQuoteId(quoteId);
+              setShowQuoteDetailsModal(true);
+            }}
+          />
+          <QuoteDetailsInlineModal
+            quoteId={selectedQuoteId}
+            open={showQuoteDetailsModal}
+            onOpenChange={setShowQuoteDetailsModal}
+            channelId={conversation?.channel_id || null}
+            conversationId={conversationId}
+            contactPhone={contact?.phone || ''}
+            onBack={() => {
+              setShowQuoteDetailsModal(false);
+              setShowQuoteSelectionModal(true);
+            }}
           />
           <OrderModal
             open={showOrderModal}
