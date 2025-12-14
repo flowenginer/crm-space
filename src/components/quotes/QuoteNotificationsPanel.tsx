@@ -201,6 +201,9 @@ export function QuoteNotificationsPanel() {
     const allNotifications = quotes?.flatMap(quote => {
       if (!['sent', 'approved'].includes(quote.status)) return [];
       
+      // Don't generate dynamic notifications for auto-paused quotes (client responded)
+      if ((quote as any).notifications_auto_paused) return [];
+      
       if (triggerType === 'before_expiry') {
         if (!quote.valid_until) return [];
         const validUntil = parseISO(quote.valid_until);
@@ -417,33 +420,32 @@ export function QuoteNotificationsPanel() {
       });
       if (response.error) throw response.error;
 
-      // Atualizar ou criar registro com status 'sent'
-      if (notificationId) {
-        // Atualizar registro existente para 'sent'
+      // Cancel all pending followup notifications for this quote (manual send takes priority)
+      await supabase
+        .from('quote_expiration_notifications')
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          cancel_reason: 'manual_sent'
+        })
+        .eq('quote_id', quoteId)
+        .eq('status', 'pending');
+
+      // Create a record for the manual send
+      const quote = quotes?.find(q => q.id === quoteId);
+      if (quote) {
         await supabase
           .from('quote_expiration_notifications')
-          .update({ 
-            status: 'sent', 
-            sent_at: new Date().toISOString() 
-          })
-          .eq('id', notificationId);
-      } else if (item && item.scheduledDate) {
-        // Criar registro com status 'sent' diretamente
-        const quote = quotes?.find(q => q.id === quoteId);
-        if (quote) {
-          await supabase
-            .from('quote_expiration_notifications')
-            .insert({
-              tenant_id: tenantId,
-              quote_id: quoteId,
-              contact_id: quote.contact_id,
-              days_before: item.triggerDay,
-              scheduled_for: item.scheduledDate.toISOString(),
-              status: 'sent',
-              sent_at: new Date().toISOString(),
-              notification_type: triggerType === 'before_expiry' ? 'expiration' : 'followup',
-            });
-        }
+          .insert({
+            tenant_id: tenantId,
+            quote_id: quoteId,
+            contact_id: quote.contact_id,
+            days_before: item?.triggerDay || 0,
+            scheduled_for: new Date().toISOString(),
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            notification_type: 'manual',
+          });
       }
       
       return response.data;
