@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.distribute-lead]
 verify_jwt = false
+
+[functions.check-expiring-quotes]
+verify_jwt = false

@@ -28,11 +28,11 @@ export function useQuoteNotificationConfig() {
   return useQuery({
     queryKey: ['quote-notification-config', tenantId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('tenant_notification_config')
+      const { data, error } = await (supabase
+        .from('tenant_notification_config' as any)
         .select('*')
         .eq('tenant_id', tenantId)
-        .maybeSingle();
+        .maybeSingle() as any);
 
       if (error) throw error;
 
@@ -65,34 +65,34 @@ export function useUpdateQuoteNotificationConfig() {
       if (!tenantId) throw new Error('Tenant não encontrado');
 
       // Check if config exists
-      const { data: existing } = await supabase
-        .from('tenant_notification_config')
+      const { data: existing } = await (supabase
+        .from('tenant_notification_config' as any)
         .select('id')
         .eq('tenant_id', tenantId)
-        .maybeSingle();
+        .maybeSingle() as any);
 
       if (existing) {
         // Update existing
-        const { error } = await supabase
-          .from('tenant_notification_config')
+        const { error } = await (supabase
+          .from('tenant_notification_config' as any)
           .update({
             ...config,
             updated_at: new Date().toISOString(),
           })
-          .eq('tenant_id', tenantId);
+          .eq('tenant_id', tenantId) as any);
 
         if (error) throw error;
       } else {
         // Insert new
-        const { error } = await supabase
-          .from('tenant_notification_config')
+        const { error } = await (supabase
+          .from('tenant_notification_config' as any)
           .insert({
             tenant_id: tenantId,
             quote_expiration_enabled: config.quote_expiration_enabled ?? false,
             quote_expiration_days: config.quote_expiration_days ?? [3, 1],
             quote_expiration_template: config.quote_expiration_template ?? DEFAULT_TEMPLATE,
             notification_channel_id: config.notification_channel_id ?? null,
-          });
+          }) as any);
 
         if (error) throw error;
       }
@@ -114,11 +114,11 @@ export function useQuoteNotificationHistory(quoteId?: string) {
     queryKey: ['quote-notification-history', tenantId, quoteId],
     queryFn: async () => {
       let query = supabase
-        .from('quote_expiration_notifications')
+        .from('quote_expiration_notifications' as any)
         .select('*')
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(50) as any;
 
       if (quoteId) {
         query = query.eq('quote_id', quoteId);
