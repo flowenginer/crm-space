@@ -17,9 +17,153 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { IconSelector } from './IconSelector';
 import { MenuItem, MenuItemInput } from '@/hooks/useMenuConfig';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronDown, Check, Circle, icons } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+// Dynamic icon component
+const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
+  const IconComponent = icons[name as keyof typeof icons];
+  if (!IconComponent) return <Circle className={className} />;
+  return <IconComponent className={className} />;
+};
+
+// TreeView component for parent selection
+interface ParentMenuTreeSelectProps {
+  allItems: MenuItem[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  excludedIds: string[];
+  maxDepth?: number;
+}
+
+function ParentMenuTreeSelect({
+  allItems,
+  selectedId,
+  onSelect,
+  excludedIds,
+  maxDepth = 2,
+}: ParentMenuTreeSelectProps) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+    // Initialize with parent of selected item expanded
+    if (selectedId) {
+      const selected = allItems.find(i => i.id === selectedId);
+      if (selected?.parent_id) {
+        return new Set([selected.parent_id]);
+      }
+    }
+    return new Set();
+  });
+
+  const toggleExpand = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const getDepth = (item: MenuItem): number => {
+    if (!item.parent_id) return 0;
+    const parent = allItems.find(i => i.id === item.parent_id);
+    return parent ? getDepth(parent) + 1 : 0;
+  };
+
+  const renderItem = (item: MenuItem, depth = 0) => {
+    const children = allItems.filter(i => i.parent_id === item.id);
+    const hasChildren = children.length > 0;
+    const isExpanded = expandedIds.has(item.id);
+    const isExcluded = excludedIds.includes(item.id);
+    const canBeParent = getDepth(item) < maxDepth && !isExcluded;
+    const isSelected = selectedId === item.id;
+
+    return (
+      <div key={item.id}>
+        <div
+          className={cn(
+            "flex items-center gap-2 py-1.5 px-2 rounded-md transition-colors",
+            canBeParent && "cursor-pointer hover:bg-muted",
+            !canBeParent && "opacity-50 cursor-not-allowed",
+            isSelected && "bg-primary/10 ring-1 ring-primary"
+          )}
+          style={{ paddingLeft: `${depth * 20 + 8}px` }}
+          onClick={() => canBeParent && onSelect(item.id)}
+        >
+          {/* Expand/collapse arrow */}
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={(e) => toggleExpand(item.id, e)}
+              className="p-0.5 hover:bg-muted-foreground/20 rounded"
+            >
+              {isExpanded ? (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+          ) : (
+            <span className="w-5" />
+          )}
+
+          {/* Menu icon */}
+          <DynamicIcon name={item.icon} className="h-4 w-4 text-muted-foreground" />
+
+          {/* Title */}
+          <span className={cn("flex-1 text-sm", isSelected && "font-medium text-primary")}>
+            {item.title}
+          </span>
+
+          {/* Selected indicator */}
+          {isSelected && <Check className="h-4 w-4 text-primary" />}
+        </div>
+
+        {/* Children */}
+        {hasChildren && isExpanded && (
+          <div className="border-l border-border ml-4">
+            {children
+              .sort((a, b) => (a.position || 0) - (b.position || 0))
+              .map(child => renderItem(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const rootItems = allItems
+    .filter(i => !i.parent_id)
+    .sort((a, b) => (a.position || 0) - (b.position || 0));
+
+  return (
+    <div className="border rounded-lg p-2 max-h-[250px] overflow-y-auto bg-background">
+      {/* "None" option */}
+      <div
+        className={cn(
+          "flex items-center gap-2 py-1.5 px-2 rounded-md cursor-pointer hover:bg-muted transition-colors",
+          !selectedId && "bg-primary/10 ring-1 ring-primary"
+        )}
+        onClick={() => onSelect(null)}
+      >
+        <span className="w-5" />
+        <Circle className="h-4 w-4 text-muted-foreground" />
+        <span className={cn("flex-1 text-sm", !selectedId && "font-medium text-primary")}>
+          Nenhum (menu principal)
+        </span>
+        {!selectedId && <Check className="h-4 w-4 text-primary" />}
+      </div>
+
+      {/* Root menu items */}
+      {rootItems.map(item => renderItem(item, 0))}
+    </div>
+  );
+}
 
 // Permissões disponíveis
 const AVAILABLE_PERMISSIONS = [
@@ -182,22 +326,13 @@ export function MenuItemModal({
 
           <div className="space-y-2">
             <Label htmlFor="parent_id">Menu Pai</Label>
-            <Select
-              value={form.parent_id || 'none'}
-              onValueChange={(value) => setForm({ ...form, parent_id: value === 'none' ? null : value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o menu pai" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Nenhum (menu principal)</SelectItem>
-                {availableParents.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {getItemLabel(item)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <ParentMenuTreeSelect
+              allItems={allMenuItems}
+              selectedId={form.parent_id}
+              onSelect={(id) => setForm({ ...form, parent_id: id })}
+              excludedIds={excludedIds}
+              maxDepth={2}
+            />
           </div>
 
           <div className="space-y-2">
