@@ -11,7 +11,6 @@ import {
   Trash2,
   MoreVertical,
   Paperclip,
-  Download,
   Package,
   FileText,
   Hand,
@@ -52,6 +51,7 @@ import {
   useCompleteEmail,
   useEmailActivityLog
 } from '@/hooks/useSharedEmailBoxes';
+import { EmailAttachmentPreview } from './EmailAttachmentPreview';
 import { toast } from 'sonner';
 
 interface EmailViewerProps {
@@ -69,12 +69,6 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-function formatFileSize(bytes: number | null) {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 const priorityLabels = {
   low: { label: 'Baixa', class: 'bg-muted text-muted-foreground' },
@@ -375,28 +369,7 @@ export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
                   <Paperclip className="h-4 w-4" />
                   Anexos ({email.attachments.length})
                 </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {email.attachments.map((attachment) => (
-                    <a
-                      key={attachment.id}
-                      href={attachment.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted transition-colors group"
-                    >
-                      <div className="p-2 bg-muted rounded">
-                        <Paperclip className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{attachment.file_name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatFileSize(attachment.file_size)}
-                        </p>
-                      </div>
-                      <Download className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </a>
-                  ))}
-                </div>
+                <EmailAttachmentPreview attachments={email.attachments} />
               </div>
             </>
           )}
