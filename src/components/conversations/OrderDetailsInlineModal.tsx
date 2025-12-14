@@ -485,6 +485,22 @@ export function OrderDetailsInlineModal({
           conversationId={conversationId}
         />
       )}
+
+      {/* Payment Link Modal */}
+      {order && (
+        <PaymentLinkModal
+          open={showPaymentModal}
+          onOpenChange={setShowPaymentModal}
+          orderId={order.id}
+          conversationId={conversationId}
+          contactId={order.contact_id || ''}
+          channelId={channelId}
+          contactPhone={contactPhone}
+          defaultAmount={order.total || 0}
+          customerName={order.contact?.full_name || ''}
+          customerDocument={order.contact?.cpf_cnpj || undefined}
+        />
+      )}
     </>
   );
 }
