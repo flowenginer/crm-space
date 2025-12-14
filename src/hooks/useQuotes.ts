@@ -588,13 +588,47 @@ export function useDeleteQuote() {
         .eq('id', quoteId);
 
       if (error) throw error;
+      return quoteId;
+    },
+    onMutate: async (quoteId) => {
+      // Cancelar queries em andamento
+      await queryClient.cancelQueries({ queryKey: ['quotes'] });
+      await queryClient.cancelQueries({ queryKey: ['quotes-advanced'] });
+      
+      // Snapshot do estado atual para rollback
+      const previousQuotes = queryClient.getQueryData(['quotes']);
+      const previousAdvancedQueries = queryClient.getQueriesData({ queryKey: ['quotes-advanced'] });
+      
+      // Atualização otimista - remover imediatamente de todas as queries
+      queryClient.setQueriesData({ queryKey: ['quotes'] }, (old: Quote[] | undefined) => 
+        old?.filter(q => q.id !== quoteId) || []
+      );
+      queryClient.setQueriesData({ queryKey: ['quotes-advanced'] }, (old: Quote[] | undefined) => 
+        old?.filter(q => q.id !== quoteId) || []
+      );
+      
+      return { previousQuotes, previousAdvancedQueries };
+    },
+    onError: (error, quoteId, context) => {
+      // Rollback em caso de erro
+      if (context?.previousQuotes) {
+        queryClient.setQueryData(['quotes'], context.previousQuotes);
+      }
+      if (context?.previousAdvancedQueries) {
+        context.previousAdvancedQueries.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+      toast.error('Erro ao excluir orçamento: ' + error.message);
+    },
+    onSettled: () => {
+      // Invalidar para sincronizar com o servidor
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes-advanced'] });
+      queryClient.invalidateQueries({ queryKey: ['quote'] });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotes'] });
       toast.success('Orçamento excluído');
-    },
-    onError: (error) => {
-      toast.error('Erro ao excluir orçamento: ' + error.message);
     },
   });
 }

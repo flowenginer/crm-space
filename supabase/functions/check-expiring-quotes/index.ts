@@ -31,6 +31,213 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Check for manual send request
+    const body = await req.json().catch(() => ({}));
+    const { manualQuoteId } = body;
+
+    // If manual send requested, handle it separately
+    if (manualQuoteId) {
+      console.log(`Manual notification requested for quote: ${manualQuoteId}`);
+      
+      // Fetch the quote with contact info
+      const { data: quote, error: quoteError } = await supabase
+        .from('quotes')
+        .select(`
+          id, quote_number, total, valid_until, contact_id, conversation_id, created_at, status, tenant_id,
+          contact:contacts(id, full_name, phone)
+        `)
+        .eq('id', manualQuoteId)
+        .single();
+
+      if (quoteError || !quote) {
+        console.error('Quote not found:', quoteError);
+        return new Response(JSON.stringify({ success: false, error: 'Orçamento não encontrado' }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const contact = quote.contact as any;
+      if (!contact?.phone) {
+        return new Response(JSON.stringify({ success: false, error: 'Contato sem telefone' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Get tenant config for template and channel
+      const { data: config } = await supabase
+        .from('tenant_notification_config')
+        .select('*')
+        .eq('tenant_id', quote.tenant_id)
+        .single();
+
+      if (!config) {
+        return new Response(JSON.stringify({ success: false, error: 'Configuração de notificação não encontrada' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Find channel to use
+      let channelToUse: any = null;
+      const useClientChannel = config.use_client_channel ?? true;
+
+      if (useClientChannel) {
+        const { data: lastConversation } = await supabase
+          .from('conversations')
+          .select('channel_id')
+          .eq('contact_id', quote.contact_id)
+          .not('channel_id', 'is', null)
+          .order('last_message_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (lastConversation?.channel_id) {
+          const { data: clientChannel } = await supabase
+            .from('whatsapp_channels')
+            .select('*, provider:providers(*)')
+            .eq('id', lastConversation.channel_id)
+            .eq('status', 'connected')
+            .single();
+
+          if (clientChannel) {
+            channelToUse = clientChannel;
+          }
+        }
+      }
+
+      if (!channelToUse && config.notification_channel_id) {
+        const { data: fallbackChannel } = await supabase
+          .from('whatsapp_channels')
+          .select('*, provider:providers(*)')
+          .eq('id', config.notification_channel_id)
+          .eq('status', 'connected')
+          .single();
+
+        if (fallbackChannel) {
+          channelToUse = fallbackChannel;
+        }
+      }
+
+      if (!channelToUse) {
+        return new Response(JSON.stringify({ success: false, error: 'Nenhum canal disponível para envio' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Format the message
+      const formatCurrency = (value: number) => 
+        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+      const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('pt-BR');
+
+      const daysUntilExpiry = quote.valid_until 
+        ? Math.ceil((new Date(quote.valid_until).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+        : 0;
+
+      let message = config.quote_expiration_template || 
+        `Olá {cliente_nome}! 👋\n\nSeu orçamento #{numero} no valor de {valor} expira em {dias_restantes}.\n\n📅 Validade: {data_validade}\n\nPosso te ajudar a finalizar?`;
+
+      message = message
+        .replace('{cliente_nome}', contact.full_name || 'Cliente')
+        .replace('{numero}', String(quote.quote_number))
+        .replace('{valor}', formatCurrency(quote.total || 0))
+        .replace('{dias_restantes}', daysUntilExpiry <= 0 ? 'hoje' : `${daysUntilExpiry} dia${daysUntilExpiry > 1 ? 's' : ''}`)
+        .replace('{data_validade}', quote.valid_until ? formatDate(quote.valid_until) : '-');
+
+      // Send the message
+      const provider = channelToUse.provider as any;
+      let sendSuccess = false;
+      let errorMessage = '';
+
+      let phone = contact.phone.replace(/\D/g, '');
+      if (!phone.startsWith('55')) {
+        phone = '55' + phone;
+      }
+
+      try {
+        if (provider?.code === 'zapi') {
+          const response = await fetch(`https://api.z-api.io/instances/${channelToUse.instance_id}/token/${channelToUse.api_token}/send-text`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone, message }),
+          });
+          sendSuccess = response.ok;
+          if (!sendSuccess) {
+            const errorData = await response.json();
+            errorMessage = errorData.error || 'Erro ZAPI';
+          }
+        } else if (provider?.code === 'evolution') {
+          const apiUrl = channelToUse.api_url?.replace(/\/$/, '');
+          const response = await fetch(`${apiUrl}/message/sendText/${channelToUse.instance_id}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': channelToUse.api_token || '',
+            },
+            body: JSON.stringify({ number: phone, text: message }),
+          });
+          sendSuccess = response.ok;
+          if (!sendSuccess) {
+            const errorData = await response.json();
+            errorMessage = errorData.message || 'Erro Evolution';
+          }
+        } else if (provider?.code === 'uazapi') {
+          const response = await fetch(`${channelToUse.api_url}/chat/send`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${channelToUse.api_token}`,
+            },
+            body: JSON.stringify({ phone, message }),
+          });
+          sendSuccess = response.ok;
+          if (!sendSuccess) {
+            const errorData = await response.json();
+            errorMessage = errorData.message || 'Erro UAZAPI';
+          }
+        }
+
+        // Create notification record
+        await supabase
+          .from('quote_expiration_notifications')
+          .insert({
+            tenant_id: quote.tenant_id,
+            quote_id: quote.id,
+            contact_id: quote.contact_id,
+            channel_id: channelToUse.id,
+            notification_type: 'manual',
+            days_before: daysUntilExpiry,
+            scheduled_for: new Date().toISOString(),
+            status: sendSuccess ? 'sent' : 'failed',
+            sent_at: sendSuccess ? new Date().toISOString() : null,
+            error_message: sendSuccess ? null : errorMessage,
+          });
+
+        if (sendSuccess) {
+          console.log(`Manual notification sent successfully for quote ${quote.quote_number}`);
+          return new Response(JSON.stringify({ success: true, sent: true, quoteId: manualQuoteId }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        } else {
+          console.error(`Failed to send manual notification: ${errorMessage}`);
+          return new Response(JSON.stringify({ success: false, error: errorMessage }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      } catch (sendError: any) {
+        console.error('Error sending manual notification:', sendError);
+        return new Response(JSON.stringify({ success: false, error: sendError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Regular scheduled job processing below
     console.log('Starting check-expiring-quotes job...');
 
     // Get current time in Brazil timezone

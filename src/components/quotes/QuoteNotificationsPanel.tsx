@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Bell, 
   Settings, 
@@ -20,13 +22,16 @@ import {
   AlertCircle,
   Loader2,
   Save,
-  Info
+  Info,
+  Send
 } from 'lucide-react';
 import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
 import { useQuoteNotificationConfig, useUpdateQuoteNotificationConfig } from '@/hooks/useQuoteNotificationConfig';
 import { useChannels } from '@/hooks/useChannels';
 import { useQuotes } from '@/hooks/useQuotes';
+import { supabase } from '@/integrations/supabase/client';
 
 const SEND_TIME_OPTIONS = [
   '08:00', '09:00', '10:00', '11:00', '12:00', 
@@ -147,6 +152,23 @@ export function QuoteNotificationsPanel() {
   }).filter(q => q.nextNotificationDay !== undefined) || [];
 
   const connectedChannels = channels?.filter(c => c.status === 'connected') || [];
+
+  // Mutation para enviar notificação manual
+  const sendNowMutation = useMutation({
+    mutationFn: async (quoteId: string) => {
+      const response = await supabase.functions.invoke('check-expiring-quotes', {
+        body: { manualQuoteId: quoteId }
+      });
+      if (response.error) throw response.error;
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success('Notificação enviada com sucesso!');
+    },
+    onError: (error: any) => {
+      toast.error('Erro ao enviar notificação: ' + (error.message || 'Erro desconhecido'));
+    }
+  });
 
   if (configLoading) {
     return (
@@ -466,6 +488,7 @@ export function QuoteNotificationsPanel() {
                     <TableHead>Validade</TableHead>
                     <TableHead>Dias Restantes</TableHead>
                     <TableHead>Próximo Envio</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -490,6 +513,28 @@ export function QuoteNotificationsPanel() {
                             {format(item.scheduledDate, 'dd/MM')} às {sendTimes[0] || '09:00'}
                           </div>
                         )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => sendNowMutation.mutate(item.id)}
+                              disabled={sendNowMutation.isPending}
+                              className="h-8 w-8 text-primary hover:bg-primary/10"
+                            >
+                              {sendNowMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Send className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Enviar notificação agora</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   ))}
