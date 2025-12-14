@@ -111,32 +111,39 @@ export function QuoteDetailsModal({ quote, open, onOpenChange }: QuoteDetailsMod
   const canConvert = quote.status === 'approved' && !isExpired;
 
   // Prepare PDF data
-  const preparePDFData = (): PDFDocumentData => ({
-    type: 'quote',
-    number: quote.quote_number,
-    date: quote.created_at ? format(new Date(quote.created_at), 'dd/MM/yyyy', { locale: ptBR }) : '',
-    validUntil: quote.valid_until ? format(new Date(quote.valid_until), 'dd/MM/yyyy', { locale: ptBR }) : undefined,
-    contact: {
-      name: quote.contact?.full_name || 'Cliente não informado',
-      phone: quote.contact?.phone,
-      email: quote.contact?.email,
-    },
-    items: items.map(item => ({
-      name: item.product_name,
-      variation: item.variation_name || undefined,
-      sku: item.sku || undefined,
-      quantity: item.quantity,
-      unitPrice: item.unit_price,
-      subtotal: item.subtotal,
-    })),
-    subtotal: quote.subtotal || 0,
-    discount: quote.discount_amount || undefined,
-    shipping: quote.shipping_cost || undefined,
-    total: quote.total || 0,
-    paymentMethod: quote.payment_method || undefined,
-    installments: quote.installments || undefined,
-    notes: quote.notes || undefined,
-  });
+  const preparePDFData = (): PDFDocumentData => {
+    // Type assertion to access new fields
+    const quoteData = quote as any;
+    
+    return {
+      type: 'quote',
+      number: quote.quote_number,
+      date: quote.created_at ? format(new Date(quote.created_at), 'dd/MM/yyyy', { locale: ptBR }) : '',
+      validUntil: quote.valid_until ? format(new Date(quote.valid_until), 'dd/MM/yyyy', { locale: ptBR }) : undefined,
+      contact: {
+        name: quote.contact?.full_name || 'Cliente não informado',
+        phone: quote.contact?.phone,
+        email: quote.contact?.email,
+      },
+      items: items.map(item => ({
+        name: item.product_name,
+        variation: item.variation_name || undefined,
+        sku: item.sku || undefined,
+        quantity: item.quantity,
+        unitPrice: item.unit_price,
+        subtotal: item.subtotal,
+      })),
+      subtotal: quote.subtotal || 0,
+      discount: quote.discount_amount || undefined,
+      shipping: quote.shipping_cost || undefined,
+      total: quote.total || 0,
+      paymentMethod: quote.payment_method || undefined,
+      paymentCondition: quoteData.payment_condition || undefined,
+      paymentSchedule: quoteData.payment_schedule || undefined,
+      installments: quote.installments || undefined,
+      notes: quote.notes || undefined,
+    };
+  };
 
   const handleDownloadPDF = () => {
     downloadPDF(preparePDFData(), `orcamento_${quote.quote_number}.pdf`);

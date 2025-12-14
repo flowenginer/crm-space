@@ -30,6 +30,15 @@ export interface PDFDocumentData {
   installments?: number;
   notes?: string;
   sellerName?: string;
+  // Payment schedule fields
+  paymentCondition?: string;
+  paymentSchedule?: Array<{
+    type: string;
+    label: string;
+    amount: number;
+    date: string | null;
+    number?: number;
+  }>;
 }
 
 export function useGeneratePDF() {
@@ -199,12 +208,59 @@ export function useGeneratePDF() {
     if (data.paymentMethod) {
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      let paymentText = `Forma de Pagamento: ${data.paymentMethod}`;
-      if (data.installments && data.installments > 1) {
-        paymentText += ` (${data.installments}x)`;
+      
+      // Map payment method to readable label
+      const paymentMethodLabels: Record<string, string> = {
+        'pix': 'PIX',
+        'credit_card': 'Cartão de Crédito',
+        'debit_card': 'Cartão de Débito',
+        'boleto': 'Boleto',
+        'cash': 'Dinheiro',
+        'transfer': 'Transferência',
+      };
+      const paymentMethodLabel = paymentMethodLabels[data.paymentMethod] || data.paymentMethod;
+      
+      doc.text(`Forma de Pagamento: ${paymentMethodLabel}`, margin, y);
+      y += 5;
+      
+      // Payment condition label
+      if (data.paymentCondition) {
+        const conditionLabels: Record<string, string> = {
+          'full': 'À Vista',
+          'installments': 'Parcelado',
+          'down_payment': 'Entrada + Parcelas',
+        };
+        const conditionLabel = conditionLabels[data.paymentCondition] || data.paymentCondition;
+        doc.text(`Condição: ${conditionLabel}`, margin, y);
+        y += 5;
       }
-      doc.text(paymentText, margin, y);
-      y += 8;
+      
+      // Payment schedule with dates
+      if (data.paymentSchedule && data.paymentSchedule.length > 0) {
+        y += 3;
+        doc.setFont('helvetica', 'bold');
+        doc.text('Cronograma de Pagamentos:', margin, y);
+        y += 5;
+        doc.setFont('helvetica', 'normal');
+        
+        data.paymentSchedule.forEach((payment) => {
+          if (y > 270) {
+            doc.addPage();
+            y = margin;
+          }
+          
+          const dateStr = payment.date 
+            ? ` — ${payment.date.split('-').reverse().join('/')}`
+            : '';
+          doc.text(`• ${payment.label}: ${formatCurrency(payment.amount)}${dateStr}`, margin + 2, y);
+          y += 5;
+        });
+        y += 3;
+      } else if (data.installments && data.installments > 1) {
+        doc.text(`Parcelas: ${data.installments}x de ${formatCurrency(data.total / data.installments)}`, margin, y);
+        y += 5;
+      }
+      y += 3;
     }
 
     // Notes

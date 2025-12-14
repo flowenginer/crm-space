@@ -118,6 +118,10 @@ export function QuoteDetailsInlineModal({
   // Prepare PDF data
   const preparePDFData = (): PDFDocumentData | null => {
     if (!quote) return null;
+    
+    // Type assertion to access new fields
+    const quoteData = quote as any;
+    
     return {
       type: 'quote',
       number: quote.quote_number,
@@ -141,6 +145,8 @@ export function QuoteDetailsInlineModal({
       shipping: quote.shipping_cost || undefined,
       total: quote.total || 0,
       paymentMethod: quote.payment_method || undefined,
+      paymentCondition: quoteData.payment_condition || undefined,
+      paymentSchedule: quoteData.payment_schedule || undefined,
       installments: quote.installments || undefined,
       notes: quote.notes || undefined,
     };
