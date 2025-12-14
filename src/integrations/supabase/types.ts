@@ -4240,6 +4240,9 @@ export type Database = {
           error_message: string | null
           id: string
           notification_type: string
+          paused: boolean | null
+          paused_at: string | null
+          paused_by: string | null
           quote_id: string | null
           scheduled_for: string | null
           sent_at: string | null
@@ -4257,6 +4260,9 @@ export type Database = {
           error_message?: string | null
           id?: string
           notification_type: string
+          paused?: boolean | null
+          paused_at?: string | null
+          paused_by?: string | null
           quote_id?: string | null
           scheduled_for?: string | null
           sent_at?: string | null
@@ -4274,6 +4280,9 @@ export type Database = {
           error_message?: string | null
           id?: string
           notification_type?: string
+          paused?: boolean | null
+          paused_at?: string | null
+          paused_by?: string | null
           quote_id?: string | null
           scheduled_for?: string | null
           sent_at?: string | null
@@ -4300,6 +4309,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_expiration_notifications_paused_by_fkey"
+            columns: ["paused_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
