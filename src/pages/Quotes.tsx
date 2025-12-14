@@ -55,6 +55,10 @@ import {
   AlertTriangle,
   Bell,
   X,
+  Pause,
+  MessageCircle,
+  CheckCircle,
+  BellOff,
 } from 'lucide-react';
 import { useQuotesAdvanced, Quote, QuoteFilters, useUpdateQuoteStatus, useDeleteQuote, useConvertQuoteToOrder } from '@/hooks/useQuotes';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -206,6 +210,55 @@ export default function Quotes() {
     };
   };
 
+  const getNotificationStatusBadge = (quote: Quote) => {
+    // If converted, show converted status
+    if (quote.status === 'converted') {
+      return (
+        <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-700">
+          <CheckCircle className="h-3 w-3 mr-1" />
+          Convertido
+        </Badge>
+      );
+    }
+    
+    // Check if manually paused
+    if (quote.notifications_paused) {
+      return (
+        <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-700">
+          <Pause className="h-3 w-3 mr-1" />
+          Pausado
+        </Badge>
+      );
+    }
+    
+    // Check if auto-paused
+    if (quote.notifications_auto_paused) {
+      const reason = quote.notifications_auto_pause_reason;
+      if (reason === 'client_responded') {
+        return (
+          <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700">
+            <MessageCircle className="h-3 w-3 mr-1" />
+            Cliente respondeu
+          </Badge>
+        );
+      }
+      return (
+        <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600">
+          <BellOff className="h-3 w-3 mr-1" />
+          Auto-pausado
+        </Badge>
+      );
+    }
+    
+    // Active notifications
+    return (
+      <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700">
+        <Bell className="h-3 w-3 mr-1" />
+        Ativo
+      </Badge>
+    );
+  };
+
   const handleModalClose = (open: boolean) => {
     if (!open) {
       setEditingQuote(null);
@@ -338,6 +391,7 @@ export default function Quotes() {
                         <TableHead>Cliente</TableHead>
                         <TableHead>Vendedor</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Notificações</TableHead>
                         <TableHead>Frete</TableHead>
                         <TableHead className="text-right">Total</TableHead>
                         <TableHead>Data</TableHead>
@@ -348,7 +402,7 @@ export default function Quotes() {
                     <TableBody>
                       {filteredQuotes.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                             Nenhum orçamento encontrado
                           </TableCell>
                         </TableRow>
@@ -411,6 +465,9 @@ export default function Quotes() {
                                     <SelectItem value="expired">Expirado</SelectItem>
                                   </SelectContent>
                                 </Select>
+                              </TableCell>
+                              <TableCell>
+                                {getNotificationStatusBadge(quote)}
                               </TableCell>
                               <TableCell>
                                 {isFreeShipping ? (
