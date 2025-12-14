@@ -20,12 +20,14 @@ import {
   Factory,
   Users,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  Mail
 } from 'lucide-react';
 import { useInternalEmailFolderCounts, useInternalEmailLabels, type EmailFolder } from '@/hooks/useInternalEmail';
 import { useUserSharedBoxes, useAllSharedBoxesCounts } from '@/hooks/useSharedEmailBoxes';
+import { usePermissions } from '@/hooks/usePermissions';
 
-export type ExtendedEmailFolder = EmailFolder | `shared_${string}` | `shared_${string}_pending` | `shared_${string}_progress` | `shared_${string}_completed`;
+export type ExtendedEmailFolder = EmailFolder | 'all' | `shared_${string}` | `shared_${string}_pending` | `shared_${string}_progress` | `shared_${string}_completed`;
 
 interface EmailSidebarProps {
   currentFolder: ExtendedEmailFolder;
@@ -57,21 +59,45 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
   const { data: labels } = useInternalEmailLabels();
   const { data: sharedBoxes } = useUserSharedBoxes();
   const { data: sharedBoxCounts } = useAllSharedBoxesCounts();
+  const { isAdmin, isSupervisor } = usePermissions();
+
+  const showAllEmails = isAdmin || isSupervisor;
 
   return (
-    <div className="w-64 border-r bg-muted/30 flex flex-col">
+    <div className="w-60 border-r bg-muted/20 flex flex-col">
       {/* Botão Novo E-mail */}
-      <div className="p-4">
-        <Button onClick={onCompose} className="w-full gap-2">
+      <div className="p-3">
+        <Button onClick={onCompose} className="w-full gap-2 shadow-sm" size="sm">
           <Plus className="h-4 w-4" />
           Novo E-mail
         </Button>
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="px-3 py-2">
+        <div className="px-2 py-1">
+          {/* Pasta "Todos" para Admin/Supervisor */}
+          {showAllEmails && (
+            <>
+              <button
+                onClick={() => onFolderChange('all')}
+                className={cn(
+                  'w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors mb-1',
+                  currentFolder === 'all'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Mail className="h-4 w-4" />
+                  <span>Todos os E-mails</span>
+                </div>
+              </button>
+              <Separator className="my-2" />
+            </>
+          )}
+
           {/* Pastas Pessoais */}
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {folderItems.map((item) => {
               const count = counts?.[item.id] || 0;
               const isActive = currentFolder === item.id;
@@ -81,13 +107,13 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                   key={item.id}
                   onClick={() => onFolderChange(item.id)}
                   className={cn(
-                    'w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors',
+                    'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors',
                     isActive
                       ? 'bg-primary text-primary-foreground'
                       : 'hover:bg-muted text-muted-foreground hover:text-foreground'
                   )}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     {item.icon}
                     <span>{item.label}</span>
                   </div>
@@ -107,9 +133,9 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
           {/* Caixas Compartilhadas */}
           {sharedBoxes && sharedBoxes.length > 0 && (
             <>
-              <Separator className="my-4" />
-              <div className="space-y-1">
-                <p className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <Separator className="my-3" />
+              <div className="space-y-0.5">
+                <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Caixas Compartilhadas
                 </p>
                 {sharedBoxes.map((box) => {
@@ -124,15 +150,15 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                       <button
                         onClick={() => onFolderChange(`shared_${box.id}` as ExtendedEmailFolder)}
                         className={cn(
-                          'w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors',
+                          'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors',
                           currentFolder === `shared_${box.id}`
                             ? 'bg-primary text-primary-foreground'
                             : 'hover:bg-muted text-muted-foreground hover:text-foreground'
                         )}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2.5">
                           <Users className="h-4 w-4" />
-                          <span>{box.name}</span>
+                          <span className="truncate">{box.name}</span>
                         </div>
                         {(pendingCount > 0 || inProgressCount > 0) && (
                           <Badge 
@@ -146,13 +172,13 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
 
                       {/* Sub-pastas da caixa compartilhada */}
                       {isBoxActive && (
-                        <div className="ml-4 space-y-0.5">
+                        <div className="ml-3 space-y-0.5 border-l border-border/50 pl-2">
                           <button
                             onClick={() => onFolderChange(`shared_${box.id}_pending` as ExtendedEmailFolder)}
                             className={cn(
-                              'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs transition-colors',
+                              'w-full flex items-center justify-between px-2.5 py-1 rounded-md text-xs transition-colors',
                               currentFolder === `shared_${box.id}_pending`
-                                ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-400'
                                 : 'hover:bg-muted text-muted-foreground hover:text-foreground'
                             )}
                           >
@@ -170,9 +196,9 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                           <button
                             onClick={() => onFolderChange(`shared_${box.id}_progress` as ExtendedEmailFolder)}
                             className={cn(
-                              'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs transition-colors',
+                              'w-full flex items-center justify-between px-2.5 py-1 rounded-md text-xs transition-colors',
                               currentFolder === `shared_${box.id}_progress`
-                                ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                                ? 'bg-blue-500/20 text-blue-700 dark:text-blue-400'
                                 : 'hover:bg-muted text-muted-foreground hover:text-foreground'
                             )}
                           >
@@ -190,9 +216,9 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                           <button
                             onClick={() => onFolderChange(`shared_${box.id}_completed` as ExtendedEmailFolder)}
                             className={cn(
-                              'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs transition-colors',
+                              'w-full flex items-center justify-between px-2.5 py-1 rounded-md text-xs transition-colors',
                               currentFolder === `shared_${box.id}_completed`
-                                ? 'bg-green-500/20 text-green-600 dark:text-green-400'
+                                ? 'bg-green-500/20 text-green-700 dark:text-green-400'
                                 : 'hover:bg-muted text-muted-foreground hover:text-foreground'
                             )}
                           >
@@ -210,22 +236,22 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
             </>
           )}
 
-          <Separator className="my-4" />
+          <Separator className="my-3" />
 
           {/* Marcadores */}
-          <div className="space-y-1">
-            <p className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="space-y-0.5">
+            <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               Marcadores
             </p>
             {labels?.map((label) => (
               <button
                 key={label.id}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               >
                 <span style={{ color: label.color }}>
                   {labelIcons[label.icon] || <Tag className="h-3.5 w-3.5" />}
                 </span>
-                <span>{label.name}</span>
+                <span className="truncate">{label.name}</span>
               </button>
             ))}
           </div>
