@@ -22,6 +22,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { usePendingRequestsCount, useContactRequestsRealtime } from '@/hooks/useContactRequests';
 import { useInternalChatUnreadCount } from '@/hooks/useInternalChat';
+import { useInternalEmailUnreadCount } from '@/hooks/useInternalEmail';
 import { usePendingCallbacksCount } from '@/hooks/useCallbackReminders';
 import { useMenuHierarchy, MenuItem } from '@/hooks/useMenuConfig';
 import { useQuery } from '@tanstack/react-query';
@@ -51,6 +52,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { hasPermission, isAdmin, role: userRole, isFullyLoaded } = usePermissions();
   const { data: pendingRequestsCount = 0 } = usePendingRequestsCount();
   const { data: internalChatUnreadCount = 0 } = useInternalChatUnreadCount();
+  const { data: internalEmailUnreadCount = 0 } = useInternalEmailUnreadCount();
   const { data: callbacksCount } = usePendingCallbacksCount();
   
   // Carregar menu do banco de dados
@@ -161,6 +163,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         return pendingRequestsCount || null;
       case 'internalChatCount':
         return internalChatUnreadCount || null;
+      case 'internalEmailCount':
+        return internalEmailUnreadCount || null;
       default:
         return null;
     }

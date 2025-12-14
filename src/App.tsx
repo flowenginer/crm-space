@@ -32,6 +32,7 @@ import FlowEditor from "@/pages/FlowEditor";
 import Webhooks from "@/pages/Webhooks";
 import ContactRequests from "@/pages/ContactRequests";
 import InternalChat from "@/pages/InternalChat";
+import InternalEmail from "@/pages/InternalEmail";
 import Attributes from "@/pages/products/Attributes";
 import PriceRules from "@/pages/products/PriceRules";
 import Catalogs from "@/pages/products/Catalogs";
@@ -73,6 +74,11 @@ const App = () => (
               <Route path="/internal-chat" element={
                 <ProtectedRoute>
                   <InternalChat />
+                </ProtectedRoute>
+              } />
+              <Route path="/internal-email" element={
+                <ProtectedRoute>
+                  <InternalEmail />
                 </ProtectedRoute>
               } />
               <Route path="/conversations/requests" element={
