@@ -137,50 +137,55 @@ export function EmailList({ folder, searchQuery, onSearchChange, onSelectEmail, 
   };
 
   const handleBulkMarkAsRead = async () => {
+    const ids = Array.from(selectedIds);
+    setSelectedIds(new Set()); // Limpa seleção antes da ação
     try {
-      await bulkActions.markAsRead(Array.from(selectedIds));
+      await bulkActions.markAsRead(ids);
       toast.success('E-mails marcados como lidos');
-      setSelectedIds(new Set());
     } catch (error) {
       toast.error('Erro ao marcar e-mails como lidos');
     }
   };
 
   const handleBulkMarkAsUnread = async () => {
+    const ids = Array.from(selectedIds);
+    setSelectedIds(new Set());
     try {
-      await bulkActions.markAsUnread(Array.from(selectedIds));
+      await bulkActions.markAsUnread(ids);
       toast.success('E-mails marcados como não lidos');
-      setSelectedIds(new Set());
     } catch (error) {
       toast.error('Erro ao marcar e-mails como não lidos');
     }
   };
 
   const handleBulkToggleStar = async () => {
+    const ids = Array.from(selectedIds);
+    setSelectedIds(new Set());
     try {
-      await bulkActions.toggleStar(Array.from(selectedIds), true);
+      await bulkActions.toggleStar(ids, true);
       toast.success('E-mails favoritados');
-      setSelectedIds(new Set());
     } catch (error) {
       toast.error('Erro ao favoritar e-mails');
     }
   };
 
   const handleBulkArchive = async () => {
+    const ids = Array.from(selectedIds);
+    setSelectedIds(new Set());
     try {
-      await bulkActions.archive(Array.from(selectedIds));
+      await bulkActions.archive(ids);
       toast.success('E-mails arquivados');
-      setSelectedIds(new Set());
     } catch (error) {
       toast.error('Erro ao arquivar e-mails');
     }
   };
 
   const handleBulkMoveToTrash = async () => {
+    const ids = Array.from(selectedIds);
+    setSelectedIds(new Set());
     try {
-      await bulkActions.moveToTrash(Array.from(selectedIds));
+      await bulkActions.moveToTrash(ids);
       toast.success('E-mails movidos para a lixeira');
-      setSelectedIds(new Set());
     } catch (error) {
       toast.error('Erro ao mover e-mails para a lixeira');
     }

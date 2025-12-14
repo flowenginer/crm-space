@@ -11,10 +11,19 @@ export function useBulkEmailActions() {
     return data.user?.id;
   };
 
-  const invalidateQueries = () => {
-    queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
-    queryClient.invalidateQueries({ queryKey: ['internal-email-unread-count'] });
-    queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+  const invalidateAndRefetch = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
+    await queryClient.invalidateQueries({ queryKey: ['internal-email-unread-count'] });
+    await queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+    await queryClient.refetchQueries({ queryKey: ['internal-emails'] });
+  };
+
+  const optimisticRemove = (emailIds: string[]) => {
+    // Atualização otimista - remove e-mails da cache imediatamente
+    queryClient.setQueriesData({ queryKey: ['internal-emails'] }, (oldData: any) => {
+      if (!oldData || !Array.isArray(oldData)) return oldData;
+      return oldData.filter((email: any) => !emailIds.includes(email.id));
+    });
   };
 
   const markAsRead = async (emailIds: string[]) => {
@@ -30,7 +39,7 @@ export function useBulkEmailActions() {
         .eq('user_id', userId);
 
       if (error) throw error;
-      invalidateQueries();
+      await invalidateAndRefetch();
     } finally {
       setIsLoading(false);
     }
@@ -49,7 +58,7 @@ export function useBulkEmailActions() {
         .eq('user_id', userId);
 
       if (error) throw error;
-      invalidateQueries();
+      await invalidateAndRefetch();
     } finally {
       setIsLoading(false);
     }
@@ -68,7 +77,7 @@ export function useBulkEmailActions() {
         .eq('user_id', userId);
 
       if (error) throw error;
-      invalidateQueries();
+      await invalidateAndRefetch();
     } finally {
       setIsLoading(false);
     }
@@ -76,6 +85,7 @@ export function useBulkEmailActions() {
 
   const archive = async (emailIds: string[]) => {
     setIsLoading(true);
+    optimisticRemove(emailIds);
     try {
       const userId = await getCurrentUserId();
       if (!userId) throw new Error('Usuário não autenticado');
@@ -87,7 +97,7 @@ export function useBulkEmailActions() {
         .eq('user_id', userId);
 
       if (error) throw error;
-      invalidateQueries();
+      await invalidateAndRefetch();
     } finally {
       setIsLoading(false);
     }
@@ -95,6 +105,7 @@ export function useBulkEmailActions() {
 
   const moveToTrash = async (emailIds: string[]) => {
     setIsLoading(true);
+    optimisticRemove(emailIds);
     try {
       const userId = await getCurrentUserId();
       if (!userId) throw new Error('Usuário não autenticado');
@@ -106,7 +117,7 @@ export function useBulkEmailActions() {
         .eq('user_id', userId);
 
       if (error) throw error;
-      invalidateQueries();
+      await invalidateAndRefetch();
     } finally {
       setIsLoading(false);
     }
@@ -114,6 +125,7 @@ export function useBulkEmailActions() {
 
   const permanentDelete = async (emailIds: string[]) => {
     setIsLoading(true);
+    optimisticRemove(emailIds);
     try {
       const userId = await getCurrentUserId();
       if (!userId) throw new Error('Usuário não autenticado');
@@ -125,7 +137,7 @@ export function useBulkEmailActions() {
         .eq('user_id', userId);
 
       if (error) throw error;
-      invalidateQueries();
+      await invalidateAndRefetch();
     } finally {
       setIsLoading(false);
     }
@@ -138,6 +150,7 @@ export function useBulkEmailActions() {
     archive,
     moveToTrash,
     permanentDelete,
-    isLoading
+    isLoading,
+    optimisticRemove
   };
 }
