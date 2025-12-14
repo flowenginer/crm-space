@@ -352,6 +352,8 @@ export function useCreateQuote() {
       }
       if (variables.contact_id) {
         queryClient.invalidateQueries({ queryKey: ['contact', variables.contact_id] });
+        // Invalidate contact history for real-time quote counter updates
+        queryClient.invalidateQueries({ queryKey: ['contact-quotes', variables.contact_id] });
       }
       toast.success('Orçamento criado com sucesso');
     },
@@ -380,6 +382,8 @@ export function useUpdateQuoteStatus() {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['quotes-advanced'] });
       queryClient.invalidateQueries({ queryKey: ['quote'] });
+      // Invalidate all contact-quotes to ensure real-time updates
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'contact-quotes' });
       toast.success('Status atualizado');
     },
     onError: (error) => {
@@ -500,13 +504,17 @@ export function useUpdateQuote() {
 
       return { id: quoteId, contact_id: data.contact_id };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['quotes-advanced'] });
       queryClient.invalidateQueries({ queryKey: ['quote'] });
       queryClient.invalidateQueries({ queryKey: ['quote-items'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
+      // Invalidate contact-quotes for real-time updates
+      if (result?.contact_id) {
+        queryClient.invalidateQueries({ queryKey: ['contact-quotes', result.contact_id] });
+      }
       toast.success('Orçamento atualizado com sucesso');
     },
     onError: (error) => {
@@ -649,7 +657,7 @@ export function useConvertQuoteToOrder() {
 
       return { order, quote };
     },
-    onSuccess: ({ order }) => {
+    onSuccess: ({ order, quote }) => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['quotes-advanced'] });
       queryClient.invalidateQueries({ queryKey: ['quote'] });
@@ -659,6 +667,11 @@ export function useConvertQuoteToOrder() {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      // Invalidate contact-quotes and contact-orders for real-time updates
+      if (quote.contact_id) {
+        queryClient.invalidateQueries({ queryKey: ['contact-quotes', quote.contact_id] });
+        queryClient.invalidateQueries({ queryKey: ['contact-orders', quote.contact_id] });
+      }
       toast.success(`Orçamento convertido para Pedido #${order.order_number}`);
     },
     onError: (error) => {
@@ -740,6 +753,8 @@ export function useDeleteQuote() {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['quotes-advanced'] });
       queryClient.invalidateQueries({ queryKey: ['quote'] });
+      // Invalidate all contact-quotes to ensure real-time updates
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'contact-quotes' });
     },
     onSuccess: () => {
       toast.success('Orçamento excluído');
