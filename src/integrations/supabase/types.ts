@@ -2261,7 +2261,9 @@ export type Database = {
           contact_id: string | null
           conversation_id: string | null
           created_at: string | null
+          deleted_by_sender_at: string | null
           id: string
+          is_deleted_by_sender: boolean | null
           order_id: string | null
           parent_email_id: string | null
           priority: string | null
@@ -2286,7 +2288,9 @@ export type Database = {
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
+          deleted_by_sender_at?: string | null
           id?: string
+          is_deleted_by_sender?: boolean | null
           order_id?: string | null
           parent_email_id?: string | null
           priority?: string | null
@@ -2311,7 +2315,9 @@ export type Database = {
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
+          deleted_by_sender_at?: string | null
           id?: string
+          is_deleted_by_sender?: boolean | null
           order_id?: string | null
           parent_email_id?: string | null
           priority?: string | null

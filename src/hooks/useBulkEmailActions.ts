@@ -103,20 +103,32 @@ export function useBulkEmailActions() {
     }
   };
 
-  const moveToTrash = async (emailIds: string[]) => {
+  const moveToTrash = async (emailIds: string[], isSentFolder: boolean = false) => {
     setIsLoading(true);
     optimisticRemove(emailIds);
     try {
       const userId = await getCurrentUserId();
       if (!userId) throw new Error('Usuário não autenticado');
 
-      const { error } = await supabase
-        .from('internal_email_recipients')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString(), folder: 'trash' })
-        .in('email_id', emailIds)
-        .eq('user_id', userId);
+      if (isSentFolder) {
+        // Para pasta "Enviados", marca is_deleted_by_sender na tabela internal_emails
+        const { error } = await supabase
+          .from('internal_emails')
+          .update({ is_deleted_by_sender: true, deleted_by_sender_at: new Date().toISOString() })
+          .in('id', emailIds)
+          .eq('sender_id', userId);
 
-      if (error) throw error;
+        if (error) throw error;
+      } else {
+        // Para outras pastas, marca is_deleted na tabela recipients
+        const { error } = await supabase
+          .from('internal_email_recipients')
+          .update({ is_deleted: true, deleted_at: new Date().toISOString(), folder: 'trash' })
+          .in('email_id', emailIds)
+          .eq('user_id', userId);
+
+        if (error) throw error;
+      }
       await invalidateAndRefetch();
     } finally {
       setIsLoading(false);
