@@ -120,6 +120,23 @@ export function MenuItemModal({
     });
   };
 
+  // Get depth of an item in the hierarchy
+  const getDepth = (item: MenuItem): number => {
+    if (!item.parent_id) return 0;
+    const parent = allMenuItems.find(i => i.id === item.parent_id);
+    return parent ? getDepth(parent) + 1 : 0;
+  };
+
+  // Build hierarchical label for an item (e.g., "CRM → Configurações CRM")
+  const getItemLabel = (item: MenuItem): string => {
+    const buildPath = (current: MenuItem): string[] => {
+      if (!current.parent_id) return [current.title];
+      const parent = allMenuItems.find(i => i.id === current.parent_id);
+      return parent ? [...buildPath(parent), current.title] : [current.title];
+    };
+    return buildPath(item).join(' → ');
+  };
+
   // Filter valid parent options (exclude self and children to prevent circular deps)
   const getDescendantIds = (itemId: string): string[] => {
     const item = allMenuItems.find(i => i.id === itemId);
@@ -130,10 +147,15 @@ export function MenuItemModal({
 
   const excludedIds = editingItem ? getDescendantIds(editingItem.id) : [];
   
-  // Only root items (no parent) can be parents
-  const availableParents = allMenuItems.filter(
-    item => !item.parent_id && !excludedIds.includes(item.id)
-  );
+  // Allow any menu as parent (up to 2 levels deep to allow max 3 levels)
+  const availableParents = allMenuItems
+    .filter(item => !excludedIds.includes(item.id) && getDepth(item) < 2)
+    .sort((a, b) => {
+      // Sort by hierarchy path for better UX
+      const pathA = getItemLabel(a);
+      const pathB = getItemLabel(b);
+      return pathA.localeCompare(pathB);
+    });
 
   const isSubmenu = !!form.parent_id;
 
@@ -171,7 +193,7 @@ export function MenuItemModal({
                 <SelectItem value="none">Nenhum (menu principal)</SelectItem>
                 {availableParents.map((item) => (
                   <SelectItem key={item.id} value={item.id}>
-                    {item.title}
+                    {getItemLabel(item)}
                   </SelectItem>
                 ))}
               </SelectContent>
