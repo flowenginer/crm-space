@@ -153,6 +153,7 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                   const boxCounts = sharedBoxCounts?.[box.id];
                   const pendingCount = boxCounts?.pending || 0;
                   const inProgressCount = boxCounts?.in_progress || 0;
+                  const completedCount = boxCounts?.completed || 0;
                   const isBoxActive = currentFolder.startsWith(`shared_${box.id}`);
                   
                   return (
@@ -198,7 +199,10 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                               <span>Aguardando</span>
                             </div>
                             {pendingCount > 0 && (
-                              <Badge variant="outline" className="h-4 min-w-[16px] justify-center text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30">
+                              <Badge variant="outline" className={cn(
+                                "h-4 min-w-[16px] justify-center text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30",
+                                pendingCount > 0 && "animate-pulse"
+                              )}>
                                 {pendingCount}
                               </Badge>
                             )}
@@ -218,7 +222,10 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                               <span>Em Andamento</span>
                             </div>
                             {inProgressCount > 0 && (
-                              <Badge variant="outline" className="h-4 min-w-[16px] justify-center text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/30">
+                              <Badge variant="outline" className={cn(
+                                "h-4 min-w-[16px] justify-center text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/30",
+                                inProgressCount > 0 && "animate-pulse"
+                              )}>
                                 {inProgressCount}
                               </Badge>
                             )}
@@ -237,6 +244,11 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                               <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
                               <span>Concluídos</span>
                             </div>
+                            {completedCount > 0 && (
+                              <Badge variant="outline" className="h-4 min-w-[16px] justify-center text-[10px] bg-green-500/10 text-green-600 border-green-500/30">
+                                {completedCount}
+                              </Badge>
+                            )}
                           </button>
                         </div>
                       )}
