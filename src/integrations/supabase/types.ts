@@ -6555,6 +6555,14 @@ export type Database = {
         Args: { _conversation_id: string; _user_id: string }
         Returns: boolean
       }
+      is_email_recipient: {
+        Args: { p_email_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      is_email_sender: {
+        Args: { p_email_id: string; p_user_id: string }
+        Returns: boolean
+      }
       is_lid_contact: { Args: { phone: string }; Returns: boolean }
       merge_duplicate_contacts: {
         Args: {
