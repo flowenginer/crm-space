@@ -348,6 +348,7 @@ export default function Orders() {
                           </TableHead>
                           <TableHead>Pedido</TableHead>
                           <TableHead>Cliente</TableHead>
+                          <TableHead>Vendedor</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Pagamento</TableHead>
                           <TableHead>Frete</TableHead>
@@ -410,6 +411,9 @@ export default function Orders() {
                                     </div>
                                   )}
                                 </div>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-sm">{order.seller?.full_name || '—'}</span>
                               </TableCell>
                               <TableCell onClick={(e) => e.stopPropagation()}>
                                 <Select
@@ -604,7 +608,11 @@ export default function Orders() {
 
       <OrderModal
         open={isModalOpen}
-        onOpenChange={setIsModalOpen}
+        onOpenChange={(open) => {
+          setIsModalOpen(open);
+          if (!open) setEditingOrder(null);
+        }}
+        order={editingOrder}
       />
 
       <OrderDetailsModal
