@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle, UserPlus, CalendarIcon, Hash, Pencil } from 'lucide-react';
-import { useCreateOrder } from '@/hooks/useOrders';
+import { useCreateOrder, useUpdateOrder, useOrderItems, Order } from '@/hooks/useOrders';
 import { useContactsForERP, type ERPContact } from '@/hooks/useContactsForERP';
 import { validateContactForShipping } from '@/hooks/useContactValidation';
 import { type Contact } from '@/hooks/useContacts';
@@ -55,6 +55,7 @@ interface OrderItem {
 interface OrderModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  order?: Order | null;
   conversationId?: string;
   contactId?: string;
   onOrderCreated?: (orderId: string) => void;
@@ -83,8 +84,9 @@ const SHIPPING_METHODS = [
   { value: 'other', label: 'Outro' },
 ];
 
-export function OrderModal({ open, onOpenChange, conversationId, contactId: initialContactId, onOrderCreated }: OrderModalProps) {
+export function OrderModal({ open, onOpenChange, order, conversationId, contactId: initialContactId, onOrderCreated }: OrderModalProps) {
   const { user } = useAuth();
+  const isEditMode = !!order;
   
   // Form state
   const [contactId, setContactId] = useState(initialContactId || '');
@@ -171,6 +173,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   const { data: stores = [] } = useActiveStores();
   const { data: teamMembers = [] } = useTeam();
   const createOrder = useCreateOrder();
+  const updateOrder = useUpdateOrder();
 
   useEffect(() => {
     if (user?.id && !sellerId) {
@@ -197,12 +200,87 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     }
   }, [open, initialContactId]);
 
-  // Reset selectedContact when modal closes
+  // Reset or load order data when modal opens/closes
   useEffect(() => {
     if (!open) {
       setSelectedContact(null);
+      return;
     }
-  }, [open]);
+    
+    // Load order data for edit mode
+    if (order) {
+      const loadOrderData = async () => {
+        // Load contact
+        if (order.contact_id) {
+          const { data: contactData } = await supabase
+            .from('contacts')
+            .select('id, full_name, phone, email, cpf_cnpj, zip_code, street, number, neighborhood, city, state')
+            .eq('id', order.contact_id)
+            .single();
+          
+          if (contactData) {
+            setSelectedContact(contactData as ERPContact);
+            setContactId(contactData.id);
+          }
+        }
+        
+        // Load order items
+        const { data: orderItems } = await supabase
+          .from('order_items')
+          .select('*')
+          .eq('order_id', order.id);
+        
+        if (orderItems && orderItems.length > 0) {
+          setItems(orderItems.map(item => ({
+            product_name: item.product_name,
+            variation_name: item.variation_name || undefined,
+            variation_id: item.variation_id || undefined,
+            product_id: item.product_id || undefined,
+            sku: item.sku || undefined,
+            unit_price: item.unit_price,
+            quantity: item.quantity,
+            discount: item.discount_amount || 0,
+            discount_type: 'fixed' as const,
+          })));
+        }
+        
+        // Set basic fields
+        setStoreId(order.store_id || '');
+        setSellerId(order.seller_id || '');
+        setOrderDate(order.order_date ? new Date(order.order_date + 'T12:00:00') : new Date(order.created_at || new Date()));
+        
+        // Set discount
+        if ((order.discount_percent || 0) > 0) {
+          setTotalDiscount(order.discount_percent || 0);
+          setTotalDiscountType('percent');
+        } else {
+          setTotalDiscount(order.discount_amount || 0);
+          setTotalDiscountType('fixed');
+        }
+        
+        // Set shipping
+        setShippingMethod(order.shipping_method || '');
+        setShippingCost(order.shipping_cost || 0);
+        setIsFreeShipping(order.is_free_shipping || false);
+        setExpectedDeliveryDate(order.expected_delivery_date || '');
+        
+        // Set payment
+        setPaymentMethod(order.payment_method || '');
+        setPaymentCondition(order.payment_condition || 'full');
+        setInstallments(order.installments || 1);
+        setPaidAmount(order.paid_amount || 0);
+        
+        // Set notes
+        setCustomerNotes(order.notes || '');
+        setInternalNotes(order.internal_notes || '');
+      };
+      
+      loadOrderData();
+    } else {
+      // Reset form for new order
+      resetForm();
+    }
+  }, [open, order]);
   
   const handleNewContactSuccess = async (contact: Contact) => {
     // Fetch complete contact data after creation
@@ -350,7 +428,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
 
   const handleSubmit = async () => {
     if (!storeId) {
-      toast.error('Selecione uma loja para criar o pedido');
+      toast.error('Selecione uma loja para o pedido');
       return;
     }
     
@@ -358,7 +436,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
       return;
     }
 
-    const result = await createOrder.mutateAsync({
+    const orderData = {
       contact_id: contactId || undefined,
       conversation_id: conversationId,
       store_id: storeId || undefined,
@@ -368,6 +446,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
         product_name: item.product_name,
         variation_name: item.variation_name,
         variation_id: item.variation_id,
+        product_id: item.product_id,
         sku: item.sku,
         unit_price: item.unit_price,
         quantity: item.quantity,
@@ -394,14 +473,21 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
       paid_amount: paidAmount,
       discount_amount: totalDiscountType === 'fixed' ? totalDiscount : 0,
       discount_percent: totalDiscountType === 'percent' ? totalDiscount : 0,
-    });
+    };
 
-    if (onOrderCreated && result?.id) {
-      onOrderCreated(result.id);
+    if (isEditMode && order) {
+      await updateOrder.mutateAsync({ orderId: order.id, data: orderData });
+    } else {
+      const result = await createOrder.mutateAsync(orderData);
+      if (onOrderCreated && result?.id) {
+        onOrderCreated(result.id);
+      }
     }
     
     onOpenChange(false);
-    resetForm();
+    if (!isEditMode) {
+      resetForm();
+    }
   };
 
   const resetForm = () => {
@@ -436,7 +522,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl max-h-[95vh]">
         <DialogHeader>
-          <DialogTitle>Novo Pedido</DialogTitle>
+          <DialogTitle>{isEditMode ? 'Editar Pedido' : 'Novo Pedido'}</DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="items" className="w-full">
@@ -1304,9 +1390,12 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
             </Button>
             <Button 
               onClick={handleSubmit} 
-              disabled={createOrder.isPending || items.some(i => !i.product_name) || !storeId}
+              disabled={(createOrder.isPending || updateOrder.isPending) || items.some(i => !i.product_name) || !storeId}
             >
-              {createOrder.isPending ? 'Criando...' : 'Criar Pedido'}
+              {(createOrder.isPending || updateOrder.isPending) 
+                ? (isEditMode ? 'Salvando...' : 'Criando...') 
+                : (isEditMode ? 'Salvar Pedido' : 'Criar Pedido')
+              }
             </Button>
           </div>
         </div>

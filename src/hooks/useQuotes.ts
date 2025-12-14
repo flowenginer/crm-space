@@ -618,18 +618,22 @@ export function useConvertQuoteToOrder() {
         if (transactionError) console.error('Error creating financial transaction:', transactionError);
       }
 
-      // Atualizar orçamento como convertido
-      const { error: updateError } = await supabase
+      // Excluir orçamento após conversão (itens primeiro, depois orçamento)
+      const { error: deleteItemsError } = await supabase
+        .from('quote_items')
+        .delete()
+        .eq('quote_id', quoteId);
+
+      if (deleteItemsError) {
+        console.error('Error deleting quote items:', deleteItemsError);
+      }
+
+      const { error: deleteQuoteError } = await supabase
         .from('quotes')
-        .update({
-          status: 'converted',
-          converted_to_order_id: order.id,
-          converted_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
+        .delete()
         .eq('id', quoteId);
 
-      if (updateError) throw updateError;
+      if (deleteQuoteError) throw deleteQuoteError;
 
       // Atualizar valor negociado e status de lead do contato com o valor do pedido
       if (quote.contact_id) {

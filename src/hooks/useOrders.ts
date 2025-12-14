@@ -21,6 +21,8 @@ export interface Order {
   tax_amount: number | null;
   total: number | null;
   payment_method: string | null;
+  payment_condition: string | null;
+  installments: number | null;
   paid_amount: number | null;
   paid_at: string | null;
   shipping_method: string | null;
@@ -28,7 +30,10 @@ export interface Order {
   tracking_code: string | null;
   shipped_at: string | null;
   delivered_at: string | null;
+  expected_delivery_date: string | null;
   assigned_to: string | null;
+  seller_id: string | null;
+  store_id: string | null;
   notes: string | null;
   internal_notes: string | null;
   created_at: string | null;
@@ -36,6 +41,7 @@ export interface Order {
   canceled_at: string | null;
   canceled_reason: string | null;
   is_free_shipping?: boolean | null;
+  order_date?: string | null;
   contact?: {
     id: string;
     full_name: string;
@@ -48,6 +54,10 @@ export interface Order {
     city?: string | null;
     state?: string | null;
   };
+  seller?: {
+    id: string;
+    full_name: string;
+  } | null;
 }
 
 export interface OrderItem {
@@ -150,7 +160,8 @@ export function useOrders(filters?: { status?: string; contact_id?: string }) {
         .from('orders')
         .select(`
           *,
-          contact:contacts(id, full_name, phone, cpf_cnpj, zip_code, street, number, neighborhood, city, state)
+          contact:contacts(id, full_name, phone, cpf_cnpj, zip_code, street, number, neighborhood, city, state),
+          seller:profiles!orders_seller_id_fkey(id, full_name)
         `)
         .order('created_at', { ascending: false });
 
@@ -180,7 +191,8 @@ export function useOrdersAdvanced(filters: OrderFilters) {
         .from('orders')
         .select(`
           *,
-          contact:contacts(id, full_name, phone, cpf_cnpj, zip_code, street, number, neighborhood, city, state)
+          contact:contacts(id, full_name, phone, cpf_cnpj, zip_code, street, number, neighborhood, city, state),
+          seller:profiles!orders_seller_id_fkey(id, full_name)
         `)
         .order('created_at', { ascending: false });
 
@@ -615,6 +627,144 @@ export function useUpdateOrderStatus() {
     },
     onError: (error) => {
       toast.error('Erro ao atualizar status: ' + error.message);
+    },
+  });
+}
+
+export interface UpdateOrderData {
+  contact_id?: string;
+  store_id?: string;
+  seller_id?: string;
+  order_date?: string;
+  notes?: string;
+  internal_notes?: string;
+  shipping_method?: string;
+  shipping_cost?: number;
+  is_free_shipping?: boolean;
+  expected_delivery_date?: string;
+  payment_method?: string;
+  payment_condition?: string;
+  installments?: number;
+  paid_amount?: number;
+  discount_amount?: number;
+  discount_percent?: number;
+  items: {
+    product_id?: string;
+    variation_id?: string;
+    product_name: string;
+    variation_name?: string;
+    sku?: string;
+    unit_price: number;
+    quantity: number;
+    discount_amount?: number;
+    discount_percent?: number;
+  }[];
+}
+
+export function useUpdateOrder() {
+  const queryClient = useQueryClient();
+  const { data: tenantId } = useCurrentTenantId();
+
+  return useMutation({
+    mutationFn: async ({ orderId, data }: { orderId: string; data: UpdateOrderData }) => {
+      if (!tenantId) throw new Error('Tenant não encontrado');
+
+      // Recalculate subtotal and total
+      const itemsSubtotal = data.items.reduce((sum, item) => {
+        const itemTotal = item.unit_price * item.quantity;
+        const itemDiscount = item.discount_percent 
+          ? itemTotal * (item.discount_percent / 100)
+          : (item.discount_amount || 0);
+        return sum + (itemTotal - itemDiscount);
+      }, 0);
+
+      const totalDiscount = data.discount_percent 
+        ? itemsSubtotal * (data.discount_percent / 100)
+        : (data.discount_amount || 0);
+
+      const total = itemsSubtotal - totalDiscount + (data.shipping_cost || 0);
+
+      // Determine payment status
+      const paidAmount = data.paid_amount || 0;
+      let paymentStatus = 'pending';
+      if (paidAmount >= total) {
+        paymentStatus = 'paid';
+      } else if (paidAmount > 0) {
+        paymentStatus = 'partial';
+      }
+
+      // Update order
+      const { error: orderError } = await supabase
+        .from('orders')
+        .update({
+          contact_id: data.contact_id,
+          store_id: data.store_id || null,
+          seller_id: data.seller_id || null,
+          order_date: data.order_date,
+          notes: data.notes,
+          internal_notes: data.internal_notes,
+          shipping_method: data.shipping_method,
+          shipping_cost: data.is_free_shipping ? 0 : (data.shipping_cost || 0),
+          is_free_shipping: data.is_free_shipping || false,
+          expected_delivery_date: data.expected_delivery_date || null,
+          payment_method: data.payment_method,
+          payment_condition: data.payment_condition || 'full',
+          installments: data.installments || 1,
+          paid_amount: paidAmount,
+          paid_at: paidAmount > 0 ? new Date().toISOString() : null,
+          payment_status: paymentStatus,
+          discount_amount: data.discount_amount || 0,
+          discount_percent: data.discount_percent || 0,
+          subtotal: itemsSubtotal,
+          total: total,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+
+      if (orderError) throw orderError;
+
+      // Delete old items and insert new ones
+      const { error: deleteItemsError } = await supabase
+        .from('order_items')
+        .delete()
+        .eq('order_id', orderId);
+
+      if (deleteItemsError) throw deleteItemsError;
+
+      // Insert new items
+      if (data.items.length > 0) {
+        const items = data.items.map(item => ({
+          tenant_id: tenantId,
+          order_id: orderId,
+          product_id: item.product_id,
+          variation_id: item.variation_id,
+          product_name: item.product_name,
+          variation_name: item.variation_name,
+          sku: item.sku,
+          unit_price: item.unit_price,
+          quantity: item.quantity,
+          discount_amount: item.discount_amount || 0,
+          discount_percent: item.discount_percent || 0,
+        }));
+
+        const { error: itemsError } = await supabase
+          .from('order_items')
+          .insert(items as any);
+
+        if (itemsError) throw itemsError;
+      }
+
+      return { orderId };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['orders-advanced'] });
+      queryClient.invalidateQueries({ queryKey: ['order'] });
+      queryClient.invalidateQueries({ queryKey: ['order-items'] });
+      toast.success('Pedido atualizado com sucesso');
+    },
+    onError: (error) => {
+      toast.error('Erro ao atualizar pedido: ' + error.message);
     },
   });
 }
