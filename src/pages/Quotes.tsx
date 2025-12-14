@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -64,13 +65,13 @@ import { QuoteNotificationsPanel } from '@/components/quotes/QuoteNotificationsP
 import { format, differenceInDays, isPast } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; className?: string }> = {
   draft: { label: 'Rascunho', variant: 'secondary' },
   sent: { label: 'Enviado', variant: 'default' },
   approved: { label: 'Aprovado', variant: 'default' },
   rejected: { label: 'Rejeitado', variant: 'destructive' },
   expired: { label: 'Expirado', variant: 'outline' },
-  converted: { label: 'Convertido', variant: 'default' },
+  converted: { label: 'Pedido', variant: 'default', className: 'bg-green-600 hover:bg-green-700 text-white' },
 };
 
 const SHIPPING_METHODS: Record<string, string> = {
@@ -388,7 +389,10 @@ export default function Quotes() {
                                   <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 shadow-none focus:ring-0">
                                     <Badge 
                                       variant={statusConfig[quote.status]?.variant || 'secondary'}
-                                      className="cursor-pointer flex items-center gap-1"
+                                      className={cn(
+                                        "cursor-pointer flex items-center gap-1",
+                                        statusConfig[quote.status]?.className
+                                      )}
                                     >
                                       {statusConfig[quote.status]?.label || quote.status}
                                       {quote.status !== 'converted' && (
