@@ -408,40 +408,40 @@ export function QuoteNotificationsPanel() {
   return (
     <div className="space-y-6">
       {/* Configuration Card - Collapsible */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <CollapsibleTrigger asChild onClick={() => setConfigOpen(!configOpen)}>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  {configOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </Button>
-              </CollapsibleTrigger>
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="h-5 w-5" />
-                  Configurações de Notificação
-                </CardTitle>
-                <CardDescription className="mt-1">
-                  Configure como e quando os clientes serão notificados
-                </CardDescription>
+      <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    {configOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </CollapsibleTrigger>
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="h-5 w-5" />
+                    Configurações de Notificação
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    Configure como e quando os clientes serão notificados
+                  </CardDescription>
+                </div>
+              </div>
+              {/* Switch ALWAYS visible */}
+              <div className="flex items-center gap-3">
+                <Label htmlFor="enable-notifications" className="text-sm text-muted-foreground">
+                  {enabled ? 'Ativado' : 'Desativado'}
+                </Label>
+                <Switch 
+                  id="enable-notifications"
+                  checked={enabled} 
+                  onCheckedChange={setEnabled} 
+                />
               </div>
             </div>
-            {/* Switch ALWAYS visible */}
-            <div className="flex items-center gap-3">
-              <Label htmlFor="enable-notifications" className="text-sm text-muted-foreground">
-                {enabled ? 'Ativado' : 'Desativado'}
-              </Label>
-              <Switch 
-                id="enable-notifications"
-                checked={enabled} 
-                onCheckedChange={setEnabled} 
-              />
-            </div>
-          </div>
-        </CardHeader>
-        
-        <Collapsible open={configOpen}>
+          </CardHeader>
+          
           <CollapsibleContent>
             <CardContent className="space-y-6 pt-0">
               {enabled && (
@@ -693,8 +693,8 @@ export function QuoteNotificationsPanel() {
               </div>
             </CardContent>
           </CollapsibleContent>
-        </Collapsible>
-      </Card>
+        </Card>
+      </Collapsible>
 
       {/* Tabs for Upcoming and History */}
       <Card>
