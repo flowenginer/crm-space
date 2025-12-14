@@ -28,8 +28,12 @@ import { QuoteModal } from '@/components/quotes/QuoteModal';
 import { OrderModal } from '@/components/orders/OrderModal';
 import { QuoteSelectionModal } from './QuoteSelectionModal';
 import { QuoteDetailsInlineModal } from './QuoteDetailsInlineModal';
-import { useContactHistory, ContactQuote } from '@/hooks/useContactHistory';
+import { OrderSelectionModal } from './OrderSelectionModal';
+import { OrderDetailsInlineModal } from './OrderDetailsInlineModal';
+import { QuotePendingAlert } from './QuotePendingAlert';
+import { useContactHistory, ContactQuote, ContactOrder } from '@/hooks/useContactHistory';
 import { useUpdateQuoteStatus } from '@/hooks/useQuotes';
+import { useUpdateOrderStatus } from '@/hooks/useOrders';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -56,6 +60,9 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   const [showQuoteSelectionModal, setShowQuoteSelectionModal] = useState(false);
   const [showQuoteDetailsModal, setShowQuoteDetailsModal] = useState(false);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
+  const [showOrderSelectionModal, setShowOrderSelectionModal] = useState(false);
+  const [showOrderDetailsModal, setShowOrderDetailsModal] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   
   // Check if ERP module is enabled
   const isERPEnabled = useERPEnabled();
@@ -80,6 +87,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   
   // ERP hooks - must be at top level before any early returns
   const updateQuoteStatus = useUpdateQuoteStatus();
+  const updateOrderStatus = useUpdateOrderStatus();
   // Fetch conversation with contact data - campos específicos para otimização
   const { data: conversation, isLoading: loadingConversation } = useQuery({
     queryKey: ['conversation-details', conversationId],
@@ -123,7 +131,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   const conversationContactId = conversation?.contact 
     ? (Array.isArray(conversation.contact) ? conversation.contact[0]?.id : conversation.contact?.id)
     : null;
-  const { quotes: contactQuotes = [] } = useContactHistory(conversationContactId);
+  const { quotes: contactQuotes = [], orders: contactOrders = [] } = useContactHistory(conversationContactId);
 
   // Fetch all tags (with visibility filter) - campos específicos
   const { data: allTags = [] } = useQuery({
@@ -938,15 +946,38 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
           </Button>
           
           <Button
-            onClick={() => setShowOrderModal(true)}
+            onClick={() => {
+              // If contact has orders, show selection modal, otherwise create new
+              if (contactOrders.length > 0) {
+                setShowOrderSelectionModal(true);
+              } else {
+                setShowOrderModal(true);
+              }
+            }}
             variant="outline"
             size="sm"
             className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2 text-green-600 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/20"
           >
             <Package size={14} className="shrink-0" />
             <span className="truncate">Pedido</span>
+            {contactOrders.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                {contactOrders.length}
+              </span>
+            )}
           </Button>
         </div>
+      )}
+      
+      {/* Pending Quote Alerts */}
+      {isERPEnabled && contactQuotes.length > 0 && (
+        <QuotePendingAlert 
+          quotes={contactQuotes}
+          onViewQuote={(quoteId) => {
+            setSelectedQuoteId(quoteId);
+            setShowQuoteDetailsModal(true);
+          }}
+        />
       )}
 
       {/* Shares made by me (only visible to conversation owner) */}
@@ -1416,11 +1447,43 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
               setShowQuoteSelectionModal(true);
             }}
           />
+          <OrderSelectionModal
+            open={showOrderSelectionModal}
+            onOpenChange={setShowOrderSelectionModal}
+            contactId={contact?.id || null}
+            contactName={contact?.full_name}
+            onSelectOrder={(order) => {
+              setSelectedOrderId(order.id);
+              setShowOrderDetailsModal(true);
+            }}
+            onCreateNew={() => setShowOrderModal(true)}
+            onReopenOrder={async (order) => {
+              await updateOrderStatus.mutateAsync({ orderId: order.id, status: 'pending' });
+              setSelectedOrderId(order.id);
+              setShowOrderDetailsModal(true);
+            }}
+          />
           <OrderModal
             open={showOrderModal}
             onOpenChange={setShowOrderModal}
             conversationId={conversationId}
             contactId={contact?.id}
+            onOrderCreated={(orderId) => {
+              setSelectedOrderId(orderId);
+              setShowOrderDetailsModal(true);
+            }}
+          />
+          <OrderDetailsInlineModal
+            orderId={selectedOrderId}
+            open={showOrderDetailsModal}
+            onOpenChange={setShowOrderDetailsModal}
+            channelId={conversation?.channel_id || null}
+            conversationId={conversationId}
+            contactPhone={contact?.phone || ''}
+            onBack={() => {
+              setShowOrderDetailsModal(false);
+              setShowOrderSelectionModal(true);
+            }}
           />
         </>
       )}
