@@ -9,8 +9,8 @@ const corsHeaders = {
 interface CreatePaymentRequest {
   orderId?: string;
   quoteId?: string;
-  conversationId: string;
-  contactId: string;
+  conversationId?: string;
+  contactId?: string;
   amount: number;
   description?: string;
   paymentMethods: string[];
@@ -83,10 +83,10 @@ serve(async (req) => {
       customerPhone,
     } = body;
 
-    // Validate required fields
-    if (!conversationId || !contactId || !amount || !customerName) {
+    // Validate required fields (conversationId and contactId are optional for manual charges)
+    if (!amount || !customerName) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: conversationId, contactId, amount, customerName' }),
+        JSON.stringify({ error: 'Missing required fields: amount, customerName' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -167,8 +167,8 @@ serve(async (req) => {
       .insert({
         order_id: orderId || null,
         quote_id: quoteId || null,
-        conversation_id: conversationId,
-        contact_id: contactId,
+        conversation_id: conversationId || null,
+        contact_id: contactId || null,
         provider: 'rede',
         external_id: redeData.id || redeData.paymentLinkId,
         payment_url: redeData.shortUrl || redeData.paymentUrl || redeData.url,
