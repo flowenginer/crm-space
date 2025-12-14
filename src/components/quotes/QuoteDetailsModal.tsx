@@ -50,6 +50,7 @@ import { toast } from 'sonner';
 import { useGeneratePDF, PDFDocumentData } from '@/hooks/useGeneratePDF';
 import { SendDocumentModal } from '@/components/orders/SendDocumentModal';
 import { useConversations } from '@/hooks/useConversations';
+import { getProductDisplayName } from '@/lib/utils';
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   draft: { label: 'Rascunho', variant: 'secondary' },
@@ -241,10 +242,7 @@ export function QuoteDetailsModal({ quote, open, onOpenChange }: QuoteDetailsMod
                   {items.map((item) => (
                     <div key={item.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
                       <div className="flex-1">
-                        <p className="font-medium">{item.product_name}</p>
-                        {item.variation_name && (
-                          <p className="text-sm text-muted-foreground">{item.variation_name}</p>
-                        )}
+                        <p className="font-medium">{getProductDisplayName(item.product_name, item.variation_name, item.sku)}</p>
                         {item.sku && (
                           <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
                         )}

@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { useGeneratePDF, PDFDocumentData } from '@/hooks/useGeneratePDF';
 import { SendDocumentModal } from './SendDocumentModal';
 import { useConversations } from '@/hooks/useConversations';
+import { getProductDisplayName } from '@/lib/utils';
 
 interface OrderDetailsModalProps {
   order: Order | null;
@@ -181,10 +182,7 @@ export function OrderDetailsModal({ order, open, onOpenChange }: OrderDetailsMod
                     {items.map((item) => (
                       <div key={item.id} className="flex items-center justify-between p-3">
                         <div>
-                          <p className="font-medium">{item.product_name}</p>
-                          {item.variation_name && (
-                            <p className="text-sm text-muted-foreground">{item.variation_name}</p>
-                          )}
+                          <p className="font-medium">{getProductDisplayName(item.product_name, item.variation_name, item.sku)}</p>
                           {item.sku && (
                             <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
                           )}

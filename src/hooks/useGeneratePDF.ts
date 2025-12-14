@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useCompanySettings } from './useCompanySettings';
+import { getProductDisplayName } from '@/lib/utils';
 
 export interface PDFDocumentData {
   type: 'order' | 'quote';
@@ -150,7 +151,8 @@ export function useGeneratePDF() {
         y = margin;
       }
       
-      const itemName = item.variation ? `${item.name} - ${item.variation}` : item.name;
+      // Use the utility function to format product name with size
+      const itemName = getProductDisplayName(item.name, item.variation, item.sku);
       const maxWidth = 80;
       const lines = doc.splitTextToSize(itemName, maxWidth);
       
