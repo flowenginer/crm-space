@@ -1726,6 +1726,60 @@ serve(async (req) => {
       throw msgError;
     }
 
+    // =====================================================
+    // AUTO-PAUSE QUOTE NOTIFICATIONS ON CLIENT RESPONSE
+    // =====================================================
+    try {
+      // Check for active quotes linked to this contact that should be paused
+      const { data: activeQuotes, error: quotesError } = await supabase
+        .from('quotes')
+        .select('id, quote_number')
+        .eq('contact_id', contact.id)
+        .eq('notifications_auto_paused', false)
+        .in('status', ['sent', 'approved', 'pending']);
+
+      if (quotesError) {
+        console.error(`[Webhook] Error checking quotes for auto-pause:`, quotesError);
+      } else if (activeQuotes && activeQuotes.length > 0) {
+        console.log(`[Webhook] 📋 Client responded - auto-pausing ${activeQuotes.length} quote(s)`);
+        
+        for (const quote of activeQuotes) {
+          // Pause quote notifications
+          const { error: pauseError } = await supabase
+            .from('quotes')
+            .update({
+              notifications_auto_paused: true,
+              notifications_auto_pause_reason: 'client_responded',
+            })
+            .eq('id', quote.id);
+          
+          if (pauseError) {
+            console.error(`[Webhook] Error pausing quote ${quote.quote_number}:`, pauseError);
+          } else {
+            console.log(`[Webhook] ✅ Auto-paused notifications for quote ${quote.quote_number}`);
+          }
+          
+          // Cancel pending notifications for this quote
+          const { error: cancelError } = await supabase
+            .from('quote_expiration_notifications')
+            .update({
+              status: 'cancelled',
+              cancelled_at: new Date().toISOString(),
+              cancel_reason: 'client_responded',
+            })
+            .eq('quote_id', quote.id)
+            .eq('status', 'pending');
+          
+          if (cancelError) {
+            console.error(`[Webhook] Error cancelling notifications for quote ${quote.quote_number}:`, cancelError);
+          }
+        }
+      }
+    } catch (autoPauseError) {
+      // Non-critical error - log but don't fail the webhook
+      console.error(`[Webhook] Error in quote auto-pause logic:`, autoPauseError);
+    }
+
     // Update channel stats
     await supabase
       .from("whatsapp_channels")
