@@ -579,6 +579,7 @@ export function useConvertQuoteToOrder() {
       // Copiar itens para o pedido
       if (quoteItems && quoteItems.length > 0) {
         const orderItems = quoteItems.map(item => ({
+          tenant_id: tenantId,
           order_id: order.id,
           product_id: item.product_id,
           variation_id: item.variation_id,
@@ -618,22 +619,18 @@ export function useConvertQuoteToOrder() {
         if (transactionError) console.error('Error creating financial transaction:', transactionError);
       }
 
-      // Excluir orçamento após conversão (itens primeiro, depois orçamento)
-      const { error: deleteItemsError } = await supabase
-        .from('quote_items')
-        .delete()
-        .eq('quote_id', quoteId);
-
-      if (deleteItemsError) {
-        console.error('Error deleting quote items:', deleteItemsError);
-      }
-
-      const { error: deleteQuoteError } = await supabase
+      // Atualizar status do orçamento para "converted" em vez de excluir
+      const { error: updateQuoteError } = await supabase
         .from('quotes')
-        .delete()
+        .update({ 
+          status: 'converted',
+          updated_at: new Date().toISOString()
+        })
         .eq('id', quoteId);
 
-      if (deleteQuoteError) throw deleteQuoteError;
+      if (updateQuoteError) {
+        console.error('Error updating quote status:', updateQuoteError);
+      }
 
       // Atualizar valor negociado e status de lead do contato com o valor do pedido
       if (quote.contact_id) {
