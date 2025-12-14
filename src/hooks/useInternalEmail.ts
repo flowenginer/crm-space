@@ -624,7 +624,7 @@ export function useUploadEmailAttachment() {
   });
 }
 
-// Hook para realtime
+// Hook para realtime - escuta INSERT, UPDATE e DELETE
 export function useInternalEmailRealtime() {
   const queryClient = useQueryClient();
   const { data: user } = useCurrentUserId();
@@ -632,26 +632,70 @@ export function useInternalEmailRealtime() {
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase
-      .channel('internal-emails-realtime')
+    const invalidateAll = () => {
+      queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-email-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-box-emails'] });
+      queryClient.invalidateQueries({ queryKey: ['all-shared-boxes-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-email'] });
+    };
+
+    // Canal para recipients (inbox do usuário)
+    const recipientsChannel = supabase
+      .channel('internal-email-recipients-realtime')
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'internal_email_recipients',
-          filter: `user_id=eq.${user}`
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
-          queryClient.invalidateQueries({ queryKey: ['internal-email-unread-count'] });
-          queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+        { event: 'INSERT', schema: 'public', table: 'internal_email_recipients' },
+        (payload) => {
+          if (payload.new && (payload.new as { user_id: string }).user_id === user) {
+            invalidateAll();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'internal_email_recipients' },
+        (payload) => {
+          if (payload.new && (payload.new as { user_id: string }).user_id === user) {
+            invalidateAll();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'internal_email_recipients' },
+        (payload) => {
+          if (payload.old && (payload.old as { user_id: string }).user_id === user) {
+            invalidateAll();
+          }
         }
       )
       .subscribe();
 
+    // Canal para emails (atualizações gerais, incluindo caixas compartilhadas)
+    const emailsChannel = supabase
+      .channel('internal-emails-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'internal_emails' },
+        () => invalidateAll()
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'internal_emails' },
+        () => invalidateAll()
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'internal_emails' },
+        () => invalidateAll()
+      )
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(recipientsChannel);
+      supabase.removeChannel(emailsChannel);
     };
   }, [user, queryClient]);
 }
