@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { PDFDocumentData, useGeneratePDF } from '@/hooks/useGeneratePDF';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface SendDocumentModalProps {
   open: boolean;
@@ -22,6 +23,7 @@ interface SendDocumentModalProps {
   contactPhone: string;
   channelId: string | null;
   conversationId?: string | null;
+  documentId?: string;
 }
 
 export function SendDocumentModal({
@@ -31,6 +33,7 @@ export function SendDocumentModal({
   contactPhone,
   channelId,
   conversationId,
+  documentId,
 }: SendDocumentModalProps) {
   const [message, setMessage] = useState(
     documentData.type === 'order'
@@ -39,6 +42,7 @@ export function SendDocumentModal({
   );
   const [isSending, setIsSending] = useState(false);
   const { generatePDF } = useGeneratePDF();
+  const queryClient = useQueryClient();
 
   const handleSend = async () => {
     if (!channelId) {
@@ -105,6 +109,19 @@ export function SendDocumentModal({
 
       if (!docResult.success) {
         throw new Error(docResult.error || 'Falha ao enviar documento');
+      }
+
+      // 6. Update quote status to "sent" if it's a quote
+      if (documentData.type === 'quote' && documentId) {
+        await supabase
+          .from('quotes')
+          .update({ status: 'sent' })
+          .eq('id', documentId);
+        
+        // Invalidate queries to update UI
+        queryClient.invalidateQueries({ queryKey: ['quotes'] });
+        queryClient.invalidateQueries({ queryKey: ['quote', documentId] });
+        queryClient.invalidateQueries({ queryKey: ['quote-notifications'] });
       }
 
       toast.success('Documento enviado com sucesso!');
