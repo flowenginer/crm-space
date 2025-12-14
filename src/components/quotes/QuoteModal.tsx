@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { format, addDays } from 'date-fns';
+import { useState, useEffect, useMemo } from 'react';
+import { format, addDays, addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   Dialog,
@@ -114,6 +114,9 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
   const [installments, setInstallments] = useState(1);
   const [downPaymentType, setDownPaymentType] = useState<'percent' | 'fixed'>('percent');
   const [downPaymentValue, setDownPaymentValue] = useState(0);
+  const [downPaymentDate, setDownPaymentDate] = useState<Date | undefined>(undefined);
+  const [firstInstallmentDate, setFirstInstallmentDate] = useState<Date | undefined>(undefined);
+  const [useDeliveryDateForInstallment, setUseDeliveryDateForInstallment] = useState(false);
   
   // Quote specific
   const [validUntil, setValidUntil] = useState('');
@@ -358,6 +361,46 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
     ? remainingAmount / installments 
     : total;
 
+  // Calculate payment schedule with dates
+  const paymentSchedule = useMemo(() => {
+    const schedule: Array<{ type: string; label: string; amount: number; date: Date | null; number?: number }> = [];
+    
+    if (paymentCondition === 'full') {
+      return schedule;
+    }
+    
+    if (paymentCondition === 'down_payment' && downPaymentAmount > 0) {
+      schedule.push({
+        type: 'down_payment',
+        label: `Entrada (${downPaymentType === 'percent' ? `${downPaymentValue}%` : 'fixo'})`,
+        amount: downPaymentAmount,
+        date: downPaymentDate || null,
+      });
+    }
+    
+    if (installments > 0) {
+      const baseDate = firstInstallmentDate;
+      for (let i = 0; i < installments; i++) {
+        schedule.push({
+          type: 'installment',
+          label: `${i + 1}ª Parcela`,
+          amount: installmentAmount,
+          date: baseDate ? addMonths(baseDate, i) : null,
+          number: i + 1,
+        });
+      }
+    }
+    
+    return schedule;
+  }, [paymentCondition, downPaymentAmount, downPaymentType, downPaymentValue, downPaymentDate, installments, installmentAmount, firstInstallmentDate]);
+
+  // Effect to sync delivery date with first installment date
+  useEffect(() => {
+    if (useDeliveryDateForInstallment && expectedDeliveryDate) {
+      setFirstInstallmentDate(new Date(expectedDeliveryDate + 'T12:00:00'));
+    }
+  }, [useDeliveryDateForInstallment, expectedDeliveryDate]);
+
   const handleSubmit = async () => {
     if (items.some(item => !item.product_name || item.unit_price <= 0)) {
       return;
@@ -390,6 +433,12 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
       installments: paymentCondition === 'full' ? 1 : installments,
       down_payment_type: downPaymentType,
       down_payment_value: downPaymentValue,
+      down_payment_date: downPaymentDate ? format(downPaymentDate, 'yyyy-MM-dd') : undefined,
+      first_installment_date: firstInstallmentDate ? format(firstInstallmentDate, 'yyyy-MM-dd') : undefined,
+      payment_schedule: paymentSchedule.map(p => ({
+        ...p,
+        date: p.date ? format(p.date, 'yyyy-MM-dd') : null,
+      })),
       discount_amount: totalDiscountType === 'fixed' ? totalDiscount : 0,
       discount_percent: totalDiscountType === 'percent' ? totalDiscount : 0,
       valid_until: validUntil || undefined,
@@ -433,6 +482,9 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
     setInstallments(1);
     setDownPaymentType('percent');
     setDownPaymentValue(0);
+    setDownPaymentDate(undefined);
+    setFirstInstallmentDate(undefined);
+    setUseDeliveryDateForInstallment(false);
     setValidUntil('');
     setCustomerNotes('');
     setInternalNotes('');
@@ -1068,41 +1120,147 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
                     )}
                   </div>
 
-                  {/* Payment Summary */}
-                  {total > 0 && (
+                  {/* Payment Dates Section */}
+                  {paymentCondition !== 'full' && (
+                    <div className="p-4 bg-muted/30 rounded-lg border space-y-4">
+                      <Label className="text-base font-semibold">Datas de Pagamento</Label>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {paymentCondition === 'down_payment' && (
+                          <div className="space-y-2">
+                            <Label className="text-sm">Data da Entrada</Label>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  className={cn(
+                                    "w-full justify-start text-left font-normal",
+                                    !downPaymentDate && "text-muted-foreground"
+                                  )}
+                                >
+                                  <CalendarIcon className="mr-2 h-4 w-4" />
+                                  {downPaymentDate 
+                                    ? format(downPaymentDate, "dd/MM/yyyy", { locale: ptBR }) 
+                                    : "Selecione a data"
+                                  }
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                  mode="single"
+                                  selected={downPaymentDate}
+                                  onSelect={setDownPaymentDate}
+                                  initialFocus
+                                  className="pointer-events-auto"
+                                />
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <Label className="text-sm">Data da 1ª Parcela</Label>
+                          <div className="space-y-2">
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  className={cn(
+                                    "w-full justify-start text-left font-normal",
+                                    !firstInstallmentDate && "text-muted-foreground"
+                                  )}
+                                  disabled={useDeliveryDateForInstallment}
+                                >
+                                  <CalendarIcon className="mr-2 h-4 w-4" />
+                                  {firstInstallmentDate 
+                                    ? format(firstInstallmentDate, "dd/MM/yyyy", { locale: ptBR }) 
+                                    : "Selecione a data"
+                                  }
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                  mode="single"
+                                  selected={firstInstallmentDate}
+                                  onSelect={(date) => {
+                                    setFirstInstallmentDate(date);
+                                    setUseDeliveryDateForInstallment(false);
+                                  }}
+                                  initialFocus
+                                  className="pointer-events-auto"
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            {expectedDeliveryDate && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id="use-delivery-date-quote"
+                                  checked={useDeliveryDateForInstallment}
+                                  onChange={(e) => {
+                                    setUseDeliveryDateForInstallment(e.target.checked);
+                                    if (e.target.checked && expectedDeliveryDate) {
+                                      setFirstInstallmentDate(new Date(expectedDeliveryDate + 'T12:00:00'));
+                                    }
+                                  }}
+                                  className="rounded border-input"
+                                />
+                                <label htmlFor="use-delivery-date-quote" className="text-xs text-muted-foreground cursor-pointer">
+                                  Usar data de entrega ({format(new Date(expectedDeliveryDate + 'T12:00:00'), 'dd/MM/yyyy')})
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {firstInstallmentDate && installments > 1 && (
+                        <div className="text-xs text-muted-foreground">
+                          As demais parcelas serão nos mesmos dias dos meses seguintes (dia {format(firstInstallmentDate, 'd')})
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Payment Summary with Dates */}
+                  {total > 0 && paymentCondition !== 'full' && paymentSchedule.length > 0 && (
+                    <div className="p-4 rounded-lg border bg-muted/30 space-y-2">
+                      <div className="flex justify-between text-sm font-medium mb-2">
+                        <span>Cronograma de Pagamentos</span>
+                        <span>{formatCurrency(total)}</span>
+                      </div>
+                      <Separator />
+                      
+                      {paymentSchedule.map((payment, index) => (
+                        <div key={index} className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            {payment.label}:
+                          </span>
+                          <div className="text-right">
+                            <span className={cn(
+                              "font-medium",
+                              payment.type === 'down_payment' && "text-primary"
+                            )}>
+                              {formatCurrency(payment.amount)}
+                            </span>
+                            {payment.date && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                — {format(payment.date, 'dd/MM/yyyy')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Simple summary for full payment */}
+                  {total > 0 && paymentCondition === 'full' && (
                     <div className="p-4 rounded-lg border bg-muted/30 space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Total:</span>
+                        <span className="text-muted-foreground">Total à Vista:</span>
                         <span className="font-medium">{formatCurrency(total)}</span>
                       </div>
-                      
-                      {paymentCondition === 'down_payment' && downPaymentAmount > 0 && (
-                        <>
-                          <Separator />
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">
-                              Entrada ({downPaymentType === 'percent' ? `${downPaymentValue}%` : 'fixo'}):
-                            </span>
-                            <span className="font-medium text-primary">{formatCurrency(downPaymentAmount)}</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">
-                              + {installments}x de:
-                            </span>
-                            <span className="font-medium">{formatCurrency(installmentAmount)}</span>
-                          </div>
-                        </>
-                      )}
-                      
-                      {paymentCondition === 'installments' && installments > 1 && (
-                        <>
-                          <Separator />
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">{installments}x de:</span>
-                            <span className="font-medium">{formatCurrency(installmentAmount)}</span>
-                          </div>
-                        </>
-                      )}
                     </div>
                   )}
 
