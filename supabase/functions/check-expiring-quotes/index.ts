@@ -94,12 +94,14 @@ serve(async (req) => {
           .maybeSingle();
 
         if (lastConversation?.channel_id) {
+          console.log(`Looking for channel: ${lastConversation.channel_id}`);
           const { data: clientChannel } = await supabase
             .from('whatsapp_channels')
-            .select('*, provider:providers(*)')
+            .select('*, provider:whatsapp_providers(*)')
             .eq('id', lastConversation.channel_id)
             .eq('status', 'connected')
             .single();
+          console.log(`Client channel found: ${clientChannel ? 'yes' : 'no'}`);
 
           if (clientChannel) {
             channelToUse = clientChannel;
@@ -108,12 +110,14 @@ serve(async (req) => {
       }
 
       if (!channelToUse && config.notification_channel_id) {
+        console.log(`Looking for fallback channel: ${config.notification_channel_id}`);
         const { data: fallbackChannel } = await supabase
           .from('whatsapp_channels')
-          .select('*, provider:providers(*)')
+          .select('*, provider:whatsapp_providers(*)')
           .eq('id', config.notification_channel_id)
           .eq('status', 'connected')
           .single();
+        console.log(`Fallback channel found: ${fallbackChannel ? 'yes' : 'no'}`);
 
         if (fallbackChannel) {
           channelToUse = fallbackChannel;
@@ -509,7 +513,7 @@ serve(async (req) => {
             if (lastConversation?.channel_id) {
               const { data: clientChannel } = await supabase
                 .from('whatsapp_channels')
-                .select('*, provider:providers(*)')
+                .select('*, provider:whatsapp_providers(*)')
                 .eq('id', lastConversation.channel_id)
                 .eq('status', 'connected')
                 .single();
@@ -530,7 +534,7 @@ serve(async (req) => {
 
             const { data: fallbackChannel } = await supabase
               .from('whatsapp_channels')
-              .select('*, provider:providers(*)')
+              .select('*, provider:whatsapp_providers(*)')
               .eq('id', config.notification_channel_id)
               .eq('status', 'connected')
               .single();
