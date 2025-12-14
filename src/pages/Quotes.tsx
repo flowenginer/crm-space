@@ -50,12 +50,14 @@ import {
   Gift,
   Clock,
   AlertTriangle,
+  Bell,
 } from 'lucide-react';
 import { useQuotesAdvanced, Quote, QuoteFilters, useUpdateQuoteStatus, useDeleteQuote, useConvertQuoteToOrder } from '@/hooks/useQuotes';
 import { QuoteModal } from '@/components/quotes/QuoteModal';
 import { QuoteDetailsModal } from '@/components/quotes/QuoteDetailsModal';
 import { QuoteKanban } from '@/components/quotes/QuoteKanban';
 import { QuoteConversionDashboard } from '@/components/quotes/QuoteConversionDashboard';
+import { QuoteNotificationsPanel } from '@/components/quotes/QuoteNotificationsPanel';
 import { format, differenceInDays, isPast } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -188,11 +190,20 @@ export default function Quotes() {
         <TabsList>
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="quotes">Orçamentos</TabsTrigger>
+          <TabsTrigger value="notifications" className="gap-2">
+            <Bell className="h-4 w-4" />
+            Notificações
+          </TabsTrigger>
         </TabsList>
 
         {/* Dashboard Tab - New Conversion Dashboard */}
         <TabsContent value="dashboard" className="space-y-6">
           <QuoteConversionDashboard />
+        </TabsContent>
+
+        {/* Notifications Tab */}
+        <TabsContent value="notifications" className="space-y-6">
+          <QuoteNotificationsPanel />
         </TabsContent>
 
         {/* Quotes List Tab */}
