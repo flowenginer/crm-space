@@ -200,9 +200,8 @@ export function OrderDetailsInlineModal({
               </div>
 
               <Tabs defaultValue="details" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="details">Detalhes</TabsTrigger>
-                  <TabsTrigger value="items">Itens ({items.length})</TabsTrigger>
                   <TabsTrigger value="timeline" className="gap-1">
                     <History className="h-4 w-4" />
                     Histórico
@@ -211,58 +210,7 @@ export function OrderDetailsInlineModal({
 
                 <ScrollArea className="h-[40vh] mt-4">
                   <TabsContent value="details" className="space-y-6 px-4">
-                    {/* Cliente */}
-                    <div className="space-y-2">
-                      <h4 className="font-medium flex items-center gap-2">
-                        <User className="h-4 w-4" />
-                        Cliente
-                      </h4>
-                      {order.contact ? (
-                        <div className="bg-muted/50 p-3 rounded-lg">
-                          <p className="font-medium">{order.contact.full_name}</p>
-                          <p className="text-sm text-muted-foreground">{order.contact.phone}</p>
-                        </div>
-                      ) : (
-                        <p className="text-muted-foreground">Nenhum cliente vinculado</p>
-                      )}
-                    </div>
-
-                    <Separator />
-
-                    {/* Valores */}
-                    <div className="space-y-2">
-                      <h4 className="font-medium flex items-center gap-2">
-                        <ShoppingCart className="h-4 w-4" />
-                        Valores
-                      </h4>
-                      <div className="bg-muted/50 p-3 rounded-lg space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Subtotal:</span>
-                          <span>{formatCurrency(order.subtotal)}</span>
-                        </div>
-                        {(order.discount_amount || 0) > 0 && (
-                          <div className="flex justify-between text-destructive">
-                            <span>Desconto:</span>
-                            <span>-{formatCurrency(order.discount_amount || 0)}</span>
-                          </div>
-                        )}
-                        {(order.shipping_cost || 0) > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Frete:</span>
-                            <span>+{formatCurrency(order.shipping_cost || 0)}</span>
-                          </div>
-                        )}
-                        <Separator />
-                        <div className="flex justify-between font-bold text-lg">
-                          <span>Total:</span>
-                          <span className="text-primary">{formatCurrency(order.total)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Datas */}
+                    {/* Datas - PRIMEIRO */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <h4 className="font-medium flex items-center gap-2">
@@ -284,6 +232,101 @@ export function OrderDetailsInlineModal({
                         <p className="text-sm">
                           {currentStatusConfig?.name || order.status}
                         </p>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Cliente */}
+                    <div className="space-y-2">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Cliente
+                      </h4>
+                      {order.contact ? (
+                        <div className="bg-muted/50 p-3 rounded-lg">
+                          <p className="font-medium">{order.contact.full_name}</p>
+                          <p className="text-sm text-muted-foreground">{order.contact.phone}</p>
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground">Nenhum cliente vinculado</p>
+                      )}
+                    </div>
+
+                    <Separator />
+
+                    {/* Itens do Pedido */}
+                    <div className="space-y-2">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <Package className="h-4 w-4" />
+                        Itens do Pedido ({items.length})
+                      </h4>
+                      {items.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-4">
+                          Nenhum item no pedido
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {items.map((item) => (
+                            <div key={item.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                              <div className="flex-1">
+                                <p className="font-medium">{getProductDisplayName(item.product_name, item.variation_name, item.sku)}</p>
+                                {item.sku && (
+                                  <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <p className="font-medium">{formatCurrency(item.subtotal)}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {item.quantity}x {formatCurrency(item.unit_price)}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <Separator />
+
+                    {/* Valores com contagens */}
+                    <div className="space-y-2">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <ShoppingCart className="h-4 w-4" />
+                        Valores
+                      </h4>
+                      <div className="bg-muted/50 p-3 rounded-lg space-y-2">
+                        {/* Contagens */}
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Itens:</span>
+                          <span>{items.length} {items.length === 1 ? 'linha' : 'linhas'}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Produtos:</span>
+                          <span>{items.reduce((acc, item) => acc + item.quantity, 0)} unidades</span>
+                        </div>
+                        <Separator />
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Subtotal:</span>
+                          <span>{formatCurrency(order.subtotal)}</span>
+                        </div>
+                        {(order.discount_amount || 0) > 0 && (
+                          <div className="flex justify-between text-destructive">
+                            <span>Desconto:</span>
+                            <span>-{formatCurrency(order.discount_amount || 0)}</span>
+                          </div>
+                        )}
+                        {(order.shipping_cost || 0) > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Frete:</span>
+                            <span>+{formatCurrency(order.shipping_cost || 0)}</span>
+                          </div>
+                        )}
+                        <Separator />
+                        <div className="flex justify-between font-bold text-lg">
+                          <span>Total:</span>
+                          <span className="text-primary">{formatCurrency(order.total)}</span>
+                        </div>
                       </div>
                     </div>
 
@@ -348,31 +391,6 @@ export function OrderDetailsInlineModal({
                           </Select>
                         </div>
                       </>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="items" className="space-y-4 px-4">
-                    {items.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-8">
-                        Nenhum item no pedido
-                      </p>
-                    ) : (
-                      items.map((item) => (
-                        <div key={item.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                          <div className="flex-1">
-                            <p className="font-medium">{getProductDisplayName(item.product_name, item.variation_name, item.sku)}</p>
-                            {item.sku && (
-                              <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <p className="font-medium">{formatCurrency(item.subtotal)}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {item.quantity}x {formatCurrency(item.unit_price)}
-                            </p>
-                          </div>
-                        </div>
-                      ))
                     )}
                   </TabsContent>
 
