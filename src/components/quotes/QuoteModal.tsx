@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle, Calendar, UserPlus } from 'lucide-react';
-import { useCreateQuote } from '@/hooks/useQuotes';
+import { useCreateQuote, useUpdateQuote, Quote } from '@/hooks/useQuotes';
 import { useContactsForERP, type ERPContact } from '@/hooks/useContactsForERP';
 import { type Contact } from '@/hooks/useContacts';
 import { useProductsForOrders } from '@/hooks/useProductsForOrders';
@@ -46,6 +46,7 @@ interface QuoteItem {
 interface QuoteModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  quote?: Quote | null;
   conversationId?: string;
   contactId?: string;
   onQuoteCreated?: (quoteId: string) => void;
@@ -74,8 +75,9 @@ const SHIPPING_METHODS = [
   { value: 'other', label: 'Outro' },
 ];
 
-export function QuoteModal({ open, onOpenChange, conversationId, contactId: initialContactId, onQuoteCreated }: QuoteModalProps) {
+export function QuoteModal({ open, onOpenChange, quote, conversationId, contactId: initialContactId, onQuoteCreated }: QuoteModalProps) {
   const { user } = useAuth();
+  const isEditMode = !!quote;
   
   // Form state
   const [contactId, setContactId] = useState(initialContactId || '');
@@ -122,12 +124,60 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
   const { data: stores = [] } = useActiveStores();
   const { data: teamMembers = [] } = useTeam();
   const createQuote = useCreateQuote();
+  const updateQuote = useUpdateQuote();
 
   useEffect(() => {
     if (user?.id && !sellerId) {
       setSellerId(user.id);
     }
   }, [user?.id]);
+
+  // Populate form when editing
+  useEffect(() => {
+    if (open && quote) {
+      setContactId(quote.contact_id || '');
+      setSelectedContact(quote.contact || null);
+      setStoreId(quote.store_id || '');
+      setSellerId(quote.seller_id || user?.id || '');
+      setTotalDiscount(quote.discount_percent || quote.discount_amount || 0);
+      setTotalDiscountType(quote.discount_percent && quote.discount_percent > 0 ? 'percent' : 'fixed');
+      setShippingMethod(quote.shipping_method || '');
+      setShippingCost(quote.shipping_cost || 0);
+      setExpectedDeliveryDate(quote.expected_delivery_date?.split('T')[0] || '');
+      setPaymentMethod(quote.payment_method || '');
+      setPaymentCondition((quote as any).payment_condition || 'full');
+      setInstallments(quote.installments || 1);
+      setDownPaymentType((quote as any).down_payment_type || 'percent');
+      setDownPaymentValue((quote as any).down_payment_value || 0);
+      setValidUntil(quote.valid_until?.split('T')[0] || '');
+      setCustomerNotes(quote.notes || '');
+      setInternalNotes(quote.internal_notes || '');
+      
+      // Load quote items
+      const loadItems = async () => {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: quoteItems } = await supabase
+          .from('quote_items')
+          .select('*')
+          .eq('quote_id', quote.id);
+        
+        if (quoteItems && quoteItems.length > 0) {
+          setItems(quoteItems.map(item => ({
+            product_name: item.product_name,
+            variation_name: item.variation_name || undefined,
+            variation_id: item.variation_id || undefined,
+            product_id: item.product_id || undefined,
+            sku: item.sku || undefined,
+            unit_price: item.unit_price,
+            quantity: item.quantity,
+            discount: item.discount_percent || item.discount_amount || 0,
+            discount_type: (item.discount_percent && item.discount_percent > 0) ? 'percent' as const : 'fixed' as const,
+          })));
+        }
+      };
+      loadItems();
+    }
+  }, [open, quote, user?.id]);
 
   // Fetch contact details when initialContactId is provided (from conversation)
   useEffect(() => {
@@ -249,7 +299,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
       return;
     }
 
-    const quote = await createQuote.mutateAsync({
+    const quoteData = {
       contact_id: contactId || undefined,
       conversation_id: conversationId,
       store_id: storeId || undefined,
@@ -258,6 +308,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
         product_name: item.product_name,
         variation_name: item.variation_name,
         variation_id: item.variation_id,
+        product_id: item.product_id,
         sku: item.sku,
         unit_price: item.unit_price,
         quantity: item.quantity,
@@ -277,19 +328,24 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
       discount_amount: totalDiscountType === 'fixed' ? totalDiscount : 0,
       discount_percent: totalDiscountType === 'percent' ? totalDiscount : 0,
       valid_until: validUntil || undefined,
-    });
+    };
+
+    if (isEditMode && quote) {
+      await updateQuote.mutateAsync({ quoteId: quote.id, data: quoteData });
+    } else {
+      const result = await createQuote.mutateAsync(quoteData);
+      if (result?.id && onQuoteCreated) {
+        onQuoteCreated(result.id);
+      }
+    }
 
     onOpenChange(false);
     resetForm();
-    
-    // Call callback with created quote ID
-    if (quote?.id && onQuoteCreated) {
-      onQuoteCreated(quote.id);
-    }
   };
 
   const resetForm = () => {
     setContactId(initialContactId || '');
+    setSelectedContact(null);
     setStoreId('');
     setSellerId(user?.id || '');
     setItems([{ product_name: '', unit_price: 0, quantity: 1, discount: 0, discount_type: 'fixed' }]);
@@ -312,7 +368,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl max-h-[95vh]">
         <DialogHeader>
-          <DialogTitle>Novo Orçamento</DialogTitle>
+          <DialogTitle>{isEditMode ? 'Editar Orçamento' : 'Novo Orçamento'}</DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="items" className="w-full">
@@ -866,11 +922,13 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={handleSubmit}
-              disabled={createQuote.isPending || items.some(item => !item.product_name)}
+              disabled={(createQuote.isPending || updateQuote.isPending) || items.some(item => !item.product_name)}
             >
-              {createQuote.isPending ? 'Criando...' : 'Criar Orçamento'}
+              {(createQuote.isPending || updateQuote.isPending) 
+                ? (isEditMode ? 'Salvando...' : 'Criando...') 
+                : (isEditMode ? 'Salvar Alterações' : 'Criar Orçamento')}
             </Button>
           </div>
         </div>

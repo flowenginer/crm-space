@@ -19,18 +19,44 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
   Plus,
   Search,
   Eye,
   List,
   LayoutGrid,
+  Pencil,
+  Trash2,
+  ChevronDown,
+  ShoppingCart,
+  Truck,
+  Gift,
+  Clock,
+  AlertTriangle,
 } from 'lucide-react';
-import { useQuotesAdvanced, Quote, QuoteFilters } from '@/hooks/useQuotes';
+import { useQuotesAdvanced, Quote, QuoteFilters, useUpdateQuoteStatus, useDeleteQuote, useConvertQuoteToOrder } from '@/hooks/useQuotes';
 import { QuoteModal } from '@/components/quotes/QuoteModal';
 import { QuoteDetailsModal } from '@/components/quotes/QuoteDetailsModal';
 import { QuoteKanban } from '@/components/quotes/QuoteKanban';
 import { QuoteConversionDashboard } from '@/components/quotes/QuoteConversionDashboard';
-import { format } from 'date-fns';
+import { format, differenceInDays, isPast } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
@@ -42,12 +68,21 @@ const statusConfig: Record<string, { label: string; variant: 'default' | 'second
   converted: { label: 'Convertido', variant: 'default' },
 };
 
+const SHIPPING_METHODS: Record<string, string> = {
+  sedex: 'Sedex',
+  pac: 'PAC',
+  motoboy: 'Motoboy',
+  pickup: 'Retirada',
+  other: 'Outro',
+};
+
 export default function Quotes() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [showNewQuoteModal, setShowNewQuoteModal] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -62,6 +97,9 @@ export default function Quotes() {
   }), [statusFilter, dateFrom, dateTo]);
 
   const { data: quotes = [], isLoading } = useQuotesAdvanced(filters);
+  const updateQuoteStatus = useUpdateQuoteStatus();
+  const deleteQuote = useDeleteQuote();
+  const convertToOrder = useConvertQuoteToOrder();
 
   // Filter by search term
   const filteredQuotes = useMemo(() => {
@@ -86,8 +124,48 @@ export default function Quotes() {
     setShowDetailsModal(true);
   };
 
+  const handleEditQuote = (quote: Quote) => {
+    setEditingQuote(quote);
+    setShowNewQuoteModal(true);
+  };
+
+  const handleStatusChange = async (quoteId: string, newStatus: string) => {
+    await updateQuoteStatus.mutateAsync({ quoteId, status: newStatus });
+  };
+
+  const handleConvertToOrder = async (quoteId: string) => {
+    await convertToOrder.mutateAsync(quoteId);
+  };
+
+  const handleDeleteQuote = async (quoteId: string) => {
+    await deleteQuote.mutateAsync(quoteId);
+  };
+
   const getContactName = (quote: Quote) => {
     return quote.contact?.full_name || 'Sem cliente';
+  };
+
+  const getExpirationStatus = (validUntil: string | null) => {
+    if (!validUntil) return { label: '-', isExpired: false, isExpiring: false };
+    
+    const expirationDate = new Date(validUntil);
+    const isExpired = isPast(expirationDate);
+    const daysUntilExpiry = differenceInDays(expirationDate, new Date());
+    const isExpiring = !isExpired && daysUntilExpiry <= 3;
+    
+    return {
+      label: format(expirationDate, 'dd/MM/yyyy'),
+      isExpired,
+      isExpiring,
+      daysUntilExpiry,
+    };
+  };
+
+  const handleModalClose = (open: boolean) => {
+    if (!open) {
+      setEditingQuote(null);
+    }
+    setShowNewQuoteModal(open);
   };
 
   return (
@@ -187,83 +265,232 @@ export default function Quotes() {
           ) : viewMode === 'kanban' ? (
             <QuoteKanban quotes={filteredQuotes} onViewQuote={handleViewQuote} />
           ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Número</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Validade</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredQuotes.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        Nenhum orçamento encontrado
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredQuotes.map((quote) => {
-                      const isExpired = quote.valid_until && new Date(quote.valid_until) < new Date();
-                      
-                      return (
-                        <TableRow key={quote.id}>
-                          <TableCell className="font-medium">
-                            {quote.quote_number}
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{getContactName(quote)}</p>
-                              {quote.contact?.phone && (
-                                <p className="text-xs text-muted-foreground">
-                                  {quote.contact.phone}
-                                </p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={statusConfig[quote.status]?.variant || 'secondary'}>
-                              {statusConfig[quote.status]?.label || quote.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {quote.valid_until ? (
-                              <span className={isExpired ? 'text-destructive' : ''}>
-                                {format(new Date(quote.valid_until), 'dd/MM/yyyy')}
-                                {isExpired && ' (Expirado)'}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatCurrency(quote.total || 0)}
-                          </TableCell>
-                          <TableCell>
-                            {quote.created_at && format(new Date(quote.created_at), 'dd/MM/yyyy', { locale: ptBR })}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleViewQuote(quote)}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              Ver
-                            </Button>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Lista de Orçamentos</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Número</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Frete</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Validade</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredQuotes.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            Nenhum orçamento encontrado
                           </TableCell>
                         </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                      ) : (
+                        filteredQuotes.map((quote) => {
+                          const expiration = getExpirationStatus(quote.valid_until);
+                          const shippingCost = quote.shipping_cost || 0;
+                          const isFreeShipping = shippingCost === 0;
+                          
+                          return (
+                            <TableRow key={quote.id}>
+                              <TableCell className="font-medium">
+                                {quote.quote_number}
+                              </TableCell>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium">{getContactName(quote)}</p>
+                                  {quote.contact?.phone && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {quote.contact.phone}
+                                    </p>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Select
+                                  value={quote.status}
+                                  onValueChange={(value) => handleStatusChange(quote.id, value)}
+                                  disabled={quote.status === 'converted'}
+                                >
+                                  <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 shadow-none focus:ring-0">
+                                    <Badge 
+                                      variant={statusConfig[quote.status]?.variant || 'secondary'}
+                                      className="cursor-pointer flex items-center gap-1"
+                                    >
+                                      {statusConfig[quote.status]?.label || quote.status}
+                                      {quote.status !== 'converted' && (
+                                        <ChevronDown className="h-3 w-3" />
+                                      )}
+                                    </Badge>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="draft">Rascunho</SelectItem>
+                                    <SelectItem value="sent">Enviado</SelectItem>
+                                    <SelectItem value="approved">Aprovado</SelectItem>
+                                    <SelectItem value="rejected">Rejeitado</SelectItem>
+                                    <SelectItem value="expired">Expirado</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                {isFreeShipping ? (
+                                  <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                    <Gift className="h-3 w-3 mr-1" />
+                                    Grátis
+                                  </Badge>
+                                ) : (
+                                  <div className="space-y-1">
+                                    <div className="text-sm font-medium">
+                                      {formatCurrency(shippingCost)}
+                                    </div>
+                                    {quote.shipping_method && (
+                                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                        <Truck className="h-3 w-3" />
+                                        {SHIPPING_METHODS[quote.shipping_method] || quote.shipping_method}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatCurrency(quote.total || 0)}
+                              </TableCell>
+                              <TableCell>
+                                {quote.created_at && format(new Date(quote.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                              </TableCell>
+                              <TableCell>
+                                {quote.valid_until ? (
+                                  <div className="flex items-center gap-1">
+                                    {expiration.isExpired ? (
+                                      <Badge variant="destructive" className="flex items-center gap-1">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        Expirado
+                                      </Badge>
+                                    ) : expiration.isExpiring ? (
+                                      <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-700 flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        {expiration.label}
+                                      </Badge>
+                                    ) : (
+                                      <span className="text-sm">{expiration.label}</span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <TooltipProvider>
+                                    {/* Convert to Order */}
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleConvertToOrder(quote.id)}
+                                          disabled={quote.status === 'converted' || convertToOrder.isPending}
+                                          className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20"
+                                        >
+                                          <ShoppingCart className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Converter em Pedido</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+
+                                    {/* Edit */}
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleEditQuote(quote)}
+                                          disabled={quote.status === 'converted'}
+                                          className="h-8 w-8"
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Editar Orçamento</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+
+                                    {/* View */}
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleViewQuote(quote)}
+                                          className="h-8 w-8"
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Visualizar Orçamento</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+
+                                    {/* Delete */}
+                                    <AlertDialog>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <AlertDialogTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                              disabled={quote.status === 'converted'}
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          </AlertDialogTrigger>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>Excluir Orçamento</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Excluir Orçamento</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Tem certeza que deseja excluir o orçamento <strong>{quote.quote_number}</strong>?
+                                            Esta ação não pode ser desfeita.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => handleDeleteQuote(quote.id)}
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                          >
+                                            Excluir
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </TooltipProvider>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
       </Tabs>
@@ -271,7 +498,8 @@ export default function Quotes() {
       {/* Modals */}
       <QuoteModal
         open={showNewQuoteModal}
-        onOpenChange={setShowNewQuoteModal}
+        onOpenChange={handleModalClose}
+        quote={editingQuote}
       />
 
       <QuoteDetailsModal
