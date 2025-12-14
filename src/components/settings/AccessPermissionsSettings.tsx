@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { Eye, Repeat, Building2, Users, Info } from 'lucide-react';
+import { Eye, Repeat, Building2, Users, Info, ChevronDown } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { cn } from '@/lib/utils';
 
 interface UserWithAccess {
   id: string;
@@ -30,6 +31,8 @@ interface DepartmentWithAccess {
 
 export function AccessPermissionsSettings() {
   const queryClient = useQueryClient();
+  const [usersOpen, setUsersOpen] = useState(true);
+  const [deptsOpen, setDeptsOpen] = useState(true);
 
   // Fetch users with access permissions
   const { data: users = [], isLoading: loadingUsers } = useQuery({
@@ -120,7 +123,7 @@ export function AccessPermissionsSettings() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
@@ -129,174 +132,166 @@ export function AccessPermissionsSettings() {
         </AlertDescription>
       </Alert>
 
-      {/* Configuração por Usuário */}
+      {/* Configuração por Usuário - Colapsável */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Por Usuário
-          </CardTitle>
-          <CardDescription>
-            Conceda permissões especiais para usuários individuais
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loadingUsers ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map(i => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : users.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Nenhum usuário disponível (exceto admin/supervisor)
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-[1fr,auto,auto] gap-4 text-xs font-medium text-muted-foreground pb-2 border-b">
-                <div>Usuário</div>
-                <div className="flex items-center gap-1 justify-center w-32">
-                  <Eye className="h-3 w-3" />
-                  Ver Todas
-                </div>
-                <div className="flex items-center gap-1 justify-center w-32">
-                  <Repeat className="h-3 w-3" />
-                  Transferir
-                </div>
+        <Collapsible open={usersOpen} onOpenChange={setUsersOpen}>
+          <CollapsibleTrigger asChild>
+            <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                <span className="font-semibold">Por Usuário</span>
+                <Badge variant="secondary" className="text-xs">{users.length}</Badge>
               </div>
-              {users.map(user => (
-                <div key={user.id} className="grid grid-cols-[1fr,auto,auto] gap-4 items-center py-2">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-9 w-9">
-                      <AvatarImage src={user.avatar_url || undefined} />
-                      <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                        {getInitials(user.full_name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{user.full_name || 'Sem nome'}</p>
-                      <Badge variant="secondary" className="text-xs">
-                        {roleLabels[user.role || ''] || user.role}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="flex justify-center w-32">
-                    <Switch
-                      checked={user.can_view_all_conversations || false}
-                      onCheckedChange={(checked) => handleUserToggle(user.id, 'can_view_all_conversations', checked)}
-                      disabled={updateUserPermission.isPending}
-                    />
-                  </div>
-                  <div className="flex justify-center w-32">
-                    <Switch
-                      checked={user.can_transfer_freely || false}
-                      onCheckedChange={(checked) => handleUserToggle(user.id, 'can_transfer_freely', checked)}
-                      disabled={updateUserPermission.isPending}
-                    />
-                  </div>
-                </div>
-              ))}
+              <ChevronDown className={cn("h-5 w-5 text-muted-foreground transition-transform", usersOpen && "rotate-180")} />
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Configuração por Departamento */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Por Departamento
-          </CardTitle>
-          <CardDescription>
-            Conceda permissões especiais para todos os membros de um departamento
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loadingDepartments ? (
-            <div className="space-y-3">
-              {[1, 2].map(i => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : departments.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Nenhum departamento cadastrado
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-[1fr,auto,auto] gap-4 text-xs font-medium text-muted-foreground pb-2 border-b">
-                <div>Departamento</div>
-                <div className="flex items-center gap-1 justify-center w-32">
-                  <Eye className="h-3 w-3" />
-                  Ver Todas
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0">
+              {loadingUsers ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {[1, 2, 3, 4].map(i => (
+                    <Skeleton key={i} className="h-24 w-full rounded-lg" />
+                  ))}
                 </div>
-                <div className="flex items-center gap-1 justify-center w-32">
-                  <Repeat className="h-3 w-3" />
-                  Transferir
-                </div>
-              </div>
-              {departments.map(dept => (
-                <div key={dept.id} className="grid grid-cols-[1fr,auto,auto] gap-4 items-center py-2">
-                  <div className="flex items-center gap-3">
+              ) : users.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Nenhum usuário disponível (exceto admin/supervisor)
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  {users.map(user => (
                     <div 
-                      className="h-9 w-9 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: dept.color || '#8B5CF6' }}
+                      key={user.id} 
+                      className="p-3 rounded-lg border bg-card hover:border-primary/30 transition-colors"
                     >
-                      <Building2 className="h-4 w-4 text-white" />
+                      <div className="flex items-center gap-2 mb-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={user.avatar_url || undefined} />
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                            {getInitials(user.full_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{user.full_name || 'Sem nome'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {roleLabels[user.role || ''] || user.role}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <Switch
+                            className="scale-75"
+                            checked={user.can_view_all_conversations || false}
+                            onCheckedChange={(checked) => handleUserToggle(user.id, 'can_view_all_conversations', checked)}
+                            disabled={updateUserPermission.isPending}
+                          />
+                          <Eye className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-muted-foreground">Ver</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <Switch
+                            className="scale-75"
+                            checked={user.can_transfer_freely || false}
+                            onCheckedChange={(checked) => handleUserToggle(user.id, 'can_transfer_freely', checked)}
+                            disabled={updateUserPermission.isPending}
+                          />
+                          <Repeat className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-muted-foreground">Transf.</span>
+                        </label>
+                      </div>
                     </div>
-                    <p className="text-sm font-medium">{dept.name}</p>
-                  </div>
-                  <div className="flex justify-center w-32">
-                    <Switch
-                      checked={dept.can_view_all_conversations || false}
-                      onCheckedChange={(checked) => handleDepartmentToggle(dept.id, 'can_view_all_conversations', checked)}
-                      disabled={updateDepartmentPermission.isPending}
-                    />
-                  </div>
-                  <div className="flex justify-center w-32">
-                    <Switch
-                      checked={dept.can_transfer_freely || false}
-                      onCheckedChange={(checked) => handleDepartmentToggle(dept.id, 'can_transfer_freely', checked)}
-                      disabled={updateDepartmentPermission.isPending}
-                    />
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
       </Card>
 
-      {/* Legenda */}
+      {/* Configuração por Departamento - Colapsável */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex items-start gap-3">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <Eye className="h-4 w-4 text-primary" />
+        <Collapsible open={deptsOpen} onOpenChange={setDeptsOpen}>
+          <CollapsibleTrigger asChild>
+            <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-primary" />
+                <span className="font-semibold">Por Departamento</span>
+                <Badge variant="secondary" className="text-xs">{departments.length}</Badge>
               </div>
-              <div>
-                <p className="text-sm font-medium">Ver Todas as Conversas</p>
-                <p className="text-xs text-muted-foreground">
-                  Permite visualizar conversas de outros atendentes, mesmo sem estar atribuído
-                </p>
-              </div>
+              <ChevronDown className={cn("h-5 w-5 text-muted-foreground transition-transform", deptsOpen && "rotate-180")} />
             </div>
-            <div className="flex items-start gap-3">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <Repeat className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Transferir Livremente</p>
-                <p className="text-xs text-muted-foreground">
-                  Permite transferir conversas sem precisar solicitar autorização do responsável
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0">
+              {loadingDepartments ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {[1, 2].map(i => (
+                    <Skeleton key={i} className="h-20 w-full rounded-lg" />
+                  ))}
+                </div>
+              ) : departments.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Nenhum departamento cadastrado
                 </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  {departments.map(dept => (
+                    <div 
+                      key={dept.id} 
+                      className="p-3 rounded-lg border bg-card hover:border-primary/30 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 mb-3">
+                        <div 
+                          className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: dept.color || '#8B5CF6' }}
+                        >
+                          <Building2 className="h-4 w-4 text-white" />
+                        </div>
+                        <p className="text-sm font-medium truncate">{dept.name}</p>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <Switch
+                            className="scale-75"
+                            checked={dept.can_view_all_conversations || false}
+                            onCheckedChange={(checked) => handleDepartmentToggle(dept.id, 'can_view_all_conversations', checked)}
+                            disabled={updateDepartmentPermission.isPending}
+                          />
+                          <Eye className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-muted-foreground">Ver</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <Switch
+                            className="scale-75"
+                            checked={dept.can_transfer_freely || false}
+                            onCheckedChange={(checked) => handleDepartmentToggle(dept.id, 'can_transfer_freely', checked)}
+                            disabled={updateDepartmentPermission.isPending}
+                          />
+                          <Repeat className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-muted-foreground">Transf.</span>
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
       </Card>
+
+      {/* Legenda Compacta */}
+      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground px-1">
+        <div className="flex items-center gap-1.5">
+          <Eye className="h-3.5 w-3.5" />
+          <span><strong>Ver:</strong> Visualizar todas as conversas</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Repeat className="h-3.5 w-3.5" />
+          <span><strong>Transf.:</strong> Transferir sem autorização</span>
+        </div>
+      </div>
     </div>
   );
 }
