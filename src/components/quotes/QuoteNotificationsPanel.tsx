@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { 
   Bell, 
   Settings, 
@@ -31,15 +34,20 @@ import {
   History,
   CheckCircle2,
   XCircle,
-  Ban
+  Ban,
+  Pause,
+  Play,
+  Trash2,
+  CalendarDays
 } from 'lucide-react';
-import { format, addDays, differenceInDays, parseISO } from 'date-fns';
+import { format, addDays, differenceInDays, parseISO, setHours, setMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { useQuoteNotificationConfig, useUpdateQuoteNotificationConfig } from '@/hooks/useQuoteNotificationConfig';
 import { useChannels } from '@/hooks/useChannels';
 import { useQuotes } from '@/hooks/useQuotes';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 const SEND_TIME_OPTIONS = [
   '08:00', '09:00', '10:00', '11:00', '12:00', 
@@ -58,10 +66,17 @@ Seu orçamento #{numero} no valor de {valor} expira em {dias_restantes}.
 Posso te ajudar a finalizar?`;
 
 export function QuoteNotificationsPanel() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { data: config, isLoading: configLoading } = useQuoteNotificationConfig();
   const { mutate: updateConfig, isPending: updating } = useUpdateQuoteNotificationConfig();
   const { data: channels } = useChannels();
   const { data: quotes } = useQuotes();
+  
+  // State for reschedule popover
+  const [rescheduleOpen, setRescheduleOpen] = useState<string | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<Date | undefined>();
+  const [rescheduleTime, setRescheduleTime] = useState('09:00');
 
   // Local state for form
   const [enabled, setEnabled] = useState(false);
@@ -138,49 +153,97 @@ export function QuoteNotificationsPanel() {
     } as any);
   };
 
-  // Calculate ALL upcoming notifications (one for each configured day)
+  // Fetch pending notifications from database
+  const { data: pendingNotifications, isLoading: pendingLoading, refetch: refetchPending } = useQuery({
+    queryKey: ['pending-quote-notifications'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('quote_expiration_notifications')
+        .select(`
+          *,
+          quote:quotes(id, quote_number, total, valid_until, created_at, status),
+          contact:contacts(id, full_name, phone)
+        `)
+        .eq('status', 'pending')
+        .order('scheduled_for', { ascending: true });
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Calculate upcoming notifications (dynamic + database)
   const configuredDays = triggerType === 'before_expiry' ? expirationDays : daysAfterSent;
   
-  const upcomingNotifications = quotes?.flatMap(quote => {
-    if (!['sent', 'approved'].includes(quote.status)) return [];
-    
-    if (triggerType === 'before_expiry') {
-      if (!quote.valid_until) return [];
-      const validUntil = parseISO(quote.valid_until);
-      const daysUntilExpiry = differenceInDays(validUntil, new Date());
-      
-      // Return one entry for EACH configured day that hasn't passed yet
-      return expirationDays
-        .filter(day => day <= daysUntilExpiry)
-        .map(day => ({
-          ...quote,
-          triggerDay: day,
-          daysUntilExpiry,
-          daysSinceSent: null as number | null,
-          scheduledDate: addDays(new Date(), daysUntilExpiry - day),
-          notificationKey: `${quote.id}-${day}`,
-        }));
-    } else {
-      if (!quote.created_at) return [];
-      const sentDate = parseISO(quote.created_at);
-      const daysSinceSent = differenceInDays(new Date(), sentDate);
-      
-      // Return one entry for EACH configured day that hasn't passed yet
-      return daysAfterSent
-        .filter(day => day > daysSinceSent)
-        .map(day => ({
-          ...quote,
-          triggerDay: day,
-          daysUntilExpiry: null as number | null,
-          daysSinceSent,
-          scheduledDate: addDays(sentDate, day),
-          notificationKey: `${quote.id}-${day}`,
-        }));
+  // Combine database pending notifications with dynamically calculated ones
+  const upcomingNotifications = (() => {
+    // If we have database notifications, show those
+    if (pendingNotifications && pendingNotifications.length > 0) {
+      return pendingNotifications.map(notif => ({
+        id: notif.id,
+        quoteId: notif.quote_id,
+        quote_number: (notif.quote as any)?.quote_number,
+        contact: notif.contact,
+        valid_until: (notif.quote as any)?.valid_until,
+        created_at: (notif.quote as any)?.created_at,
+        triggerDay: notif.days_before,
+        scheduledDate: notif.scheduled_for ? parseISO(notif.scheduled_for) : null,
+        notificationKey: notif.id,
+        paused: notif.paused || false,
+        fromDatabase: true,
+      }));
     }
-  }).sort((a, b) => {
-    if (!a.scheduledDate || !b.scheduledDate) return 0;
-    return a.scheduledDate.getTime() - b.scheduledDate.getTime();
-  }) || [];
+    
+    // Otherwise, calculate dynamically from quotes
+    return quotes?.flatMap(quote => {
+      if (!['sent', 'approved'].includes(quote.status)) return [];
+      
+      if (triggerType === 'before_expiry') {
+        if (!quote.valid_until) return [];
+        const validUntil = parseISO(quote.valid_until);
+        const daysUntilExpiry = differenceInDays(validUntil, new Date());
+        
+        return expirationDays
+          .filter(day => day <= daysUntilExpiry)
+          .map(day => ({
+            id: null as string | null,
+            quoteId: quote.id,
+            quote_number: quote.quote_number,
+            contact: quote.contact,
+            valid_until: quote.valid_until,
+            created_at: quote.created_at,
+            triggerDay: day,
+            scheduledDate: addDays(new Date(), daysUntilExpiry - day),
+            notificationKey: `${quote.id}-${day}`,
+            paused: false,
+            fromDatabase: false,
+          }));
+      } else {
+        if (!quote.created_at) return [];
+        const sentDate = parseISO(quote.created_at);
+        const daysSinceSent = differenceInDays(new Date(), sentDate);
+        
+        return daysAfterSent
+          .filter(day => day > daysSinceSent)
+          .map(day => ({
+            id: null as string | null,
+            quoteId: quote.id,
+            quote_number: quote.quote_number,
+            contact: quote.contact,
+            valid_until: quote.valid_until,
+            created_at: quote.created_at,
+            triggerDay: day,
+            scheduledDate: addDays(sentDate, day),
+            notificationKey: `${quote.id}-${day}`,
+            paused: false,
+            fromDatabase: false,
+          }));
+      }
+    }).sort((a, b) => {
+      if (!a.scheduledDate || !b.scheduledDate) return 0;
+      return a.scheduledDate.getTime() - b.scheduledDate.getTime();
+    }) || [];
+  })();
 
   const connectedChannels = channels?.filter(c => c.status === 'connected') || [];
 
@@ -219,6 +282,86 @@ export function QuoteNotificationsPanel() {
       toast.error('Erro ao enviar notificação: ' + (error.message || 'Erro desconhecido'));
     }
   });
+
+  // Toggle pause mutation
+  const togglePauseMutation = useMutation({
+    mutationFn: async ({ notificationId, isPaused }: { notificationId: string; isPaused: boolean }) => {
+      const { error } = await supabase
+        .from('quote_expiration_notifications')
+        .update({
+          paused: !isPaused,
+          paused_at: !isPaused ? new Date().toISOString() : null,
+          paused_by: !isPaused ? user?.id : null,
+        })
+        .eq('id', notificationId);
+      
+      if (error) throw error;
+    },
+    onSuccess: (_, { isPaused }) => {
+      toast.success(isPaused ? 'Notificação retomada!' : 'Notificação pausada!');
+      refetchPending();
+    },
+    onError: (error: any) => {
+      toast.error('Erro ao atualizar notificação: ' + (error.message || 'Erro desconhecido'));
+    }
+  });
+
+  // Reschedule mutation
+  const rescheduleMutation = useMutation({
+    mutationFn: async ({ notificationId, newDate }: { notificationId: string; newDate: Date }) => {
+      const { error } = await supabase
+        .from('quote_expiration_notifications')
+        .update({
+          scheduled_for: newDate.toISOString(),
+        })
+        .eq('id', notificationId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Data da notificação alterada!');
+      setRescheduleOpen(null);
+      setRescheduleDate(undefined);
+      refetchPending();
+    },
+    onError: (error: any) => {
+      toast.error('Erro ao reagendar: ' + (error.message || 'Erro desconhecido'));
+    }
+  });
+
+  // Delete (cancel) mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (notificationId: string) => {
+      const { error } = await supabase
+        .from('quote_expiration_notifications')
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          cancelled_by: user?.id,
+          cancel_reason: 'manual',
+        })
+        .eq('id', notificationId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Notificação excluída!');
+      refetchPending();
+      queryClient.invalidateQueries({ queryKey: ['quote-notification-history'] });
+    },
+    onError: (error: any) => {
+      toast.error('Erro ao excluir: ' + (error.message || 'Erro desconhecido'));
+    }
+  });
+
+  const handleReschedule = (notificationId: string) => {
+    if (!rescheduleDate) return;
+    
+    const [hours, minutes] = rescheduleTime.split(':').map(Number);
+    const newDate = setMinutes(setHours(rescheduleDate, hours), minutes);
+    
+    rescheduleMutation.mutate({ notificationId, newDate });
+  };
 
   const getStatusBadge = (status: string, cancelReason?: string | null) => {
     switch (status) {
@@ -594,9 +737,20 @@ export function QuoteNotificationsPanel() {
                       </TableHeader>
                       <TableBody>
                         {upcomingNotifications.map(item => (
-                          <TableRow key={item.notificationKey}>
+                          <TableRow 
+                            key={item.notificationKey}
+                            className={item.paused ? 'opacity-50' : ''}
+                          >
                             <TableCell className="font-medium">
-                              ORC-{String(item.quote_number).padStart(3, '0')}
+                              <div className="flex items-center gap-2">
+                                ORC-{String(item.quote_number).padStart(3, '0')}
+                                {item.paused && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    <Pause className="h-3 w-3 mr-1" />
+                                    Pausado
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>{item.contact?.full_name || 'N/A'}</TableCell>
                             <TableCell>
@@ -617,31 +771,155 @@ export function QuoteNotificationsPanel() {
                               {item.scheduledDate && (
                                 <div className="flex items-center gap-1 text-sm">
                                   <Clock className="h-3 w-3" />
-                                  {format(item.scheduledDate, 'dd/MM')} às {sendTimes[0] || '09:00'}
+                                  {format(item.scheduledDate, 'dd/MM HH:mm')}
                                 </div>
                               )}
                             </TableCell>
                             <TableCell className="text-right">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => sendNowMutation.mutate(item.id)}
-                                    disabled={sendNowMutation.isPending}
-                                    className="h-8 w-8 text-primary hover:bg-primary/10"
+                              <div className="flex items-center justify-end gap-1">
+                                {/* Alterar Data - only for database records */}
+                                {item.fromDatabase && item.id && (
+                                  <Popover 
+                                    open={rescheduleOpen === item.id} 
+                                    onOpenChange={(open) => {
+                                      setRescheduleOpen(open ? item.id : null);
+                                      if (open && item.scheduledDate) {
+                                        setRescheduleDate(item.scheduledDate);
+                                        setRescheduleTime(format(item.scheduledDate, 'HH:mm'));
+                                      }
+                                    }}
                                   >
-                                    {sendNowMutation.isPending ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <Send className="h-4 w-4" />
-                                    )}
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Enviar notificação agora</p>
-                                </TooltipContent>
-                              </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <PopoverTrigger asChild>
+                                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                                            <CalendarDays className="h-4 w-4" />
+                                          </Button>
+                                        </PopoverTrigger>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Alterar data</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    <PopoverContent className="w-auto p-0" align="end">
+                                      <div className="p-3 space-y-3">
+                                        <CalendarComponent
+                                          mode="single"
+                                          selected={rescheduleDate}
+                                          onSelect={setRescheduleDate}
+                                          locale={ptBR}
+                                          disabled={(date) => date < new Date()}
+                                        />
+                                        <div className="flex items-center gap-2">
+                                          <Label className="text-sm">Horário:</Label>
+                                          <Select value={rescheduleTime} onValueChange={setRescheduleTime}>
+                                            <SelectTrigger className="w-24">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {SEND_TIME_OPTIONS.map(time => (
+                                                <SelectItem key={time} value={time}>{time}</SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <Button 
+                                          className="w-full" 
+                                          size="sm"
+                                          onClick={() => item.id && handleReschedule(item.id)}
+                                          disabled={!rescheduleDate || rescheduleMutation.isPending}
+                                        >
+                                          {rescheduleMutation.isPending ? (
+                                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                          ) : null}
+                                          Salvar
+                                        </Button>
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+                                )}
+
+                                {/* Pausar/Retomar - only for database records */}
+                                {item.fromDatabase && item.id && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => item.id && togglePauseMutation.mutate({ notificationId: item.id, isPaused: item.paused })}
+                                        disabled={togglePauseMutation.isPending}
+                                        className="h-8 w-8"
+                                      >
+                                        {item.paused ? (
+                                          <Play className="h-4 w-4 text-green-500" />
+                                        ) : (
+                                          <Pause className="h-4 w-4 text-amber-500" />
+                                        )}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>{item.paused ? 'Retomar' : 'Pausar'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+
+                                {/* Excluir - only for database records */}
+                                {item.fromDatabase && item.id && (
+                                  <AlertDialog>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <AlertDialogTrigger asChild>
+                                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10">
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </AlertDialogTrigger>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Excluir notificação</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Excluir Notificação</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Tem certeza que deseja excluir esta notificação agendada? Esta ação não pode ser desfeita.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          onClick={() => item.id && deleteMutation.mutate(item.id)}
+                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                        >
+                                          Excluir
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
+
+                                {/* Enviar Agora */}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => sendNowMutation.mutate(item.quoteId)}
+                                      disabled={sendNowMutation.isPending}
+                                      className="h-8 w-8 text-primary hover:bg-primary/10"
+                                    >
+                                      {sendNowMutation.isPending ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Send className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Enviar agora</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
