@@ -180,27 +180,18 @@ export function QuoteNotificationsPanel() {
   
   // Combine database pending notifications with dynamically calculated ones
   const upcomingNotifications = (() => {
-    // If we have database notifications, show those
-    if (pendingNotifications && pendingNotifications.length > 0) {
-      return pendingNotifications.map(notif => ({
-        id: notif.id,
-        quoteId: notif.quote_id,
-        quote_number: (notif.quote as any)?.quote_number,
-        contact: notif.contact,
-        seller: (notif.quote as any)?.seller,
-        valid_until: (notif.quote as any)?.valid_until,
-        created_at: (notif.quote as any)?.created_at,
-        triggerDay: notif.days_before,
-        scheduledDate: notif.scheduled_for ? parseISO(notif.scheduled_for) : null,
-        notificationKey: notif.id,
-        paused: notif.paused || false,
-        fromDatabase: true,
-      }));
+    // Map database notifications by quote_id + days_before for quick lookup
+    const dbNotificationsMap = new Map<string, typeof pendingNotifications[0]>();
+    if (pendingNotifications) {
+      pendingNotifications.forEach(notif => {
+        const key = `${notif.quote_id}-${notif.days_before}`;
+        dbNotificationsMap.set(key, notif);
+      });
     }
-    
-    // Otherwise, calculate dynamically from quotes with correct times
+
+    // Calculate all expected notifications from quotes
     let notificationIndex = 0;
-    return quotes?.flatMap(quote => {
+    const allNotifications = quotes?.flatMap(quote => {
       if (!['sent', 'approved'].includes(quote.status)) return [];
       
       if (triggerType === 'before_expiry') {
@@ -211,6 +202,29 @@ export function QuoteNotificationsPanel() {
         return expirationDays
           .filter(day => day <= daysUntilExpiry)
           .map(day => {
+            const dbKey = `${quote.id}-${day}`;
+            const dbNotif = dbNotificationsMap.get(dbKey);
+            
+            // If exists in database, use database version
+            if (dbNotif) {
+              dbNotificationsMap.delete(dbKey); // Mark as used
+              return {
+                id: dbNotif.id,
+                quoteId: dbNotif.quote_id,
+                quote_number: (dbNotif.quote as any)?.quote_number,
+                contact: dbNotif.contact,
+                seller: (dbNotif.quote as any)?.seller,
+                valid_until: (dbNotif.quote as any)?.valid_until,
+                created_at: (dbNotif.quote as any)?.created_at,
+                triggerDay: dbNotif.days_before,
+                scheduledDate: dbNotif.scheduled_for ? parseISO(dbNotif.scheduled_for) : null,
+                notificationKey: dbNotif.id,
+                paused: dbNotif.paused || false,
+                fromDatabase: true,
+              };
+            }
+            
+            // Otherwise, calculate dynamically
             const timeIndex = notificationIndex % sendTimes.length;
             const timeToUse = sendTimes[timeIndex] || '09:00';
             const [hours, minutes] = timeToUse.split(':').map(Number);
@@ -249,6 +263,29 @@ export function QuoteNotificationsPanel() {
         return daysAfterSent
           .filter(day => day > daysSinceSent)
           .map(day => {
+            const dbKey = `${quote.id}-${day}`;
+            const dbNotif = dbNotificationsMap.get(dbKey);
+            
+            // If exists in database, use database version
+            if (dbNotif) {
+              dbNotificationsMap.delete(dbKey); // Mark as used
+              return {
+                id: dbNotif.id,
+                quoteId: dbNotif.quote_id,
+                quote_number: (dbNotif.quote as any)?.quote_number,
+                contact: dbNotif.contact,
+                seller: (dbNotif.quote as any)?.seller,
+                valid_until: (dbNotif.quote as any)?.valid_until,
+                created_at: (dbNotif.quote as any)?.created_at,
+                triggerDay: dbNotif.days_before,
+                scheduledDate: dbNotif.scheduled_for ? parseISO(dbNotif.scheduled_for) : null,
+                notificationKey: dbNotif.id,
+                paused: dbNotif.paused || false,
+                fromDatabase: true,
+              };
+            }
+            
+            // Otherwise, calculate dynamically
             const timeIndex = notificationIndex % sendTimes.length;
             const timeToUse = sendTimes[timeIndex] || '09:00';
             const [hours, minutes] = timeToUse.split(':').map(Number);
@@ -280,10 +317,12 @@ export function QuoteNotificationsPanel() {
             };
           });
       }
-    }).sort((a, b) => {
+    }) || [];
+
+    return allNotifications.sort((a, b) => {
       if (!a.scheduledDate || !b.scheduledDate) return 0;
       return a.scheduledDate.getTime() - b.scheduledDate.getTime();
-    }) || [];
+    });
   })();
 
   const connectedChannels = channels?.filter(c => c.status === 'connected') || [];
