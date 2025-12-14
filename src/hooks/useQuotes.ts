@@ -305,10 +305,23 @@ export function useCreateQuote() {
         if (itemsError) throw itemsError;
       }
 
+      // Atualizar valor negociado do contato automaticamente
+      if (data.contact_id && total > 0) {
+        await supabase
+          .from('contacts')
+          .update({ 
+            negotiated_value: total,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', data.contact_id);
+      }
+
       return quote;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       toast.success('Orçamento criado com sucesso');
     },
     onError: (error) => {
@@ -429,12 +442,36 @@ export function useUpdateQuote() {
         if (itemsError) throw itemsError;
       }
 
-      return { id: quoteId };
+      // Atualizar valor negociado se for o orçamento mais recente
+      if (data.contact_id && total > 0) {
+        const { data: latestQuote } = await supabase
+          .from('quotes')
+          .select('id')
+          .eq('contact_id', data.contact_id)
+          .neq('status', 'canceled')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (latestQuote?.id === quoteId) {
+          await supabase
+            .from('contacts')
+            .update({ 
+              negotiated_value: total,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', data.contact_id);
+        }
+      }
+
+      return { id: quoteId, contact_id: data.contact_id };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['quote'] });
       queryClient.invalidateQueries({ queryKey: ['quote-items'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       toast.success('Orçamento atualizado com sucesso');
     },
     onError: (error) => {
@@ -562,6 +599,17 @@ export function useConvertQuoteToOrder() {
 
       if (updateError) throw updateError;
 
+      // Atualizar valor negociado do contato com o valor do pedido
+      if (quote.contact_id && (order.total || 0) > 0) {
+        await supabase
+          .from('contacts')
+          .update({ 
+            negotiated_value: order.total,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', quote.contact_id);
+      }
+
       return { order, quote };
     },
     onSuccess: ({ order }) => {
@@ -569,6 +617,8 @@ export function useConvertQuoteToOrder() {
       queryClient.invalidateQueries({ queryKey: ['quote'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['financial-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       toast.success(`Orçamento convertido para Pedido #${order.order_number}`);
     },
     onError: (error) => {
