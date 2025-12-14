@@ -589,7 +589,6 @@ export function useConvertQuoteToOrder() {
           quantity: item.quantity,
           discount_amount: item.discount_amount || 0,
           discount_percent: item.discount_percent || 0,
-          subtotal: item.subtotal,
         }));
 
         const { error: orderItemsError } = await supabase
