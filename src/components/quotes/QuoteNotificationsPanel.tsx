@@ -62,6 +62,7 @@ export function QuoteNotificationsPanel() {
 
   // Local state for form
   const [enabled, setEnabled] = useState(config?.quote_expiration_enabled ?? false);
+  const [useClientChannel, setUseClientChannel] = useState((config as any)?.use_client_channel ?? true);
   const [channelId, setChannelId] = useState(config?.notification_channel_id ?? '');
   const [sendTime, setSendTime] = useState(config?.notification_send_time ?? '09:00');
   const [dailyLimit, setDailyLimit] = useState(config?.daily_limit ?? 50);
@@ -74,6 +75,7 @@ export function QuoteNotificationsPanel() {
   useState(() => {
     if (config) {
       setEnabled(config.quote_expiration_enabled);
+      setUseClientChannel((config as any).use_client_channel ?? true);
       setChannelId(config.notification_channel_id ?? '');
       setSendTime((config as any).notification_send_time ?? '09:00');
       setDailyLimit((config as any).daily_limit ?? 50);
@@ -95,6 +97,7 @@ export function QuoteNotificationsPanel() {
   const handleSaveConfig = () => {
     updateConfig({
       quote_expiration_enabled: enabled,
+      use_client_channel: useClientChannel,
       notification_channel_id: channelId || null,
       notification_send_time: sendTime,
       daily_limit: dailyLimit,
@@ -192,10 +195,29 @@ export function QuoteNotificationsPanel() {
 
           {enabled && (
             <>
-              {/* Channel and Time Settings */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Channel Settings */}
+              <div className="space-y-4 p-4 border rounded-lg">
+                <Label className="text-base font-medium">Canal de Envio</Label>
+                
+                <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                  <Checkbox
+                    id="useClientChannel"
+                    checked={useClientChannel}
+                    onCheckedChange={(checked) => setUseClientChannel(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="useClientChannel" className="cursor-pointer font-medium">
+                      Responder pelo mesmo canal do cliente
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      O sistema identifica automaticamente o canal da última conversa do cliente e envia a notificação pelo mesmo canal.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
-                  <Label>Canal WhatsApp</Label>
+                  <Label>{useClientChannel ? 'Canal de Fallback' : 'Canal WhatsApp'}</Label>
                   <Select value={channelId} onValueChange={setChannelId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione um canal" />
@@ -208,8 +230,16 @@ export function QuoteNotificationsPanel() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {useClientChannel 
+                      ? 'Usado apenas se o cliente não tiver conversa anterior' 
+                      : 'Todas as notificações serão enviadas por este canal'}
+                  </p>
                 </div>
+              </div>
 
+              {/* Time and Limit Settings */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Horário de Envio</Label>
                   <Select value={sendTime} onValueChange={setSendTime}>
@@ -235,6 +265,9 @@ export function QuoteNotificationsPanel() {
                     value={dailyLimit}
                     onChange={e => setDailyLimit(Number(e.target.value))}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Máximo de notificações enviadas por dia
+                  </p>
                 </div>
               </div>
 

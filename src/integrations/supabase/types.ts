@@ -4872,6 +4872,7 @@ export type Database = {
           quote_expiration_template: string | null
           tenant_id: string | null
           updated_at: string | null
+          use_client_channel: boolean | null
         }
         Insert: {
           created_at?: string | null
@@ -4886,6 +4887,7 @@ export type Database = {
           quote_expiration_template?: string | null
           tenant_id?: string | null
           updated_at?: string | null
+          use_client_channel?: boolean | null
         }
         Update: {
           created_at?: string | null
@@ -4900,6 +4902,7 @@ export type Database = {
           quote_expiration_template?: string | null
           tenant_id?: string | null
           updated_at?: string | null
+          use_client_channel?: boolean | null
         }
         Relationships: [
           {

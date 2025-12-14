@@ -14,6 +14,7 @@ export interface QuoteNotificationConfig {
   daily_limit: number;
   min_interval_hours: number;
   pause_on_weekends: boolean;
+  use_client_channel: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -53,6 +54,7 @@ export function useQuoteNotificationConfig() {
           daily_limit: 50,
           min_interval_hours: 24,
           pause_on_weekends: false,
+          use_client_channel: true,
           created_at: '',
           updated_at: '',
         } as QuoteNotificationConfig;
