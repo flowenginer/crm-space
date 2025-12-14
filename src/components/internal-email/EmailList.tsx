@@ -1,12 +1,10 @@
 import { useState, useMemo } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Search, Star, Paperclip, MailOpen, Mail, RefreshCw, Check } from 'lucide-react';
+import { Search, Star, Paperclip, MailOpen, RefreshCw, Archive, Trash2, Mail } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { useInternalEmails, useToggleEmailStar, useMarkEmailAsRead, useMoveEmailToTrash, useArchiveEmail, type EmailFolder, type InternalEmail } from '@/hooks/useInternalEmail';
@@ -16,6 +14,12 @@ import { EmailFilters, EmailFiltersState, defaultFilters } from './EmailFilters'
 import { EmailBulkActions } from './EmailBulkActions';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface EmailListProps {
   folder: EmailFolder;
@@ -47,25 +51,16 @@ function formatEmailDate(dateString: string | null) {
   return format(date, 'dd/MM', { locale: ptBR });
 }
 
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-}
-
-const priorityColors = {
-  low: 'bg-muted text-muted-foreground',
-  normal: 'hidden',
-  high: 'bg-destructive/10 text-destructive'
-};
-
-const categoryColors: Record<string, string> = {
-  'layout_request': 'bg-amber-500/10 text-amber-600',
-  'layout_delivery': 'bg-emerald-500/10 text-emerald-600',
-  'general': 'hidden'
+// Attachment file type icons for chips
+const getAttachmentIcon = (fileName: string) => {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return '🖼️';
+  if (['pdf'].includes(ext)) return '📄';
+  if (['doc', 'docx'].includes(ext)) return '📝';
+  if (['xls', 'xlsx'].includes(ext)) return '📊';
+  if (['psd', 'ai', 'cdr'].includes(ext)) return '🎨';
+  if (['zip', 'rar', '7z'].includes(ext)) return '📦';
+  return '📎';
 };
 
 export function EmailList({ folder, searchQuery, onSearchChange, onSelectEmail, showFilters = false }: EmailListProps) {
@@ -254,19 +249,17 @@ export function EmailList({ folder, searchQuery, onSearchChange, onSelectEmail, 
         isLoading={bulkActions.isLoading}
       />
 
-      {/* Lista de e-mails */}
+      {/* Lista de e-mails - Layout compacto estilo Gmail */}
       <ScrollArea className="flex-1">
         {isLoading ? (
-          <div className="p-4 space-y-2">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-lg">
+          <div className="divide-y divide-border/50">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-2 h-10">
                 <Skeleton className="h-4 w-4 rounded" />
-                <Skeleton className="h-9 w-9 rounded-full" />
-                <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-3.5 w-1/3" />
-                  <Skeleton className="h-3 w-full" />
-                  <Skeleton className="h-2.5 w-2/3" />
-                </div>
+                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="h-3 w-28" />
+                <Skeleton className="h-3 flex-1 max-w-md" />
+                <Skeleton className="h-3 w-12" />
               </div>
             ))}
           </div>
@@ -276,125 +269,168 @@ export function EmailList({ folder, searchQuery, onSearchChange, onSelectEmail, 
             <p className="text-sm">Nenhum e-mail encontrado</p>
           </div>
         ) : (
-          <div>
-            {filteredEmails?.map((email) => {
-              const isRead = folder === 'sent' || folder === 'drafts' ? true : email.recipient_data?.is_read;
-              const isStarred = email.recipient_data?.is_starred;
-              const senderName = email.sender?.full_name || 'Desconhecido';
-              const dateToShow = email.sent_at || email.updated_at || email.created_at;
-              const isSelected = selectedIds.has(email.id);
+          <TooltipProvider delayDuration={200}>
+            <div className="divide-y divide-border/30">
+              {filteredEmails?.map((email) => {
+                const isRead = folder === 'sent' || folder === 'drafts' ? true : email.recipient_data?.is_read;
+                const isStarred = email.recipient_data?.is_starred;
+                const senderName = email.sender?.full_name || 'Desconhecido';
+                const dateToShow = email.sent_at || email.updated_at || email.created_at;
+                const isSelected = selectedIds.has(email.id);
+                const attachments = email.attachments || [];
+                const hasAttachments = attachments.length > 0;
 
-              return (
-                <div
-                  key={email.id}
-                  className={cn(
-                    'group flex items-start gap-3 px-4 py-3 cursor-pointer transition-all duration-150 border-b border-border/50',
-                    'hover:bg-muted/50',
-                    !isRead && 'bg-primary/5',
-                    isSelected && 'bg-primary/10'
-                  )}
-                >
-                  {/* Checkbox */}
-                  <div 
-                    className="pt-1"
-                    onClick={(e) => e.stopPropagation()}
+                return (
+                  <div
+                    key={email.id}
+                    className={cn(
+                      'group flex items-center gap-2 px-3 py-2 cursor-pointer transition-all duration-100',
+                      'hover:shadow-sm',
+                      !isRead ? 'bg-primary/5 hover:bg-primary/8' : 'hover:bg-muted/50',
+                      isSelected && 'bg-primary/10 hover:bg-primary/12'
+                    )}
                   >
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={(checked) => handleCheckboxChange(email.id, checked as boolean)}
-                      className="h-4 w-4"
-                    />
-                  </div>
-
-                  {/* Unread indicator */}
-                  <div className={cn(
-                    'w-1 h-full min-h-[40px] rounded-full shrink-0 self-stretch',
-                    !isRead ? 'bg-primary' : 'bg-transparent'
-                  )} />
-
-                  {/* Avatar */}
-                  <Avatar 
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => onSelectEmail(email.id)}
-                  >
-                    <AvatarImage src={email.sender?.avatar_url || undefined} />
-                    <AvatarFallback className="text-xs bg-muted">
-                      {getInitials(senderName)}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  {/* Conteúdo */}
-                  <div 
-                    className="flex-1 min-w-0"
-                    onClick={() => onSelectEmail(email.id)}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-0.5">
-                      <span className={cn(
-                        'text-sm truncate',
-                        !isRead ? 'font-semibold' : 'font-medium'
-                      )}>
-                        {senderName}
-                      </span>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {formatEmailDate(dateToShow)}
-                      </span>
-                    </div>
-                    
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className={cn(
-                        'text-sm truncate',
-                        !isRead ? 'font-medium' : 'text-muted-foreground'
-                      )}>
-                        {email.subject}
-                      </span>
+                    {/* Checkbox */}
+                    <div 
+                      className="shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) => handleCheckboxChange(email.id, checked as boolean)}
+                        className="h-4 w-4"
+                      />
                     </div>
 
-                    <p className="text-xs text-muted-foreground/80 truncate">
-                      {email.body.substring(0, 80)}
-                    </p>
-
-                    {/* Badges */}
-                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                      {email.priority !== 'normal' && (
-                        <Badge variant="outline" className={cn('text-[10px] h-5', priorityColors[email.priority])}>
-                          {email.priority === 'high' ? 'Alta' : 'Baixa'}
-                        </Badge>
-                      )}
-                      {email.category && email.category !== 'general' && (
-                        <Badge variant="outline" className={cn('text-[10px] h-5', categoryColors[email.category])}>
-                          {email.category === 'layout_request' ? 'Layout' : email.category}
-                        </Badge>
-                      )}
-                      {email.order_id && (
-                        <Badge variant="outline" className="text-[10px] h-5">Pedido</Badge>
-                      )}
-                      {email.quote_id && (
-                        <Badge variant="outline" className="text-[10px] h-5">Orçamento</Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Ações laterais */}
-                  <div className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
+                    {/* Star */}
                     <button
                       onClick={(e) => handleStarClick(e, email)}
                       className={cn(
-                        'p-1 rounded transition-colors',
-                        isStarred ? 'text-yellow-500' : 'text-muted-foreground/50 hover:text-muted-foreground'
+                        'shrink-0 p-0.5 rounded transition-colors',
+                        isStarred ? 'text-yellow-500' : 'text-muted-foreground/40 hover:text-yellow-500'
                       )}
                     >
-                      <Star
-                        className={cn('h-4 w-4', isStarred && 'fill-current')}
-                      />
+                      <Star className={cn('h-4 w-4', isStarred && 'fill-current')} />
                     </button>
-                    {(email.attachments?.length || 0) > 0 && (
-                      <Paperclip className="h-3.5 w-3.5 text-muted-foreground/50" />
-                    )}
+
+                    {/* Main content - single line */}
+                    <div 
+                      className="flex-1 flex items-center gap-3 min-w-0 overflow-hidden"
+                      onClick={() => onSelectEmail(email.id)}
+                    >
+                      {/* Sender name - fixed width */}
+                      <span className={cn(
+                        'text-sm w-40 shrink-0 truncate',
+                        !isRead ? 'font-semibold text-foreground' : 'text-muted-foreground'
+                      )}>
+                        {senderName}
+                      </span>
+
+                      {/* Subject and preview */}
+                      <div className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
+                        <span className={cn(
+                          'text-sm truncate shrink-0 max-w-[300px]',
+                          !isRead ? 'font-medium text-foreground' : 'text-foreground/80'
+                        )}>
+                          {email.subject}
+                        </span>
+                        <span className="text-sm text-muted-foreground/60 truncate hidden sm:inline">
+                          — {email.body.substring(0, 60)}
+                        </span>
+                      </div>
+
+                      {/* Attachment chips */}
+                      {hasAttachments && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          {attachments.slice(0, 2).map((att: any, idx: number) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-muted/80 rounded text-muted-foreground"
+                              title={att.file_name}
+                            >
+                              <span>{getAttachmentIcon(att.file_name)}</span>
+                              <span className="max-w-[60px] truncate">{att.file_name}</span>
+                            </span>
+                          ))}
+                          {attachments.length > 2 && (
+                            <span className="text-[10px] text-muted-foreground">
+                              +{attachments.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Hover actions */}
+                    <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              archiveEmail.mutate(email.id);
+                              toast.success('E-mail arquivado');
+                            }}
+                          >
+                            <Archive className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">Arquivar</TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveToTrash.mutate(email.id);
+                              toast.success('E-mail movido para lixeira');
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">Excluir</TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!isRead) {
+                                markAsRead.mutate(email.id);
+                                toast.success('Marcado como lido');
+                              }
+                            }}
+                          >
+                            {isRead ? <Mail className="h-4 w-4" /> : <MailOpen className="h-4 w-4" />}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          {isRead ? 'Já lido' : 'Marcar como lido'}
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+
+                    {/* Date - always visible */}
+                    <span className="text-xs text-muted-foreground shrink-0 w-12 text-right">
+                      {formatEmailDate(dateToShow)}
+                    </span>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </TooltipProvider>
         )}
       </ScrollArea>
     </div>
