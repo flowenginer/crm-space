@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -30,6 +31,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
   Plus,
@@ -41,7 +43,9 @@ import {
   Package,
   Layers,
   ImageIcon,
+  X,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { ProductModal } from '@/components/products/ProductModal';
 import { ProductDetailsModal } from '@/components/products/ProductDetailsModal';
 import type { ProductWithCatalog } from '@/hooks/useProducts';
@@ -54,6 +58,10 @@ export default function Products() {
   const [editingProduct, setEditingProduct] = useState<ProductWithCatalog | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [viewingProduct, setViewingProduct] = useState<ProductWithCatalog | null>(null);
+
+  // Bulk selection
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
   const { data: products, isLoading } = useProducts({
     catalogId: catalogFilter !== 'all' ? catalogFilter : undefined,
@@ -81,6 +89,38 @@ export default function Products() {
       id: product.id,
       is_active: !product.is_active,
     });
+  };
+
+  // Bulk selection handlers
+  const handleSelectAll = () => {
+    if (selectedProducts.length === (products?.length || 0)) {
+      setSelectedProducts([]);
+    } else {
+      setSelectedProducts(products?.map(p => p.id) || []);
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    setSelectedProducts(prev => 
+      prev.includes(id) 
+        ? prev.filter(x => x !== id) 
+        : [...prev, id]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    let deleted = 0;
+    for (const id of selectedProducts) {
+      try {
+        await deleteProduct.mutateAsync(id);
+        deleted++;
+      } catch (e) {
+        console.error('Error deleting product', id, e);
+      }
+    }
+    setSelectedProducts([]);
+    setShowBulkDeleteDialog(false);
+    toast.success(`${deleted} produto(s) excluído(s)`);
   };
 
   const formatPrice = (price: number) => {
@@ -171,6 +211,12 @@ export default function Products() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={(products?.length || 0) > 0 && selectedProducts.length === (products?.length || 0)}
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead className="w-[80px]">Imagem</TableHead>
                   <TableHead>Produto</TableHead>
                   <TableHead>Catálogo</TableHead>
@@ -187,6 +233,12 @@ export default function Products() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => setViewingProduct(product)}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedProducts.includes(product.id)}
+                        onCheckedChange={() => handleSelectOne(product.id)}
+                      />
+                    </TableCell>
                     <TableCell>
                       {product.main_image_url ? (
                         <img
@@ -317,6 +369,42 @@ export default function Products() {
           handleEdit(product);
         }}
       />
+
+      {/* Bulk Selection Bar */}
+      {selectedProducts.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-lg px-4 py-3 flex items-center gap-4">
+          <span className="text-sm font-medium">{selectedProducts.length} selecionado(s)</span>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedProducts([])}>
+            <X className="h-4 w-4 mr-1" />
+            Limpar
+          </Button>
+          <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="h-4 w-4 mr-1" />
+                Excluir
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir {selectedProducts.length} produto(s)?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação não pode ser desfeita. Os produtos e suas variações serão removidos permanentemente.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleBulkDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Excluir Todos
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
