@@ -47,3 +47,9 @@ verify_jwt = false
 
 [functions.check-expiring-quotes]
 verify_jwt = false
+
+[functions.create-rede-payment]
+verify_jwt = true
+
+[functions.rede-webhook]
+verify_jwt = false

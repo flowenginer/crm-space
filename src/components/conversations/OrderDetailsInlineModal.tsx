@@ -42,6 +42,8 @@ import { toast } from 'sonner';
 import { useGeneratePDF, PDFDocumentData } from '@/hooks/useGeneratePDF';
 import { SendDocumentModal } from '@/components/orders/SendDocumentModal';
 import { OrderTimeline } from '@/components/orders/OrderTimeline';
+import { PaymentLinkModal } from '@/components/conversations/PaymentLinkModal';
+import { useIsPaymentGatewayConfigured } from '@/hooks/usePaymentLinks';
 import { getProductDisplayName } from '@/lib/utils';
 
 interface OrderDetailsInlineModalProps {
@@ -64,10 +66,12 @@ export function OrderDetailsInlineModal({
   onBack,
 }: OrderDetailsInlineModalProps) {
   const [showSendModal, setShowSendModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const { data: order, isLoading: isLoadingOrder } = useOrder(orderId);
   const { data: items = [] } = useOrderItems(orderId);
   const { data: orderStatuses = [] } = useOrderStatuses();
   const { data: companySettings } = useCompanySettings();
+  const { isConfigured: isPaymentConfigured } = useIsPaymentGatewayConfigured();
   const updateStatus = useUpdateOrderStatus();
   const [selectedStatus, setSelectedStatus] = useState(order?.status || '');
   const { downloadPDF, printPDF } = useGeneratePDF();
@@ -187,6 +191,16 @@ export function OrderDetailsInlineModal({
                     <Send className="h-4 w-4" />
                     Enviar via WhatsApp
                   </Button>
+                  {isPaymentConfigured && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowPaymentModal(true)}
+                      className="gap-2"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      Gerar Cobrança
+                    </Button>
+                  )}
                 </div>
                 {!channelId && (
                   <p className="text-xs text-destructive mt-2">
