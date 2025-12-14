@@ -209,8 +209,8 @@ export function UserManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Stats Cards - Compacto */}
+      <div className="flex flex-wrap gap-2">
         {roles.map((role) => {
           const style = getRoleStyle(role);
           const Icon = style.Icon;
@@ -222,21 +222,19 @@ export function UserManagement() {
               key={role.id}
               onClick={() => setFilterRole(isActive ? '' : role.role_key)}
               className={`
-                p-4 rounded-xl border-2 transition-all text-left
+                px-3 py-2 rounded-lg border transition-all flex items-center gap-2
                 ${isActive 
                   ? `${style.border} ${style.bgLight}` 
                   : 'border-border bg-card hover:border-muted-foreground/30'
                 }
               `}
             >
-              <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 rounded-xl ${style.bgLight} flex items-center justify-center`}>
-                  <Icon size={24} className={style.text} />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-foreground">{count}</div>
-                  <div className="text-sm text-muted-foreground">{role.role_name}</div>
-                </div>
+              <div className={`w-7 h-7 rounded-md ${style.bgLight} flex items-center justify-center`}>
+                <Icon size={14} className={style.text} />
+              </div>
+              <div className="text-left">
+                <div className="text-base font-bold text-foreground leading-tight">{count}</div>
+                <div className="text-xs text-muted-foreground">{role.role_name}</div>
               </div>
             </button>
           );
