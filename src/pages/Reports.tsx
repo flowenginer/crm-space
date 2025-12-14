@@ -87,8 +87,21 @@ import {
   useReportPerformance,
   useReportCloseReasons,
 } from '@/hooks/useReports';
+import { useReportsTabs } from '@/hooks/useReportsTabs';
 
 const COLORS = ['#8B5CF6', '#EC4899', '#3B82F6', '#10B981', '#6B7280'];
+
+// Tab metadata with icons and permissions (keyed by tab value)
+const TAB_METADATA: Record<string, { icon: typeof Clock; permission: string }> = {
+  'sla': { icon: Clock, permission: 'view_sla' },
+  'attendance': { icon: MessageSquare, permission: 'view_attendance' },
+  'sales': { icon: DollarSign, permission: 'view_sales' },
+  'financial': { icon: Wallet, permission: 'view_financial' },
+  'satisfaction': { icon: Smile, permission: 'view_satisfaction' },
+  'performance': { icon: Users, permission: 'view_performance' },
+  'transfers': { icon: ArrowLeftRight, permission: 'view_transfers' },
+  'calls': { icon: Phone, permission: 'view_calls' },
+};
 
 // Date presets
 const datePresets = [
@@ -129,21 +142,34 @@ export default function Reports() {
   );
   const { data: closeReasonsData, isLoading: closeReasonsLoading } = useReportCloseReasons(dateRange as { from: Date; to: Date } | undefined);
 
-  // Define tabs with permissions
-  const availableTabs = useMemo(() => {
-    const tabs = [
-      { value: 'sla', label: 'SLA', icon: Clock, permission: 'reports.view_sla' },
-      { value: 'attendance', label: 'Atendimentos', icon: MessageSquare, permission: 'reports.view_attendance' },
-      { value: 'sales', label: 'Vendas', icon: DollarSign, permission: 'reports.view_sales' },
-      { value: 'financial', label: 'Financeiro', icon: Wallet, permission: 'reports.view_financial' },
-      { value: 'satisfaction', label: 'Satisfação', icon: Smile, permission: 'reports.view_satisfaction' },
-      { value: 'performance', label: 'Performance', icon: Users, permission: 'reports.view_performance' },
-      { value: 'transfers', label: 'Transferências', icon: ArrowLeftRight, permission: 'reports.view_transfers' },
-      { value: 'calls', label: 'Ligações', icon: Phone, permission: 'reports.view_calls' },
-    ];
+  // Fetch menu tabs from database
+  const { data: menuTabs = [], isLoading: loadingMenuTabs } = useReportsTabs();
 
-    return tabs.filter(tab => isAdmin || hasPermission('reports', tab.permission.split('.')[1]));
-  }, [isAdmin, hasPermission]);
+  // Build available tabs from database menu items + permissions
+  const availableTabs = useMemo(() => {
+    if (loadingMenuTabs) return [];
+    
+    return menuTabs
+      .map(item => {
+        const tabValue = item.href?.replace('/reports?tab=', '') || '';
+        const metadata = TAB_METADATA[tabValue];
+        
+        if (!metadata) return null;
+        
+        // Check permissions
+        if (!isAdmin && !hasPermission('reports', metadata.permission)) {
+          return null;
+        }
+        
+        return {
+          value: tabValue,
+          label: item.title,
+          icon: metadata.icon,
+          permission: `reports.${metadata.permission}`,
+        };
+      })
+      .filter((tab): tab is NonNullable<typeof tab> => tab !== null);
+  }, [loadingMenuTabs, menuTabs, isAdmin, hasPermission]);
 
   const canExport = isAdmin || hasPermission('reports', 'export');
   

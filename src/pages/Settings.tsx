@@ -80,6 +80,7 @@ import { useDepartments, useCreateDepartment, useUpdateDepartment, useDeleteDepa
 import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/useChannels';
 import { useCustomFields, useCreateCustomField, useUpdateCustomField, useDeleteCustomField } from '@/hooks/useCustomFields';
 import { useNotificationSettings, useUpdateNotificationSettings } from '@/hooks/useNotificationSettings';
+import { useSettingsTabs } from '@/hooks/useSettingsTabs';
 
 const roleLabels: Record<string, string> = {
   admin: 'Administrador',
@@ -98,41 +99,37 @@ const fieldTypeLabels: Record<string, string> = {
   multiselect: 'Multi-seleção',
 };
 
-// Definição de abas com permissões necessárias
-interface SettingsTab {
-  value: string;
-  label: string;
+// Tab metadata with icons and permissions (keyed by tab value)
+interface TabMetadata {
   icon: LucideIcon;
-  // Permissão necessária: [categoria, ação] ou null para acesso livre (ex: notificações pessoais)
   permission: [string, string] | null;
-  // Se true, só admins podem ver
   adminOnly?: boolean;
 }
 
-const SETTINGS_TABS: SettingsTab[] = [
-  { value: 'company', label: 'Empresa', icon: Building2, permission: ['settings', 'update'] },
-  { value: 'team', label: 'Equipe', icon: Users, permission: ['settings', 'users'] },
-  { value: 'roles', label: 'Perfis', icon: Shield, permission: null, adminOnly: true },
-  { value: 'access-permissions', label: 'Acesso Especial', icon: Unlock, permission: null, adminOnly: true },
-  { value: 'menu', label: 'Menu', icon: Menu, permission: null, adminOnly: true },
-  { value: 'departments', label: 'Departamentos', icon: Building2, permission: ['settings', 'departments'] },
-  { value: 'stores', label: 'Lojas', icon: Store, permission: ['settings', 'update'] },
-  { value: 'channels', label: 'Canais', icon: MessageSquare, permission: ['settings', 'channels'] },
-  { value: 'fields', label: 'Campos', icon: Database, permission: ['settings', 'fields'] },
-  { value: 'tags', label: 'Etiquetas', icon: Tag, permission: ['settings', 'tags'] },
-  { value: 'sales-goals', label: 'Metas', icon: Target, permission: ['settings', 'update'] },
-  { value: 'owner-agent', label: 'Responsável', icon: UserCheck, permission: ['settings', 'update'] },
-  { value: 'close-reasons', label: 'Fechamento', icon: X, permission: ['settings', 'close_reasons'] },
-  { value: 'lead-distribution', label: 'Distribuição', icon: Share2, permission: ['settings', 'update'] },
-  { value: 'notifications', label: 'Notificações', icon: Bell, permission: null },
-  { value: 'security', label: 'Segurança', icon: Key, permission: null },
-  { value: 'integrations', label: 'Integrações', icon: Plug, permission: ['settings', 'integrations'] },
-  { value: 'meta-ads', label: 'Meta Ads', icon: Facebook, permission: ['marketing', 'manage'] },
-  { value: 'origin-patterns', label: 'Padrões de Origem', icon: Radar, permission: ['settings', 'update'] },
-  { value: 'general', label: 'Geral', icon: Palette, permission: ['settings', 'update'] },
-  { value: 'tools', label: 'Ferramentas', icon: Wrench, permission: ['settings', 'update'] },
-  { value: 'metrics', label: 'Métricas', icon: Target, permission: ['settings', 'update'] },
-];
+const TAB_METADATA: Record<string, TabMetadata> = {
+  'company': { icon: Building2, permission: ['settings', 'update'] },
+  'team': { icon: Users, permission: ['settings', 'users'] },
+  'roles': { icon: Shield, permission: null, adminOnly: true },
+  'access-permissions': { icon: Unlock, permission: null, adminOnly: true },
+  'menu': { icon: Menu, permission: null, adminOnly: true },
+  'departments': { icon: Building2, permission: ['settings', 'departments'] },
+  'stores': { icon: Store, permission: ['settings', 'update'] },
+  'channels': { icon: MessageSquare, permission: ['settings', 'channels'] },
+  'fields': { icon: Database, permission: ['settings', 'fields'] },
+  'tags': { icon: Tag, permission: ['settings', 'tags'] },
+  'sales-goals': { icon: Target, permission: ['settings', 'update'] },
+  'owner-agent': { icon: UserCheck, permission: ['settings', 'update'] },
+  'close-reasons': { icon: X, permission: ['settings', 'close_reasons'] },
+  'lead-distribution': { icon: Share2, permission: ['settings', 'update'] },
+  'notifications': { icon: Bell, permission: null },
+  'security': { icon: Key, permission: null },
+  'integrations': { icon: Plug, permission: ['settings', 'integrations'] },
+  'meta-ads': { icon: Facebook, permission: ['marketing', 'manage'] },
+  'origin-patterns': { icon: Radar, permission: ['settings', 'update'] },
+  'general': { icon: Palette, permission: ['settings', 'update'] },
+  'tools': { icon: Wrench, permission: ['settings', 'update'] },
+  'metrics': { icon: Target, permission: ['settings', 'update'] },
+};
 
 export default function Settings() {
   const { user } = useAuth();
@@ -140,25 +137,39 @@ export default function Settings() {
   const [searchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab');
   
-  // Filtra abas disponíveis baseado nas permissões do usuário
+  // Fetch menu tabs from database
+  const { data: menuTabs = [], isLoading: loadingMenuTabs } = useSettingsTabs();
+  
+  // Build available tabs from database menu items + permissions
   const availableTabs = useMemo(() => {
-    if (!isFullyLoaded) return [];
+    if (!isFullyLoaded || loadingMenuTabs) return [];
     
-    return SETTINGS_TABS.filter(tab => {
-      // Admin sempre tem acesso a tudo
-      if (isAdmin) return true;
-      
-      // Tabs só para admin
-      if (tab.adminOnly) return false;
-      
-      // Tabs sem permissão específica (ex: notificações pessoais)
-      if (tab.permission === null) return true;
-      
-      // Verifica permissão específica
-      const [category, action] = tab.permission;
-      return hasPermission(category, action);
-    });
-  }, [isFullyLoaded, isAdmin, hasPermission]);
+    return menuTabs
+      .map(item => {
+        const tabValue = item.href?.replace('/settings?tab=', '') || '';
+        const metadata = TAB_METADATA[tabValue];
+        
+        if (!metadata) return null;
+        
+        // Check permissions
+        if (!isAdmin) {
+          if (metadata.adminOnly) return null;
+          if (metadata.permission) {
+            const [category, action] = metadata.permission;
+            if (!hasPermission(category, action)) return null;
+          }
+        }
+        
+        return {
+          value: tabValue,
+          label: item.title,
+          icon: metadata.icon,
+          permission: metadata.permission,
+          adminOnly: metadata.adminOnly,
+        };
+      })
+      .filter((tab): tab is NonNullable<typeof tab> => tab !== null);
+  }, [isFullyLoaded, loadingMenuTabs, menuTabs, isAdmin, hasPermission]);
 
   // Define a aba ativa baseada na URL ou primeira disponível
   const defaultTab = useMemo(() => {
