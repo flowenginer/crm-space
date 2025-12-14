@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -23,17 +22,20 @@ import {
   Calendar, 
   CreditCard, 
   Truck, 
-  ShoppingCart,
   Clock,
   Download,
   Printer,
   Send,
   MessageSquare,
   ArrowLeft,
-  History
+  History,
+  Building2,
+  Phone,
+  Mail
 } from 'lucide-react';
 import { useOrder, useOrderItems, useUpdateOrderStatus } from '@/hooks/useOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
+import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -65,6 +67,7 @@ export function OrderDetailsInlineModal({
   const { data: order, isLoading: isLoadingOrder } = useOrder(orderId);
   const { data: items = [] } = useOrderItems(orderId);
   const { data: orderStatuses = [] } = useOrderStatuses();
+  const { data: companySettings } = useCompanySettings();
   const updateStatus = useUpdateOrderStatus();
   const [selectedStatus, setSelectedStatus] = useState(order?.status || '');
   const { downloadPDF, printPDF } = useGeneratePDF();
@@ -137,6 +140,10 @@ export function OrderDetailsInlineModal({
 
   const pdfData = preparePDFData();
 
+  // Calculate totals
+  const totalItems = items.length;
+  const totalQuantity = items.reduce((acc, item) => acc + item.quantity, 0);
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -148,20 +155,9 @@ export function OrderDetailsInlineModal({
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               )}
-              <div className="flex items-center justify-between flex-1">
-                <DialogTitle className="flex items-center gap-2">
-                  <Package className="h-5 w-5" />
-                  {order ? `Pedido ${order.order_number}` : 'Carregando...'}
-                </DialogTitle>
-                {order && currentStatusConfig && (
-                  <Badge 
-                    variant="secondary"
-                    style={{ backgroundColor: currentStatusConfig.color, color: 'white' }}
-                  >
-                    {currentStatusConfig.name}
-                  </Badge>
-                )}
-              </div>
+              <DialogTitle className="sr-only">
+                {order ? `Pedido ${order.order_number}` : 'Carregando...'}
+              </DialogTitle>
             </div>
           </DialogHeader>
 
@@ -208,193 +204,237 @@ export function OrderDetailsInlineModal({
                   </TabsTrigger>
                 </TabsList>
 
-                <ScrollArea className="h-[40vh] mt-4">
-                  <TabsContent value="details" className="space-y-6 px-4">
-                    {/* Datas - PRIMEIRO */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <h4 className="font-medium flex items-center gap-2">
-                          <Calendar className="h-4 w-4" />
-                          Data de Criação
-                        </h4>
-                        <p className="text-sm">
-                          {order.created_at 
-                            ? format(new Date(order.created_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
-                            : '-'}
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <h4 className="font-medium flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          Status
-                        </h4>
-                        <p className="text-sm">
-                          {currentStatusConfig?.name || order.status}
-                        </p>
+                <ScrollArea className="h-[50vh] mt-4">
+                  <TabsContent value="details" className="space-y-4 px-1">
+                    {/* === HEADER DA EMPRESA === */}
+                    <div className="bg-muted/50 border border-border rounded-lg p-4">
+                      <div className="flex items-start gap-4">
+                        {companySettings?.logo_url ? (
+                          <img 
+                            src={companySettings.logo_url} 
+                            alt="Logo" 
+                            className="h-14 w-14 object-contain rounded"
+                          />
+                        ) : (
+                          <div className="h-14 w-14 bg-muted rounded flex items-center justify-center">
+                            <Building2 className="h-7 w-7 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-lg truncate">
+                            {companySettings?.company_name || 'Empresa'}
+                          </h3>
+                          {companySettings?.address && (
+                            <p className="text-sm text-muted-foreground">
+                              {companySettings.address}
+                              {companySettings.city && ` - ${companySettings.city}`}
+                              {companySettings.state && `/${companySettings.state}`}
+                              {companySettings.zip_code && ` - ${companySettings.zip_code}`}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap gap-4 mt-1 text-sm text-muted-foreground">
+                            {companySettings?.phone && (
+                              <span className="flex items-center gap-1">
+                                <Phone className="h-3 w-3" />
+                                {companySettings.phone}
+                              </span>
+                            )}
+                            {companySettings?.cnpj && (
+                              <span>CNPJ: {companySettings.cnpj}</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <Separator />
+                    {/* === NÚMERO DO DOCUMENTO === */}
+                    <div className="bg-primary/10 border border-primary/30 rounded-lg p-4 text-center">
+                      <div className="flex items-center justify-center gap-3">
+                        <Package className="h-6 w-6 text-primary" />
+                        <span className="text-xl font-bold text-primary">
+                          PEDIDO Nº {order.order_number}
+                        </span>
+                        {currentStatusConfig && (
+                          <Badge 
+                            variant="secondary"
+                            style={{ backgroundColor: currentStatusConfig.color, color: 'white' }}
+                          >
+                            {currentStatusConfig.name}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
 
-                    {/* Cliente */}
+                    {/* === BARRA DE DATAS === */}
+                    <div className="bg-muted/30 rounded-lg p-3 grid grid-cols-2 gap-4">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <span className="text-xs text-muted-foreground">Criado em</span>
+                          <p className="text-sm font-medium">
+                            {order.created_at 
+                              ? format(new Date(order.created_at), "dd/MM/yyyy", { locale: ptBR })
+                              : '-'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <span className="text-xs text-muted-foreground">Status</span>
+                          <p className="text-sm font-medium">
+                            {currentStatusConfig?.name || order.status}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* === BOX DO CLIENTE === */}
                     <div className="space-y-2">
-                      <h4 className="font-medium flex items-center gap-2">
-                        <User className="h-4 w-4" />
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                        <User className="h-3 w-3" />
                         Cliente
                       </h4>
-                      {order.contact ? (
-                        <div className="bg-muted/50 p-3 rounded-lg">
-                          <p className="font-medium">{order.contact.full_name}</p>
-                          <p className="text-sm text-muted-foreground">{order.contact.phone}</p>
-                        </div>
-                      ) : (
-                        <p className="text-muted-foreground">Nenhum cliente vinculado</p>
-                      )}
-                    </div>
-
-                    <Separator />
-
-                    {/* Itens do Pedido */}
-                    <div className="space-y-2">
-                      <h4 className="font-medium flex items-center gap-2">
-                        <Package className="h-4 w-4" />
-                        Itens do Pedido ({items.length})
-                      </h4>
-                      {items.length === 0 ? (
-                        <p className="text-center text-muted-foreground py-4">
-                          Nenhum item no pedido
-                        </p>
-                      ) : (
-                        <div className="space-y-2">
-                          {items.map((item) => (
-                            <div key={item.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                              <div className="flex-1">
-                                <p className="font-medium">{getProductDisplayName(item.product_name, item.variation_name, item.sku)}</p>
-                                {item.sku && (
-                                  <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
-                                )}
-                              </div>
-                              <div className="text-right">
-                                <p className="font-medium">{formatCurrency(item.subtotal)}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  {item.quantity}x {formatCurrency(item.unit_price)}
-                                </p>
-                              </div>
+                      <div className="border-2 border-muted-foreground/40 rounded-lg p-4">
+                        {order.contact ? (
+                          <div className="space-y-1">
+                            <p className="font-semibold text-lg">{order.contact.full_name}</p>
+                            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                              {order.contact.phone && (
+                                <span className="flex items-center gap-1">
+                                  <Phone className="h-3 w-3" />
+                                  {order.contact.phone}
+                                </span>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      )}
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">Nenhum cliente vinculado</p>
+                        )}
+                      </div>
                     </div>
 
-                    <Separator />
+                    {/* === OBSERVAÇÕES === */}
+                    {order.notes && (
+                      <div className="bg-muted/30 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Observações</p>
+                        <p className="text-sm">{order.notes}</p>
+                      </div>
+                    )}
 
-                    {/* Valores com contagens */}
+                    {/* === TABELA DE ITENS === */}
                     <div className="space-y-2">
-                      <h4 className="font-medium flex items-center gap-2">
-                        <ShoppingCart className="h-4 w-4" />
-                        Valores
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Itens ({items.length})
                       </h4>
-                      <div className="bg-muted/50 p-3 rounded-lg space-y-2">
-                        {/* Contagens */}
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Itens:</span>
-                          <span>{items.length} {items.length === 1 ? 'linha' : 'linhas'}</span>
+                      <div className="border border-border rounded-lg overflow-hidden">
+                        {/* Header */}
+                        <div className="bg-muted grid grid-cols-12 gap-2 p-3 text-xs font-semibold text-muted-foreground uppercase">
+                          <div className="col-span-6">Descrição</div>
+                          <div className="col-span-2 text-center">Qtd</div>
+                          <div className="col-span-2 text-right">Unitário</div>
+                          <div className="col-span-2 text-right">Subtotal</div>
                         </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Produtos:</span>
-                          <span>{items.reduce((acc, item) => acc + item.quantity, 0)} unidades</span>
-                        </div>
-                        <Separator />
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Subtotal:</span>
-                          <span>{formatCurrency(order.subtotal)}</span>
-                        </div>
-                        {(order.discount_amount || 0) > 0 && (
-                          <div className="flex justify-between text-destructive">
-                            <span>Desconto:</span>
-                            <span>-{formatCurrency(order.discount_amount || 0)}</span>
+                        {/* Items */}
+                        {items.length === 0 ? (
+                          <div className="p-4 text-center text-muted-foreground">
+                            Nenhum item no pedido
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-border">
+                            {items.map((item) => (
+                              <div key={item.id} className="grid grid-cols-12 gap-2 p-3 text-sm">
+                                <div className="col-span-6">
+                                  <p className="font-medium">{getProductDisplayName(item.product_name, item.variation_name, item.sku)}</p>
+                                  {item.sku && (
+                                    <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
+                                  )}
+                                </div>
+                                <div className="col-span-2 text-center">{item.quantity}</div>
+                                <div className="col-span-2 text-right">{formatCurrency(item.unit_price)}</div>
+                                <div className="col-span-2 text-right font-medium">{formatCurrency(item.subtotal)}</div>
+                              </div>
+                            ))}
                           </div>
                         )}
-                        {(order.shipping_cost || 0) > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Frete:</span>
-                            <span>+{formatCurrency(order.shipping_cost || 0)}</span>
+                      </div>
+                    </div>
+
+                    {/* === RESUMO === */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Resumo
+                      </h4>
+                      <div className="border border-border rounded-lg overflow-hidden">
+                        {/* Header */}
+                        <div className="bg-muted grid grid-cols-6 gap-2 p-2 text-xs font-semibold text-muted-foreground uppercase text-center">
+                          <div>Nº Itens</div>
+                          <div>Qtd Prod</div>
+                          <div>Desconto</div>
+                          <div>Subtotal</div>
+                          <div>Frete</div>
+                          <div>Total</div>
+                        </div>
+                        {/* Values */}
+                        <div className="border-t-2 border-muted-foreground/40 grid grid-cols-6 gap-2 p-3 text-sm text-center">
+                          <div>{totalItems}</div>
+                          <div>{totalQuantity}</div>
+                          <div className="text-destructive">
+                            {order.discount_amount ? `-${formatCurrency(order.discount_amount)}` : '-'}
                           </div>
-                        )}
-                        <Separator />
-                        <div className="flex justify-between font-bold text-lg">
-                          <span>Total:</span>
-                          <span className="text-primary">{formatCurrency(order.total)}</span>
+                          <div>{formatCurrency(order.subtotal)}</div>
+                          <div>{order.shipping_cost ? formatCurrency(order.shipping_cost) : '-'}</div>
+                          <div className="font-bold text-primary">{formatCurrency(order.total)}</div>
                         </div>
                       </div>
                     </div>
 
-                    <Separator />
-
-                    {/* Pagamento e Entrega */}
+                    {/* === PAGAMENTO E ENTREGA === */}
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <h4 className="font-medium flex items-center gap-2">
-                          <CreditCard className="h-4 w-4" />
-                          Pagamento
-                        </h4>
-                        <p className="text-sm capitalize">
+                      <div className="bg-muted/30 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <CreditCard className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-xs font-semibold text-muted-foreground uppercase">Pagamento</span>
+                        </div>
+                        <p className="text-sm font-medium capitalize">
                           {order.payment_method?.replace('_', ' ') || 'Não definido'}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground mt-1">
                           Status: {order.payment_status === 'paid' ? 'Pago' : 'Pendente'}
                         </p>
                       </div>
-
-                      <div className="space-y-2">
-                        <h4 className="font-medium flex items-center gap-2">
-                          <Truck className="h-4 w-4" />
-                          Entrega
-                        </h4>
-                        <p className="text-sm capitalize">
+                      <div className="bg-muted/30 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Truck className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-xs font-semibold text-muted-foreground uppercase">Entrega</span>
+                        </div>
+                        <p className="text-sm font-medium capitalize">
                           {order.shipping_method || 'Não definida'}
                         </p>
                       </div>
                     </div>
 
-                    {/* Notas */}
-                    {order.notes && (
-                      <>
-                        <Separator />
-                        <div className="space-y-2">
-                          <h4 className="font-medium">Observações</h4>
-                          <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                            {order.notes}
-                          </p>
-                        </div>
-                      </>
-                    )}
-
-                    {/* Status */}
+                    {/* === ALTERAR STATUS === */}
                     {!isFinalStatus && (
-                      <>
-                        <Separator />
-                        <div className="space-y-2">
-                          <h4 className="font-medium">Alterar Status</h4>
-                          <Select value={selectedStatus} onValueChange={handleStatusChange}>
-                            <SelectTrigger className="w-full">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {activeStatuses.map((status) => (
-                                <SelectItem key={status.value} value={status.value}>
-                                  {status.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </>
+                      <div className="bg-muted/30 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Alterar Status</p>
+                        <Select value={selectedStatus} onValueChange={handleStatusChange}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeStatuses.map((status) => (
+                              <SelectItem key={status.value} value={status.value}>
+                                {status.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     )}
                   </TabsContent>
 
-                  <TabsContent value="timeline" className="px-4">
+                  <TabsContent value="timeline" className="px-1">
                     <OrderTimeline order={order} />
                   </TabsContent>
                 </ScrollArea>
