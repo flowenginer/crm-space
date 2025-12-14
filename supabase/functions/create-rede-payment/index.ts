@@ -110,8 +110,9 @@ serve(async (req) => {
     if (paymentMethods.includes('pix')) redePaymentMethods.push('PIX');
 
     // Prepare Rede API request
+    // Amount already comes in cents from frontend, no need to multiply
     const redePayload = {
-      amount: Math.round(amount * 100), // Convert to cents
+      amount: Math.round(amount),
       reference,
       maxInstallments: maxInstallments || 1,
       expirationDate: formattedExpiration,
