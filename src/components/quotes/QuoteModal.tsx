@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { format, addDays, addMonths } from 'date-fns';
+import { toast } from 'sonner';
 import { ptBR } from 'date-fns/locale';
 import {
   Dialog,
@@ -402,6 +403,11 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
   }, [useDeliveryDateForInstallment, expectedDeliveryDate]);
 
   const handleSubmit = async () => {
+    if (!storeId) {
+      toast.error('Selecione uma loja para criar o orçamento');
+      return;
+    }
+    
     if (items.some(item => !item.product_name || item.unit_price <= 0)) {
       return;
     }
@@ -654,7 +660,7 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
                     <div className="space-y-2">
                       <Label className="flex items-center gap-2">
                         <Store size={14} />
-                        Loja
+                        Loja <span className="text-destructive">*</span>
                       </Label>
                       <Select value={storeId} onValueChange={setStoreId}>
                         <SelectTrigger>
@@ -1307,7 +1313,7 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
                 </Button>
                 <Button
                   onClick={handleSubmit}
-                  disabled={(createQuote.isPending || updateQuote.isPending) || items.some(item => !item.product_name)}
+                  disabled={(createQuote.isPending || updateQuote.isPending) || items.some(item => !item.product_name) || !storeId}
                 >
                   {(createQuote.isPending || updateQuote.isPending) 
                     ? (isEditMode ? 'Salvando...' : 'Criando...') 

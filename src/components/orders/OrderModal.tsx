@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { format, addDays, addMonths } from 'date-fns';
+import { toast } from 'sonner';
 import { ptBR } from 'date-fns/locale';
 import {
   Dialog,
@@ -348,6 +349,11 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
   }, [useDeliveryDateForInstallment, expectedDeliveryDate]);
 
   const handleSubmit = async () => {
+    if (!storeId) {
+      toast.error('Selecione uma loja para criar o pedido');
+      return;
+    }
+    
     if (items.some(item => !item.product_name || item.unit_price <= 0)) {
       return;
     }
@@ -620,7 +626,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     <Store size={14} />
-                    Loja
+                    Loja <span className="text-destructive">*</span>
                   </Label>
                   <Select value={storeId} onValueChange={setStoreId}>
                     <SelectTrigger>
@@ -1298,7 +1304,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
             </Button>
             <Button 
               onClick={handleSubmit} 
-              disabled={createOrder.isPending || items.some(i => !i.product_name)}
+              disabled={createOrder.isPending || items.some(i => !i.product_name) || !storeId}
             >
               {createOrder.isPending ? 'Criando...' : 'Criar Pedido'}
             </Button>
