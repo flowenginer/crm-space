@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Paperclip, Trash2, Loader2 } from 'lucide-react';
+import { X, Paperclip, Trash2, Loader2, Package } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -39,6 +39,7 @@ import {
   useUploadEmailAttachment,
   useInternalEmail
 } from '@/hooks/useInternalEmail';
+import { useAllSharedBoxes } from '@/hooks/useSharedEmailBoxes';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -73,6 +74,7 @@ function getInitials(name: string) {
 export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailComposerModalProps) {
   const [recipientsTo, setRecipientsTo] = useState<Recipient[]>([]);
   const [recipientsCc, setRecipientsCc] = useState<Recipient[]>([]);
+  const [selectedSharedBox, setSelectedSharedBox] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [priority, setPriority] = useState<'low' | 'normal' | 'high'>('normal');
@@ -83,6 +85,7 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
   const [ccOpen, setCcOpen] = useState(false);
 
   const { data: recipientOptions } = useEmailRecipientOptions();
+  const { data: sharedBoxes } = useAllSharedBoxes();
   const { data: replyEmail } = useInternalEmail(replyTo?.emailId || null);
   const sendEmail = useSendInternalEmail();
   const uploadAttachment = useUploadEmailAttachment();
@@ -152,6 +155,7 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
     if (!open) {
       setRecipientsTo([]);
       setRecipientsCc([]);
+      setSelectedSharedBox(null);
       setSubject('');
       setBody('');
       setPriority('normal');
@@ -181,8 +185,9 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
   };
 
   const handleSend = async (asDraft = false) => {
-    if (recipientsTo.length === 0 && !asDraft) {
-      toast.error('Adicione pelo menos um destinatário');
+    // Valida destinatário: precisa ter recipients OU caixa compartilhada
+    if (recipientsTo.length === 0 && !selectedSharedBox && !asDraft) {
+      toast.error('Adicione pelo menos um destinatário ou selecione uma caixa compartilhada');
       return;
     }
 
@@ -199,12 +204,14 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
         category,
         recipients_to: recipientsTo.map(r => r.id),
         recipients_cc: recipientsCc.map(r => r.id),
+        shared_box_id: selectedSharedBox || undefined,
         parent_email_id: replyTo?.type !== 'forward' ? replyTo?.emailId : undefined,
         attachments,
         status: asDraft ? 'draft' : 'sent'
       });
 
-      toast.success(asDraft ? 'Rascunho salvo' : 'E-mail enviado');
+      const sharedBoxName = sharedBoxes?.find(sb => sb.id === selectedSharedBox)?.name;
+      toast.success(asDraft ? 'Rascunho salvo' : selectedSharedBox ? `E-mail enviado para ${sharedBoxName}` : 'E-mail enviado');
       onOpenChange(false);
     } catch (error) {
       toast.error('Erro ao enviar e-mail');
@@ -254,7 +261,57 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
 
         <ScrollArea className="flex-1 max-h-[calc(90vh-140px)]">
           <div className="p-4 space-y-4">
-            {/* Para */}
+            {/* Caixas Compartilhadas */}
+            {sharedBoxes && sharedBoxes.length > 0 && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Enviar para Caixa Compartilhada
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {sharedBoxes.map(box => (
+                    <Badge
+                      key={box.id}
+                      variant={selectedSharedBox === box.id ? 'default' : 'outline'}
+                      className={cn(
+                        "cursor-pointer transition-colors",
+                        selectedSharedBox === box.id && "bg-primary text-primary-foreground"
+                      )}
+                      onClick={() => {
+                        if (selectedSharedBox === box.id) {
+                          setSelectedSharedBox(null);
+                        } else {
+                          setSelectedSharedBox(box.id);
+                          // Limpa destinatários individuais ao selecionar caixa
+                          setRecipientsTo([]);
+                          setRecipientsCc([]);
+                        }
+                      }}
+                    >
+                      <Package className="h-3 w-3 mr-1" />
+                      {box.name}
+                    </Badge>
+                  ))}
+                </div>
+                {selectedSharedBox && (
+                  <p className="text-xs text-muted-foreground">
+                    O e-mail será enviado para a caixa compartilhada. Todos os membros poderão ver e assumir.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Separador */}
+            {sharedBoxes && sharedBoxes.length > 0 && !selectedSharedBox && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex-1 border-t" />
+                <span>ou enviar para pessoas específicas</span>
+                <div className="flex-1 border-t" />
+              </div>
+            )}
+
+            {/* Para - só mostra se não selecionou caixa compartilhada */}
+            {!selectedSharedBox && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Para</Label>
@@ -309,9 +366,10 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
                 </Popover>
               </div>
             </div>
+            )}
 
             {/* Cc */}
-            {showCc && (
+            {showCc && !selectedSharedBox && (
               <div className="space-y-2">
                 <Label>Cc</Label>
                 <div className="flex flex-wrap items-center gap-2 p-2 border rounded-md min-h-[42px]">

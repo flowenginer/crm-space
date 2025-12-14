@@ -371,6 +371,7 @@ export function useSendInternalEmail() {
       category?: string;
       recipients_to: string[];
       recipients_cc?: string[];
+      shared_box_id?: string;
       order_id?: string;
       quote_id?: string;
       parent_email_id?: string;
@@ -394,14 +395,17 @@ export function useSendInternalEmail() {
           quote_id: data.quote_id,
           parent_email_id: data.parent_email_id,
           status: data.status || 'sent',
-          sent_at: data.status === 'draft' ? null : new Date().toISOString()
+          sent_at: data.status === 'draft' ? null : new Date().toISOString(),
+          // Campos de caixa compartilhada
+          shared_box_id: data.shared_box_id || null,
+          workflow_status: data.shared_box_id ? 'pending' : 'pending'
         })
         .select()
         .single();
 
       if (emailError) throw emailError;
 
-      // Criar recipients "to"
+      // Criar recipients "to" - apenas se não for para caixa compartilhada
       if (data.recipients_to.length > 0) {
         const { error: toError } = await supabase
           .from('internal_email_recipients')
@@ -450,6 +454,8 @@ export function useSendInternalEmail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
       queryClient.invalidateQueries({ queryKey: ['internal-email-folder-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-box-emails'] });
+      queryClient.invalidateQueries({ queryKey: ['all-shared-boxes-counts'] });
     }
   });
 }
