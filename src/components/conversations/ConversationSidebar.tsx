@@ -77,7 +77,9 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   // Fetch shares made by me for this conversation (for managing)
   const { data: myShares = [] } = useMySharesForConversation(conversationId);
   const removeShareMutation = useRemoveShare();
-
+  
+  // ERP hooks - must be at top level before any early returns
+  const updateQuoteStatus = useUpdateQuoteStatus();
   // Fetch conversation with contact data - campos específicos para otimização
   const { data: conversation, isLoading: loadingConversation } = useQuery({
     queryKey: ['conversation-details', conversationId],
@@ -116,6 +118,12 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
     enabled: !!conversationId,
     staleTime: 30000, // 30 segundos de cache
   });
+
+  // Get contact_id from conversation for quotes hook (must be before early returns)
+  const conversationContactId = conversation?.contact 
+    ? (Array.isArray(conversation.contact) ? conversation.contact[0]?.id : conversation.contact?.id)
+    : null;
+  const { quotes: contactQuotes = [] } = useContactHistory(conversationContactId);
 
   // Fetch all tags (with visibility filter) - campos específicos
   const { data: allTags = [] } = useQuery({
@@ -731,12 +739,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   const contact = Array.isArray(conversation.contact) 
     ? conversation.contact[0] 
     : conversation.contact;
-  
-  // Fetch contact quote history for ERP
-  const { quotes: contactQuotes = [] } = useContactHistory(contact?.id || null);
-  const updateQuoteStatus = useUpdateQuoteStatus();
-  
-  console.log('[ConversationSidebar] Contact data:', { 
+  console.log('[ConversationSidebar] Contact data:', {
     id: contact?.id, 
     negotiated_value: contact?.negotiated_value,
     lead_status: contact?.lead_status 
