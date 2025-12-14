@@ -132,6 +132,18 @@ export function AccessPermissionsSettings() {
         </AlertDescription>
       </Alert>
 
+      {/* Legenda das permissões */}
+      <div className="flex flex-wrap gap-6 text-sm text-muted-foreground px-2">
+        <div className="flex items-center gap-2">
+          <Eye className="h-4 w-4" />
+          <span><strong>Ver:</strong> Visualizar todas as conversas</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Repeat className="h-4 w-4" />
+          <span><strong>Transf.:</strong> Transferir sem autorização</span>
+        </div>
+      </div>
+
       {/* Configuração por Usuário - Colapsável */}
       <Card>
         <Collapsible open={usersOpen} onOpenChange={setUsersOpen}>
@@ -281,17 +293,6 @@ export function AccessPermissionsSettings() {
         </Collapsible>
       </Card>
 
-      {/* Legenda Compacta */}
-      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground px-1">
-        <div className="flex items-center gap-1.5">
-          <Eye className="h-3.5 w-3.5" />
-          <span><strong>Ver:</strong> Visualizar todas as conversas</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Repeat className="h-3.5 w-3.5" />
-          <span><strong>Transf.:</strong> Transferir sem autorização</span>
-        </div>
-      </div>
     </div>
   );
 }
