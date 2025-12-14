@@ -229,6 +229,36 @@ export function QuoteDetailsInlineModal({
 
               <ScrollArea className="h-[40vh] mt-4">
                 <div className="space-y-6 px-4">
+                  {/* Datas - PRIMEIRO */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        Data de Criação
+                      </h4>
+                      <p className="text-sm">
+                        {quote.created_at 
+                          ? format(new Date(quote.created_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
+                          : '-'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Validade
+                      </h4>
+                      <p className={`text-sm ${isExpired ? 'text-destructive' : ''}`}>
+                        {quote.valid_until 
+                          ? format(new Date(quote.valid_until), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
+                          : 'Sem validade definida'}
+                        {isExpired && ' (Expirado)'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Separator />
+
                   {/* Cliente */}
                   <div className="space-y-2">
                     <h4 className="font-medium flex items-center gap-2">
@@ -284,13 +314,23 @@ export function QuoteDetailsInlineModal({
 
                   <Separator />
 
-                  {/* Valores */}
+                  {/* Valores com contagens */}
                   <div className="space-y-2">
                     <h4 className="font-medium flex items-center gap-2">
                       <ShoppingCart className="h-4 w-4" />
                       Valores
                     </h4>
                     <div className="bg-muted/50 p-3 rounded-lg space-y-2">
+                      {/* Contagens */}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Itens:</span>
+                        <span>{items.length} {items.length === 1 ? 'linha' : 'linhas'}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Produtos:</span>
+                        <span>{items.reduce((acc, item) => acc + item.quantity, 0)} unidades</span>
+                      </div>
+                      <Separator />
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal:</span>
                         <span>{formatCurrency(quote.subtotal)}</span>
@@ -312,36 +352,6 @@ export function QuoteDetailsInlineModal({
                         <span>Total:</span>
                         <span className="text-primary">{formatCurrency(quote.total)}</span>
                       </div>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  {/* Datas */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <h4 className="font-medium flex items-center gap-2">
-                        <Calendar className="h-4 w-4" />
-                        Data de Criação
-                      </h4>
-                      <p className="text-sm">
-                        {quote.created_at 
-                          ? format(new Date(quote.created_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
-                          : '-'}
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <h4 className="font-medium flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        Validade
-                      </h4>
-                      <p className={`text-sm ${isExpired ? 'text-destructive' : ''}`}>
-                        {quote.valid_until 
-                          ? format(new Date(quote.valid_until), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
-                          : 'Sem validade definida'}
-                        {isExpired && ' (Expirado)'}
-                      </p>
                     </div>
                   </div>
 
