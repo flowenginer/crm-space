@@ -166,8 +166,8 @@ export function useGeneratePDF() {
     y += 6;
 
     // Client box
-    doc.setDrawColor(229, 231, 235);
-    doc.setLineWidth(0.3);
+    doc.setDrawColor(156, 163, 175);
+    doc.setLineWidth(0.5);
     const clientBoxY = y;
     doc.roundedRect(margin, y, pageWidth - 2 * margin, 22, 2, 2, 'S');
     
@@ -222,7 +222,7 @@ export function useGeneratePDF() {
     y += 6;
 
     // Table Header
-    doc.setFillColor(243, 244, 246);
+    doc.setFillColor(229, 231, 235);
     doc.rect(margin, y, pageWidth - 2 * margin, 8, 'F');
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
@@ -283,7 +283,8 @@ export function useGeneratePDF() {
     });
 
     y += 4;
-    doc.setDrawColor(229, 231, 235);
+    doc.setDrawColor(156, 163, 175);
+    doc.setLineWidth(0.5);
     doc.line(margin, y, pageWidth - margin, y);
     y += 8;
 
@@ -295,7 +296,7 @@ export function useGeneratePDF() {
     y += 6;
 
     // Summary table header
-    doc.setFillColor(243, 244, 246);
+    doc.setFillColor(229, 231, 235);
     doc.rect(margin, y, pageWidth - 2 * margin, 8, 'F');
     doc.setFontSize(7);
     doc.setTextColor(107, 114, 128);
@@ -313,7 +314,8 @@ export function useGeneratePDF() {
     // Summary values
     doc.setFillColor(255, 255, 255);
     doc.rect(margin, y - 3, pageWidth - 2 * margin, 10, 'F');
-    doc.setDrawColor(229, 231, 235);
+    doc.setDrawColor(156, 163, 175);
+    doc.setLineWidth(0.5);
     doc.rect(margin, y - 3, pageWidth - 2 * margin, 10, 'S');
     
     doc.setFontSize(9);
@@ -403,7 +405,7 @@ export function useGeneratePDF() {
     if (data.type === 'quote') {
       y = Math.max(y + 5, 240);
       
-      doc.setDrawColor(200, 200, 200);
+      doc.setDrawColor(156, 163, 175);
       doc.setLineDashPattern([2, 2], 0);
       doc.line(margin, y, pageWidth - margin, y);
       doc.setLineDashPattern([], 0);
