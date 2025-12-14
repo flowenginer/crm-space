@@ -184,7 +184,8 @@ export function EmailList({ folder, searchQuery, onSearchChange, onSelectEmail, 
     const ids = Array.from(selectedIds);
     setSelectedIds(new Set());
     try {
-      await bulkActions.moveToTrash(ids);
+      // Passa true se estamos na pasta "sent" para deletar corretamente
+      await bulkActions.moveToTrash(ids, folder === 'sent');
       toast.success('E-mails movidos para a lixeira');
     } catch (error) {
       toast.error('Erro ao mover e-mails para a lixeira');

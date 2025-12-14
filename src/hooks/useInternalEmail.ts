@@ -119,7 +119,7 @@ export function useInternalEmails(folder: EmailFolder, search?: string) {
       let query;
 
       if (folder === 'sent') {
-        // E-mails enviados pelo usuário
+        // E-mails enviados pelo usuário (não deletados pelo remetente)
         query = supabase
           .from('internal_emails')
           .select(`
@@ -128,6 +128,7 @@ export function useInternalEmails(folder: EmailFolder, search?: string) {
           `)
           .eq('sender_id', user)
           .eq('status', 'sent')
+          .or('is_deleted_by_sender.is.null,is_deleted_by_sender.eq.false')
           .order('sent_at', { ascending: false });
       } else if (folder === 'drafts') {
         // Rascunhos do usuário
@@ -140,14 +141,88 @@ export function useInternalEmails(folder: EmailFolder, search?: string) {
           .eq('sender_id', user)
           .eq('status', 'draft')
           .order('updated_at', { ascending: false });
-      } else {
-        // Inbox, starred, archive, trash - busca pelos recipients
+      } else if (folder === 'trash') {
+        // Lixeira: busca recipients deletados + emails enviados deletados pelo remetente
         const { data: recipientEmails, error: recError } = await supabase
           .from('internal_email_recipients')
           .select('email_id, is_read, is_starred, folder, labels')
           .eq('user_id', user)
-          .eq('is_deleted', folder === 'trash')
-          .eq('folder', folder === 'starred' ? 'inbox' : folder === 'trash' ? 'trash' : folder === 'archive' ? 'archive' : 'inbox');
+          .eq('is_deleted', true);
+
+        if (recError) throw recError;
+
+        const recipientEmailIds = recipientEmails?.map(r => r.email_id) || [];
+
+        // Busca e-mails dos recipients
+        let trashEmails: InternalEmail[] = [];
+        if (recipientEmailIds.length > 0) {
+          const { data, error } = await supabase
+            .from('internal_emails')
+            .select(`
+              *,
+              sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url)
+            `)
+            .in('id', recipientEmailIds)
+            .eq('status', 'sent')
+            .order('sent_at', { ascending: false });
+
+          if (error) throw error;
+
+          trashEmails = (data || []).map(email => {
+            const recipientData = recipientEmails?.find(r => r.email_id === email.id);
+            return {
+              ...email,
+              recipient_data: recipientData ? {
+                is_read: recipientData.is_read,
+                is_starred: recipientData.is_starred,
+                folder: recipientData.folder,
+                labels: recipientData.labels || []
+              } : undefined
+            };
+          }) as InternalEmail[];
+        }
+
+        // Busca e-mails enviados deletados pelo remetente
+        const { data: sentDeletedEmails, error: sentError } = await supabase
+          .from('internal_emails')
+          .select(`
+            *,
+            sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url)
+          `)
+          .eq('sender_id', user)
+          .eq('status', 'sent')
+          .eq('is_deleted_by_sender', true)
+          .order('deleted_by_sender_at', { ascending: false });
+
+        if (sentError) throw sentError;
+
+        // Combina os dois arrays removendo duplicatas
+        const sentEmailsFormatted = (sentDeletedEmails || []).map(email => ({
+          ...email,
+          recipient_data: { is_read: true, is_starred: false, folder: 'trash' as const, labels: [] }
+        })) as InternalEmail[];
+
+        const combinedEmails = [...trashEmails];
+        for (const sentEmail of sentEmailsFormatted) {
+          if (!combinedEmails.find(e => e.id === sentEmail.id)) {
+            combinedEmails.push(sentEmail);
+          }
+        }
+
+        // Ordena por data mais recente
+        return combinedEmails.sort((a, b) => {
+          const dateA = new Date(a.sent_at || a.created_at).getTime();
+          const dateB = new Date(b.sent_at || b.created_at).getTime();
+          return dateB - dateA;
+        });
+      } else {
+        // Inbox, starred, archive - busca pelos recipients
+        const { data: recipientEmails, error: recError } = await supabase
+          .from('internal_email_recipients')
+          .select('email_id, is_read, is_starred, folder, labels')
+          .eq('user_id', user)
+          .eq('is_deleted', false)
+          .eq('folder', folder === 'starred' ? 'inbox' : folder === 'archive' ? 'archive' : 'inbox');
 
         if (recError) throw recError;
 
@@ -308,12 +383,13 @@ export function useInternalEmailFolderCounts() {
         .eq('folder', 'inbox')
         .eq('is_deleted', false);
 
-      // Sent count
+      // Sent count (excluindo deletados pelo remetente)
       const { count: sentCount } = await supabase
         .from('internal_emails')
         .select('*', { count: 'exact', head: true })
         .eq('sender_id', user)
-        .eq('status', 'sent');
+        .eq('status', 'sent')
+        .or('is_deleted_by_sender.is.null,is_deleted_by_sender.eq.false');
 
       // Drafts count
       const { count: draftsCount } = await supabase
@@ -338,12 +414,22 @@ export function useInternalEmailFolderCounts() {
         .eq('folder', 'archive')
         .eq('is_deleted', false);
 
-      // Trash count
-      const { count: trashCount } = await supabase
+      // Trash count (recipients deletados + enviados deletados pelo remetente)
+      const { count: trashRecipientCount } = await supabase
         .from('internal_email_recipients')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user)
         .eq('is_deleted', true);
+
+      // Sent emails deleted by sender
+      const { count: trashSentCount } = await supabase
+        .from('internal_emails')
+        .select('*', { count: 'exact', head: true })
+        .eq('sender_id', user)
+        .eq('status', 'sent')
+        .eq('is_deleted_by_sender', true);
+
+      const trashCount = (trashRecipientCount || 0) + (trashSentCount || 0);
 
       return {
         inbox: inboxCount || 0,
