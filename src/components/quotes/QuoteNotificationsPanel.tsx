@@ -49,6 +49,7 @@ import { useChannels } from '@/hooks/useChannels';
 import { useQuotes } from '@/hooks/useQuotes';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useCurrentTenantId } from '@/hooks/useTenant';
 
 const SEND_TIME_OPTIONS = [
   '08:00', '09:00', '10:00', '11:00', '12:00', 
@@ -69,6 +70,7 @@ Posso te ajudar a finalizar?`;
 export function QuoteNotificationsPanel() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { data: tenantId } = useCurrentTenantId();
   const { data: config, isLoading: configLoading } = useQuoteNotificationConfig();
   const { mutate: updateConfig, isPending: updating } = useUpdateQuoteNotificationConfig();
   const { data: channels } = useChannels();
@@ -195,7 +197,8 @@ export function QuoteNotificationsPanel() {
       }));
     }
     
-    // Otherwise, calculate dynamically from quotes
+    // Otherwise, calculate dynamically from quotes with correct times
+    let notificationIndex = 0;
     return quotes?.flatMap(quote => {
       if (!['sent', 'approved'].includes(quote.status)) return [];
       
@@ -206,19 +209,36 @@ export function QuoteNotificationsPanel() {
         
         return expirationDays
           .filter(day => day <= daysUntilExpiry)
-          .map(day => ({
-            id: null as string | null,
-            quoteId: quote.id,
-            quote_number: quote.quote_number,
-            contact: quote.contact,
-            valid_until: quote.valid_until,
-            created_at: quote.created_at,
-            triggerDay: day,
-            scheduledDate: addDays(new Date(), daysUntilExpiry - day),
-            notificationKey: `${quote.id}-${day}`,
-            paused: false,
-            fromDatabase: false,
-          }));
+          .map(day => {
+            const timeIndex = notificationIndex % sendTimes.length;
+            const timeToUse = sendTimes[timeIndex] || '09:00';
+            const [hours, minutes] = timeToUse.split(':').map(Number);
+            notificationIndex++;
+            
+            const baseDate = addDays(new Date(), daysUntilExpiry - day);
+            const scheduledDate = new Date(
+              baseDate.getFullYear(),
+              baseDate.getMonth(),
+              baseDate.getDate(),
+              hours,
+              minutes,
+              0
+            );
+            
+            return {
+              id: null as string | null,
+              quoteId: quote.id,
+              quote_number: quote.quote_number,
+              contact: quote.contact,
+              valid_until: quote.valid_until,
+              created_at: quote.created_at,
+              triggerDay: day,
+              scheduledDate,
+              notificationKey: `${quote.id}-${day}`,
+              paused: false,
+              fromDatabase: false,
+            };
+          });
       } else {
         if (!quote.created_at) return [];
         const sentDate = parseISO(quote.created_at);
@@ -226,19 +246,36 @@ export function QuoteNotificationsPanel() {
         
         return daysAfterSent
           .filter(day => day > daysSinceSent)
-          .map(day => ({
-            id: null as string | null,
-            quoteId: quote.id,
-            quote_number: quote.quote_number,
-            contact: quote.contact,
-            valid_until: quote.valid_until,
-            created_at: quote.created_at,
-            triggerDay: day,
-            scheduledDate: addDays(sentDate, day),
-            notificationKey: `${quote.id}-${day}`,
-            paused: false,
-            fromDatabase: false,
-          }));
+          .map(day => {
+            const timeIndex = notificationIndex % sendTimes.length;
+            const timeToUse = sendTimes[timeIndex] || '09:00';
+            const [hours, minutes] = timeToUse.split(':').map(Number);
+            notificationIndex++;
+            
+            const baseDate = addDays(sentDate, day);
+            const scheduledDate = new Date(
+              baseDate.getFullYear(),
+              baseDate.getMonth(),
+              baseDate.getDate(),
+              hours,
+              minutes,
+              0
+            );
+            
+            return {
+              id: null as string | null,
+              quoteId: quote.id,
+              quote_number: quote.quote_number,
+              contact: quote.contact,
+              valid_until: quote.valid_until,
+              created_at: quote.created_at,
+              triggerDay: day,
+              scheduledDate,
+              notificationKey: `${quote.id}-${day}`,
+              paused: false,
+              fromDatabase: false,
+            };
+          });
       }
     }).sort((a, b) => {
       if (!a.scheduledDate || !b.scheduledDate) return 0;
@@ -269,15 +306,52 @@ export function QuoteNotificationsPanel() {
 
   // Mutation para enviar notificação manual
   const sendNowMutation = useMutation({
-    mutationFn: async (quoteId: string) => {
+    mutationFn: async ({ quoteId, notificationId, item }: { 
+      quoteId: string; 
+      notificationId: string | null; 
+      item: typeof upcomingNotifications[0] 
+    }) => {
+      // Enviar via edge function
       const response = await supabase.functions.invoke('check-expiring-quotes', {
         body: { manualQuoteId: quoteId }
       });
       if (response.error) throw response.error;
+
+      // Atualizar ou criar registro com status 'sent'
+      if (notificationId) {
+        // Atualizar registro existente para 'sent'
+        await supabase
+          .from('quote_expiration_notifications')
+          .update({ 
+            status: 'sent', 
+            sent_at: new Date().toISOString() 
+          })
+          .eq('id', notificationId);
+      } else if (item && item.scheduledDate) {
+        // Criar registro com status 'sent' diretamente
+        const quote = quotes?.find(q => q.id === quoteId);
+        if (quote) {
+          await supabase
+            .from('quote_expiration_notifications')
+            .insert({
+              tenant_id: tenantId,
+              quote_id: quoteId,
+              contact_id: quote.contact_id,
+              days_before: item.triggerDay,
+              scheduled_for: item.scheduledDate.toISOString(),
+              status: 'sent',
+              sent_at: new Date().toISOString(),
+              notification_type: triggerType === 'before_expiry' ? 'expiration' : 'followup',
+            });
+        }
+      }
+      
       return response.data;
     },
     onSuccess: () => {
       toast.success('Notificação enviada com sucesso!');
+      refetchPending();
+      queryClient.invalidateQueries({ queryKey: ['quote-notification-history'] });
     },
     onError: (error: any) => {
       toast.error('Erro ao enviar notificação: ' + (error.message || 'Erro desconhecido'));
@@ -392,6 +466,7 @@ export function QuoteNotificationsPanel() {
       const { data, error } = await supabase
         .from('quote_expiration_notifications')
         .insert({
+          tenant_id: tenantId,
           quote_id: quoteId,
           contact_id: quote.contact_id,
           days_before: triggerDay,
@@ -483,6 +558,7 @@ export function QuoteNotificationsPanel() {
           const { error } = await supabase
             .from('quote_expiration_notifications')
             .insert({
+              tenant_id: tenantId,
               quote_id: record.quote_id,
               contact_id: record.contact_id,
               days_before: record.days_before,
@@ -1104,7 +1180,11 @@ export function QuoteNotificationsPanel() {
                                     <Button
                                       variant="ghost"
                                       size="icon"
-                                      onClick={() => sendNowMutation.mutate(item.quoteId)}
+                                      onClick={() => sendNowMutation.mutate({ 
+                                        quoteId: item.quoteId, 
+                                        notificationId: item.id, 
+                                        item 
+                                      })}
                                       disabled={sendNowMutation.isPending}
                                       className="h-8 w-8 text-primary hover:bg-primary/10"
                                     >
