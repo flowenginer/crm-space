@@ -10,42 +10,25 @@ interface MenuTabItem {
   position: number;
 }
 
-// Get all menu items that are children of "Configurações" menu with /settings?tab= href
+// Get all menu items with /settings?tab= href, regardless of parent hierarchy
 export const useSettingsTabs = () => {
   return useQuery({
     queryKey: ['settings-tabs'],
     queryFn: async () => {
-      // First, find the "Configurações" root menu
-      const { data: configMenu, error: configError } = await supabase
-        .from('menu_items')
-        .select('id')
-        .eq('title', 'Configurações')
-        .is('parent_id', null)
-        .single();
-
-      if (configError || !configMenu) {
-        console.error('Could not find Configurações menu:', configError);
-        return [];
-      }
-
-      // Get all menu items with /settings?tab= href that are direct children of Configurações
-      const { data: submenus, error: submenusError } = await supabase
+      // Fetch ALL menu items with href starting with /settings?tab=
+      const { data: allSettingsTabs, error } = await supabase
         .from('menu_items')
         .select('id, title, href, parent_id, is_active, position')
-        .eq('parent_id', configMenu.id)
+        .like('href', '/settings?tab=%')
         .eq('is_active', true)
         .order('position');
 
-      if (submenusError) {
-        console.error('Error fetching settings submenus:', submenusError);
+      if (error) {
+        console.error('Error fetching settings tabs:', error);
         return [];
       }
 
-      // Filter only items that have /settings?tab= in their href
-      return (submenus || []).filter(
-        (item): item is MenuTabItem => 
-          item.href?.startsWith('/settings?tab=') === true
-      );
+      return (allSettingsTabs || []) as MenuTabItem[];
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
