@@ -40,7 +40,9 @@ import {
   Trash2,
   CalendarDays,
   RefreshCw,
-  X
+  X,
+  MessageCircle,
+  BellOff
 } from 'lucide-react';
 import { format, addDays, differenceInDays, parseISO, setHours, setMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -169,7 +171,7 @@ export function QuoteNotificationsPanel() {
         .from('quote_expiration_notifications')
         .select(`
           *,
-          quote:quotes(id, quote_number, total, valid_until, created_at, status, seller_id, seller:profiles!seller_id(id, full_name)),
+          quote:quotes(id, quote_number, total, valid_until, created_at, status, seller_id, notifications_paused, notifications_auto_paused, notifications_auto_pause_reason, seller:profiles!seller_id(id, full_name)),
           contact:contacts(id, full_name, phone)
         `)
         .eq('status', 'pending')
@@ -226,6 +228,9 @@ export function QuoteNotificationsPanel() {
                 notificationKey: dbNotif.id,
                 paused: dbNotif.paused || false,
                 fromDatabase: true,
+                quoteNotificationsPaused: (dbNotif.quote as any)?.notifications_paused || false,
+                quoteAutoNotificationsPaused: (dbNotif.quote as any)?.notifications_auto_paused || false,
+                quoteAutoPauseReason: (dbNotif.quote as any)?.notifications_auto_pause_reason || null,
               };
             }
             
@@ -258,6 +263,9 @@ export function QuoteNotificationsPanel() {
               notificationKey: `${quote.id}-${day}`,
               paused: false,
               fromDatabase: false,
+              quoteNotificationsPaused: (quote as any).notifications_paused || false,
+              quoteAutoNotificationsPaused: (quote as any).notifications_auto_paused || false,
+              quoteAutoPauseReason: (quote as any).notifications_auto_pause_reason || null,
             };
           });
       } else {
@@ -287,6 +295,9 @@ export function QuoteNotificationsPanel() {
                 notificationKey: dbNotif.id,
                 paused: dbNotif.paused || false,
                 fromDatabase: true,
+                quoteNotificationsPaused: (dbNotif.quote as any)?.notifications_paused || false,
+                quoteAutoNotificationsPaused: (dbNotif.quote as any)?.notifications_auto_paused || false,
+                quoteAutoPauseReason: (dbNotif.quote as any)?.notifications_auto_pause_reason || null,
               };
             }
             
@@ -319,6 +330,9 @@ export function QuoteNotificationsPanel() {
               notificationKey: `${quote.id}-${day}`,
               paused: false,
               fromDatabase: false,
+              quoteNotificationsPaused: (quote as any).notifications_paused || false,
+              quoteAutoNotificationsPaused: (quote as any).notifications_auto_paused || false,
+              quoteAutoPauseReason: (quote as any).notifications_auto_pause_reason || null,
             };
           });
       }
@@ -331,6 +345,45 @@ export function QuoteNotificationsPanel() {
   })();
 
   const connectedChannels = channels?.filter(c => c.status === 'connected') || [];
+
+  // Helper function to get notification status badge
+  const getNotificationStatusBadge = (item: typeof upcomingNotifications[0]) => {
+    // Auto-paused because client responded
+    if (item.quoteAutoNotificationsPaused) {
+      if (item.quoteAutoPauseReason === 'client_responded') {
+        return (
+          <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700">
+            <MessageCircle className="h-3 w-3 mr-1" />
+            Cliente respondeu
+          </Badge>
+        );
+      }
+      return (
+        <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600">
+          <BellOff className="h-3 w-3 mr-1" />
+          Auto-pausado
+        </Badge>
+      );
+    }
+    
+    // Manually paused (at quote level or notification level)
+    if (item.quoteNotificationsPaused || item.paused) {
+      return (
+        <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-700">
+          <Pause className="h-3 w-3 mr-1" />
+          Pausado
+        </Badge>
+      );
+    }
+    
+    // Active
+    return (
+      <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700">
+        <Bell className="h-3 w-3 mr-1" />
+        Ativo
+      </Badge>
+    );
+  };
 
   // Fetch notification history
   const { data: notificationHistory, isLoading: historyLoading } = useQuery({
@@ -1128,6 +1181,7 @@ export function QuoteNotificationsPanel() {
                             />
                           </TableHead>
                           <TableHead>Orçamento</TableHead>
+                          <TableHead>Status</TableHead>
                           <TableHead>Cliente</TableHead>
                           <TableHead>Vendedor</TableHead>
                           <TableHead>{triggerType === 'before_expiry' ? 'Validade' : 'Data de Envio'}</TableHead>
@@ -1140,7 +1194,7 @@ export function QuoteNotificationsPanel() {
                         {upcomingNotifications.map(item => (
                           <TableRow 
                             key={item.notificationKey}
-                            className={item.paused ? 'opacity-50' : ''}
+                            className={item.paused || item.quoteAutoNotificationsPaused || item.quoteNotificationsPaused ? 'opacity-60' : ''}
                           >
                             <TableCell>
                               <Checkbox
@@ -1149,17 +1203,15 @@ export function QuoteNotificationsPanel() {
                               />
                             </TableCell>
                             <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                ORC-{String(item.quote_number).padStart(3, '0')}
-                                {item.paused && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    <Pause className="h-3 w-3 mr-1" />
-                                    Pausado
-                                  </Badge>
-                                )}
-                              </div>
+                              ORC-{String(item.quote_number).padStart(3, '0')}
+                            </TableCell>
+                            <TableCell>
+                              {getNotificationStatusBadge(item)}
                             </TableCell>
                             <TableCell>{item.contact?.full_name || 'N/A'}</TableCell>
+                            <TableCell>
+                              <span className="text-sm">{item.seller?.full_name || '—'}</span>
+                            </TableCell>
                             <TableCell>
                               <span className="text-sm">{item.seller?.full_name || '—'}</span>
                             </TableCell>
