@@ -57,6 +57,7 @@ import {
   X,
 } from 'lucide-react';
 import { useQuotesAdvanced, Quote, QuoteFilters, useUpdateQuoteStatus, useDeleteQuote, useConvertQuoteToOrder } from '@/hooks/useQuotes';
+import { usePermissions } from '@/hooks/usePermissions';
 import { QuoteModal } from '@/components/quotes/QuoteModal';
 import { QuoteDetailsModal } from '@/components/quotes/QuoteDetailsModal';
 import { QuoteKanban } from '@/components/quotes/QuoteKanban';
@@ -83,6 +84,7 @@ const SHIPPING_METHODS: Record<string, string> = {
 };
 
 export default function Quotes() {
+  const { isAdmin } = usePermissions();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [showNewQuoteModal, setShowNewQuoteModal] = useState(false);
@@ -526,7 +528,7 @@ export default function Quotes() {
                                               variant="ghost"
                                               size="icon"
                                               className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                              disabled={quote.status === 'converted'}
+                                              disabled={quote.status === 'converted' && !isAdmin}
                                             >
                                               <Trash2 className="h-4 w-4" />
                                             </Button>
