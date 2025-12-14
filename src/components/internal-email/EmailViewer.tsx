@@ -12,9 +12,14 @@ import {
   MoreVertical,
   Paperclip,
   Download,
-  ExternalLink,
   Package,
-  FileText
+  FileText,
+  Hand,
+  RotateCcw,
+  CheckCircle2,
+  Clock,
+  User,
+  History
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -28,6 +33,11 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger
+} from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import {
   useInternalEmail,
@@ -36,6 +46,12 @@ import {
   useMoveEmailToTrash,
   useArchiveEmail
 } from '@/hooks/useInternalEmail';
+import {
+  useClaimEmail,
+  useReleaseEmail,
+  useCompleteEmail,
+  useEmailActivityLog
+} from '@/hooks/useSharedEmailBoxes';
 import { toast } from 'sonner';
 
 interface EmailViewerProps {
@@ -66,12 +82,30 @@ const priorityLabels = {
   high: { label: 'Alta', class: 'bg-destructive/10 text-destructive' }
 };
 
+const statusConfig = {
+  pending: { label: 'Aguardando', color: 'bg-amber-500/10 text-amber-600 border-amber-500/30', icon: Clock },
+  in_progress: { label: 'Em Andamento', color: 'bg-blue-500/10 text-blue-600 border-blue-500/30', icon: User },
+  completed: { label: 'Concluído', color: 'bg-green-500/10 text-green-600 border-green-500/30', icon: CheckCircle2 }
+};
+
+const actionLabels: Record<string, string> = {
+  claimed: 'Assumiu o e-mail',
+  released: 'Devolveu para a fila',
+  in_progress: 'Iniciou atendimento',
+  completed: 'Concluiu atendimento',
+  pending: 'Voltou para aguardando'
+};
+
 export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
   const { data: email, isLoading } = useInternalEmail(emailId);
+  const { data: activityLog } = useEmailActivityLog(emailId);
   const markAsRead = useMarkEmailAsRead();
   const toggleStar = useToggleEmailStar();
   const moveToTrash = useMoveEmailToTrash();
   const archiveEmail = useArchiveEmail();
+  const claimEmail = useClaimEmail();
+  const releaseEmail = useReleaseEmail();
+  const completeEmail = useCompleteEmail();
 
   // Marcar como lido ao visualizar
   useEffect(() => {
@@ -103,6 +137,33 @@ export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
     });
   };
 
+  const handleClaim = async () => {
+    try {
+      await claimEmail.mutateAsync(emailId);
+      toast.success('E-mail assumido com sucesso!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao assumir e-mail');
+    }
+  };
+
+  const handleRelease = async () => {
+    try {
+      await releaseEmail.mutateAsync(emailId);
+      toast.success('E-mail devolvido para a fila');
+    } catch (error) {
+      toast.error('Erro ao devolver e-mail');
+    }
+  };
+
+  const handleComplete = async () => {
+    try {
+      await completeEmail.mutateAsync(emailId);
+      toast.success('E-mail marcado como concluído');
+    } catch (error) {
+      toast.error('Erro ao concluir e-mail');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex-1 p-6 space-y-6">
@@ -131,6 +192,10 @@ export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
   const recipientsTo = email.recipients?.filter(r => r.recipient_type === 'to') || [];
   const recipientsCc = email.recipients?.filter(r => r.recipient_type === 'cc') || [];
   const isStarred = email.recipient_data?.is_starred;
+  const isSharedEmail = !!email.shared_box_id;
+  const workflowStatus = (email.workflow_status || 'pending') as keyof typeof statusConfig;
+  const StatusIcon = statusConfig[workflowStatus]?.icon || Clock;
+  const claimedByName = email.claimed_by_user?.full_name;
 
   return (
     <div className="flex-1 flex flex-col">
@@ -151,6 +216,30 @@ export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
           </Button>
         </div>
         <div className="flex items-center gap-2">
+          {/* Ações de caixa compartilhada */}
+          {isSharedEmail && (
+            <>
+              {!email.claimed_by && workflowStatus === 'pending' && (
+                <Button variant="outline" size="sm" onClick={handleClaim} className="gap-1">
+                  <Hand className="h-4 w-4" />
+                  Assumir
+                </Button>
+              )}
+              {email.claimed_by && workflowStatus === 'in_progress' && (
+                <>
+                  <Button variant="outline" size="sm" onClick={handleComplete} className="gap-1 text-green-600 border-green-500/30 hover:bg-green-500/10">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Concluir
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleRelease} className="gap-1 text-muted-foreground">
+                    <RotateCcw className="h-4 w-4" />
+                    Devolver
+                  </Button>
+                </>
+              )}
+            </>
+          )}
+          
           <Button variant="ghost" size="icon" onClick={handleStar}>
             <Star className={cn('h-4 w-4', isStarred && 'fill-yellow-400 text-yellow-400')} />
           </Button>
@@ -180,6 +269,26 @@ export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
         <div className="p-6 max-w-4xl">
           {/* Assunto */}
           <h1 className="text-2xl font-semibold mb-6">{email.subject}</h1>
+
+          {/* Status de caixa compartilhada */}
+          {isSharedEmail && (
+            <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-muted/50">
+              <Badge variant="outline" className={cn('gap-1', statusConfig[workflowStatus]?.color)}>
+                <StatusIcon className="h-3.5 w-3.5" />
+                {statusConfig[workflowStatus]?.label}
+              </Badge>
+              {claimedByName && (
+                <span className="text-sm text-muted-foreground">
+                  Responsável: <span className="font-medium text-foreground">{claimedByName}</span>
+                </span>
+              )}
+              {email.claimed_at && (
+                <span className="text-xs text-muted-foreground">
+                  • Assumido em {format(new Date(email.claimed_at), "dd/MM 'às' HH:mm", { locale: ptBR })}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Header do e-mail */}
           <div className="flex items-start gap-4 mb-6">
@@ -289,6 +398,37 @@ export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
                   ))}
                 </div>
               </div>
+            </>
+          )}
+
+          {/* Histórico de atividades (para caixas compartilhadas) */}
+          {isSharedEmail && activityLog && activityLog.length > 0 && (
+            <>
+              <Separator className="my-6" />
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-start gap-2 text-muted-foreground">
+                    <History className="h-4 w-4" />
+                    Histórico de Atividades ({activityLog.length})
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-3">
+                  <div className="space-y-3 pl-6 border-l-2 border-muted ml-2">
+                    {activityLog.map((log) => (
+                      <div key={log.id} className="relative">
+                        <div className="absolute -left-[25px] w-3 h-3 rounded-full bg-muted border-2 border-background" />
+                        <div className="text-sm">
+                          <span className="font-medium">{log.actor?.full_name || 'Sistema'}</span>
+                          <span className="text-muted-foreground"> {actionLabels[log.action] || log.action}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {format(new Date(log.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             </>
           )}
 

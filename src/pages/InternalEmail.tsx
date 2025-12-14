@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { EmailSidebar } from '@/components/internal-email/EmailSidebar';
+import { EmailSidebar, ExtendedEmailFolder } from '@/components/internal-email/EmailSidebar';
 import { EmailList } from '@/components/internal-email/EmailList';
+import { SharedBoxEmailList } from '@/components/internal-email/SharedBoxEmailList';
 import { EmailViewer } from '@/components/internal-email/EmailViewer';
 import { EmailComposerModal } from '@/components/internal-email/EmailComposerModal';
 import { useInternalEmailRealtime, type EmailFolder } from '@/hooks/useInternalEmail';
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 
 export default function InternalEmail() {
-  const [currentFolder, setCurrentFolder] = useState<EmailFolder>('inbox');
+  const [currentFolder, setCurrentFolder] = useState<ExtendedEmailFolder>('inbox');
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isComposerOpen, setIsComposerOpen] = useState(false);
@@ -26,6 +27,16 @@ export default function InternalEmail() {
     setIsComposerOpen(false);
     setReplyTo(null);
   };
+
+  // Verificar se é uma pasta compartilhada
+  const isSharedFolder = currentFolder.startsWith('shared_');
+  const sharedBoxId = isSharedFolder ? currentFolder.replace(/^shared_/, '').replace(/_(pending|progress|completed)$/, '') : null;
+  const sharedStatusFilter = isSharedFolder 
+    ? currentFolder.endsWith('_pending') ? 'pending' 
+    : currentFolder.endsWith('_progress') ? 'in_progress'
+    : currentFolder.endsWith('_completed') ? 'completed'
+    : 'all'
+    : undefined;
 
   return (
     <div className="h-full flex bg-background overflow-hidden">
@@ -47,9 +58,17 @@ export default function InternalEmail() {
             onBack={() => setSelectedEmailId(null)}
             onReply={handleReply}
           />
+        ) : isSharedFolder && sharedBoxId ? (
+          <SharedBoxEmailList
+            sharedBoxId={sharedBoxId}
+            statusFilter={sharedStatusFilter as 'pending' | 'in_progress' | 'completed' | 'all'}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onSelectEmail={setSelectedEmailId}
+          />
         ) : (
           <EmailList
-            folder={currentFolder}
+            folder={currentFolder as EmailFolder}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             onSelectEmail={setSelectedEmailId}

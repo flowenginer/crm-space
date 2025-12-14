@@ -17,13 +17,19 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
-  Factory
+  Factory,
+  Users,
+  Clock,
+  CheckCircle2
 } from 'lucide-react';
 import { useInternalEmailFolderCounts, useInternalEmailLabels, type EmailFolder } from '@/hooks/useInternalEmail';
+import { useUserSharedBoxes, useAllSharedBoxesCounts } from '@/hooks/useSharedEmailBoxes';
+
+export type ExtendedEmailFolder = EmailFolder | `shared_${string}` | `shared_${string}_pending` | `shared_${string}_progress` | `shared_${string}_completed`;
 
 interface EmailSidebarProps {
-  currentFolder: EmailFolder;
-  onFolderChange: (folder: EmailFolder) => void;
+  currentFolder: ExtendedEmailFolder;
+  onFolderChange: (folder: ExtendedEmailFolder) => void;
   onCompose: () => void;
 }
 
@@ -49,6 +55,8 @@ const labelIcons: Record<string, React.ReactNode> = {
 export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: EmailSidebarProps) {
   const { data: counts } = useInternalEmailFolderCounts();
   const { data: labels } = useInternalEmailLabels();
+  const { data: sharedBoxes } = useUserSharedBoxes();
+  const { data: sharedBoxCounts } = useAllSharedBoxesCounts();
 
   return (
     <div className="w-64 border-r bg-muted/30 flex flex-col">
@@ -62,7 +70,7 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
 
       <ScrollArea className="flex-1">
         <div className="px-3 py-2">
-          {/* Pastas */}
+          {/* Pastas Pessoais */}
           <div className="space-y-1">
             {folderItems.map((item) => {
               const count = counts?.[item.id] || 0;
@@ -95,6 +103,112 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
               );
             })}
           </div>
+
+          {/* Caixas Compartilhadas */}
+          {sharedBoxes && sharedBoxes.length > 0 && (
+            <>
+              <Separator className="my-4" />
+              <div className="space-y-1">
+                <p className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Caixas Compartilhadas
+                </p>
+                {sharedBoxes.map((box) => {
+                  const boxCounts = sharedBoxCounts?.[box.id];
+                  const pendingCount = boxCounts?.pending || 0;
+                  const inProgressCount = boxCounts?.in_progress || 0;
+                  const isBoxActive = currentFolder.startsWith(`shared_${box.id}`);
+                  
+                  return (
+                    <div key={box.id} className="space-y-0.5">
+                      {/* Caixa principal */}
+                      <button
+                        onClick={() => onFolderChange(`shared_${box.id}` as ExtendedEmailFolder)}
+                        className={cn(
+                          'w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors',
+                          currentFolder === `shared_${box.id}`
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Users className="h-4 w-4" />
+                          <span>{box.name}</span>
+                        </div>
+                        {(pendingCount > 0 || inProgressCount > 0) && (
+                          <Badge 
+                            variant={currentFolder === `shared_${box.id}` ? 'secondary' : 'outline'} 
+                            className="h-5 min-w-[20px] justify-center text-xs"
+                          >
+                            {pendingCount + inProgressCount}
+                          </Badge>
+                        )}
+                      </button>
+
+                      {/* Sub-pastas da caixa compartilhada */}
+                      {isBoxActive && (
+                        <div className="ml-4 space-y-0.5">
+                          <button
+                            onClick={() => onFolderChange(`shared_${box.id}_pending` as ExtendedEmailFolder)}
+                            className={cn(
+                              'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs transition-colors',
+                              currentFolder === `shared_${box.id}_pending`
+                                ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-3.5 w-3.5" />
+                              <span>Aguardando</span>
+                            </div>
+                            {pendingCount > 0 && (
+                              <Badge variant="outline" className="h-4 min-w-[16px] justify-center text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30">
+                                {pendingCount}
+                              </Badge>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => onFolderChange(`shared_${box.id}_progress` as ExtendedEmailFolder)}
+                            className={cn(
+                              'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs transition-colors',
+                              currentFolder === `shared_${box.id}_progress`
+                                ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Palette className="h-3.5 w-3.5" />
+                              <span>Em Andamento</span>
+                            </div>
+                            {inProgressCount > 0 && (
+                              <Badge variant="outline" className="h-4 min-w-[16px] justify-center text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/30">
+                                {inProgressCount}
+                              </Badge>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => onFolderChange(`shared_${box.id}_completed` as ExtendedEmailFolder)}
+                            className={cn(
+                              'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs transition-colors',
+                              currentFolder === `shared_${box.id}_completed`
+                                ? 'bg-green-500/20 text-green-600 dark:text-green-400'
+                                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              <span>Concluídos</span>
+                            </div>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           <Separator className="my-4" />
 
