@@ -550,11 +550,24 @@ export function useCreateOrder() {
         if (transactionError) console.error('Error creating financial transaction:', transactionError);
       }
 
+      // Atualizar valor negociado do contato automaticamente
+      if (data.contact_id && total > 0) {
+        await supabase
+          .from('contacts')
+          .update({ 
+            negotiated_value: total,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', data.contact_id);
+      }
+
       return order;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['financial-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       toast.success('Pedido criado com sucesso');
     },
     onError: (error) => {
