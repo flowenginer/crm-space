@@ -38,7 +38,8 @@ import {
   Pause,
   Play,
   Trash2,
-  CalendarDays
+  CalendarDays,
+  RefreshCw
 } from 'lucide-react';
 import { format, addDays, differenceInDays, parseISO, setHours, setMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -353,6 +354,157 @@ export function QuoteNotificationsPanel() {
       toast.error('Erro ao excluir: ' + (error.message || 'Erro desconhecido'));
     }
   });
+
+  // Create database record for a notification that doesn't exist yet
+  const createNotificationRecord = useMutation({
+    mutationFn: async ({ quoteId, triggerDay, scheduledDate }: { quoteId: string; triggerDay: number; scheduledDate: Date }) => {
+      // Check if record already exists
+      const { data: existing } = await supabase
+        .from('quote_expiration_notifications')
+        .select('id')
+        .eq('quote_id', quoteId)
+        .eq('days_before', triggerDay)
+        .eq('status', 'pending')
+        .maybeSingle();
+      
+      if (existing) {
+        return existing;
+      }
+
+      // Get quote and contact info
+      const quote = quotes?.find(q => q.id === quoteId);
+      if (!quote) throw new Error('Orçamento não encontrado');
+
+      const { data, error } = await supabase
+        .from('quote_expiration_notifications')
+        .insert({
+          quote_id: quoteId,
+          contact_id: quote.contact_id,
+          days_before: triggerDay,
+          scheduled_for: scheduledDate.toISOString(),
+          status: 'pending',
+          paused: false,
+          notification_type: triggerType === 'before_expiry' ? 'expiration' : 'followup',
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      refetchPending();
+    },
+    onError: (error: any) => {
+      toast.error('Erro ao criar registro: ' + (error.message || 'Erro desconhecido'));
+    }
+  });
+
+  // Sync all pending notifications - create database records for all calculated notifications
+  const syncNotificationsMutation = useMutation({
+    mutationFn: async () => {
+      const sentQuotes = quotes?.filter(q => ['sent', 'approved'].includes(q.status)) || [];
+      const recordsToCreate: Array<{ quote_id: string; contact_id: string; days_before: number; scheduled_for: string }> = [];
+      
+      for (const quote of sentQuotes) {
+        const daysToUse = triggerType === 'before_expiry' ? expirationDays : daysAfterSent;
+        
+        for (const day of daysToUse) {
+          let scheduledDate: Date;
+          
+          if (triggerType === 'before_expiry') {
+            if (!quote.valid_until) continue;
+            const validUntil = parseISO(quote.valid_until);
+            const daysUntilExpiry = differenceInDays(validUntil, new Date());
+            if (day > daysUntilExpiry) continue;
+            scheduledDate = addDays(new Date(), daysUntilExpiry - day);
+          } else {
+            if (!quote.created_at) continue;
+            const sentDate = parseISO(quote.created_at);
+            const daysSinceSent = differenceInDays(new Date(), sentDate);
+            if (day <= daysSinceSent) continue;
+            scheduledDate = addDays(sentDate, day);
+          }
+
+          // Set default time
+          const [hours, minutes] = (sendTimes[0] || '09:00').split(':').map(Number);
+          scheduledDate = setMinutes(setHours(scheduledDate, hours), minutes);
+
+          recordsToCreate.push({
+            quote_id: quote.id,
+            contact_id: quote.contact_id,
+            days_before: day,
+            scheduled_for: scheduledDate.toISOString(),
+          });
+        }
+      }
+
+      if (recordsToCreate.length === 0) {
+        return { created: 0 };
+      }
+
+      // Upsert to avoid duplicates
+      let created = 0;
+      for (const record of recordsToCreate) {
+        const { data: existing } = await supabase
+          .from('quote_expiration_notifications')
+          .select('id')
+          .eq('quote_id', record.quote_id)
+          .eq('days_before', record.days_before)
+          .eq('status', 'pending')
+          .maybeSingle();
+        
+        if (!existing) {
+          const { error } = await supabase
+            .from('quote_expiration_notifications')
+            .insert({
+              quote_id: record.quote_id,
+              contact_id: record.contact_id,
+              days_before: record.days_before,
+              scheduled_for: record.scheduled_for,
+              status: 'pending',
+              paused: false,
+              notification_type: triggerType === 'before_expiry' ? 'expiration' : 'followup',
+            });
+          
+          if (!error) created++;
+        }
+      }
+
+      return { created };
+    },
+    onSuccess: (data) => {
+      if (data.created > 0) {
+        toast.success(`${data.created} notificação(ões) sincronizada(s)!`);
+      } else {
+        toast.info('Todas as notificações já estão sincronizadas');
+      }
+      refetchPending();
+    },
+    onError: (error: any) => {
+      toast.error('Erro ao sincronizar: ' + (error.message || 'Erro desconhecido'));
+    }
+  });
+
+  // Ensure record exists and return its ID (for actions on non-database items)
+  const ensureRecordExists = async (item: typeof upcomingNotifications[0]): Promise<string | null> => {
+    if (item.fromDatabase && item.id) {
+      return item.id;
+    }
+
+    if (!item.scheduledDate) return null;
+
+    try {
+      const result = await createNotificationRecord.mutateAsync({
+        quoteId: item.quoteId,
+        triggerDay: item.triggerDay,
+        scheduledDate: item.scheduledDate,
+      });
+      return result?.id || null;
+    } catch {
+      return null;
+    }
+  };
 
   const handleReschedule = (notificationId: string) => {
     if (!rescheduleDate) return;
@@ -712,6 +864,20 @@ export function QuoteNotificationsPanel() {
                   Histórico
                 </TabsTrigger>
               </TabsList>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => syncNotificationsMutation.mutate()}
+                disabled={syncNotificationsMutation.isPending}
+              >
+                {syncNotificationsMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Sincronizar
+              </Button>
             </div>
 
             <TabsContent value="upcoming" className="mt-0">
@@ -777,126 +943,135 @@ export function QuoteNotificationsPanel() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
-                                {/* Alterar Data - only for database records */}
-                                {item.fromDatabase && item.id && (
-                                  <Popover 
-                                    open={rescheduleOpen === item.id} 
-                                    onOpenChange={(open) => {
-                                      setRescheduleOpen(open ? item.id : null);
-                                      if (open && item.scheduledDate) {
+                                {/* Alterar Data */}
+                                <Popover 
+                                  open={rescheduleOpen === item.notificationKey} 
+                                  onOpenChange={async (open) => {
+                                    if (open) {
+                                      setRescheduleOpen(item.notificationKey);
+                                      if (item.scheduledDate) {
                                         setRescheduleDate(item.scheduledDate);
                                         setRescheduleTime(format(item.scheduledDate, 'HH:mm'));
                                       }
-                                    }}
-                                  >
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <PopoverTrigger asChild>
-                                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                                            <CalendarDays className="h-4 w-4" />
-                                          </Button>
-                                        </PopoverTrigger>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>Alterar data</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                    <PopoverContent className="w-auto p-0" align="end">
-                                      <div className="p-3 space-y-3">
-                                        <CalendarComponent
-                                          mode="single"
-                                          selected={rescheduleDate}
-                                          onSelect={setRescheduleDate}
-                                          locale={ptBR}
-                                          disabled={(date) => date < new Date()}
-                                        />
-                                        <div className="flex items-center gap-2">
-                                          <Label className="text-sm">Horário:</Label>
-                                          <Select value={rescheduleTime} onValueChange={setRescheduleTime}>
-                                            <SelectTrigger className="w-24">
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {SEND_TIME_OPTIONS.map(time => (
-                                                <SelectItem key={time} value={time}>{time}</SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <Button 
-                                          className="w-full" 
-                                          size="sm"
-                                          onClick={() => item.id && handleReschedule(item.id)}
-                                          disabled={!rescheduleDate || rescheduleMutation.isPending}
-                                        >
-                                          {rescheduleMutation.isPending ? (
-                                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                          ) : null}
-                                          Salvar
-                                        </Button>
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
-                                )}
-
-                                {/* Pausar/Retomar - only for database records */}
-                                {item.fromDatabase && item.id && (
+                                    } else {
+                                      setRescheduleOpen(null);
+                                    }
+                                  }}
+                                >
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => item.id && togglePauseMutation.mutate({ notificationId: item.id, isPaused: item.paused })}
-                                        disabled={togglePauseMutation.isPending}
-                                        className="h-8 w-8"
-                                      >
-                                        {item.paused ? (
-                                          <Play className="h-4 w-4 text-green-500" />
-                                        ) : (
-                                          <Pause className="h-4 w-4 text-amber-500" />
-                                        )}
-                                      </Button>
+                                      <PopoverTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                                          <CalendarDays className="h-4 w-4" />
+                                        </Button>
+                                      </PopoverTrigger>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>{item.paused ? 'Retomar' : 'Pausar'}</p>
+                                      <p>Alterar data</p>
                                     </TooltipContent>
                                   </Tooltip>
-                                )}
+                                  <PopoverContent className="w-auto p-0" align="end">
+                                    <div className="p-3 space-y-3">
+                                      <CalendarComponent
+                                        mode="single"
+                                        selected={rescheduleDate}
+                                        onSelect={setRescheduleDate}
+                                        locale={ptBR}
+                                        disabled={(date) => date < new Date()}
+                                      />
+                                      <div className="flex items-center gap-2">
+                                        <Label className="text-sm">Horário:</Label>
+                                        <Select value={rescheduleTime} onValueChange={setRescheduleTime}>
+                                          <SelectTrigger className="w-24">
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {SEND_TIME_OPTIONS.map(time => (
+                                              <SelectItem key={time} value={time}>{time}</SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                      <Button 
+                                        className="w-full" 
+                                        size="sm"
+                                        onClick={async () => {
+                                          const recordId = item.fromDatabase && item.id ? item.id : await ensureRecordExists(item);
+                                          if (recordId) handleReschedule(recordId);
+                                        }}
+                                        disabled={!rescheduleDate || rescheduleMutation.isPending || createNotificationRecord.isPending}
+                                      >
+                                        {(rescheduleMutation.isPending || createNotificationRecord.isPending) ? (
+                                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        ) : null}
+                                        Salvar
+                                      </Button>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
 
-                                {/* Excluir - only for database records */}
-                                {item.fromDatabase && item.id && (
-                                  <AlertDialog>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <AlertDialogTrigger asChild>
-                                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10">
-                                            <Trash2 className="h-4 w-4" />
-                                          </Button>
-                                        </AlertDialogTrigger>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>Excluir notificação</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>Excluir Notificação</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                          Tem certeza que deseja excluir esta notificação agendada? Esta ação não pode ser desfeita.
-                                        </AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                        <AlertDialogAction
-                                          onClick={() => item.id && deleteMutation.mutate(item.id)}
-                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                        >
-                                          Excluir
-                                        </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
-                                )}
+                                {/* Pausar/Retomar */}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={async () => {
+                                        const recordId = item.fromDatabase && item.id ? item.id : await ensureRecordExists(item);
+                                        if (recordId) {
+                                          togglePauseMutation.mutate({ notificationId: recordId, isPaused: item.paused });
+                                        }
+                                      }}
+                                      disabled={togglePauseMutation.isPending || createNotificationRecord.isPending}
+                                      className="h-8 w-8"
+                                    >
+                                      {item.paused ? (
+                                        <Play className="h-4 w-4 text-green-500" />
+                                      ) : (
+                                        <Pause className="h-4 w-4 text-amber-500" />
+                                      )}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{item.paused ? 'Retomar' : 'Pausar'}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+
+                                {/* Excluir */}
+                                <AlertDialog>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10">
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Excluir notificação</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Excluir Notificação</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Tem certeza que deseja excluir esta notificação agendada? Esta ação não pode ser desfeita.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={async () => {
+                                          const recordId = item.fromDatabase && item.id ? item.id : await ensureRecordExists(item);
+                                          if (recordId) deleteMutation.mutate(recordId);
+                                        }}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Excluir
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
 
                                 {/* Enviar Agora */}
                                 <Tooltip>
