@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
-  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2, FileText, Package
+  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2, FileText, Package, Play, Pause
 } from 'lucide-react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { toast } from 'sonner';
@@ -34,6 +34,7 @@ import { QuotePendingAlert } from './QuotePendingAlert';
 import { useContactHistory, ContactQuote, ContactOrder } from '@/hooks/useContactHistory';
 import { useUpdateQuoteStatus } from '@/hooks/useQuotes';
 import { useUpdateOrderStatus } from '@/hooks/useOrders';
+import { useContactQuotesNotificationStatus, useToggleContactQuotesNotifications, getAutoPauseReasonText } from '@/hooks/useQuoteNotifications';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -132,6 +133,10 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
     ? (Array.isArray(conversation.contact) ? conversation.contact[0]?.id : conversation.contact?.id)
     : null;
   const { quotes: contactQuotes = [], orders: contactOrders = [] } = useContactHistory(conversationContactId);
+  
+  // Quote notifications status
+  const { data: quoteNotificationsStatus } = useContactQuotesNotificationStatus(conversationContactId);
+  const toggleQuoteNotifications = useToggleContactQuotesNotifications();
 
   // Fetch all tags (with visibility filter) - campos específicos
   const { data: allTags = [] } = useQuery({
@@ -923,27 +928,84 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
       {/* ERP Actions - Only visible when ERP module is active */}
       {isERPEnabled && (
         <div className="flex gap-1.5 p-3 border-b border-border bg-muted/30">
-          <Button
-            onClick={() => {
-              // If contact has quotes, show selection modal, otherwise create new
-              if (contactQuotes.length > 0) {
-                setShowQuoteSelectionModal(true);
-              } else {
-                setShowQuoteModal(true);
-              }
-            }}
-            variant="outline"
-            size="sm"
-            className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2 text-amber-600 border-amber-200 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-800 dark:hover:bg-amber-900/20"
-          >
-            <FileText size={14} className="shrink-0" />
-            <span className="truncate">Orçamento</span>
+          <div className="flex items-center gap-1 flex-1 min-w-0">
+            <Button
+              onClick={() => {
+                // If contact has quotes, show selection modal, otherwise create new
+                if (contactQuotes.length > 0) {
+                  setShowQuoteSelectionModal(true);
+                } else {
+                  setShowQuoteModal(true);
+                }
+              }}
+              variant="outline"
+              size="sm"
+              className="flex-1 min-w-0 gap-1 h-9 text-xs px-2 text-amber-600 border-amber-200 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-800 dark:hover:bg-amber-900/20"
+            >
+              <FileText size={14} className="shrink-0" />
+              <span className="truncate">Orçamento</span>
+              {contactQuotes.length > 0 && (
+                <span className="ml-0.5 px-1 py-0.5 text-[10px] rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                  {contactQuotes.length}
+                </span>
+              )}
+            </Button>
+            
+            {/* Notification toggle button - only show if contact has quotes */}
             {contactQuotes.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
-                {contactQuotes.length}
-              </span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      onClick={() => {
+                        if (conversationContactId) {
+                          const isPaused = quoteNotificationsStatus?.anyPaused ?? false;
+                          toggleQuoteNotifications.mutate({
+                            contactId: conversationContactId,
+                            pause: !isPaused,
+                          });
+                        }
+                      }}
+                      disabled={toggleQuoteNotifications.isPending}
+                    >
+                      {toggleQuoteNotifications.isPending ? (
+                        <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                      ) : quoteNotificationsStatus?.anyPaused ? (
+                        <Pause size={14} className="text-red-500" />
+                      ) : (
+                        <Play size={14} className="text-green-500" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {quoteNotificationsStatus?.anyPaused ? (
+                      <span className="text-xs">
+                        Notificações pausadas
+                        {quoteNotificationsStatus.quotes.some(q => q.status.isAutoPaused) && (
+                          <span className="text-muted-foreground">
+                            {' '}({getAutoPauseReasonText(
+                              quoteNotificationsStatus.quotes.find(q => q.status.isAutoPaused)?.status.autoPauseReason || null
+                            )})
+                          </span>
+                        )}
+                        <br />
+                        <span className="text-muted-foreground">Clique para ativar</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs">
+                        Notificações ativas
+                        <br />
+                        <span className="text-muted-foreground">Clique para pausar</span>
+                      </span>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
-          </Button>
+          </div>
           
           <Button
             onClick={() => {

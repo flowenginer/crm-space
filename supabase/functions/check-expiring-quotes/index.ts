@@ -62,10 +62,17 @@ serve(async (req) => {
               total,
               valid_until,
               contact_id,
+              conversation_id,
+              created_at,
+              status,
+              notifications_paused,
+              notifications_auto_paused,
+              converted_to_order_id,
               contact:contacts(id, full_name, phone)
             `)
             .eq('tenant_id', config.tenant_id)
             .in('status', ['sent', 'approved'])
+            .eq('notifications_paused', false)
             .gte('valid_until', dateStr + 'T00:00:00')
             .lte('valid_until', dateStr + 'T23:59:59');
 
@@ -78,6 +85,67 @@ serve(async (req) => {
 
           for (const quote of expiringQuotes || []) {
             results.processed++;
+
+            // Check if notifications are manually paused
+            if (quote.notifications_paused) {
+              console.log(`Quote ${quote.quote_number}: notifications manually paused, skipping`);
+              continue;
+            }
+
+            // Check if already auto-paused
+            if (quote.notifications_auto_paused) {
+              console.log(`Quote ${quote.quote_number}: notifications auto-paused, skipping`);
+              continue;
+            }
+
+            // Check if converted to order
+            if (quote.converted_to_order_id) {
+              console.log(`Quote ${quote.quote_number}: already converted to order, auto-pausing`);
+              await supabase
+                .from('quotes')
+                .update({
+                  notifications_auto_paused: true,
+                  notifications_auto_pause_reason: 'converted',
+                })
+                .eq('id', quote.id);
+              continue;
+            }
+
+            // Check if quote status changed to non-notifiable
+            if (['negotiating', 'approved', 'rejected', 'converted', 'cancelled'].includes(quote.status)) {
+              console.log(`Quote ${quote.quote_number}: status is ${quote.status}, auto-pausing`);
+              await supabase
+                .from('quotes')
+                .update({
+                  notifications_auto_paused: true,
+                  notifications_auto_pause_reason: 'status_changed',
+                })
+                .eq('id', quote.id);
+              continue;
+            }
+
+            // Check if client responded after quote was created
+            if (quote.conversation_id && quote.created_at) {
+              const { data: clientMessages } = await supabase
+                .from('messages')
+                .select('id')
+                .eq('conversation_id', quote.conversation_id)
+                .eq('is_from_me', false)
+                .gt('created_at', quote.created_at)
+                .limit(1);
+
+              if (clientMessages && clientMessages.length > 0) {
+                console.log(`Quote ${quote.quote_number}: client responded after quote creation, auto-pausing`);
+                await supabase
+                  .from('quotes')
+                  .update({
+                    notifications_auto_paused: true,
+                    notifications_auto_pause_reason: 'client_responded',
+                  })
+                  .eq('id', quote.id);
+                continue;
+              }
+            }
 
             // Check if already notified for this period
             const { data: existingNotification } = await supabase
