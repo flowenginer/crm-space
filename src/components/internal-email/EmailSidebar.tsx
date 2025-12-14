@@ -194,7 +194,7 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                             )}
                           >
                             <div className="flex items-center gap-2">
-                              <Clock className="h-3.5 w-3.5" />
+                              <Clock className="h-3.5 w-3.5 text-amber-500" />
                               <span>Aguardando</span>
                             </div>
                             {pendingCount > 0 && (
@@ -214,7 +214,7 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                             )}
                           >
                             <div className="flex items-center gap-2">
-                              <Palette className="h-3.5 w-3.5" />
+                              <Palette className="h-3.5 w-3.5 text-blue-500" />
                               <span>Em Andamento</span>
                             </div>
                             {inProgressCount > 0 && (
@@ -234,7 +234,7 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                             )}
                           >
                             <div className="flex items-center gap-2">
-                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
                               <span>Concluídos</span>
                             </div>
                           </button>
