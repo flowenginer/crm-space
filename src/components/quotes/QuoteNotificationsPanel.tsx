@@ -127,28 +127,55 @@ export function QuoteNotificationsPanel() {
     } as any);
   };
 
-  // Calculate upcoming notifications
+  // Calculate upcoming notifications based on trigger type
   const upcomingNotifications = quotes?.filter(quote => {
     if (!['sent', 'approved'].includes(quote.status)) return false;
-    if (!quote.valid_until) return false;
     
-    const validUntil = parseISO(quote.valid_until);
-    const daysUntilExpiry = differenceInDays(validUntil, new Date());
-    
-    return daysUntilExpiry >= 0 && daysUntilExpiry <= Math.max(...(expirationDays.length > 0 ? expirationDays : [3]));
+    if (triggerType === 'before_expiry') {
+      // Lógica original: baseado em valid_until
+      if (!quote.valid_until) return false;
+      const validUntil = parseISO(quote.valid_until);
+      const daysUntilExpiry = differenceInDays(validUntil, new Date());
+      return daysUntilExpiry >= 0 && daysUntilExpiry <= Math.max(...(expirationDays.length > 0 ? expirationDays : [3]));
+    } else {
+      // Nova lógica: baseado em created_at (quando foi enviado)
+      if (!quote.created_at) return false;
+      const sentDate = parseISO(quote.created_at);
+      const daysSinceSent = differenceInDays(new Date(), sentDate);
+      const maxDays = Math.max(...(daysAfterSent.length > 0 ? daysAfterSent : [7]));
+      return daysSinceSent >= 0 && daysSinceSent <= maxDays;
+    }
   }).map(quote => {
-    const validUntil = parseISO(quote.valid_until!);
-    const daysUntilExpiry = differenceInDays(validUntil, new Date());
-    const nextNotificationDay = expirationDays.find(d => d <= daysUntilExpiry);
-    
-    return {
-      ...quote,
-      daysUntilExpiry,
-      nextNotificationDay,
-      scheduledDate: nextNotificationDay !== undefined 
-        ? addDays(new Date(), daysUntilExpiry - nextNotificationDay) 
-        : null,
-    };
+    if (triggerType === 'before_expiry') {
+      const validUntil = parseISO(quote.valid_until!);
+      const daysUntilExpiry = differenceInDays(validUntil, new Date());
+      const nextNotificationDay = expirationDays.find(d => d <= daysUntilExpiry);
+      
+      return {
+        ...quote,
+        daysUntilExpiry,
+        daysSinceSent: null as number | null,
+        nextNotificationDay,
+        scheduledDate: nextNotificationDay !== undefined 
+          ? addDays(new Date(), daysUntilExpiry - nextNotificationDay) 
+          : null,
+      };
+    } else {
+      const sentDate = parseISO(quote.created_at!);
+      const daysSinceSent = differenceInDays(new Date(), sentDate);
+      // Encontrar o próximo dia de notificação que ainda não passou
+      const nextNotificationDay = daysAfterSent.find(d => d >= daysSinceSent);
+      
+      return {
+        ...quote,
+        daysUntilExpiry: null as number | null,
+        daysSinceSent,
+        nextNotificationDay,
+        scheduledDate: nextNotificationDay !== undefined 
+          ? addDays(sentDate, nextNotificationDay)
+          : null,
+      };
+    }
   }).filter(q => q.nextNotificationDay !== undefined) || [];
 
   const connectedChannels = channels?.filter(c => c.status === 'connected') || [];
@@ -485,8 +512,8 @@ export function QuoteNotificationsPanel() {
                   <TableRow>
                     <TableHead>Orçamento</TableHead>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>Validade</TableHead>
-                    <TableHead>Dias Restantes</TableHead>
+                    <TableHead>{triggerType === 'before_expiry' ? 'Validade' : 'Data de Envio'}</TableHead>
+                    <TableHead>{triggerType === 'before_expiry' ? 'Dias Restantes' : 'Dias desde Envio'}</TableHead>
                     <TableHead>Próximo Envio</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -499,12 +526,21 @@ export function QuoteNotificationsPanel() {
                       </TableCell>
                       <TableCell>{item.contact?.full_name || 'N/A'}</TableCell>
                       <TableCell>
-                        {item.valid_until && format(parseISO(item.valid_until), 'dd/MM/yyyy')}
+                        {triggerType === 'before_expiry' 
+                          ? item.valid_until && format(parseISO(item.valid_until), 'dd/MM/yyyy')
+                          : item.created_at && format(parseISO(item.created_at), 'dd/MM/yyyy')
+                        }
                       </TableCell>
                       <TableCell>
-                        <Badge variant={item.daysUntilExpiry <= 1 ? 'destructive' : 'secondary'}>
-                          {item.daysUntilExpiry} dia{item.daysUntilExpiry !== 1 ? 's' : ''}
-                        </Badge>
+                        {triggerType === 'before_expiry' ? (
+                          <Badge variant={item.daysUntilExpiry !== null && item.daysUntilExpiry <= 1 ? 'destructive' : 'secondary'}>
+                            {item.daysUntilExpiry} dia{item.daysUntilExpiry !== 1 ? 's' : ''}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">
+                            {item.daysSinceSent} dia{item.daysSinceSent !== 1 ? 's' : ''}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         {item.scheduledDate && (

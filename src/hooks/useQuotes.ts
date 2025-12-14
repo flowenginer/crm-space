@@ -242,20 +242,22 @@ export function useCreateQuote() {
 
       if (numError) throw numError;
 
-      // Calcular subtotal e total
-      const itemsSubtotal = data.items.reduce((sum, item) => {
+      // Calcular subtotal e total (arredondando para 2 casas decimais)
+      const itemsSubtotalRaw = data.items.reduce((sum, item) => {
         const itemTotal = item.unit_price * item.quantity;
         const itemDiscount = item.discount_percent 
           ? itemTotal * (item.discount_percent / 100)
           : (item.discount_amount || 0);
         return sum + (itemTotal - itemDiscount);
       }, 0);
+      const itemsSubtotal = Math.round(itemsSubtotalRaw * 100) / 100;
 
-      const totalDiscount = data.discount_percent 
+      const totalDiscountRaw = data.discount_percent 
         ? itemsSubtotal * (data.discount_percent / 100)
         : (data.discount_amount || 0);
+      const totalDiscount = Math.round(totalDiscountRaw * 100) / 100;
 
-      const total = itemsSubtotal - totalDiscount + (data.shipping_cost || 0);
+      const total = Math.round((itemsSubtotal - totalDiscount + (data.shipping_cost || 0)) * 100) / 100;
 
       // Criar orçamento (SEM lançamento financeiro)
       const { data: quote, error: quoteError } = await supabase
@@ -386,20 +388,22 @@ export function useUpdateQuote() {
     mutationFn: async ({ quoteId, data }: { quoteId: string; data: CreateQuoteData }) => {
       if (!tenantId) throw new Error('Tenant não encontrado');
 
-      // Calcular subtotal e total
-      const itemsSubtotal = data.items.reduce((sum, item) => {
+      // Calcular subtotal e total (arredondando para 2 casas decimais)
+      const itemsSubtotalRaw = data.items.reduce((sum, item) => {
         const itemTotal = item.unit_price * item.quantity;
         const itemDiscount = item.discount_percent 
           ? itemTotal * (item.discount_percent / 100)
           : (item.discount_amount || 0);
         return sum + (itemTotal - itemDiscount);
       }, 0);
+      const itemsSubtotal = Math.round(itemsSubtotalRaw * 100) / 100;
 
-      const totalDiscount = data.discount_percent 
+      const totalDiscountRaw = data.discount_percent 
         ? itemsSubtotal * (data.discount_percent / 100)
         : (data.discount_amount || 0);
+      const totalDiscount = Math.round(totalDiscountRaw * 100) / 100;
 
-      const total = itemsSubtotal - totalDiscount + (data.shipping_cost || 0);
+      const total = Math.round((itemsSubtotal - totalDiscount + (data.shipping_cost || 0)) * 100) / 100;
 
       // Atualizar orçamento
       const { error: quoteError } = await supabase
