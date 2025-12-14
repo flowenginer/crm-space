@@ -4,6 +4,7 @@ import { EmailList } from '@/components/internal-email/EmailList';
 import { SharedBoxEmailList } from '@/components/internal-email/SharedBoxEmailList';
 import { EmailViewer } from '@/components/internal-email/EmailViewer';
 import { EmailComposerModal } from '@/components/internal-email/EmailComposerModal';
+import { EmailSettings } from '@/components/internal-email/EmailSettings';
 import { DesignerMetrics } from '@/components/internal-email/DesignerMetrics';
 import { useInternalEmailRealtime, type EmailFolder } from '@/hooks/useInternalEmail';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -41,10 +42,11 @@ export default function InternalEmail() {
     : 'all'
     : undefined;
 
-  // Verificar se é a pasta "Todos" (super admin)
+  // Verificar se é a pasta "Todos" (super admin) ou Configurações
   const isAllFolder = currentFolder === 'all';
+  const isSettingsFolder = currentFolder === 'settings';
   const showFilters = isAllFolder || isAdmin || isSupervisor;
-  const showDesignerMetrics = (isAdmin || isSupervisor) && !selectedEmailId;
+  const showDesignerMetrics = (isAdmin || isSupervisor) && !selectedEmailId && !isSettingsFolder;
 
   return (
     <div className="h-full flex bg-background overflow-hidden">
@@ -58,9 +60,11 @@ export default function InternalEmail() {
         onCompose={() => setIsComposerOpen(true)}
       />
 
-      {/* Lista de e-mails ou visualizador */}
+      {/* Lista de e-mails ou visualizador ou configurações */}
       <div className="flex-1 flex overflow-hidden">
-        {selectedEmailId ? (
+        {isSettingsFolder ? (
+          <EmailSettings onBack={() => setCurrentFolder('inbox')} />
+        ) : selectedEmailId ? (
           <EmailViewer
             emailId={selectedEmailId}
             onBack={() => setSelectedEmailId(null)}
