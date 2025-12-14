@@ -48,6 +48,7 @@ interface QuoteModalProps {
   onOpenChange: (open: boolean) => void;
   conversationId?: string;
   contactId?: string;
+  onQuoteCreated?: (quoteId: string) => void;
 }
 
 const PAYMENT_METHODS = [
@@ -73,7 +74,7 @@ const SHIPPING_METHODS = [
   { value: 'other', label: 'Outro' },
 ];
 
-export function QuoteModal({ open, onOpenChange, conversationId, contactId: initialContactId }: QuoteModalProps) {
+export function QuoteModal({ open, onOpenChange, conversationId, contactId: initialContactId, onQuoteCreated }: QuoteModalProps) {
   const { user } = useAuth();
   
   // Form state
@@ -248,7 +249,7 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
       return;
     }
 
-    await createQuote.mutateAsync({
+    const quote = await createQuote.mutateAsync({
       contact_id: contactId || undefined,
       conversation_id: conversationId,
       store_id: storeId || undefined,
@@ -280,6 +281,11 @@ export function QuoteModal({ open, onOpenChange, conversationId, contactId: init
 
     onOpenChange(false);
     resetForm();
+    
+    // Call callback with created quote ID
+    if (quote?.id && onQuoteCreated) {
+      onQuoteCreated(quote.id);
+    }
   };
 
   const resetForm = () => {
