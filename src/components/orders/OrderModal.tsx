@@ -56,6 +56,7 @@ interface OrderModalProps {
   onOpenChange: (open: boolean) => void;
   conversationId?: string;
   contactId?: string;
+  onOrderCreated?: (orderId: string) => void;
 }
 
 const PAYMENT_METHODS = [
@@ -81,7 +82,7 @@ const SHIPPING_METHODS = [
   { value: 'other', label: 'Outro' },
 ];
 
-export function OrderModal({ open, onOpenChange, conversationId, contactId: initialContactId }: OrderModalProps) {
+export function OrderModal({ open, onOpenChange, conversationId, contactId: initialContactId, onOrderCreated }: OrderModalProps) {
   const { user } = useAuth();
   
   // Form state
@@ -308,7 +309,7 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
       return;
     }
 
-    await createOrder.mutateAsync({
+    const result = await createOrder.mutateAsync({
       contact_id: contactId || undefined,
       conversation_id: conversationId,
       store_id: storeId || undefined,
@@ -340,6 +341,10 @@ export function OrderModal({ open, onOpenChange, conversationId, contactId: init
       discount_percent: totalDiscountType === 'percent' ? totalDiscount : 0,
     });
 
+    if (onOrderCreated && result?.id) {
+      onOrderCreated(result.id);
+    }
+    
     onOpenChange(false);
     resetForm();
   };
