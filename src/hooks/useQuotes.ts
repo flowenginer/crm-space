@@ -36,6 +36,10 @@ export interface Quote {
     phone: string;
     email?: string;
   };
+  seller?: {
+    id: string;
+    full_name: string;
+  } | null;
 }
 
 export interface QuoteItem {
@@ -118,7 +122,8 @@ export function useQuotes(filters?: { status?: string; contact_id?: string }) {
         .from('quotes')
         .select(`
           *,
-          contact:contacts(id, full_name, phone)
+          contact:contacts(id, full_name, phone),
+          seller:profiles!seller_id(id, full_name)
         `)
         .order('created_at', { ascending: false });
 
@@ -147,7 +152,8 @@ export function useQuotesAdvanced(filters: QuoteFilters) {
         .from('quotes')
         .select(`
           *,
-          contact:contacts(id, full_name, phone)
+          contact:contacts(id, full_name, phone),
+          seller:profiles!seller_id(id, full_name)
         `)
         .order('created_at', { ascending: false });
 

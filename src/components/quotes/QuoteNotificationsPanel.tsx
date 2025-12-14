@@ -164,7 +164,7 @@ export function QuoteNotificationsPanel() {
         .from('quote_expiration_notifications')
         .select(`
           *,
-          quote:quotes(id, quote_number, total, valid_until, created_at, status),
+          quote:quotes(id, quote_number, total, valid_until, created_at, status, seller_id, seller:profiles!seller_id(id, full_name)),
           contact:contacts(id, full_name, phone)
         `)
         .eq('status', 'pending')
@@ -187,6 +187,7 @@ export function QuoteNotificationsPanel() {
         quoteId: notif.quote_id,
         quote_number: (notif.quote as any)?.quote_number,
         contact: notif.contact,
+        seller: (notif.quote as any)?.seller,
         valid_until: (notif.quote as any)?.valid_until,
         created_at: (notif.quote as any)?.created_at,
         triggerDay: notif.days_before,
@@ -230,6 +231,7 @@ export function QuoteNotificationsPanel() {
               quoteId: quote.id,
               quote_number: quote.quote_number,
               contact: quote.contact,
+              seller: quote.seller,
               valid_until: quote.valid_until,
               created_at: quote.created_at,
               triggerDay: day,
@@ -267,6 +269,7 @@ export function QuoteNotificationsPanel() {
               quoteId: quote.id,
               quote_number: quote.quote_number,
               contact: quote.contact,
+              seller: quote.seller,
               valid_until: quote.valid_until,
               created_at: quote.created_at,
               triggerDay: day,
@@ -996,6 +999,7 @@ export function QuoteNotificationsPanel() {
                         <TableRow>
                           <TableHead>Orçamento</TableHead>
                           <TableHead>Cliente</TableHead>
+                          <TableHead>Vendedor</TableHead>
                           <TableHead>{triggerType === 'before_expiry' ? 'Validade' : 'Data de Envio'}</TableHead>
                           <TableHead>Gatilho</TableHead>
                           <TableHead>Envio Agendado</TableHead>
@@ -1020,6 +1024,9 @@ export function QuoteNotificationsPanel() {
                               </div>
                             </TableCell>
                             <TableCell>{item.contact?.full_name || 'N/A'}</TableCell>
+                            <TableCell>
+                              <span className="text-sm">{item.seller?.full_name || '—'}</span>
+                            </TableCell>
                             <TableCell>
                               {triggerType === 'before_expiry' 
                                 ? item.valid_until && format(parseISO(item.valid_until), 'dd/MM/yyyy')
