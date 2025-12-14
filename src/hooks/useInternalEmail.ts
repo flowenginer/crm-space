@@ -373,7 +373,7 @@ export function useInternalEmailFolderCounts() {
   return useQuery({
     queryKey: ['internal-email-folder-counts', user],
     queryFn: async () => {
-      if (!user) return { inbox: 0, sent: 0, drafts: 0, starred: 0, archive: 0, trash: 0 };
+      if (!user) return { inbox: 0, inbox_unread: 0, sent: 0, drafts: 0, starred: 0, archive: 0, trash: 0 };
 
       // Inbox count
       const { count: inboxCount } = await supabase
@@ -382,6 +382,15 @@ export function useInternalEmailFolderCounts() {
         .eq('user_id', user)
         .eq('folder', 'inbox')
         .eq('is_deleted', false);
+
+      // Inbox unread count
+      const { count: inboxUnreadCount } = await supabase
+        .from('internal_email_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user)
+        .eq('folder', 'inbox')
+        .eq('is_deleted', false)
+        .eq('is_read', false);
 
       // Sent count (excluindo deletados pelo remetente)
       const { count: sentCount } = await supabase
@@ -433,6 +442,7 @@ export function useInternalEmailFolderCounts() {
 
       return {
         inbox: inboxCount || 0,
+        inbox_unread: inboxUnreadCount || 0,
         sent: sentCount || 0,
         drafts: draftsCount || 0,
         starred: starredCount || 0,
