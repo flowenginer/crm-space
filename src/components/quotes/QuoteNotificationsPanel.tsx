@@ -494,21 +494,64 @@ export function QuoteNotificationsPanel() {
   };
 
   const handleBulkDeleteNotifications = async () => {
+    // Capture all notifications to delete BEFORE starting
+    const notificationsToDelete = selectedNotifications
+      .map(key => upcomingNotifications.find(n => n.notificationKey === key))
+      .filter(Boolean);
+
     let deleted = 0;
-    for (const key of selectedNotifications) {
-      // Find the notification by notificationKey
-      const notification = upcomingNotifications.find(n => n.notificationKey === key);
-      if (notification?.id) {
-        try {
-          await deleteMutation.mutateAsync(notification.id);
+    
+    for (const notification of notificationsToDelete) {
+      if (!notification) continue;
+      
+      try {
+        if (notification.id) {
+          // Notification exists in database - update status to cancelled
+          await supabase
+            .from('quote_expiration_notifications')
+            .update({
+              status: 'cancelled',
+              cancelled_at: new Date().toISOString(),
+              cancelled_by: user?.id,
+              cancel_reason: 'bulk_delete',
+            })
+            .eq('id', notification.id);
           deleted++;
-        } catch (e) {
-          console.error('Error deleting notification', key, e);
+        } else {
+          // Dynamic notification - create record as cancelled
+          const quote = quotes?.find(q => q.id === notification.quoteId);
+          if (quote) {
+            await supabase
+              .from('quote_expiration_notifications')
+              .insert({
+                quote_id: notification.quoteId,
+                contact_id: quote.contact_id,
+                channel_id: channelId || null,
+                days_before: notification.triggerDay,
+                scheduled_for: notification.scheduledDate?.toISOString(),
+                message_template: template,
+                notification_type: triggerType === 'before_expiry' ? 'before_expiry' : 'after_sent',
+                status: 'cancelled',
+                cancelled_at: new Date().toISOString(),
+                cancelled_by: user?.id,
+                cancel_reason: 'bulk_delete',
+              });
+            deleted++;
+          }
         }
+      } catch (e) {
+        console.error('Error deleting notification', notification.notificationKey, e);
       }
     }
+    
+    // Clear selection and update data ONLY at the end
     setSelectedNotifications([]);
     setShowBulkDeleteDialog(false);
+    
+    // Refetch only once after all deletions
+    refetchPending();
+    queryClient.invalidateQueries({ queryKey: ['quote-notification-history'] });
+    
     toast.success(`${deleted} notificação(ões) excluída(s)`);
   };
 
