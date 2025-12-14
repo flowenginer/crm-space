@@ -239,7 +239,7 @@ export function useAllSharedBoxesCounts() {
     queryFn: async () => {
       if (!sharedBoxes || sharedBoxes.length === 0) return {};
 
-      const counts: Record<string, { pending: number; in_progress: number; total: number }> = {};
+      const counts: Record<string, { pending: number; in_progress: number; completed: number; total: number }> = {};
 
       for (const box of sharedBoxes) {
         const { count: pendingCount } = await supabase
@@ -257,6 +257,13 @@ export function useAllSharedBoxesCounts() {
           .eq('status', 'sent')
           .eq('workflow_status', 'in_progress');
 
+        const { count: completedCount } = await supabase
+          .from('internal_emails')
+          .select('*', { count: 'exact', head: true })
+          .eq('shared_box_id', box.id)
+          .eq('status', 'sent')
+          .eq('workflow_status', 'completed');
+
         const { count: totalCount } = await supabase
           .from('internal_emails')
           .select('*', { count: 'exact', head: true })
@@ -266,6 +273,7 @@ export function useAllSharedBoxesCounts() {
         counts[box.id] = {
           pending: pendingCount || 0,
           in_progress: inProgressCount || 0,
+          completed: completedCount || 0,
           total: totalCount || 0
         };
       }
