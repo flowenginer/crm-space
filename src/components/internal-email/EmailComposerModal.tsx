@@ -96,7 +96,16 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
   // Preencher dados quando for resposta/encaminhamento
   useEffect(() => {
     const fillReplyData = async () => {
-      if (!replyTo || !replyEmail) return;
+      // Aguardar replyEmail carregar antes de preencher
+      if (!replyTo) {
+        console.log('[EmailComposer] Sem replyTo, ignorando...');
+        return;
+      }
+      
+      if (!replyEmail) {
+        console.log('[EmailComposer] Aguardando carregamento do e-mail pai...');
+        return; // useEffect será chamado novamente quando replyEmail carregar
+      }
 
       // Obter ID do usuário atual para filtrar
       const { data: userData } = await supabase.auth.getUser();
@@ -107,16 +116,18 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
         emailId: replyTo.emailId,
         currentUserId,
         sender: replyEmail.sender,
-        recipients: replyEmail.recipients
+        recipients: replyEmail.recipients,
+        sharedBoxId: replyEmail.shared_box_id
       });
 
+      // Preencher assunto
       const replyPrefix = replyTo.type === 'forward' ? 'Enc: ' : 'Re: ';
       const subjectPrefix = replyEmail.subject.startsWith('Re: ') || replyEmail.subject.startsWith('Enc: ')
         ? ''
         : replyPrefix;
       setSubject(subjectPrefix + replyEmail.subject);
 
-      // NÃO herdar caixa compartilhada em respostas
+      // NÃO herdar caixa compartilhada em respostas - responder direto ao remetente
       setSelectedSharedBox(null);
 
       if (replyTo.type === 'reply') {
@@ -133,6 +144,26 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
               });
             }
           });
+          
+          // Se não encontrou destinatários, verificar se era caixa compartilhada e buscar claimed_by
+          if (originalRecipients.length === 0 && replyEmail.shared_box_id && replyEmail.claimed_by) {
+            console.log('[EmailComposer] E-mail de caixa compartilhada, respondendo ao claimed_by');
+            // Buscar dados do claimed_by
+            const { data: claimedUser } = await supabase
+              .from('profiles')
+              .select('id, full_name, avatar_url')
+              .eq('id', replyEmail.claimed_by)
+              .single();
+            
+            if (claimedUser) {
+              originalRecipients.push({
+                id: claimedUser.id,
+                full_name: claimedUser.full_name,
+                avatar_url: claimedUser.avatar_url
+              });
+            }
+          }
+          
           setRecipientsTo(originalRecipients);
           console.log('[EmailComposer] Respondendo aos destinatários originais:', originalRecipients);
         } else if (replyEmail.sender) {
@@ -142,7 +173,9 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
             full_name: replyEmail.sender.full_name,
             avatar_url: replyEmail.sender.avatar_url
           }]);
-          console.log('[EmailComposer] Respondendo ao remetente');
+          console.log('[EmailComposer] Respondendo ao remetente:', replyEmail.sender.full_name);
+        } else {
+          console.warn('[EmailComposer] Não foi possível determinar destinatário para resposta');
         }
       } else if (replyTo.type === 'replyAll') {
         const allRecipients: Recipient[] = [];
@@ -348,8 +381,8 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
             
             {/* Seção: Destinatário */}
             <div className="space-y-2">
-              {/* Caixas Compartilhadas */}
-              {sharedBoxes && sharedBoxes.length > 0 && (
+            {/* Caixas Compartilhadas - Ocultar em respostas para evitar conflito */}
+              {sharedBoxes && sharedBoxes.length > 0 && !replyTo && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs text-muted-foreground">Caixa:</span>
                   {sharedBoxes.map(box => (
@@ -376,8 +409,8 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
                 </div>
               )}
 
-              {/* Para - só mostra se não selecionou caixa compartilhada */}
-              {!selectedSharedBox && (
+              {/* Para - mostra sempre que não selecionou caixa compartilhada OU quando é resposta */}
+              {(!selectedSharedBox || replyTo) && (
                 <div className="flex flex-wrap items-center gap-2 min-h-[32px]">
                   <span className="text-xs text-muted-foreground w-8">Para:</span>
                   {recipientsTo.map(r => (
