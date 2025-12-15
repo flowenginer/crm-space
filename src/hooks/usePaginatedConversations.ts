@@ -226,9 +226,9 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
       // Use !inner para forçar INNER JOIN quando filtrando por data OU lead status
       // Também inclui lead_status no select do contact
       const needsInnerJoin = (hasDateFilter && dateRange) || hasLeadStatusFilter;
-      const contactJoin = needsInnerJoin
-        ? 'contact:contacts!inner(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data, lead_status)'
-        : 'contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data, lead_status)';
+    const contactJoin = needsInnerJoin
+      ? 'contact:contacts!inner(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data, lead_status, segment_id, segment:segments(id, name, color))'
+      : 'contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data, lead_status, segment_id, segment:segments(id, name, color))';
       
       const CONVERSATION_FIELDS_DYNAMIC = `
         id,
