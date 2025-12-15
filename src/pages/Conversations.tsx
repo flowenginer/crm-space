@@ -7,6 +7,7 @@ import {
   MessageCircle,
   Phone,
   Video,
+  Smartphone,
   MoreVertical,
   Smile,
   Paperclip,
@@ -3641,9 +3642,63 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   >
                     <Phone size={18} className="text-muted-foreground" />
                   </button>
-                  <button className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex">
-                    <Video size={18} className="text-muted-foreground" />
-                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button 
+                        className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex items-center gap-1"
+                        title={`Canal: ${channels?.find(c => c.id === selectedConversation?.channel_id)?.name || 'Não definido'}`}
+                      >
+                        <Smartphone size={18} className="text-muted-foreground" />
+                        <ChevronDown size={12} className="text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64 bg-popover">
+                      <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b">
+                        Canal atual: {channels?.find(c => c.id === selectedConversation?.channel_id)?.name || 'Não definido'}
+                      </div>
+                      {channels?.filter(c => c.status === 'connected').map(channel => (
+                        <DropdownMenuItem 
+                          key={channel.id}
+                          onClick={async () => {
+                            if (!selectedConversationId || channel.id === selectedConversation?.channel_id) return;
+                            try {
+                              const { error } = await supabase
+                                .from('conversations')
+                                .update({ channel_id: channel.id })
+                                .eq('id', selectedConversationId);
+                              if (error) throw error;
+                              queryClient.invalidateQueries({ queryKey: ['conversations'] });
+                              queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
+                              toast.success(`Canal alterado para ${channel.name}`);
+                            } catch (error) {
+                              toast.error('Erro ao alterar canal');
+                            }
+                          }}
+                          className={cn(
+                            "flex items-center gap-2 cursor-pointer",
+                            channel.id === selectedConversation?.channel_id && "bg-primary/10"
+                          )}
+                        >
+                          <span className={cn(
+                            "w-2 h-2 rounded-full flex-shrink-0",
+                            channel.status === 'connected' ? "bg-green-500" : "bg-muted-foreground/40"
+                          )} />
+                          <span className="flex-1 truncate">{channel.name}</span>
+                          {channel.phone && (
+                            <span className="text-xs text-muted-foreground">{channel.phone}</span>
+                          )}
+                          {channel.id === selectedConversation?.channel_id && (
+                            <Check size={14} className="text-primary ml-1" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                      {(!channels || channels.filter(c => c.status === 'connected').length === 0) && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          Nenhum canal conectado
+                        </div>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button className="p-2 hover:bg-muted rounded-lg transition-colors">
