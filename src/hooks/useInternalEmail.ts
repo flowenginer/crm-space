@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 
 // Helper para obter usuário de forma robusta (getSession primeiro, depois getUser como fallback)
@@ -147,7 +147,8 @@ export function useInternalEmails(folder: EmailFolder, search?: string) {
               id,
               recipient_type,
               user:profiles!internal_email_recipients_user_id_fkey(id, full_name, avatar_url)
-            )
+            ),
+            attachments:internal_email_attachments(*)
           `)
           .eq('sender_id', user)
           .eq('status', 'sent')
@@ -183,7 +184,8 @@ export function useInternalEmails(folder: EmailFolder, search?: string) {
             .from('internal_emails')
             .select(`
               *,
-              sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url)
+              sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url),
+              attachments:internal_email_attachments(*)
             `)
             .in('id', recipientEmailIds)
             .eq('status', 'sent')
@@ -210,7 +212,8 @@ export function useInternalEmails(folder: EmailFolder, search?: string) {
           .from('internal_emails')
           .select(`
             *,
-            sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url)
+            sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url),
+            attachments:internal_email_attachments(*)
           `)
           .eq('sender_id', user)
           .eq('status', 'sent')
@@ -261,7 +264,8 @@ export function useInternalEmails(folder: EmailFolder, search?: string) {
           .from('internal_emails')
           .select(`
             *,
-            sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url)
+            sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url),
+            attachments:internal_email_attachments(*)
           `)
           .in('id', emailIds)
           .eq('status', 'sent')
@@ -874,6 +878,20 @@ export function useUploadEmailAttachment() {
 export function useInternalEmailRealtime() {
   const queryClient = useQueryClient();
   const { data: user } = useCurrentUserId();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Inicializar áudio de notificação
+  useEffect(() => {
+    audioRef.current = new Audio('/notification.mp3');
+    audioRef.current.volume = 0.5;
+  }, []);
+
+  const playNotificationSound = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -887,13 +905,23 @@ export function useInternalEmailRealtime() {
       queryClient.invalidateQueries({ queryKey: ['internal-email'] });
     };
 
-    // Canal para recipients - simplificado para invalidar em qualquer mudança
+    // Canal para recipients - toca som quando receber novo e-mail
     const recipientsChannel = supabase
       .channel('internal-email-recipients-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'internal_email_recipients' },
-        () => invalidateAll()
+        (payload) => {
+          invalidateAll();
+          
+          // Tocar som quando receber novo e-mail (INSERT no recipient para o usuário atual)
+          if (payload.eventType === 'INSERT') {
+            const newRecipient = payload.new as { user_id?: string };
+            if (newRecipient.user_id === user) {
+              playNotificationSound();
+            }
+          }
+        }
       )
       .subscribe();
 
@@ -921,7 +949,7 @@ export function useInternalEmailRealtime() {
       supabase.removeChannel(recipientsChannel);
       supabase.removeChannel(emailsChannel);
     };
-  }, [user, queryClient]);
+  }, [user, queryClient, playNotificationSound]);
 }
 
 // Helper hook para obter user id
