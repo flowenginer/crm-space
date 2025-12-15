@@ -17,6 +17,7 @@ export interface LeadDistributionConfig {
   lead_distribution_department_id: string | null;
   lead_distribution_position: number;
   lead_distribution_agents: DistributionAgent[];
+  lead_distribution_include_offline: boolean;
 }
 
 export function useLeadDistribution() {
@@ -25,7 +26,7 @@ export function useLeadDistribution() {
     queryFn: async (): Promise<LeadDistributionConfig> => {
       const { data, error } = await supabase
         .from('company_settings')
-        .select('lead_distribution_enabled, lead_distribution_type, lead_distribution_department_id, lead_distribution_position, lead_distribution_agents')
+        .select('lead_distribution_enabled, lead_distribution_type, lead_distribution_department_id, lead_distribution_position, lead_distribution_agents, lead_distribution_include_offline')
         .limit(1)
         .single();
 
@@ -38,6 +39,7 @@ export function useLeadDistribution() {
             lead_distribution_department_id: null,
             lead_distribution_position: 0,
             lead_distribution_agents: [],
+            lead_distribution_include_offline: false,
           };
         }
         throw error;
@@ -49,6 +51,7 @@ export function useLeadDistribution() {
         lead_distribution_department_id: data.lead_distribution_department_id ?? null,
         lead_distribution_position: data.lead_distribution_position ?? 0,
         lead_distribution_agents: (data.lead_distribution_agents as unknown as DistributionAgent[]) ?? [],
+        lead_distribution_include_offline: data.lead_distribution_include_offline ?? false,
       };
     },
     staleTime: 30000,

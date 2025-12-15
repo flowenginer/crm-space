@@ -33,6 +33,7 @@ export function LeadDistributionSettings() {
   const [distributionType, setDistributionType] = useState<'sequential' | 'percentage'>('sequential');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('');
   const [agents, setAgents] = useState<DistributionAgent[]>([]);
+  const [includeOffline, setIncludeOffline] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
   const { data: departmentAgents = [], isLoading: loadingAgents } = useDepartmentAgents(selectedDepartment || null);
@@ -44,6 +45,7 @@ export function LeadDistributionSettings() {
       setDistributionType(config.lead_distribution_type);
       setSelectedDepartment(config.lead_distribution_department_id || '');
       setAgents(config.lead_distribution_agents || []);
+      setIncludeOffline(config.lead_distribution_include_offline);
     }
   }, [config]);
 
@@ -55,10 +57,11 @@ export function LeadDistributionSettings() {
       enabled !== config.lead_distribution_enabled ||
       distributionType !== config.lead_distribution_type ||
       selectedDepartment !== (config.lead_distribution_department_id || '') ||
+      includeOffline !== config.lead_distribution_include_offline ||
       JSON.stringify(agents) !== JSON.stringify(config.lead_distribution_agents || []);
     
     setHasChanges(changed);
-  }, [enabled, distributionType, selectedDepartment, agents, config]);
+  }, [enabled, distributionType, selectedDepartment, agents, includeOffline, config]);
 
   // When department changes, update agent list
   useEffect(() => {
@@ -108,6 +111,7 @@ export function LeadDistributionSettings() {
         lead_distribution_type: distributionType,
         lead_distribution_department_id: selectedDepartment || null,
         lead_distribution_agents: agents,
+        lead_distribution_include_offline: includeOffline,
       });
       toast.success('Configurações salvas com sucesso');
       setHasChanges(false);
@@ -281,6 +285,21 @@ export function LeadDistributionSettings() {
                     </p>
                   </button>
                 </div>
+              </div>
+
+              {/* Offline Distribution Toggle */}
+              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                <div className="space-y-0.5">
+                  <Label className="flex items-center gap-2">
+                    <PauseCircle className="h-4 w-4 text-amber-500" />
+                    Distribuir para Agentes Offline
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Quando ativado, leads serão atribuídos mesmo que o vendedor esteja offline.
+                    A conversa ficará como "pendente" até o vendedor ficar disponível.
+                  </p>
+                </div>
+                <Switch checked={includeOffline} onCheckedChange={setIncludeOffline} />
               </div>
             </>
           )}
