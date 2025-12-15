@@ -4451,6 +4451,7 @@ export type Database = {
           gtin: string | null
           gtin_tributavel: string | null
           has_variations: boolean | null
+          height_cm: number | null
           icms_st_aliquota: number | null
           icms_st_modalidade: string | null
           icms_st_mva: number | null
@@ -4458,6 +4459,7 @@ export type Database = {
           informacoes_adicionais: string | null
           is_active: boolean | null
           is_featured: boolean | null
+          length_cm: number | null
           main_image_url: string | null
           metadata: Json | null
           name: string
@@ -4479,6 +4481,7 @@ export type Database = {
           unidade_comercial: string | null
           unidade_tributavel: string | null
           updated_at: string | null
+          width_cm: number | null
         }
         Insert: {
           aliquota_cofins?: number | null
@@ -4509,6 +4512,7 @@ export type Database = {
           gtin?: string | null
           gtin_tributavel?: string | null
           has_variations?: boolean | null
+          height_cm?: number | null
           icms_st_aliquota?: number | null
           icms_st_modalidade?: string | null
           icms_st_mva?: number | null
@@ -4516,6 +4520,7 @@ export type Database = {
           informacoes_adicionais?: string | null
           is_active?: boolean | null
           is_featured?: boolean | null
+          length_cm?: number | null
           main_image_url?: string | null
           metadata?: Json | null
           name: string
@@ -4537,6 +4542,7 @@ export type Database = {
           unidade_comercial?: string | null
           unidade_tributavel?: string | null
           updated_at?: string | null
+          width_cm?: number | null
         }
         Update: {
           aliquota_cofins?: number | null
@@ -4567,6 +4573,7 @@ export type Database = {
           gtin?: string | null
           gtin_tributavel?: string | null
           has_variations?: boolean | null
+          height_cm?: number | null
           icms_st_aliquota?: number | null
           icms_st_modalidade?: string | null
           icms_st_mva?: number | null
@@ -4574,6 +4581,7 @@ export type Database = {
           informacoes_adicionais?: string | null
           is_active?: boolean | null
           is_featured?: boolean | null
+          length_cm?: number | null
           main_image_url?: string | null
           metadata?: Json | null
           name?: string
@@ -4595,6 +4603,7 @@ export type Database = {
           unidade_comercial?: string | null
           unidade_tributavel?: string | null
           updated_at?: string | null
+          width_cm?: number | null
         }
         Relationships: [
           {

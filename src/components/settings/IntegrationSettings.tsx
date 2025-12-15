@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, CreditCard, Truck, Facebook, MessageCircle } from 'lucide-react';
 import { usePaymentGatewayConfig } from '@/hooks/usePaymentLinks';
+import { useShippingConfig } from '@/hooks/useShippingConfig';
 import {
   IntegrationCard,
   IntegrationModal,
@@ -31,6 +32,9 @@ export function IntegrationSettings() {
 
   // Fetch payment gateway config
   const { data: paymentConfig } = usePaymentGatewayConfig();
+  
+  // Fetch shipping config
+  const { config: shippingConfig } = useShippingConfig();
 
   // Fetch Meta accounts count
   const { data: metaAccounts = [] } = useQuery({
@@ -108,9 +112,9 @@ export function IntegrationSettings() {
         <IntegrationCard
           icon={Truck}
           name="Melhor Envio"
-          description="Múltiplas transportadoras"
+          description={shippingConfig?.is_configured ? (shippingConfig?.environment === 'production' ? 'Produção' : 'Sandbox') : 'Múltiplas transportadoras'}
           category="Frete"
-          isConfigured={false}
+          isConfigured={!!shippingConfig?.is_configured}
           color="#00a650"
           onClick={() => setOpenModal('melhor-envio')}
         />

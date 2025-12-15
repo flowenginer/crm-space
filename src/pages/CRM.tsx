@@ -99,13 +99,13 @@ const DEFAULT_STAGE_COLORS = [
 ];
 
 import LeadKanban from '@/components/crm/LeadKanban';
-
+import { ShippingQuotePanel } from '@/components/shipping/ShippingQuotePanel';
 export default function CRM() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   
   // Get tab and search from URL (controlled by Header)
-  const activeTab = (searchParams.get('tab') || 'leads') as 'deals' | 'leads';
+  const activeTab = (searchParams.get('tab') || 'leads') as 'deals' | 'leads' | 'frete';
   const crmSearchQuery = searchParams.get('search') || '';
   
   const [activeDeal, setActiveDeal] = useState<DealType | null>(null);
@@ -415,6 +415,11 @@ export default function CRM() {
             </div>
           )}
         </>
+      )}
+
+      {/* Shipping Quote Tab Content */}
+      {activeTab === 'frete' && (
+        <ShippingQuotePanel />
       )}
 
       {/* Modals */}
