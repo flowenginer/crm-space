@@ -6176,6 +6176,10 @@ export type Database = {
       }
       can_transfer_freely: { Args: { _user_id: string }; Returns: boolean }
       can_view_all_data: { Args: { _user_id: string }; Returns: boolean }
+      can_view_email_attachment: {
+        Args: { p_email_id: string; p_user_id: string }
+        Returns: boolean
+      }
       check_overdue_transactions: { Args: never; Returns: undefined }
       check_user_permission: {
         Args: { permission_key: string; user_id: string }
