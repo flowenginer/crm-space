@@ -51,6 +51,10 @@ interface OrderItem {
   quantity: number;
   discount: number;
   discount_type: 'fixed' | 'percent';
+  weight_kg?: number;
+  height_cm?: number;
+  width_cm?: number;
+  length_cm?: number;
 }
 
 interface OrderModalProps {
@@ -353,6 +357,10 @@ export function OrderModal({ open, onOpenChange, order, conversationId, contactI
         display_name: product.display_name,
         sku: product.sku || '',
         unit_price: product.price,
+        weight_kg: product.weight_kg || 0.3,
+        height_cm: product.height_cm || 10,
+        width_cm: product.width_cm || 10,
+        length_cm: product.length_cm || 10,
       };
       setItems(newItems);
     }
@@ -1080,10 +1088,10 @@ export function OrderModal({ open, onOpenChange, order, conversationId, contactI
                 <ShippingCalculator
                   destinationPostalCode={selectedContact?.zip_code || ''}
                   products={items.map(item => ({
-                    weight_kg: 0.5,
-                    height_cm: 10,
-                    width_cm: 10,
-                    length_cm: 10,
+                    weight_kg: item.weight_kg || 0.3,
+                    height_cm: item.height_cm || 10,
+                    width_cm: item.width_cm || 10,
+                    length_cm: item.length_cm || 10,
                     quantity: item.quantity,
                     unit_price: item.unit_price,
                   }))}

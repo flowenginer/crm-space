@@ -50,6 +50,10 @@ interface QuoteItem {
   quantity: number;
   discount: number;
   discount_type: 'fixed' | 'percent';
+  weight_kg?: number;
+  height_cm?: number;
+  width_cm?: number;
+  length_cm?: number;
 }
 
 interface QuoteModalProps {
@@ -91,7 +95,7 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
   
   // Form state
   const [contactId, setContactId] = useState(initialContactId || '');
-  const [selectedContact, setSelectedContact] = useState<Pick<ERPContact, 'id' | 'full_name' | 'phone'> | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Pick<ERPContact, 'id' | 'full_name' | 'phone' | 'zip_code'> | null>(null);
   const [storeId, setStoreId] = useState('');
   const [sellerId, setSellerId] = useState(user?.id || '');
   const [items, setItems] = useState<QuoteItem[]>([
@@ -205,7 +209,16 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
   useEffect(() => {
     if (open && quote) {
       setContactId(quote.contact_id || '');
-      setSelectedContact(quote.contact || null);
+      if (quote.contact) {
+        setSelectedContact({
+          id: quote.contact.id,
+          full_name: quote.contact.full_name,
+          phone: quote.contact.phone,
+          zip_code: (quote.contact as any).zip_code || null
+        });
+      } else {
+        setSelectedContact(null);
+      }
       setStoreId(quote.store_id || '');
       setSellerId(quote.seller_id || user?.id || '');
       setTotalDiscount(quote.discount_percent || quote.discount_amount || 0);
@@ -286,7 +299,7 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
   
   const handleNewContactSuccess = (contact: Contact) => {
     setContactId(contact.id);
-    setSelectedContact({ id: contact.id, full_name: contact.full_name, phone: contact.phone });
+    setSelectedContact({ id: contact.id, full_name: contact.full_name, phone: contact.phone, zip_code: contact.zip_code || null });
     setShowNewContactModal(false);
   };
 
@@ -327,6 +340,10 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
         display_name: product.display_name,
         sku: product.sku || '',
         unit_price: product.price,
+        weight_kg: product.weight_kg || 0.3,
+        height_cm: product.height_cm || 10,
+        width_cm: product.width_cm || 10,
+        length_cm: product.length_cm || 10,
       };
       setItems(newItems);
     }
@@ -1038,12 +1055,12 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
                   {/* Shipping Calculator - Melhor Envio */}
                   <div className="p-4 bg-muted/30 rounded-lg border">
                     <ShippingCalculator
-                      destinationPostalCode={''}
+                      destinationPostalCode={selectedContact?.zip_code || ''}
                       products={items.map(item => ({
-                        weight_kg: 0.5,
-                        height_cm: 10,
-                        width_cm: 10,
-                        length_cm: 10,
+                        weight_kg: item.weight_kg || 0.3,
+                        height_cm: item.height_cm || 10,
+                        width_cm: item.width_cm || 10,
+                        length_cm: item.length_cm || 10,
                         quantity: item.quantity,
                         unit_price: item.unit_price,
                       }))}
