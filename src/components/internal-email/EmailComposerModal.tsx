@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Paperclip, Loader2, Package, Send, Mail } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -94,32 +95,55 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
 
   // Preencher dados quando for resposta/encaminhamento
   useEffect(() => {
-    if (replyTo && replyEmail) {
+    const fillReplyData = async () => {
+      if (!replyTo || !replyEmail) return;
+
+      // Obter ID do usuário atual para filtrar
+      const { data: userData } = await supabase.auth.getUser();
+      const currentUserId = userData.user?.id;
+
+      console.log('[EmailComposer] Preenchendo resposta:', { 
+        type: replyTo.type, 
+        emailId: replyTo.emailId,
+        currentUserId,
+        sender: replyEmail.sender,
+        recipients: replyEmail.recipients
+      });
+
       const replyPrefix = replyTo.type === 'forward' ? 'Enc: ' : 'Re: ';
       const subjectPrefix = replyEmail.subject.startsWith('Re: ') || replyEmail.subject.startsWith('Enc: ')
         ? ''
         : replyPrefix;
       setSubject(subjectPrefix + replyEmail.subject);
 
+      // NÃO herdar caixa compartilhada em respostas
+      // A resposta deve ir para pessoas, não para caixa compartilhada
+      setSelectedSharedBox(null);
+
       if (replyTo.type === 'reply' && replyEmail.sender) {
-        setRecipientsTo([{
-          id: replyEmail.sender.id,
-          full_name: replyEmail.sender.full_name,
-          avatar_url: replyEmail.sender.avatar_url
-        }]);
+        // Não responder para si mesmo
+        if (replyEmail.sender.id !== currentUserId) {
+          setRecipientsTo([{
+            id: replyEmail.sender.id,
+            full_name: replyEmail.sender.full_name,
+            avatar_url: replyEmail.sender.avatar_url
+          }]);
+        } else {
+          console.log('[EmailComposer] Ignorando remetente (é o próprio usuário)');
+        }
       } else if (replyTo.type === 'replyAll') {
-        // Adiciona o remetente
+        // Adiciona o remetente (se não for o próprio usuário)
         const allRecipients: Recipient[] = [];
-        if (replyEmail.sender) {
+        if (replyEmail.sender && replyEmail.sender.id !== currentUserId) {
           allRecipients.push({
             id: replyEmail.sender.id,
             full_name: replyEmail.sender.full_name,
             avatar_url: replyEmail.sender.avatar_url
           });
         }
-        // Adiciona outros destinatários 'to'
+        // Adiciona outros destinatários 'to' (exceto o usuário atual)
         replyEmail.recipients?.filter(r => r.recipient_type === 'to').forEach(r => {
-          if (r.user && !allRecipients.find(ar => ar.id === r.user_id)) {
+          if (r.user && r.user.id !== currentUserId && !allRecipients.find(ar => ar.id === r.user_id)) {
             allRecipients.push({
               id: r.user.id,
               full_name: r.user.full_name,
@@ -129,10 +153,10 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
         });
         setRecipientsTo(allRecipients);
 
-        // Adiciona cc
+        // Adiciona cc (exceto o usuário atual)
         const ccRecipients: Recipient[] = [];
         replyEmail.recipients?.filter(r => r.recipient_type === 'cc').forEach(r => {
-          if (r.user) {
+          if (r.user && r.user.id !== currentUserId) {
             ccRecipients.push({
               id: r.user.id,
               full_name: r.user.full_name,
@@ -149,7 +173,9 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
       // Herda prioridade e categoria
       setPriority(replyEmail.priority);
       setCategory(replyEmail.category);
-    }
+    };
+
+    fillReplyData();
   }, [replyTo, replyEmail]);
 
   // Reset ao fechar
@@ -198,6 +224,15 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
       return;
     }
 
+    console.log('[EmailComposer] Enviando e-mail:', {
+      subject,
+      recipientsTo: recipientsTo.map(r => r.id),
+      recipientsCc: recipientsCc.map(r => r.id),
+      selectedSharedBox,
+      attachments: attachments.length,
+      asDraft
+    });
+
     try {
       await sendEmail.mutateAsync({
         subject,
@@ -215,8 +250,9 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
       const sharedBoxName = sharedBoxes?.find(sb => sb.id === selectedSharedBox)?.name;
       toast.success(asDraft ? 'Rascunho salvo' : selectedSharedBox ? `E-mail enviado para ${sharedBoxName}` : 'E-mail enviado');
       onOpenChange(false);
-    } catch (error) {
-      toast.error('Erro ao enviar e-mail');
+    } catch (error: any) {
+      console.error('[EmailComposer] Erro ao enviar e-mail:', error);
+      toast.error(error?.message || 'Erro ao enviar e-mail');
     }
   };
 

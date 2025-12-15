@@ -479,8 +479,12 @@ export function useSendInternalEmail() {
       attachments?: { file_name: string; file_url: string; file_size?: number; mime_type?: string }[];
       status?: 'draft' | 'sent';
     }) => {
+      console.log('[useSendInternalEmail] Iniciando envio:', data);
+      
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error('Usuário não autenticado');
+
+      console.log('[useSendInternalEmail] Usuário:', userData.user.id);
 
       // Criar o e-mail
       const { data: email, error: emailError } = await supabase
@@ -504,10 +508,16 @@ export function useSendInternalEmail() {
         .select()
         .single();
 
-      if (emailError) throw emailError;
+      if (emailError) {
+        console.error('[useSendInternalEmail] Erro ao criar e-mail:', emailError);
+        throw new Error(`Erro ao criar e-mail: ${emailError.message}`);
+      }
+
+      console.log('[useSendInternalEmail] E-mail criado:', email.id);
 
       // Criar recipients "to" - apenas se não for para caixa compartilhada
       if (data.recipients_to.length > 0) {
+        console.log('[useSendInternalEmail] Criando recipients TO:', data.recipients_to);
         const { error: toError } = await supabase
           .from('internal_email_recipients')
           .insert(
@@ -517,11 +527,15 @@ export function useSendInternalEmail() {
               recipient_type: 'to' as const
             }))
           );
-        if (toError) throw toError;
+        if (toError) {
+          console.error('[useSendInternalEmail] Erro ao criar recipients TO:', toError);
+          throw new Error(`Erro ao adicionar destinatários: ${toError.message}`);
+        }
       }
 
       // Criar recipients "cc"
       if (data.recipients_cc && data.recipients_cc.length > 0) {
+        console.log('[useSendInternalEmail] Criando recipients CC:', data.recipients_cc);
         const { error: ccError } = await supabase
           .from('internal_email_recipients')
           .insert(
@@ -531,11 +545,15 @@ export function useSendInternalEmail() {
               recipient_type: 'cc' as const
             }))
           );
-        if (ccError) throw ccError;
+        if (ccError) {
+          console.error('[useSendInternalEmail] Erro ao criar recipients CC:', ccError);
+          throw new Error(`Erro ao adicionar destinatários em cópia: ${ccError.message}`);
+        }
       }
 
       // Criar attachments
       if (data.attachments && data.attachments.length > 0) {
+        console.log('[useSendInternalEmail] Criando attachments:', data.attachments.length);
         const { error: attachError } = await supabase
           .from('internal_email_attachments')
           .insert(
@@ -547,9 +565,13 @@ export function useSendInternalEmail() {
               mime_type: att.mime_type
             }))
           );
-        if (attachError) throw attachError;
+        if (attachError) {
+          console.error('[useSendInternalEmail] Erro ao criar attachments:', attachError);
+          throw new Error(`Erro ao anexar arquivos: ${attachError.message}`);
+        }
       }
 
+      console.log('[useSendInternalEmail] E-mail enviado com sucesso!');
       return email;
     },
     onSuccess: () => {
@@ -736,6 +758,8 @@ export function useEmailRecipientOptions() {
 export function useUploadEmailAttachment() {
   return useMutation({
     mutationFn: async (file: File) => {
+      console.log('[useUploadEmailAttachment] Iniciando upload:', file.name, file.size, file.type);
+      
       const fileExt = file.name.split('.').pop();
       const fileName = `${crypto.randomUUID()}.${fileExt}`;
       const filePath = `attachments/${fileName}`;
@@ -744,11 +768,16 @@ export function useUploadEmailAttachment() {
         .from('internal-email-attachments')
         .upload(filePath, file);
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('[useUploadEmailAttachment] Erro no upload:', uploadError);
+        throw new Error(`Erro ao fazer upload do arquivo: ${uploadError.message}`);
+      }
 
       const { data: urlData } = supabase.storage
         .from('internal-email-attachments')
         .getPublicUrl(filePath);
+
+      console.log('[useUploadEmailAttachment] Upload concluído:', urlData.publicUrl);
 
       return {
         file_name: file.name,
