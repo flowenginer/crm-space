@@ -8,8 +8,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { 
-  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2, FileText, Package, Play, Pause
+  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2, FileText, Package, Play, Pause, Layers, ChevronsUpDown
 } from 'lucide-react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { toast } from 'sonner';
@@ -36,6 +38,7 @@ import { useUpdateQuoteStatus } from '@/hooks/useQuotes';
 import { useUpdateOrderStatus } from '@/hooks/useOrders';
 import { useContactQuotesNotificationStatus, useToggleContactQuotesNotifications, getAutoPauseReasonText } from '@/hooks/useQuoteNotifications';
 import { useQuoteNotificationConfig } from '@/hooks/useQuoteNotificationConfig';
+import { useSegments, useCreateSegment, useUpdateContactSegment } from '@/hooks/useSegments';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -90,6 +93,13 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   // ERP hooks - must be at top level before any early returns
   const updateQuoteStatus = useUpdateQuoteStatus();
   const updateOrderStatus = useUpdateOrderStatus();
+  
+  // Segments hooks
+  const { data: segments = [] } = useSegments();
+  const createSegment = useCreateSegment();
+  const updateContactSegment = useUpdateContactSegment();
+  const [segmentOpen, setSegmentOpen] = useState(false);
+  const [newSegmentName, setNewSegmentName] = useState('');
   // Fetch conversation with contact data - campos específicos para otimização
   const { data: conversation, isLoading: loadingConversation } = useQuery({
     queryKey: ['conversation-details', conversationId],
@@ -104,7 +114,8 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
             id, full_name, phone, email, avatar_url, is_online, is_typing,
             street, number, complement, neighborhood, city, state, zip_code,
             cpf_cnpj, notes, birth_date, first_contact_at, last_interaction_at, created_at,
-            origin, origin_campaign, referral_data, lead_status, assigned_to, negotiated_value,
+            origin, origin_campaign, referral_data, lead_status, assigned_to, negotiated_value, segment_id,
+            segment:segments(id, name, color),
             owner_agent:profiles!contacts_assigned_to_fkey(
               id, full_name, avatar_url
             ),
@@ -1183,7 +1194,118 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
           </Select>
         </div>
 
+        {/* Segment Selector */}
+        <div className="p-3 border-b border-border">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+            <Layers size={12} />
+            Segmento
+          </label>
+          <Popover open={segmentOpen} onOpenChange={setSegmentOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={segmentOpen}
+                className="w-full justify-between h-9 text-sm"
+                disabled={updateContactSegment.isPending}
+              >
+                {contact.segment ? (
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className="w-2 h-2 rounded-full" 
+                      style={{ backgroundColor: contact.segment.color || '#6366F1' }}
+                    />
+                    {contact.segment.name}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">Selecionar segmento...</span>
+                )}
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[250px] p-0" align="start">
+              <Command>
+                <CommandInput 
+                  placeholder="Buscar ou criar segmento..." 
+                  value={newSegmentName}
+                  onValueChange={setNewSegmentName}
+                />
+                <CommandList>
+                  <CommandEmpty>
+                    {newSegmentName.trim() ? (
+                      <button
+                        className="w-full flex items-center gap-2 px-2 py-2 text-sm hover:bg-muted transition-colors"
+                        onClick={async () => {
+                          try {
+                            const newSegment = await createSegment.mutateAsync({ name: newSegmentName.trim() });
+                            await updateContactSegment.mutateAsync({ contactId: contact.id, segmentId: newSegment.id });
+                            setNewSegmentName('');
+                            setSegmentOpen(false);
+                            toast.success('Segmento criado e aplicado!');
+                          } catch (error: any) {
+                            toast.error(error.message || 'Erro ao criar segmento');
+                          }
+                        }}
+                      >
+                        <Plus size={14} className="text-primary" />
+                        Criar "{newSegmentName.trim()}"
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground">Nenhum segmento encontrado</span>
+                    )}
+                  </CommandEmpty>
+                  <CommandGroup>
+                    {/* Option to remove segment */}
+                    {contact.segment_id && (
+                      <>
+                        <CommandItem
+                          onSelect={() => {
+                            updateContactSegment.mutate(
+                              { contactId: contact.id, segmentId: null },
+                              { onSuccess: () => toast.success('Segmento removido!') }
+                            );
+                            setSegmentOpen(false);
+                          }}
+                        >
+                          <X size={14} className="mr-2 text-muted-foreground" />
+                          Remover segmento
+                        </CommandItem>
+                        <CommandSeparator />
+                      </>
+                    )}
+                    {segments.map((segment) => (
+                      <CommandItem
+                        key={segment.id}
+                        value={segment.name}
+                        onSelect={() => {
+                          updateContactSegment.mutate(
+                            { contactId: contact.id, segmentId: segment.id },
+                            { onSuccess: () => toast.success('Segmento atualizado!') }
+                          );
+                          setSegmentOpen(false);
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div 
+                            className="w-2 h-2 rounded-full" 
+                            style={{ backgroundColor: segment.color || '#6366F1' }}
+                          />
+                          {segment.name}
+                        </div>
+                        {contact.segment_id === segment.id && (
+                          <Check size={14} className="ml-auto text-primary" />
+                        )}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        </div>
+
         {/* Tags - REMOVED - Now in header */}
+
 
         {/* Current Agent (Atendente Atual) */}
         <div className="p-3 border-b border-border">
