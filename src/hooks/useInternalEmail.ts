@@ -605,6 +605,25 @@ export function useSendInternalEmail() {
           }
         }
 
+        // Se for resposta a um e-mail de caixa compartilhada que está "completed",
+        // reabrir automaticamente para "in_progress"
+        if (data.parent_email_id) {
+          console.log('[useSendInternalEmail] Verificando e-mail pai para reabertura...');
+          const { data: parentEmail } = await supabase
+            .from('internal_emails')
+            .select('id, shared_box_id, workflow_status')
+            .eq('id', data.parent_email_id)
+            .single();
+
+          if (parentEmail?.shared_box_id && parentEmail.workflow_status === 'completed') {
+            console.log('[useSendInternalEmail] Reabrindo e-mail pai para in_progress');
+            await supabase
+              .from('internal_emails')
+              .update({ workflow_status: 'in_progress' })
+              .eq('id', parentEmail.id);
+          }
+        }
+
         console.log('[useSendInternalEmail] E-mail enviado com sucesso!');
         return email;
       } catch (error: any) {
