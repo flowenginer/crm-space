@@ -280,12 +280,15 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
     } catch (error: any) {
       console.error('[EmailComposer] Erro ao enviar e-mail:', error);
       
-      // Mensagem de erro mais específica
+      // Mensagem de erro mais específica para diferentes tipos de erro
       let errorMessage = 'Erro ao enviar e-mail';
-      if (error?.message) {
-        errorMessage = error.message;
-      } else if (error?.name === 'TypeError' && error?.message?.includes('fetch')) {
+      
+      if (error?.message?.includes('conexão') || error?.message?.includes('fetch') || error?.message?.includes('Failed to fetch')) {
         errorMessage = 'Erro de conexão. Verifique sua internet e tente novamente.';
+      } else if (error?.message?.includes('Sessão expirada')) {
+        errorMessage = 'Sessão expirada. Recarregue a página e tente novamente.';
+      } else if (error?.message) {
+        errorMessage = error.message;
       }
       
       toast.error(errorMessage);
