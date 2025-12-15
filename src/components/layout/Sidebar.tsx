@@ -214,9 +214,18 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   };
 
   const renderMenuItem = (item: MenuItem, isSubmenuItem = false) => {
-    const isActive = item.href ? 
-      (location.pathname === item.href || location.pathname.startsWith(item.href + '/')) : 
-      false;
+    const isActive = item.href ? (() => {
+      const fullPath = location.pathname + location.search;
+      const hrefHasQuery = item.href.includes('?');
+      
+      if (hrefHasQuery) {
+        return fullPath === item.href;
+      } else {
+        const isPathMatch = location.pathname === item.href || 
+                            location.pathname.startsWith(item.href + '/');
+        return isPathMatch && !location.search;
+      }
+    })() : false;
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = expandedMenus.has(item.id);
     const isCascadeMenu = !item.href && hasChildren;
@@ -225,9 +234,19 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     
     // Se é menu cascata (sem href, com children)
     if (isCascadeMenu) {
-      const isChildActive = item.children!.some(child => 
-        child.href && (location.pathname === child.href || location.pathname.startsWith(child.href + '/'))
-      );
+      const isChildActive = item.children!.some(child => {
+        if (!child.href) return false;
+        const fullPath = location.pathname + location.search;
+        const hrefHasQuery = child.href.includes('?');
+        
+        if (hrefHasQuery) {
+          return fullPath === child.href;
+        } else {
+          const isPathMatch = location.pathname === child.href || 
+                              location.pathname.startsWith(child.href + '/');
+          return isPathMatch && !location.search;
+        }
+      });
       
       return (
         <div key={item.id} className="mt-2">
