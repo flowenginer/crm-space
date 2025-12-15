@@ -361,6 +361,16 @@ export const SYSTEM_PERMISSIONS: PermissionCategory[] = [
       { key: 'queues.manage_agents', name: 'Gerenciar Agentes', description: 'Adicionar/remover agentes das filas' },
     ],
   },
+  {
+    key: 'custom_menus',
+    label: 'Menus Personalizados',
+    icon: Settings,
+    order: 99,
+    permissions: [
+      // Permissões criadas dinamicamente aparecem aqui via banco de dados
+      // Esta categoria serve como placeholder para agrupar permissões de menus customizados
+    ],
+  },
 ];
 
 /**
