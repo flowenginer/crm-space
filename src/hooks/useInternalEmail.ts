@@ -500,7 +500,14 @@ export function useSendInternalEmail() {
       console.log('[useSendInternalEmail] Iniciando envio:', data);
       
       // Usar helper de autenticação robusta
-      const user = await getAuthenticatedUser();
+      let user;
+      try {
+        user = await getAuthenticatedUser();
+      } catch (authError) {
+        console.error('[useSendInternalEmail] Erro ao obter usuário:', authError);
+        throw new Error('Erro de conexão. Verifique sua internet e tente novamente.');
+      }
+      
       if (!user) {
         throw new Error('Sessão expirada. Por favor, recarregue a página e tente novamente.');
       }
