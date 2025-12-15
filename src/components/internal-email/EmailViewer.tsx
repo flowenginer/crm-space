@@ -145,7 +145,8 @@ export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
       await releaseEmail.mutateAsync(emailId);
       toast.success('E-mail devolvido para a fila');
     } catch (error) {
-      toast.error('Erro ao devolver e-mail');
+      console.error('[EmailViewer] Erro ao devolver:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao devolver e-mail');
     }
   };
 
@@ -154,7 +155,8 @@ export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
       await completeEmail.mutateAsync(emailId);
       toast.success('E-mail marcado como concluído');
     } catch (error) {
-      toast.error('Erro ao concluir e-mail');
+      console.error('[EmailViewer] Erro ao concluir:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao concluir e-mail');
     }
   };
 

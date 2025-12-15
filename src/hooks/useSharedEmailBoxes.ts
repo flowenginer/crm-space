@@ -336,28 +336,25 @@ export function useReleaseEmail() {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error('Usuário não autenticado');
 
-      // Registrar atividade de liberação
-      await supabase
-        .from('email_activity_log')
-        .insert({
-          email_id: emailId,
-          action: 'released',
-          actor_id: userData.user.id,
-          details: {}
-        });
+      console.log('[ReleaseEmail] Liberando e-mail:', emailId);
 
-      // Liberar o e-mail
-      const { error } = await supabase
+      // Liberar o e-mail (o trigger log_email_activity já registra automaticamente)
+      const { data, error } = await supabase
         .from('internal_emails')
         .update({
           claimed_by: null,
           claimed_at: null,
           workflow_status: 'pending'
         })
-        .eq('id', emailId);
+        .eq('id', emailId)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[ReleaseEmail] Erro ao liberar:', error);
+        throw new Error(`Erro ao devolver e-mail: ${error.message}`);
+      }
 
+      console.log('[ReleaseEmail] E-mail liberado com sucesso:', data);
       return emailId;
     },
     onSuccess: () => {
@@ -375,15 +372,22 @@ export function useCompleteEmail() {
 
   return useMutation({
     mutationFn: async (emailId: string) => {
-      const { error } = await supabase
+      console.log('[CompleteEmail] Concluindo e-mail:', emailId);
+
+      const { data, error } = await supabase
         .from('internal_emails')
         .update({
           workflow_status: 'completed'
         })
-        .eq('id', emailId);
+        .eq('id', emailId)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[CompleteEmail] Erro ao concluir:', error);
+        throw new Error(`Erro ao concluir e-mail: ${error.message}`);
+      }
 
+      console.log('[CompleteEmail] E-mail concluído com sucesso:', data);
       return emailId;
     },
     onSuccess: () => {
