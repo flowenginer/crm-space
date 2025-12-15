@@ -439,12 +439,12 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
             </div>
 
             {/* Mensagem */}
-            <RichTextEditor
-              value={body}
-              onChange={setBody}
-              placeholder="Digite sua mensagem aqui..."
-              minHeight="140px"
-            />
+                <RichTextEditor
+                  value={body}
+                  onChange={setBody}
+                  placeholder="Digite sua mensagem aqui..."
+                  minHeight="280px"
+                />
 
             {/* Anexos */}
             <div className="flex items-center gap-3">
