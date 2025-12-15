@@ -20,7 +20,8 @@ export function useUserDepartments(userId?: string) {
   return useQuery({
     queryKey: ['user-departments', userId],
     enabled: !!userId,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000, // 5 minutos
+    gcTime: 10 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_departments')
@@ -40,7 +41,8 @@ export function useUserDepartments(userId?: string) {
 export function useAllUserDepartments() {
   return useQuery({
     queryKey: ['all-user-departments'],
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000, // 5 minutos
+    gcTime: 10 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_departments')

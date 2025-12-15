@@ -19,6 +19,8 @@ export interface TeamMember {
 export function useTeam() {
   return useQuery({
     queryKey: ['team'],
+    staleTime: 5 * 60 * 1000, // 5 minutos - equipe raramente muda
+    gcTime: 10 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
@@ -46,7 +48,6 @@ export function useTeam() {
         role: roleMap[member.id] || 'user'
       })) as TeamMember[];
     },
-    staleTime: 60000,
   });
 }
 
