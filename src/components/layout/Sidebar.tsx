@@ -59,11 +59,10 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { data: menuHierarchy = [], isLoading: menuLoading } = useMenuHierarchy();
   
   // Estado para controlar submenus expandidos
-  const [expandedMenus, setExpandedMenus] = useState<Set<string>>(() => {
-    // Inicializar com menus que contêm a rota atual
-    const expanded = new Set<string>();
-    return expanded;
-  });
+  const [expandedMenus, setExpandedMenus] = useState<Set<string>>(new Set());
+  
+  // Estado para rastrear menus fechados manualmente pelo usuário
+  const [manuallyCollapsed, setManuallyCollapsed] = useState<Set<string>>(new Set());
   
   // Ativar listener de realtime para requisições
   useContactRequestsRealtime();
@@ -83,12 +82,16 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     refetchInterval: 30000
   });
 
-  // Expandir automaticamente menus que contêm a rota atual (apenas adicionar, nunca remover)
+  // Expandir automaticamente menus que contêm a rota atual (respeitar fechamento manual)
   useEffect(() => {
     if (menuHierarchy.length === 0) return;
 
     for (const item of menuHierarchy) {
       if (!item.children?.length) continue;
+      
+      // NÃO expandir automaticamente se o usuário fechou manualmente
+      if (manuallyCollapsed.has(item.id)) continue;
+      
       const hasActiveChild = item.children.some(
         (child) =>
           child.href &&
@@ -97,14 +100,14 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       );
       if (hasActiveChild) {
         setExpandedMenus(prev => {
-          if (prev.has(item.id)) return prev; // Já está expandido, não fazer nada
+          if (prev.has(item.id)) return prev;
           const next = new Set(prev);
           next.add(item.id);
           return next;
         });
       }
     }
-  }, [menuHierarchy, location.pathname]);
+  }, [menuHierarchy, location.pathname, manuallyCollapsed]);
 
   // Filtrar itens de menu baseado em permissões
   const filteredMenuItems = useMemo(() => {
@@ -162,8 +165,16 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
+        // Marcar como manualmente fechado
+        setManuallyCollapsed(prevCollapsed => new Set(prevCollapsed).add(id));
       } else {
         next.add(id);
+        // Remover da lista de manualmente fechados
+        setManuallyCollapsed(prevCollapsed => {
+          const newSet = new Set(prevCollapsed);
+          newSet.delete(id);
+          return newSet;
+        });
       }
       return next;
     });
