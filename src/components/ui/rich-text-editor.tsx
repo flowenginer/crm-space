@@ -214,7 +214,8 @@ export function RichTextEditor({
   className 
 }: RichTextEditorProps) {
   const [, setForceUpdate] = useState(0);
-  const savedSelectionRef = useRef<Range | null>(null);
+  const savedSelectionRef = useRef<{ range: Range; text: string } | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
   const handleChange = (e: { target: { value: string } }) => {
     onChange(e.target.value);
@@ -225,26 +226,49 @@ export function RichTextEditor({
     setForceUpdate(prev => prev + 1);
   };
 
-  // Salvar a seleção atual (chamado no onMouseDown do trigger)
+  // Salvar a seleção atual e o texto (chamado no onMouseDown do trigger)
   const saveSelection = () => {
     const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0) {
-      savedSelectionRef.current = selection.getRangeAt(0).cloneRange();
+    if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+      const range = selection.getRangeAt(0).cloneRange();
+      const text = selection.toString();
+      if (text.trim()) {
+        savedSelectionRef.current = { range, text };
+      }
     }
   };
 
-  // Restaurar a seleção salva e aplicar highlight
+  // Aplicar highlight inserindo span manualmente
   const handleHighlight = (color: string) => {
-    // Restaurar seleção antes de aplicar
     if (savedSelectionRef.current) {
+      const { range, text } = savedSelectionRef.current;
+      
+      // Focar no editor
+      const editor = editorRef.current?.querySelector('.rsw-ce');
+      if (editor instanceof HTMLElement) {
+        editor.focus();
+      }
+      
+      // Restaurar seleção
       const selection = window.getSelection();
       if (selection) {
         selection.removeAllRanges();
-        selection.addRange(savedSelectionRef.current);
+        selection.addRange(range);
+        
+        // Escapar caracteres HTML no texto
+        const escapedText = text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        
+        // Inserir span com background-color
+        document.execCommand('insertHTML', false, 
+          `<span style="background-color: ${color}">${escapedText}</span>`
+        );
       }
+      
+      savedSelectionRef.current = null;
     }
-    execCommand('hiliteColor', color);
-    savedSelectionRef.current = null;
     setForceUpdate(prev => prev + 1);
   };
 
@@ -266,10 +290,10 @@ export function RichTextEditor({
   }, []);
 
   return (
-    <div className={cn("rounded-md border bg-background overflow-hidden", className)}>
+    <div ref={editorRef} className={cn("rounded-md border bg-background overflow-hidden", className)}>
       {/* Toolbar */}
       <div className="flex items-center gap-0.5 p-1.5 border-b bg-muted/30 flex-wrap">
-        <ToolbarButton 
+        <ToolbarButton
           onClick={() => handleFormat('bold')} 
           title="Negrito"
         >
