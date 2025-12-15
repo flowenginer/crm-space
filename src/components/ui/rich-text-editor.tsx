@@ -226,17 +226,21 @@ export function RichTextEditor({
     setForceUpdate(prev => prev + 1);
   };
 
-  // Salvar a seleção atual e o texto (chamado no onMouseDown do trigger)
-  const saveSelection = () => {
+  // Salvar a seleção continuamente quando o usuário seleciona texto no editor
+  const updateSavedSelection = useCallback(() => {
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
-      const range = selection.getRangeAt(0).cloneRange();
-      const text = selection.toString();
-      if (text.trim()) {
-        savedSelectionRef.current = { range, text };
+      // Verificar se a seleção está dentro do editor
+      const editor = editorRef.current?.querySelector('.rsw-ce');
+      if (editor && editor.contains(selection.anchorNode)) {
+        const range = selection.getRangeAt(0).cloneRange();
+        const text = selection.toString();
+        if (text.trim()) {
+          savedSelectionRef.current = { range, text };
+        }
       }
     }
-  };
+  }, []);
 
   // Aplicar highlight inserindo span manualmente
   const handleHighlight = (color: string) => {
@@ -325,14 +329,13 @@ export function RichTextEditor({
 
         {/* Highlight Dropdown */}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <DropdownMenuTrigger asChild>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-8 w-8 p-0"
               title="Marca-texto"
-              onMouseDown={saveSelection}
             >
               <Highlighter className="h-4 w-4" />
             </Button>
@@ -379,7 +382,11 @@ export function RichTextEditor({
       </div>
 
       {/* Editor */}
-      <div onPaste={handlePaste}>
+      <div 
+        onPaste={handlePaste}
+        onMouseUp={updateSavedSelection}
+        onKeyUp={updateSavedSelection}
+      >
         <Editor
           value={value}
           onChange={handleChange}
