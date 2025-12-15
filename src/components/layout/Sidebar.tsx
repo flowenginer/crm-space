@@ -85,13 +85,34 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
   // Expandir automaticamente menus que contêm a rota atual
   useEffect(() => {
-    if (menuHierarchy.length > 0) {
-      menuHierarchy.forEach(item => {
-        if (item.children && item.children.some(child => child.href && (location.pathname === child.href || location.pathname.startsWith(child.href + '/')))) {
-          setExpandedMenus(prev => new Set([...prev, item.id]));
-        }
-      });
+    if (menuHierarchy.length === 0) return;
+
+    // Calcular de uma vez e só setar estado se realmente mudou
+    const shouldExpand = new Set<string>();
+
+    for (const item of menuHierarchy) {
+      if (!item.children?.length) continue;
+      const hasActiveChild = item.children.some(
+        (child) =>
+          child.href &&
+          (location.pathname === child.href ||
+            location.pathname.startsWith(child.href + '/'))
+      );
+      if (hasActiveChild) shouldExpand.add(item.id);
     }
+
+    setExpandedMenus((prev) => {
+      let changed = prev.size !== shouldExpand.size;
+      if (!changed) {
+        for (const id of shouldExpand) {
+          if (!prev.has(id)) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      return changed ? shouldExpand : prev;
+    });
   }, [menuHierarchy, location.pathname]);
 
   // Filtrar itens de menu baseado em permissões

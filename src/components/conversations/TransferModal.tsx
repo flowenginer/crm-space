@@ -16,6 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
 import { useAllUserDepartments } from '@/hooks/useUserDepartments';
+import { useTransferOptionsRealtime } from '@/hooks/useTransferOptionsRealtime';
 import { useTransferConversation } from '@/hooks/useConversationEvents';
 import { usePinnedConversations, useUnpinConversation } from '@/hooks/usePinnedConversations';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -57,6 +58,9 @@ export function TransferModal({
   const transferConversation = useTransferConversation();
   const { can } = usePermissions();
   const { user } = useAuth();
+
+  // Mantém departamentos/atendentes/vínculos atualizados sem precisar dar refresh
+  useTransferOptionsRealtime(open);
 
   const isConversationPinned = pinnedConversations.some(p => p.conversation_id === conversationId);
   const activeDepartments = departments.filter(d => d.is_active);
