@@ -787,7 +787,14 @@ export function useUploadEmailAttachment() {
   return useMutation({
     mutationFn: async (file: File) => {
       // Usar helper de autenticação robusta (getSession primeiro, getUser como fallback)
-      const user = await getAuthenticatedUser();
+      let user;
+      try {
+        user = await getAuthenticatedUser();
+      } catch (authError) {
+        console.error('[useUploadEmailAttachment] Erro ao obter usuário:', authError);
+        throw new Error('Erro de conexão. Verifique sua internet e tente novamente.');
+      }
+      
       if (!user) {
         throw new Error('Sessão expirada. Por favor, recarregue a página e tente novamente.');
       }
@@ -805,36 +812,47 @@ export function useUploadEmailAttachment() {
       
       console.log('[useUploadEmailAttachment] Caminho do arquivo:', fileName);
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('internal-email-attachments')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
+      try {
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('internal-email-attachments')
+          .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
 
-      if (uploadError) {
-        console.error('[useUploadEmailAttachment] Erro no upload:', {
-          error: uploadError,
-          message: uploadError.message,
-          statusCode: (uploadError as any).statusCode
-        });
-        throw new Error(`Erro ao fazer upload: ${uploadError.message}`);
+        if (uploadError) {
+          console.error('[useUploadEmailAttachment] Erro no upload:', {
+            error: uploadError,
+            message: uploadError.message,
+            statusCode: (uploadError as any).statusCode
+          });
+          throw new Error(`Erro ao fazer upload: ${uploadError.message}`);
+        }
+
+        console.log('[useUploadEmailAttachment] Upload concluído:', uploadData);
+
+        const { data: urlData } = supabase.storage
+          .from('internal-email-attachments')
+          .getPublicUrl(fileName);
+
+        console.log('[useUploadEmailAttachment] URL pública:', urlData.publicUrl);
+
+        return {
+          file_name: file.name,
+          file_url: urlData.publicUrl,
+          file_size: file.size,
+          mime_type: file.type
+        };
+      } catch (error: any) {
+        console.error('[useUploadEmailAttachment] Erro durante upload:', error);
+        
+        // Verificar se é erro de rede
+        if (error?.message?.includes('Failed to fetch') || error?.name === 'TypeError') {
+          throw new Error('Erro de conexão. Verifique sua internet e tente novamente.');
+        }
+        
+        throw error;
       }
-
-      console.log('[useUploadEmailAttachment] Upload concluído:', uploadData);
-
-      const { data: urlData } = supabase.storage
-        .from('internal-email-attachments')
-        .getPublicUrl(fileName);
-
-      console.log('[useUploadEmailAttachment] URL pública:', urlData.publicUrl);
-
-      return {
-        file_name: file.name,
-        file_url: urlData.publicUrl,
-        file_size: file.size,
-        mime_type: file.type
-      };
     }
   });
 }
