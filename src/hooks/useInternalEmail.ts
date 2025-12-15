@@ -514,93 +514,106 @@ export function useSendInternalEmail() {
 
       console.log('[useSendInternalEmail] Usuário:', user.id);
 
-      // Criar o e-mail
-      const { data: email, error: emailError } = await supabase
-        .from('internal_emails')
-        .insert({
-          sender_id: user.id,
-          subject: data.subject,
-          body: data.body,
-          body_html: data.body_html,
-          priority: data.priority || 'normal',
-          category: data.category || 'general',
-          order_id: data.order_id,
-          quote_id: data.quote_id,
-          parent_email_id: data.parent_email_id,
-          status: data.status || 'sent',
-          sent_at: data.status === 'draft' ? null : new Date().toISOString(),
-          // Campos de caixa compartilhada
-          shared_box_id: data.shared_box_id || null,
-          workflow_status: data.shared_box_id ? 'pending' : 'pending'
-        })
-        .select()
-        .single();
+      try {
+        // Criar o e-mail
+        console.log('[useSendInternalEmail] Preparando insert de e-mail...');
+        const { data: email, error: emailError } = await supabase
+          .from('internal_emails')
+          .insert({
+            sender_id: user.id,
+            subject: data.subject,
+            body: data.body,
+            body_html: data.body_html,
+            priority: data.priority || 'normal',
+            category: data.category || 'general',
+            order_id: data.order_id,
+            quote_id: data.quote_id,
+            parent_email_id: data.parent_email_id,
+            status: data.status || 'sent',
+            sent_at: data.status === 'draft' ? null : new Date().toISOString(),
+            // Campos de caixa compartilhada
+            shared_box_id: data.shared_box_id || null,
+            workflow_status: data.shared_box_id ? 'pending' : 'pending'
+          })
+          .select()
+          .single();
 
-      if (emailError) {
-        console.error('[useSendInternalEmail] Erro ao criar e-mail:', emailError);
-        throw new Error(`Erro ao criar e-mail: ${emailError.message}`);
-      }
-
-      console.log('[useSendInternalEmail] E-mail criado:', email.id);
-
-      // Criar recipients "to" - apenas se não for para caixa compartilhada
-      if (data.recipients_to.length > 0) {
-        console.log('[useSendInternalEmail] Criando recipients TO:', data.recipients_to);
-        const { error: toError } = await supabase
-          .from('internal_email_recipients')
-          .insert(
-            data.recipients_to.map(userId => ({
-              email_id: email.id,
-              user_id: userId,
-              recipient_type: 'to' as const
-            }))
-          );
-        if (toError) {
-          console.error('[useSendInternalEmail] Erro ao criar recipients TO:', toError);
-          throw new Error(`Erro ao adicionar destinatários: ${toError.message}`);
+        if (emailError) {
+          console.error('[useSendInternalEmail] Erro ao criar e-mail:', emailError);
+          throw new Error(`Erro ao criar e-mail: ${emailError.message}`);
         }
-      }
 
-      // Criar recipients "cc"
-      if (data.recipients_cc && data.recipients_cc.length > 0) {
-        console.log('[useSendInternalEmail] Criando recipients CC:', data.recipients_cc);
-        const { error: ccError } = await supabase
-          .from('internal_email_recipients')
-          .insert(
-            data.recipients_cc.map(userId => ({
-              email_id: email.id,
-              user_id: userId,
-              recipient_type: 'cc' as const
-            }))
-          );
-        if (ccError) {
-          console.error('[useSendInternalEmail] Erro ao criar recipients CC:', ccError);
-          throw new Error(`Erro ao adicionar destinatários em cópia: ${ccError.message}`);
+        console.log('[useSendInternalEmail] E-mail criado:', email.id);
+
+        // Criar recipients "to" - apenas se não for para caixa compartilhada
+        if (data.recipients_to.length > 0) {
+          console.log('[useSendInternalEmail] Criando recipients TO:', data.recipients_to);
+          const { error: toError } = await supabase
+            .from('internal_email_recipients')
+            .insert(
+              data.recipients_to.map(userId => ({
+                email_id: email.id,
+                user_id: userId,
+                recipient_type: 'to' as const
+              }))
+            );
+          if (toError) {
+            console.error('[useSendInternalEmail] Erro ao criar recipients TO:', toError);
+            throw new Error(`Erro ao adicionar destinatários: ${toError.message}`);
+          }
         }
-      }
 
-      // Criar attachments
-      if (data.attachments && data.attachments.length > 0) {
-        console.log('[useSendInternalEmail] Criando attachments:', data.attachments.length);
-        const { error: attachError } = await supabase
-          .from('internal_email_attachments')
-          .insert(
-            data.attachments.map(att => ({
-              email_id: email.id,
-              file_name: att.file_name,
-              file_url: att.file_url,
-              file_size: att.file_size,
-              mime_type: att.mime_type
-            }))
-          );
-        if (attachError) {
-          console.error('[useSendInternalEmail] Erro ao criar attachments:', attachError);
-          throw new Error(`Erro ao anexar arquivos: ${attachError.message}`);
+        // Criar recipients "cc"
+        if (data.recipients_cc && data.recipients_cc.length > 0) {
+          console.log('[useSendInternalEmail] Criando recipients CC:', data.recipients_cc);
+          const { error: ccError } = await supabase
+            .from('internal_email_recipients')
+            .insert(
+              data.recipients_cc.map(userId => ({
+                email_id: email.id,
+                user_id: userId,
+                recipient_type: 'cc' as const
+              }))
+            );
+          if (ccError) {
+            console.error('[useSendInternalEmail] Erro ao criar recipients CC:', ccError);
+            throw new Error(`Erro ao adicionar destinatários em cópia: ${ccError.message}`);
+          }
         }
-      }
 
-      console.log('[useSendInternalEmail] E-mail enviado com sucesso!');
-      return email;
+        // Criar attachments
+        if (data.attachments && data.attachments.length > 0) {
+          console.log('[useSendInternalEmail] Criando attachments:', data.attachments.length);
+          const { error: attachError } = await supabase
+            .from('internal_email_attachments')
+            .insert(
+              data.attachments.map(att => ({
+                email_id: email.id,
+                file_name: att.file_name,
+                file_url: att.file_url,
+                file_size: att.file_size,
+                mime_type: att.mime_type
+              }))
+            );
+          if (attachError) {
+            console.error('[useSendInternalEmail] Erro ao criar attachments:', attachError);
+            throw new Error(`Erro ao anexar arquivos: ${attachError.message}`);
+          }
+        }
+
+        console.log('[useSendInternalEmail] E-mail enviado com sucesso!');
+        return email;
+      } catch (error: any) {
+        console.error('[useSendInternalEmail] Erro durante operação:', error);
+        
+        // Verificar se é erro de rede
+        if (error?.message?.includes('Failed to fetch') || error?.name === 'TypeError') {
+          throw new Error('Erro de conexão com o servidor. Verifique sua internet e tente novamente.');
+        }
+        
+        // Re-throw outros erros (preserva mensagem original)
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['internal-emails'] });
