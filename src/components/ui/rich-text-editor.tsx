@@ -214,6 +214,7 @@ export function RichTextEditor({
   className 
 }: RichTextEditorProps) {
   const [, setForceUpdate] = useState(0);
+  const [savedSelection, setSavedSelection] = useState<Range | null>(null);
 
   const handleChange = (e: { target: { value: string } }) => {
     onChange(e.target.value);
@@ -224,8 +225,29 @@ export function RichTextEditor({
     setForceUpdate(prev => prev + 1);
   };
 
+  // Salvar a seleção atual antes do dropdown abrir
+  const saveSelection = () => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      setSavedSelection(selection.getRangeAt(0).cloneRange());
+    }
+  };
+
+  // Restaurar a seleção salva
+  const restoreSelection = () => {
+    if (savedSelection) {
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(savedSelection);
+      }
+    }
+  };
+
   const handleHighlight = (color: string) => {
+    restoreSelection(); // Restaurar seleção antes de aplicar
     execCommand('hiliteColor', color);
+    setSavedSelection(null);
     setForceUpdate(prev => prev + 1);
   };
 
@@ -281,7 +303,7 @@ export function RichTextEditor({
         <div className="w-px h-5 bg-border mx-1" />
 
         {/* Highlight Dropdown */}
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={(open) => { if (open) saveSelection(); }}>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
