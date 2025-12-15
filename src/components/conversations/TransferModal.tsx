@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, Users, PinOff, Check, Circle, PauseCircle } from 'lucide-react';
+import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, Users, PinOff, Check, PauseCircle } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -49,8 +50,8 @@ export function TransferModal({
   const [shouldUnpin, setShouldUnpin] = useState(true);
 
   const { data: departments = [], isLoading: isDepartmentsLoading } = useDepartments();
-  const { data: team = [] } = useTeam();
-  const { data: allUserDepartments = [] } = useAllUserDepartments();
+  const { data: team = [], isLoading: isTeamLoading } = useTeam();
+  const { data: allUserDepartments = [], isLoading: isUserDepartmentsLoading } = useAllUserDepartments();
   const { data: pinnedConversations = [] } = usePinnedConversations();
   const unpinConversation = useUnpinConversation();
   const transferConversation = useTransferConversation();
@@ -277,9 +278,11 @@ export function TransferModal({
                 <Building2 size={14} className="text-primary" />
                 Departamento
               </Label>
-              {isDepartmentsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              {isDepartmentsLoading || isUserDepartmentsLoading ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <Skeleton key={i} className="h-11 rounded-lg" />
+                  ))}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
@@ -335,7 +338,13 @@ export function TransferModal({
                     </span>
                   )}
                 </Label>
-                {teamInDepartment.length === 0 ? (
+                {isTeamLoading ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {[1, 2, 3, 4].map((i) => (
+                      <Skeleton key={i} className="h-12 rounded-lg" />
+                    ))}
+                  </div>
+                ) : teamInDepartment.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-4 text-center gap-2">
                     <User className="h-5 w-5 text-muted-foreground/50" />
                     <p className="text-sm text-muted-foreground">
