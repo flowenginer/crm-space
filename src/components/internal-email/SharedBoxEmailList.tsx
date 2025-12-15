@@ -1,19 +1,25 @@
 import { useState, useMemo } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Search, Star, Paperclip, Clock, User, CheckCircle2, Hand, RefreshCw } from 'lucide-react';
+import { Search, Star, Hand, RefreshCw, Archive, Trash2, MailOpen } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { useSharedBoxEmails, useClaimEmail, useUserSharedBoxes } from '@/hooks/useSharedEmailBoxes';
 import { useBulkEmailActions } from '@/hooks/useBulkEmailActions';
+import { useArchiveEmail, useMoveEmailToTrash } from '@/hooks/useInternalEmail';
 import { EmailBulkActions } from './EmailBulkActions';
 import { toast } from 'sonner';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface SharedBoxEmailListProps {
   sharedBoxId: string;
@@ -30,25 +36,10 @@ function formatEmailDate(date: string) {
   return format(d, 'dd/MM', { locale: ptBR });
 }
 
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-}
-
-const priorityColors: Record<string, string> = {
-  high: 'bg-destructive/10 text-destructive',
-  normal: 'hidden',
-  low: 'bg-muted text-muted-foreground'
-};
-
 const statusConfig = {
-  pending: { label: 'Aguardando', color: 'bg-amber-500/10 text-amber-600 border-amber-500/30', icon: Clock },
-  in_progress: { label: 'Em Andamento', color: 'bg-blue-500/10 text-blue-600 border-blue-500/30', icon: User },
-  completed: { label: 'Concluído', color: 'bg-green-500/10 text-green-600 border-green-500/30', icon: CheckCircle2 }
+  pending: { label: 'Aguardando', color: 'bg-amber-500/10 text-amber-600 border-amber-500/30' },
+  in_progress: { label: 'Em Andamento', color: 'bg-blue-500/10 text-blue-600 border-blue-500/30' },
+  completed: { label: 'Concluído', color: 'bg-green-500/10 text-green-600 border-green-500/30' }
 };
 
 const folderTitles: Record<string, string> = {
@@ -70,6 +61,8 @@ export function SharedBoxEmailList({
   const { data: sharedBoxes } = useUserSharedBoxes();
   const claimEmail = useClaimEmail();
   const bulkActions = useBulkEmailActions();
+  const moveToTrash = useMoveEmailToTrash();
+  const archiveEmail = useArchiveEmail();
 
   const currentBox = sharedBoxes?.find(b => b.id === sharedBoxId);
 
@@ -170,23 +163,23 @@ export function SharedBoxEmailList({
     <div className="flex-1 flex flex-col">
       {/* Header */}
       <div className="p-4 border-b space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
             <h2 className="text-lg font-semibold">{currentBox?.name || 'Caixa Compartilhada'}</h2>
             <p className="text-sm text-muted-foreground">{folderTitles[statusFilter]}</p>
+          </div>
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar e-mails..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="pl-9 h-9"
+            />
           </div>
           <Button variant="ghost" size="icon" onClick={() => refetch()} className="h-9 w-9">
             <RefreshCw className="h-4 w-4" />
           </Button>
-        </div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar e-mails..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 h-9"
-          />
         </div>
         
         {/* Select all checkbox */}
@@ -219,136 +212,178 @@ export function SharedBoxEmailList({
         isLoading={bulkActions.isLoading}
       />
 
-      {/* Lista de e-mails */}
+      {/* Lista de e-mails - Layout compacto estilo Gmail */}
       <ScrollArea className="flex-1">
         {isLoading ? (
-          <div className="p-4 space-y-2">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-start gap-3 p-3 rounded-lg">
+          <div className="divide-y divide-border/50">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-2 h-10">
                 <Skeleton className="h-4 w-4 rounded" />
-                <Skeleton className="h-9 w-9 rounded-full" />
-                <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-3.5 w-48" />
-                  <Skeleton className="h-3 w-full" />
-                  <Skeleton className="h-2.5 w-2/3" />
-                </div>
+                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="h-3 w-28" />
+                <Skeleton className="h-3 flex-1 max-w-md" />
+                <Skeleton className="h-3 w-12" />
               </div>
             ))}
           </div>
         ) : filteredEmails?.length === 0 ? (
-          <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
-            {statusFilter === 'pending' 
-              ? 'Nenhum e-mail aguardando atendimento'
-              : statusFilter === 'in_progress'
-              ? 'Nenhum e-mail em andamento'
-              : 'Nenhum e-mail encontrado'
-            }
+          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+            <MailOpen className="h-10 w-10 mb-3 opacity-40" />
+            <p className="text-sm">
+              {statusFilter === 'pending' 
+                ? 'Nenhum e-mail aguardando atendimento'
+                : statusFilter === 'in_progress'
+                ? 'Nenhum e-mail em andamento'
+                : 'Nenhum e-mail encontrado'
+              }
+            </p>
           </div>
         ) : (
-          <div>
-            {filteredEmails?.map((email) => {
-              const senderName = email.sender?.full_name || 'Desconhecido';
-              const workflowStatus = email.workflow_status as keyof typeof statusConfig;
-              const StatusIcon = statusConfig[workflowStatus]?.icon || Clock;
-              const claimedByName = email.claimed_by_user?.full_name;
-              const isSelected = selectedIds.has(email.id);
+          <TooltipProvider delayDuration={200}>
+            <div className="divide-y divide-border/30">
+              {filteredEmails?.map((email) => {
+                const senderName = email.sender?.full_name || 'Desconhecido';
+                const workflowStatus = email.workflow_status as keyof typeof statusConfig;
+                const isSelected = selectedIds.has(email.id);
+                const isPending = !email.claimed_by;
 
-              return (
-                <div
-                  key={email.id}
-                  className={cn(
-                    'group flex items-start gap-3 px-4 py-3 cursor-pointer transition-all duration-150 border-b border-border/50',
-                    'hover:bg-muted/50',
-                    !email.claimed_by && 'bg-amber-500/5',
-                    isSelected && 'bg-primary/10'
-                  )}
-                >
-                  {/* Checkbox */}
-                  <div 
-                    className="pt-1"
-                    onClick={(e) => e.stopPropagation()}
+                return (
+                  <div
+                    key={email.id}
+                    className={cn(
+                      'group flex items-center gap-2 px-3 py-2 cursor-pointer transition-all duration-100',
+                      'hover:shadow-sm',
+                      isPending 
+                        ? 'bg-amber-500/8 border-l-2 border-amber-500 hover:bg-amber-500/12' 
+                        : 'border-l-2 border-transparent hover:bg-muted/50',
+                      isSelected && 'bg-primary/10 hover:bg-primary/12'
+                    )}
                   >
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={(checked) => handleCheckboxChange(email.id, checked as boolean)}
-                      className="h-4 w-4"
-                    />
-                  </div>
-
-                  {/* Avatar do remetente */}
-                  <Avatar 
-                    className="h-9 w-9 flex-shrink-0"
-                    onClick={() => onSelectEmail(email.id)}
-                  >
-                    <AvatarImage src={email.sender?.avatar_url || undefined} />
-                    <AvatarFallback className="text-xs bg-muted">{getInitials(senderName)}</AvatarFallback>
-                  </Avatar>
-
-                  {/* Conteúdo */}
-                  <div 
-                    className="flex-1 min-w-0"
-                    onClick={() => onSelectEmail(email.id)}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-medium text-sm truncate">{senderName}</p>
-                      <span className="text-xs text-muted-foreground flex-shrink-0">
-                        {email.sent_at && formatEmailDate(email.sent_at)}
-                      </span>
+                    {/* Pending indicator (amber dot) */}
+                    <div className="shrink-0 w-2 flex justify-center">
+                      {isPending && (
+                        <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      )}
                     </div>
-                    <p className="text-sm truncate font-medium mt-0.5">{email.subject}</p>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {email.body?.substring(0, 80)}
-                    </p>
 
-                    {/* Badges e Status */}
-                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                      {/* Status do workflow */}
-                      <Badge variant="outline" className={cn('text-[10px] h-5 gap-1', statusConfig[workflowStatus]?.color)}>
-                        <StatusIcon className="h-3 w-3" />
+                    {/* Checkbox */}
+                    <div 
+                      className="shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) => handleCheckboxChange(email.id, checked as boolean)}
+                        className="h-4 w-4"
+                      />
+                    </div>
+
+                    {/* Star placeholder for alignment */}
+                    <div className="shrink-0 w-5" />
+
+                    {/* Main content - single line */}
+                    <div 
+                      className="flex-1 flex items-center gap-3 min-w-0 overflow-hidden"
+                      onClick={() => onSelectEmail(email.id)}
+                    >
+                      {/* Sender name - fixed width */}
+                      <span className={cn(
+                        'text-sm w-36 shrink-0 truncate',
+                        isPending ? 'font-bold text-foreground' : 'text-muted-foreground'
+                      )}>
+                        {senderName}
+                      </span>
+
+                      {/* Subject and preview */}
+                      <div className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
+                        <span className={cn(
+                          'text-sm truncate shrink-0 max-w-[240px]',
+                          isPending ? 'font-semibold text-foreground' : 'text-foreground/80'
+                        )}>
+                          {email.subject}
+                        </span>
+                        <span className="text-sm text-muted-foreground/60 truncate hidden sm:inline">
+                          — {email.body?.substring(0, 50)}
+                        </span>
+                      </div>
+
+                      {/* Status badge - compact */}
+                      <Badge 
+                        variant="outline" 
+                        className={cn(
+                          'text-[10px] h-5 px-1.5 shrink-0',
+                          statusConfig[workflowStatus]?.color
+                        )}
+                      >
                         {statusConfig[workflowStatus]?.label}
                       </Badge>
-
-                      {/* Quem assumiu */}
-                      {claimedByName && (
-                        <Badge variant="outline" className="text-[10px] h-5 gap-1">
-                          <User className="h-3 w-3" />
-                          {claimedByName}
-                        </Badge>
-                      )}
-
-                      {/* Prioridade */}
-                      {email.priority !== 'normal' && (
-                        <Badge variant="outline" className={cn('text-[10px] h-5', priorityColors[email.priority])}>
-                          {email.priority === 'high' ? 'Alta' : 'Baixa'}
-                        </Badge>
-                      )}
-
-                      {/* Categoria */}
-                      {email.category && email.category !== 'general' && (
-                        <Badge variant="outline" className="text-[10px] h-5">
-                          {email.category === 'layout_request' ? 'Layout' : email.category}
-                        </Badge>
-                      )}
                     </div>
-                  </div>
 
-                  {/* Ação de assumir (apenas para pendentes) */}
-                  {!email.claimed_by && statusFilter === 'pending' && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-shrink-0 gap-1 text-xs h-8"
-                      onClick={(e) => handleClaim(e, email.id)}
-                      disabled={claimEmail.isPending}
-                    >
-                      <Hand className="h-3.5 w-3.5" />
-                      Assumir
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    {/* Hover actions */}
+                    <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {isPending && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                              onClick={(e) => handleClaim(e, email.id)}
+                              disabled={claimEmail.isPending}
+                            >
+                              <Hand className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Assumir</TooltipContent>
+                        </Tooltip>
+                      )}
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              archiveEmail.mutate(email.id);
+                              toast.success('E-mail arquivado');
+                            }}
+                          >
+                            <Archive className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">Arquivar</TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveToTrash.mutate(email.id);
+                              toast.success('E-mail movido para lixeira');
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">Excluir</TooltipContent>
+                      </Tooltip>
+                    </div>
+
+                    {/* Date - always visible */}
+                    <span className="text-xs text-muted-foreground shrink-0 w-12 text-right">
+                      {email.sent_at && formatEmailDate(email.sent_at)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </TooltipProvider>
         )}
       </ScrollArea>
     </div>
