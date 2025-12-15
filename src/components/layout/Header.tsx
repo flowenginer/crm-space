@@ -443,13 +443,19 @@ export function Header({ title, onMenuClick }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3 md:gap-4">
-        {/* CRM Tabs - In place of global search */}
-        {isCRMPage && !isMobile && (
+        {/* CRM Tabs - Desktop and Mobile */}
+        {isCRMPage && (
           <Tabs value={crmTab} onValueChange={handleCrmTabChange} className="w-auto">
-            <TabsList>
-              <TabsTrigger value="leads">Gestão de Leads</TabsTrigger>
-              <TabsTrigger value="deals">Negócios</TabsTrigger>
-              <TabsTrigger value="frete">Frete</TabsTrigger>
+            <TabsList className={isMobile ? "h-9" : ""}>
+              <TabsTrigger value="leads" className={isMobile ? "text-xs px-2 py-1" : ""}>
+                {isMobile ? "Leads" : "Gestão de Leads"}
+              </TabsTrigger>
+              <TabsTrigger value="deals" className={isMobile ? "text-xs px-2 py-1" : ""}>
+                {isMobile ? "Negócios" : "Negócios"}
+              </TabsTrigger>
+              <TabsTrigger value="frete" className={isMobile ? "text-xs px-2 py-1" : ""}>
+                Frete
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         )}
