@@ -1535,6 +1535,40 @@ serve(async (req) => {
               console.error(`[Webhook] Error detecting origin pattern:`, patternError);
             }
           }
+          
+          // Priority 3: Check for recent conversations with referral_data for the same contact
+          // This handles the case where a lead clicks an ad on one channel but messages another
+          if (!conversationReferralSource) {
+            console.log(`[Webhook] 🔍 Checking for recent conversations with referral_data for contact ${contact.id}...`);
+            
+            const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+            
+            const { data: recentConvWithReferral, error: recentError } = await supabase
+              .from("conversations")
+              .select("id, referral_source, referral_data, origin_detection_method, created_at")
+              .eq("contact_id", contact.id)
+              .not("referral_data", "is", null)
+              .gte("created_at", oneHourAgo)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            
+            if (recentError) {
+              console.error(`[Webhook] Error checking recent conversations for referral_data:`, recentError);
+            } else if (recentConvWithReferral && recentConvWithReferral.referral_data) {
+              console.log(`[Webhook] 📣 Found recent conversation with referral_data: ${recentConvWithReferral.id}`);
+              
+              conversationReferralSource = recentConvWithReferral.referral_source || "meta_ads";
+              conversationReferralData = {
+                ...(recentConvWithReferral.referral_data as Record<string, unknown>),
+                propagated_from: recentConvWithReferral.id,
+                propagated_at: new Date().toISOString(),
+              };
+              originDetectionMethod = "propagated_from_related";
+              
+              console.log(`[Webhook] 📣 Propagated referral_data from conversation ${recentConvWithReferral.id} to new conversation`);
+            }
+          }
         }
         
         // For new conversations, assign to owner agent if available
