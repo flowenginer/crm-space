@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Trash2, Package, Truck, CreditCard, FileText, Store, User, AlertTriangle, Calendar as CalendarIcon, UserPlus, Send, Check } from 'lucide-react';
+import { ShippingCalculator } from '@/components/shipping/ShippingCalculator';
 import { useCreateQuote, useUpdateQuote, Quote } from '@/hooks/useQuotes';
 import { useContactsForERP, type ERPContact } from '@/hooks/useContactsForERP';
 import { type Contact } from '@/hooks/useContacts';
@@ -108,6 +109,7 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
   const [deliveryDays, setDeliveryDays] = useState<number | ''>('');
   const [deliveryDayType, setDeliveryDayType] = useState<'business' | 'calendar'>('business');
+  const [selectedShippingServiceId, setSelectedShippingServiceId] = useState<number | undefined>(undefined);
   
   // Payment
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -1031,6 +1033,30 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
                         </p>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Shipping Calculator - Melhor Envio */}
+                  <div className="p-4 bg-muted/30 rounded-lg border">
+                    <ShippingCalculator
+                      destinationPostalCode={''}
+                      products={items.map(item => ({
+                        weight_kg: 0.5,
+                        height_cm: 10,
+                        width_cm: 10,
+                        length_cm: 10,
+                        quantity: item.quantity,
+                        unit_price: item.unit_price,
+                      }))}
+                      onSelectShipping={(option) => {
+                        setShippingMethod(option.method);
+                        setShippingCost(option.cost);
+                        setDeliveryDays(option.deliveryDays);
+                        setDeliveryDayType('business');
+                        setSelectedShippingServiceId(option.serviceId);
+                        setIsFreeShipping(false);
+                      }}
+                      selectedServiceId={selectedShippingServiceId}
+                    />
                   </div>
                 </TabsContent>
 

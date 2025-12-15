@@ -8,6 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { toast } from 'sonner';
 import { Save, ExternalLink, CheckCircle, XCircle, Loader2, Plug, ChevronDown } from 'lucide-react';
 import { RedePaymentSettings } from './RedePaymentSettings';
+import { MelhorEnvioSettings } from './MelhorEnvioSettings';
 
 interface ProviderWithConfig {
   id: string;
@@ -130,6 +131,9 @@ export function IntegrationSettings() {
     <div className="space-y-6">
       {/* Payment Gateway - Rede */}
       <RedePaymentSettings />
+
+      {/* Shipping - Melhor Envio */}
+      <MelhorEnvioSettings />
 
       {/* WhatsApp Section Header */}
       <Card>
