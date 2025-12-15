@@ -449,6 +449,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
             <TabsList>
               <TabsTrigger value="leads">Gestão de Leads</TabsTrigger>
               <TabsTrigger value="deals">Negócios</TabsTrigger>
+              <TabsTrigger value="frete">Frete</TabsTrigger>
             </TabsList>
           </Tabs>
         )}

@@ -89,6 +89,10 @@ const productSchema = z.object({
   fator_conversao_tributavel: z.coerce.number().min(0).optional(),
   peso_bruto: z.coerce.number().min(0).optional(),
   peso_liquido: z.coerce.number().min(0).optional(),
+  // Dimensions for shipping
+  height_cm: z.coerce.number().min(0).optional(),
+  width_cm: z.coerce.number().min(0).optional(),
+  length_cm: z.coerce.number().min(0).optional(),
   // Impostos - ICMS
   regime_tributario: z.string().optional(),
   cst_icms: z.string().max(3).optional(),
@@ -176,6 +180,9 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
       fator_conversao_tributavel: 1,
       peso_bruto: 0,
       peso_liquido: 0,
+      height_cm: 0,
+      width_cm: 0,
+      length_cm: 0,
       regime_tributario: '',
       cst_icms: '',
       csosn: '',
@@ -229,6 +236,9 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
         fator_conversao_tributavel: product.fator_conversao_tributavel ?? 1,
         peso_bruto: product.peso_bruto || 0,
         peso_liquido: product.peso_liquido || 0,
+        height_cm: (product as any).height_cm || 0,
+        width_cm: (product as any).width_cm || 0,
+        length_cm: (product as any).length_cm || 0,
         regime_tributario: product.regime_tributario || '',
         cst_icms: product.cst_icms || '',
         csosn: product.csosn || '',
@@ -278,6 +288,9 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
         fator_conversao_tributavel: 1,
         peso_bruto: 0,
         peso_liquido: 0,
+        height_cm: 0,
+        width_cm: 0,
+        length_cm: 0,
         regime_tributario: '',
         cst_icms: '',
         csosn: '',
@@ -344,6 +357,9 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
       fator_conversao_tributavel: data.fator_conversao_tributavel || undefined,
       peso_bruto: data.peso_bruto || undefined,
       peso_liquido: data.peso_liquido || undefined,
+      height_cm: data.height_cm || undefined,
+      width_cm: data.width_cm || undefined,
+      length_cm: data.length_cm || undefined,
       regime_tributario: data.regime_tributario || undefined,
       cst_icms: data.cst_icms || undefined,
       csosn: data.csosn || undefined,
@@ -1113,6 +1129,49 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
                           <FormLabel>Peso Líquido (kg)</FormLabel>
                           <FormControl>
                             <Input type="number" step="0.0001" min="0" placeholder="0.000" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Dimensões para Frete */}
+                    <FormField
+                      control={form.control}
+                      name="height_cm"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Altura (cm)</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.1" min="0" placeholder="0" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="width_cm"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Largura (cm)</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.1" min="0" placeholder="0" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="length_cm"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Comprimento (cm)</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.1" min="0" placeholder="0" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>

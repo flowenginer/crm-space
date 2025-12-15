@@ -13,6 +13,11 @@ export interface ProductForOrder {
   stock_quantity?: number;
   image_url?: string;
   is_low_stock: boolean;
+  // Shipping dimensions
+  weight_kg?: number;
+  height_cm?: number;
+  width_cm?: number;
+  length_cm?: number;
 }
 
 export function useProductsForOrders(search?: string) {
@@ -24,7 +29,7 @@ export function useProductsForOrders(search?: string) {
       // 1. Fetch simple products (without variations)
       const { data: simpleProducts, error: productsError } = await supabase
         .from('products')
-        .select('id, name, base_price, sku, main_image_url')
+        .select('id, name, base_price, sku, main_image_url, peso_bruto, height_cm, width_cm, length_cm')
         .eq('is_active', true)
         .eq('has_variations', false);
 
@@ -44,6 +49,10 @@ export function useProductsForOrders(search?: string) {
             stock_quantity: undefined,
             image_url: product.main_image_url || undefined,
             is_low_stock: false,
+            weight_kg: product.peso_bruto || undefined,
+            height_cm: product.height_cm || undefined,
+            width_cm: product.width_cm || undefined,
+            length_cm: product.length_cm || undefined,
           });
         }
       }
@@ -60,7 +69,11 @@ export function useProductsForOrders(search?: string) {
           low_stock_threshold,
           image_url,
           is_active,
-          product:products!inner(id, name, base_price, main_image_url, is_active)
+          weight_kg,
+          height_cm,
+          width_cm,
+          length_cm,
+          product:products!inner(id, name, base_price, main_image_url, is_active, peso_bruto, height_cm, width_cm, length_cm)
         `)
         .eq('is_active', true);
 
@@ -69,7 +82,17 @@ export function useProductsForOrders(search?: string) {
       // Add variations to results
       if (variations) {
         for (const variation of variations) {
-          const product = variation.product as { id: string; name: string; base_price: number; main_image_url: string | null; is_active: boolean };
+          const product = variation.product as { 
+            id: string; 
+            name: string; 
+            base_price: number; 
+            main_image_url: string | null; 
+            is_active: boolean;
+            peso_bruto: number | null;
+            height_cm: number | null;
+            width_cm: number | null;
+            length_cm: number | null;
+          };
           
           // Skip if parent product is inactive
           if (!product.is_active) continue;
@@ -90,6 +113,11 @@ export function useProductsForOrders(search?: string) {
             stock_quantity: variation.stock_quantity || 0,
             image_url: variation.image_url || product.main_image_url || undefined,
             is_low_stock: (variation.stock_quantity || 0) <= (variation.low_stock_threshold || 5),
+            // Use variation dimensions if available, fallback to product dimensions
+            weight_kg: variation.weight_kg || product.peso_bruto || undefined,
+            height_cm: variation.height_cm || product.height_cm || undefined,
+            width_cm: variation.width_cm || product.width_cm || undefined,
+            length_cm: variation.length_cm || product.length_cm || undefined,
           });
         }
       }
