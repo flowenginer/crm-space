@@ -15,8 +15,8 @@ export interface Department {
 export function useDepartments() {
   return useQuery({
     queryKey: ['departments'],
-    staleTime: 5 * 60 * 1000, // 5 minutos - departamentos raramente mudam
-    gcTime: 10 * 60 * 1000, // 10 minutos no garbage collector
+    staleTime: 30 * 1000, // 30 segundos - permite atualização mais frequente
+    gcTime: 5 * 60 * 1000, // 5 minutos no garbage collector
     queryFn: async () => {
       const { data, error } = await supabase
         .from('departments')
