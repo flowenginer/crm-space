@@ -43,6 +43,53 @@ Deno.serve(async (req) => {
 
     console.log(`[distribute-lead] Starting distribution for contact: ${contact_id}`);
 
+    // CHECK 1: Verify if there's a recent manual transfer (last 60 seconds) - don't overwrite
+    const { data: conversations } = await supabase
+      .from('conversations')
+      .select('id, assigned_to')
+      .eq('contact_id', contact_id)
+      .in('status', ['open', 'pending']);
+
+    if (conversations && conversations.length > 0) {
+      const conversationIds = conversations.map(c => c.id);
+      
+      // Check for recent transfer events
+      const sixtySecondsAgo = new Date(Date.now() - 60000).toISOString();
+      const { data: recentTransfers } = await supabase
+        .from('conversation_events')
+        .select('id, conversation_id, created_at')
+        .eq('event_type', 'transfer')
+        .in('conversation_id', conversationIds)
+        .gte('created_at', sixtySecondsAgo);
+
+      if (recentTransfers && recentTransfers.length > 0) {
+        console.log(`[distribute-lead] Skipping - recent manual transfer detected (${recentTransfers.length} transfers in last 60s)`);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Skipped - recent manual transfer detected',
+            reason: 'manual_transfer_protection'
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // CHECK 2: If conversation already has an assigned agent, skip distribution
+      const assignedConversation = conversations.find(c => c.assigned_to);
+      if (assignedConversation) {
+        console.log(`[distribute-lead] Skipping - conversation already assigned to ${assignedConversation.assigned_to}`);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Skipped - conversation already assigned',
+            reason: 'already_assigned',
+            assigned_to: assignedConversation.assigned_to
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // 1. Get distribution configuration from company_settings
     const { data: settings, error: settingsError } = await supabase
       .from('company_settings')
