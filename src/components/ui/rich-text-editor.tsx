@@ -39,6 +39,31 @@ function execCommand(command: string, value?: string) {
   document.execCommand(command, false, value);
 }
 
+// Verifica se uma cor de fundo é um destaque real (não branco/neutro)
+function isHighlightColor(color: string): boolean {
+  if (!color) return false;
+  const lowerColor = color.toLowerCase().trim();
+  
+  // Cores neutras que devem ser ignoradas
+  const neutralPatterns = [
+    'white', '#fff', '#ffffff', 'transparent', 'inherit', 'initial', 'unset',
+    'rgb(255, 255, 255)', 'rgb(255,255,255)', 'rgba(255, 255, 255',
+    'rgba(0, 0, 0, 0)', 'rgba(0,0,0,0)'
+  ];
+  
+  if (neutralPatterns.some(p => lowerColor.includes(p))) return false;
+  
+  // Verificar RGB com valores muito claros (quase branco)
+  const rgbMatch = lowerColor.match(/rgb[a]?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgbMatch) {
+    const [, r, g, b] = rgbMatch.map(Number);
+    // Se todos os valores são > 250, é praticamente branco
+    if (r > 250 && g > 250 && b > 250) return false;
+  }
+  
+  return true;
+}
+
 // Sanitiza HTML colado removendo estruturas indesejadas e preservando formatação essencial
 function sanitizeHtml(html: string): string {
   const parser = new DOMParser();
@@ -49,8 +74,8 @@ function sanitizeHtml(html: string): string {
     const styles: string[] = [];
     const computed = el.style;
     
-    // Preservar background-color (marca-texto)
-    if (computed.backgroundColor && computed.backgroundColor !== 'transparent' && computed.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+    // Preservar background-color apenas se for destaque real
+    if (computed.backgroundColor && isHighlightColor(computed.backgroundColor)) {
       styles.push(`background-color: ${computed.backgroundColor}`);
     }
     
@@ -105,7 +130,8 @@ function sanitizeHtml(html: string): string {
         } else if (['p', 'div'].includes(tagName)) {
           const content = cleanElement(element);
           if (content.trim()) {
-            result += `<div>${content}</div>`;
+            // Usar apenas texto + quebra de linha, sem envolver em div
+            result += content + '<br>';
           }
         } else if (['ul', 'ol', 'li'].includes(tagName)) {
           result += `<${tagName}>${cleanElement(element)}</${tagName}>`;
@@ -142,7 +168,14 @@ function sanitizeHtml(html: string): string {
     return result;
   };
   
-  return cleanElement(doc.body);
+  let cleaned = cleanElement(doc.body);
+  
+  // Limpar múltiplas quebras de linha consecutivas
+  cleaned = cleaned.replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>');
+  // Remover quebra no início e fim
+  cleaned = cleaned.replace(/^(<br\s*\/?>)+/gi, '').replace(/(<br\s*\/?>)+$/gi, '');
+  
+  return cleaned;
 }
 
 function ToolbarButton({ 
