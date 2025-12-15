@@ -1297,6 +1297,39 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
                         )}
                       </CommandItem>
                     ))}
+                    <CommandSeparator />
+                    <CommandItem
+                      onSelect={async () => {
+                        const nameToUse = newSegmentName.trim();
+                        if (nameToUse) {
+                          try {
+                            const newSegment = await createSegment.mutateAsync({ name: nameToUse });
+                            await updateContactSegment.mutateAsync({ contactId: contact.id, segmentId: newSegment.id });
+                            setNewSegmentName('');
+                            setSegmentOpen(false);
+                            toast.success('Segmento criado e aplicado!');
+                          } catch (error: any) {
+                            toast.error(error.message || 'Erro ao criar segmento');
+                          }
+                        } else {
+                          const name = prompt('Nome do novo segmento:');
+                          if (name?.trim()) {
+                            try {
+                              const newSegment = await createSegment.mutateAsync({ name: name.trim() });
+                              await updateContactSegment.mutateAsync({ contactId: contact.id, segmentId: newSegment.id });
+                              setSegmentOpen(false);
+                              toast.success('Segmento criado e aplicado!');
+                            } catch (error: any) {
+                              toast.error(error.message || 'Erro ao criar segmento');
+                            }
+                          }
+                        }
+                      }}
+                      className="text-primary font-medium"
+                    >
+                      <Plus size={14} className="mr-2" />
+                      {newSegmentName.trim() ? `Criar "${newSegmentName.trim()}"` : 'Criar novo segmento'}
+                    </CommandItem>
                   </CommandGroup>
                 </CommandList>
               </Command>
