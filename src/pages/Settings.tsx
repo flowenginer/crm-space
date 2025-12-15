@@ -38,6 +38,7 @@ import { UserManagement } from '@/components/settings/UserManagement';
 import { RoleManagement } from '@/components/settings/RoleManagement';
 import { DepartmentManagement } from '@/components/settings/DepartmentManagement';
 import { TagManagement } from '@/components/settings/TagManagement';
+import { SegmentManagement } from '@/components/settings/SegmentManagement';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
 import { MetaAdsSettings } from '@/components/settings/MetaAdsSettings';
 import { ToolsSettings } from '@/components/settings/ToolsSettings';
@@ -53,7 +54,7 @@ import { SalesGoalsManagement } from '@/components/settings/SalesGoalsManagement
 import { MenuConfiguration } from '@/components/settings/MenuConfiguration';
 import { CompanySettings } from '@/components/settings/CompanySettings';
 import { SharedBoxManagement } from '@/components/settings/SharedBoxManagement';
-import { Facebook, UserCheck, Unlock, Store, Package } from 'lucide-react';
+import { Facebook, UserCheck, Unlock, Store, Package, Layers } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
@@ -118,6 +119,7 @@ const TAB_METADATA: Record<string, TabMetadata> = {
   'channels': { icon: MessageSquare, permission: ['settings', 'channels'] },
   'fields': { icon: Database, permission: ['settings', 'fields'] },
   'tags': { icon: Tag, permission: ['settings', 'tags'] },
+  'segments': { icon: Layers, permission: ['settings', 'update'] },
   'sales-goals': { icon: Target, permission: ['settings', 'update'] },
   'owner-agent': { icon: UserCheck, permission: ['settings', 'update'] },
   'close-reasons': { icon: X, permission: ['settings', 'close_reasons'] },
@@ -605,6 +607,13 @@ export default function Settings() {
         {isTabAvailable('tags') && (
           <TabsContent value="tags" className="space-y-6">
             <TagManagement />
+          </TabsContent>
+        )}
+
+        {/* TAB: Segments */}
+        {isTabAvailable('segments') && (
+          <TabsContent value="segments" className="space-y-6">
+            <SegmentManagement />
           </TabsContent>
         )}
 

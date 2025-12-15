@@ -627,6 +627,7 @@ export type Database = {
           person_type: string | null
           phone: string
           referral_data: Json | null
+          segment_id: string | null
           state: string | null
           street: string | null
           updated_at: string
@@ -665,6 +666,7 @@ export type Database = {
           person_type?: string | null
           phone: string
           referral_data?: Json | null
+          segment_id?: string | null
           state?: string | null
           street?: string | null
           updated_at?: string
@@ -703,6 +705,7 @@ export type Database = {
           person_type?: string | null
           phone?: string
           referral_data?: Json | null
+          segment_id?: string | null
           state?: string | null
           street?: string | null
           updated_at?: string
@@ -721,6 +724,13 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "segments"
             referencedColumns: ["id"]
           },
         ]
@@ -5320,6 +5330,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      segments: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       shared_conversations: {
         Row: {
