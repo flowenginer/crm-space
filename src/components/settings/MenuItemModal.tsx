@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -17,14 +18,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { IconSelector } from './IconSelector';
 import { MenuItem, MenuItemInput } from '@/hooks/useMenuConfig';
-import { Loader2, ChevronRight, ChevronDown, Check, Circle, icons } from 'lucide-react';
+import { usePermissionDefinitions } from '@/hooks/useRoles';
+import { routeToPermissionKey, CUSTOM_MENU_CATEGORY } from '@/hooks/useMenuPermissionSync';
+import { Loader2, ChevronRight, ChevronDown, Check, Circle, icons, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Dynamic icon component
@@ -165,8 +163,8 @@ function ParentMenuTreeSelect({
   );
 }
 
-// Permissões disponíveis
-const AVAILABLE_PERMISSIONS = [
+// Permissões estáticas de fallback (caso o banco não esteja disponível)
+const FALLBACK_PERMISSIONS = [
   { value: '', label: 'Nenhuma (visível para todos)' },
   { value: 'dashboard.view', label: 'Dashboard' },
   { value: 'conversations.view', label: 'Conversas' },
@@ -174,17 +172,19 @@ const AVAILABLE_PERMISSIONS = [
   { value: 'deals.view', label: 'CRM / Negócios' },
   { value: 'templates.view', label: 'Templates / Mensagens' },
   { value: 'reports.view', label: 'Relatórios' },
+  { value: 'internal_email.view', label: 'E-mail Interno' },
+  { value: 'internal_chat.view', label: 'Chat Interno' },
   { value: 'marketing.view', label: 'Marketing' },
-  { value: 'marketing.view_campaigns', label: 'Campanhas' },
   { value: 'financial.view', label: 'Financeiro' },
   { value: 'orders.view', label: 'Pedidos' },
+  { value: 'quotes.view', label: 'Orçamentos' },
+  { value: 'products.view', label: 'Produtos' },
   { value: 'settings.view', label: 'Configurações' },
   { value: 'automations.view', label: 'Automações' },
   { value: 'channels.view', label: 'Canais' },
   { value: 'webhooks.view', label: 'Webhooks' },
-  { value: 'live.view', label: 'Ao Vivo' },
+  { value: 'live.view', label: 'Monitor Ao Vivo' },
   { value: 'schedules.view', label: 'Agendamentos' },
-  { value: 'conversations.requests', label: 'Requisições' },
 ];
 
 // Badges disponíveis
@@ -196,10 +196,10 @@ const AVAILABLE_BADGES = [
   { value: 'liveBadge', label: 'Indicador ao Vivo (bolinha verde)' },
 ];
 
-interface MenuItemModalProps {
+export interface MenuItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: MenuItemInput) => Promise<void>;
+  onSave: (data: MenuItemInput & { createPermission?: boolean }) => Promise<void>;
   editingItem?: MenuItem | null;
   parentId?: string | null;
   isSubmitting?: boolean;
@@ -215,6 +215,8 @@ export function MenuItemModal({
   isSubmitting,
   allMenuItems = [],
 }: MenuItemModalProps) {
+  const { data: dbPermissions } = usePermissionDefinitions();
+  const [createPermission, setCreatePermission] = useState(true);
   const [form, setForm] = useState<MenuItemInput>({
     title: '',
     href: '',
@@ -225,6 +227,44 @@ export function MenuItemModal({
     is_active: true,
     show_badge: null,
   });
+
+  // Monta lista de permissões dinamicamente do banco
+  const availablePermissions = useMemo(() => {
+    if (!dbPermissions || dbPermissions.length === 0) {
+      return FALLBACK_PERMISSIONS;
+    }
+
+    const permissions = [{ value: '', label: 'Nenhuma (visível para todos)' }];
+    
+    // Agrupar por categoria para melhor organização
+    const byCategory = new Map<string, Array<{ value: string; label: string }>>();
+    
+    for (const perm of dbPermissions) {
+      const category = perm.category || 'other';
+      if (!byCategory.has(category)) {
+        byCategory.set(category, []);
+      }
+      byCategory.get(category)!.push({
+        value: perm.permission_key,
+        label: perm.permission_name,
+      });
+    }
+
+    // Adicionar permissões ordenadas
+    for (const [_, perms] of byCategory) {
+      permissions.push(...perms);
+    }
+
+    return permissions;
+  }, [dbPermissions]);
+
+  // Verifica se a rota já tem uma permissão associada
+  const suggestedPermission = useMemo(() => {
+    if (!form.href) return null;
+    const permKey = routeToPermissionKey(form.href);
+    const exists = dbPermissions?.some(p => p.permission_key === permKey);
+    return exists ? permKey : null;
+  }, [form.href, dbPermissions]);
 
   useEffect(() => {
     if (editingItem) {
@@ -238,6 +278,7 @@ export function MenuItemModal({
         is_active: editingItem.is_active,
         show_badge: editingItem.show_badge,
       });
+      setCreatePermission(false); // Não criar nova permissão ao editar
     } else {
       setForm({
         title: '',
@@ -249,6 +290,7 @@ export function MenuItemModal({
         is_active: true,
         show_badge: null,
       });
+      setCreatePermission(true); // Por padrão, criar permissão ao criar novo menu
     }
   }, [editingItem, parentId, isOpen]);
 
@@ -256,11 +298,17 @@ export function MenuItemModal({
     e.preventDefault();
     if (!form.title) return;
 
+    // Se vai criar permissão, define a permissão automaticamente
+    const finalPermission = createPermission && form.href && !editingItem
+      ? routeToPermissionKey(form.href)
+      : form.permission;
+
     await onSave({
       ...form,
       href: form.href || null,
-      permission: form.permission || null,
+      permission: finalPermission || null,
       show_badge: form.show_badge || null,
+      createPermission: createPermission && !!form.href && !editingItem,
     });
   };
 
@@ -356,24 +404,52 @@ export function MenuItemModal({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="permission">Permissão necessária</Label>
-            <Select
-              value={form.permission || ''}
-              onValueChange={(value) => setForm({ ...form, permission: value || null })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione uma permissão" />
-              </SelectTrigger>
-              <SelectContent>
-                {AVAILABLE_PERMISSIONS.map((perm) => (
-                  <SelectItem key={perm.value || 'none'} value={perm.value || 'none'}>
-                    {perm.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Checkbox para criar permissão automaticamente */}
+          {!editingItem && form.href && (
+            <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg border">
+              <Checkbox
+                id="createPermission"
+                checked={createPermission}
+                onCheckedChange={(checked) => setCreatePermission(checked === true)}
+              />
+              <div className="flex-1">
+                <Label htmlFor="createPermission" className="text-sm font-medium cursor-pointer">
+                  Criar permissão automaticamente
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Cria a permissão "{routeToPermissionKey(form.href)}" para controlar acesso a este menu
+                </p>
+              </div>
+              <Plus className="h-4 w-4 text-primary" />
+            </div>
+          )}
+
+          {/* Seletor de permissão existente */}
+          {(!createPermission || editingItem || !form.href) && (
+            <div className="space-y-2">
+              <Label htmlFor="permission">Permissão necessária</Label>
+              <Select
+                value={form.permission || ''}
+                onValueChange={(value) => setForm({ ...form, permission: value === 'none' ? null : value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma permissão" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {availablePermissions.map((perm) => (
+                    <SelectItem key={perm.value || 'none'} value={perm.value || 'none'}>
+                      {perm.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {suggestedPermission && !form.permission && (
+                <p className="text-xs text-muted-foreground">
+                  Sugestão: existe a permissão "{suggestedPermission}" que parece corresponder a esta rota
+                </p>
+              )}
+            </div>
+          )}
 
           {!isSubmenu && (
             <div className="space-y-2">

@@ -9,6 +9,7 @@ import {
   MenuItemInput 
 } from '@/hooks/useMenuConfig';
 import { MenuItemModal } from './MenuItemModal';
+import { useCreateMenuPermission } from '@/hooks/useMenuPermissionSync';
 import { DynamicIcon } from './IconSelector';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -445,14 +446,31 @@ export function MenuConfiguration() {
     });
   };
 
-  const handleSave = async (data: MenuItemInput) => {
+  const createMenuPermission = useCreateMenuPermission();
+
+  const handleSave = async (data: MenuItemInput & { createPermission?: boolean }) => {
+    const { createPermission: shouldCreatePermission, ...menuData } = data;
+    
+    // Se deve criar permissão automaticamente
+    if (shouldCreatePermission && menuData.href && !editingItem) {
+      try {
+        await createMenuPermission.mutateAsync({
+          menuTitle: menuData.title,
+          route: menuData.href,
+        });
+      } catch (error) {
+        console.error('Erro ao criar permissão:', error);
+        // Continua mesmo se falhar a criação da permissão
+      }
+    }
+
     if (editingItem) {
       await updateMenuItem.mutateAsync({
         id: editingItem.id,
-        ...data,
+        ...menuData,
       });
     } else {
-      await createMenuItem.mutateAsync(data);
+      await createMenuItem.mutateAsync(menuData);
     }
     setIsModalOpen(false);
     setEditingItem(null);
