@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import Editor from 'react-simple-wysiwyg';
 import { 
   Bold, 
@@ -214,7 +214,7 @@ export function RichTextEditor({
   className 
 }: RichTextEditorProps) {
   const [, setForceUpdate] = useState(0);
-  const [savedSelection, setSavedSelection] = useState<Range | null>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
 
   const handleChange = (e: { target: { value: string } }) => {
     onChange(e.target.value);
@@ -225,29 +225,26 @@ export function RichTextEditor({
     setForceUpdate(prev => prev + 1);
   };
 
-  // Salvar a seleção atual antes do dropdown abrir
+  // Salvar a seleção atual (chamado no onMouseDown do trigger)
   const saveSelection = () => {
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
-      setSavedSelection(selection.getRangeAt(0).cloneRange());
+      savedSelectionRef.current = selection.getRangeAt(0).cloneRange();
     }
   };
 
-  // Restaurar a seleção salva
-  const restoreSelection = () => {
-    if (savedSelection) {
+  // Restaurar a seleção salva e aplicar highlight
+  const handleHighlight = (color: string) => {
+    // Restaurar seleção antes de aplicar
+    if (savedSelectionRef.current) {
       const selection = window.getSelection();
       if (selection) {
         selection.removeAllRanges();
-        selection.addRange(savedSelection);
+        selection.addRange(savedSelectionRef.current);
       }
     }
-  };
-
-  const handleHighlight = (color: string) => {
-    restoreSelection(); // Restaurar seleção antes de aplicar
     execCommand('hiliteColor', color);
-    setSavedSelection(null);
+    savedSelectionRef.current = null;
     setForceUpdate(prev => prev + 1);
   };
 
@@ -303,7 +300,7 @@ export function RichTextEditor({
         <div className="w-px h-5 bg-border mx-1" />
 
         {/* Highlight Dropdown */}
-        <DropdownMenu onOpenChange={(open) => { if (open) saveSelection(); }}>
+        <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
@@ -311,6 +308,7 @@ export function RichTextEditor({
               size="sm"
               className="h-8 w-8 p-0"
               title="Marca-texto"
+              onMouseDown={saveSelection}
             >
               <Highlighter className="h-4 w-4" />
             </Button>
