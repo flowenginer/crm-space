@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -500,11 +500,11 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
                 {/* Mensagem */}
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground uppercase tracking-wide">Mensagem</Label>
-                  <Textarea
+                  <RichTextEditor
                     value={body}
-                    onChange={(e) => setBody(e.target.value)}
+                    onChange={setBody}
                     placeholder="Digite sua mensagem aqui..."
-                    className="min-h-[160px] bg-background resize-none"
+                    minHeight="160px"
                   />
                 </div>
 
