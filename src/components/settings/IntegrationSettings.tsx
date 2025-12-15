@@ -90,79 +90,58 @@ export function IntegrationSettings() {
   };
 
   return (
-    <div className="space-y-8">
-      {/* Pagamentos Section */}
-      <section>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-          Pagamentos
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          <IntegrationCard
-            icon={CreditCard}
-            name="Rede"
-            description="Gateway para cartão e PIX"
-            isConfigured={!!paymentConfig?.is_configured}
-            color="#FF6600"
-            onClick={() => setOpenModal('rede')}
-          />
-        </div>
-      </section>
+    <div className="space-y-4">
+      {/* Single unified grid */}
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
+        {/* Pagamentos */}
+        <IntegrationCard
+          icon={CreditCard}
+          name="Rede"
+          description="Cartão e PIX"
+          category="Pagamento"
+          isConfigured={!!paymentConfig?.is_configured}
+          color="#FF6600"
+          onClick={() => setOpenModal('rede')}
+        />
 
-      {/* Frete Section */}
-      <section>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-          Frete
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          <IntegrationCard
-            icon={Truck}
-            name="Melhor Envio"
-            description="Cotação com múltiplas transportadoras"
-            isConfigured={false}
-            color="#00a650"
-            onClick={() => setOpenModal('melhor-envio')}
-          />
-        </div>
-      </section>
+        {/* Frete */}
+        <IntegrationCard
+          icon={Truck}
+          name="Melhor Envio"
+          description="Múltiplas transportadoras"
+          category="Frete"
+          isConfigured={false}
+          color="#00a650"
+          onClick={() => setOpenModal('melhor-envio')}
+        />
 
-      {/* Marketing Section */}
-      <section>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-          Marketing
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          <IntegrationCard
-            icon={Facebook}
-            name="Meta Ads"
-            description={metaAccounts.length > 0 
-              ? `${metaAccounts.length} conta(s) conectada(s)` 
-              : "Sincronize suas campanhas"}
-            isConfigured={metaAccounts.length > 0}
-            color="#1877F2"
-            onClick={() => setOpenModal('meta-ads')}
-          />
-        </div>
-      </section>
+        {/* Marketing */}
+        <IntegrationCard
+          icon={Facebook}
+          name="Meta Ads"
+          description={metaAccounts.length > 0 
+            ? `${metaAccounts.length} conta(s)` 
+            : "Campanhas"}
+          category="Marketing"
+          isConfigured={metaAccounts.length > 0}
+          color="#1877F2"
+          onClick={() => setOpenModal('meta-ads')}
+        />
 
-      {/* WhatsApp Section */}
-      <section>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-          WhatsApp
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {providers?.map((provider) => (
-            <IntegrationCard
-              key={provider.id}
-              icon={MessageCircle}
-              name={provider.name}
-              description={`Provedor ${provider.code.toUpperCase()}`}
-              isConfigured={!!provider.is_configured}
-              color={getProviderColor(provider.code)}
-              onClick={() => handleOpenProvider(provider)}
-            />
-          ))}
-        </div>
-      </section>
+        {/* WhatsApp Providers */}
+        {providers?.map((provider) => (
+          <IntegrationCard
+            key={provider.id}
+            icon={MessageCircle}
+            name={provider.name}
+            description={provider.code.toUpperCase()}
+            category="WhatsApp"
+            isConfigured={!!provider.is_configured}
+            color={getProviderColor(provider.code)}
+            onClick={() => handleOpenProvider(provider)}
+          />
+        ))}
+      </div>
 
       {/* Modals */}
       <IntegrationModal

@@ -1,5 +1,6 @@
-import { LucideIcon } from 'lucide-react';
+import { LucideIcon, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 interface IntegrationCardProps {
   icon: LucideIcon;
@@ -7,6 +8,7 @@ interface IntegrationCardProps {
   description: string;
   isConfigured: boolean;
   color?: string;
+  category?: string;
   onClick: () => void;
 }
 
@@ -16,53 +18,48 @@ export function IntegrationCard({
   description,
   isConfigured,
   color = 'hsl(var(--primary))',
+  category,
   onClick,
 }: IntegrationCardProps) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        'group relative flex flex-col items-center justify-center p-6 rounded-xl border bg-card text-card-foreground',
-        'transition-all duration-200 hover:shadow-lg hover:border-primary/30 hover:-translate-y-0.5',
-        'focus:outline-none focus:ring-2 focus:ring-primary/20',
-        isConfigured && 'border-green-500/30'
+        "relative flex flex-col items-center p-3 rounded-lg border bg-card",
+        "hover:shadow-md hover:border-primary/30 transition-all duration-200",
+        "text-center group cursor-pointer min-h-[100px]"
       )}
     >
       {/* Status indicator */}
-      <div
-        className={cn(
-          'absolute top-3 right-3 w-2 h-2 rounded-full',
-          isConfigured ? 'bg-green-500' : 'bg-muted-foreground/30'
-        )}
-      />
+      {isConfigured && (
+        <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+          <Check className="h-2.5 w-2.5 text-white" />
+        </div>
+      )}
+
+      {/* Category badge */}
+      {category && (
+        <Badge 
+          variant="secondary" 
+          className="absolute top-2 left-2 text-[10px] px-1.5 py-0 h-4 font-normal opacity-70"
+        >
+          {category}
+        </Badge>
+      )}
 
       {/* Icon */}
       <div
-        className="w-14 h-14 rounded-xl flex items-center justify-center mb-3 transition-transform group-hover:scale-110"
+        className="w-10 h-10 rounded-lg flex items-center justify-center mb-2 mt-3"
         style={{ backgroundColor: `${color}15` }}
       >
-        <Icon className="w-7 h-7" style={{ color }} />
+        <Icon className="h-5 w-5" style={{ color }} />
       </div>
 
       {/* Name */}
-      <h3 className="font-semibold text-sm mb-1">{name}</h3>
+      <h4 className="font-medium text-sm text-foreground leading-tight">{name}</h4>
 
       {/* Description */}
-      <p className="text-xs text-muted-foreground text-center line-clamp-2">
-        {description}
-      </p>
-
-      {/* Status badge */}
-      <span
-        className={cn(
-          'mt-3 px-2.5 py-1 rounded-full text-[10px] font-medium uppercase tracking-wide',
-          isConfigured
-            ? 'bg-green-500/10 text-green-600'
-            : 'bg-muted text-muted-foreground'
-        )}
-      >
-        {isConfigured ? 'Configurado' : 'Não configurado'}
-      </span>
+      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{description}</p>
     </button>
   );
 }
