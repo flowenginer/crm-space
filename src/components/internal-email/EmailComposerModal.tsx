@@ -117,23 +117,37 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
       setSubject(subjectPrefix + replyEmail.subject);
 
       // NÃO herdar caixa compartilhada em respostas
-      // A resposta deve ir para pessoas, não para caixa compartilhada
       setSelectedSharedBox(null);
 
-      if (replyTo.type === 'reply' && replyEmail.sender) {
-        // Não responder para si mesmo
-        if (replyEmail.sender.id !== currentUserId) {
+      if (replyTo.type === 'reply') {
+        // CORREÇÃO: Se eu sou o remetente original, responder aos destinatários
+        if (replyEmail.sender?.id === currentUserId) {
+          // Eu enviei esse e-mail, então respondo para os destinatários originais
+          const originalRecipients: Recipient[] = [];
+          replyEmail.recipients?.filter(r => r.recipient_type === 'to').forEach(r => {
+            if (r.user && r.user.id !== currentUserId) {
+              originalRecipients.push({
+                id: r.user.id,
+                full_name: r.user.full_name,
+                avatar_url: r.user.avatar_url
+              });
+            }
+          });
+          setRecipientsTo(originalRecipients);
+          console.log('[EmailComposer] Respondendo aos destinatários originais:', originalRecipients);
+        } else if (replyEmail.sender) {
+          // Responder ao remetente
           setRecipientsTo([{
             id: replyEmail.sender.id,
             full_name: replyEmail.sender.full_name,
             avatar_url: replyEmail.sender.avatar_url
           }]);
-        } else {
-          console.log('[EmailComposer] Ignorando remetente (é o próprio usuário)');
+          console.log('[EmailComposer] Respondendo ao remetente');
         }
       } else if (replyTo.type === 'replyAll') {
-        // Adiciona o remetente (se não for o próprio usuário)
         const allRecipients: Recipient[] = [];
+        
+        // Adicionar remetente (se não for eu mesmo)
         if (replyEmail.sender && replyEmail.sender.id !== currentUserId) {
           allRecipients.push({
             id: replyEmail.sender.id,
@@ -141,9 +155,11 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
             avatar_url: replyEmail.sender.avatar_url
           });
         }
-        // Adiciona outros destinatários 'to' (exceto o usuário atual)
+        
+        // Adicionar outros destinatários 'to' (exceto eu)
+        // CORREÇÃO: usar r.user.id em vez de r.user_id na verificação de duplicatas
         replyEmail.recipients?.filter(r => r.recipient_type === 'to').forEach(r => {
-          if (r.user && r.user.id !== currentUserId && !allRecipients.find(ar => ar.id === r.user_id)) {
+          if (r.user && r.user.id !== currentUserId && !allRecipients.find(ar => ar.id === r.user.id)) {
             allRecipients.push({
               id: r.user.id,
               full_name: r.user.full_name,
@@ -151,7 +167,9 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
             });
           }
         });
+        
         setRecipientsTo(allRecipients);
+        console.log('[EmailComposer] Reply All - destinatários:', allRecipients);
 
         // Adiciona cc (exceto o usuário atual)
         const ccRecipients: Recipient[] = [];
@@ -169,6 +187,7 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
           setShowCc(true);
         }
       }
+      // Forward não preenche destinatários
 
       // Herda prioridade e categoria
       setPriority(replyEmail.priority);
