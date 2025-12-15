@@ -395,6 +395,7 @@ export type Database = {
           payment_gateway_config: Json | null
           phone: string | null
           response_alert_minutes: number | null
+          shipping_config: Json | null
           sla_first_response_minutes: number | null
           sla_resolution_minutes: number | null
           state: string | null
@@ -428,6 +429,7 @@ export type Database = {
           payment_gateway_config?: Json | null
           phone?: string | null
           response_alert_minutes?: number | null
+          shipping_config?: Json | null
           sla_first_response_minutes?: number | null
           sla_resolution_minutes?: number | null
           state?: string | null
@@ -461,6 +463,7 @@ export type Database = {
           payment_gateway_config?: Json | null
           phone?: string | null
           response_alert_minutes?: number | null
+          shipping_config?: Json | null
           sla_first_response_minutes?: number | null
           sla_resolution_minutes?: number | null
           state?: string | null

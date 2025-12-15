@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,10 +7,10 @@ const corsHeaders = {
 };
 
 interface ShippingProduct {
-  weight: number; // kg
-  height: number; // cm
-  width: number;  // cm
-  length: number; // cm
+  weight: number;
+  height: number;
+  width: number;
+  length: number;
   quantity: number;
   insurance_value?: number;
 }
@@ -18,7 +19,9 @@ interface ShippingRequest {
   from_postal_code: string;
   to_postal_code: string;
   products: ShippingProduct[];
-  services?: string; // comma separated service IDs
+  services?: string;
+  _test_token?: string;
+  _test_environment?: 'sandbox' | 'production';
 }
 
 interface ShippingOption {
@@ -59,80 +62,80 @@ interface ShippingOption {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const token = Deno.env.get('MELHOR_ENVIO_TOKEN');
-    
-    if (!token) {
-      console.error('MELHOR_ENVIO_TOKEN not configured');
-      return new Response(
-        JSON.stringify({ 
-          error: 'Token do Melhor Envio não configurado',
-          code: 'TOKEN_NOT_CONFIGURED'
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
     const body: ShippingRequest = await req.json();
     console.log('Shipping request:', JSON.stringify(body, null, 2));
 
-    const { from_postal_code, to_postal_code, products, services } = body;
+    const { from_postal_code, to_postal_code, products, services, _test_token, _test_environment } = body;
+
+    // Get token - priority: test token > database > env variable
+    let token = _test_token;
+    let environment: 'sandbox' | 'production' = _test_environment || 'production';
+
+    if (!token) {
+      // Try to get from database
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const { data: settings } = await supabase
+        .from('company_settings')
+        .select('shipping_config')
+        .maybeSingle();
+
+      if (settings?.shipping_config) {
+        const config = settings.shipping_config as { token?: string; environment?: 'sandbox' | 'production' };
+        token = config.token;
+        environment = config.environment || 'production';
+      }
+    }
+
+    // Fallback to env variable
+    if (!token) {
+      token = Deno.env.get('MELHOR_ENVIO_TOKEN');
+    }
+    
+    if (!token) {
+      console.error('Melhor Envio token not configured');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Token do Melhor Envio não configurado. Configure na página de Integrações.',
+          code: 'TOKEN_NOT_CONFIGURED'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }}
+      );
+    }
 
     // Validate required fields
     if (!from_postal_code || !to_postal_code) {
       return new Response(
-        JSON.stringify({ 
-          error: 'CEP de origem e destino são obrigatórios',
-          code: 'MISSING_POSTAL_CODES'
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        JSON.stringify({ error: 'CEP de origem e destino são obrigatórios', code: 'MISSING_POSTAL_CODES' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }}
       );
     }
 
     if (!products || products.length === 0) {
       return new Response(
-        JSON.stringify({ 
-          error: 'Pelo menos um produto é obrigatório',
-          code: 'MISSING_PRODUCTS'
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        JSON.stringify({ error: 'Pelo menos um produto é obrigatório', code: 'MISSING_PRODUCTS' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }}
       );
     }
 
-    // Clean postal codes (remove non-numeric characters)
     const cleanFromPostal = from_postal_code.replace(/\D/g, '');
     const cleanToPostal = to_postal_code.replace(/\D/g, '');
 
-    // Validate CEP format
     if (cleanFromPostal.length !== 8 || cleanToPostal.length !== 8) {
       return new Response(
-        JSON.stringify({ 
-          error: 'CEP inválido. O CEP deve ter 8 dígitos.',
-          code: 'INVALID_POSTAL_CODE'
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        JSON.stringify({ error: 'CEP inválido. O CEP deve ter 8 dígitos.', code: 'INVALID_POSTAL_CODE' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }}
       );
     }
 
-    // Calculate total dimensions for package
-    // Using cubagem method for multiple items
+    // Calculate package dimensions
     let totalWeight = 0;
     let totalInsuranceValue = 0;
     let maxHeight = 0;
@@ -141,29 +144,21 @@ serve(async (req) => {
 
     for (const product of products) {
       const qty = product.quantity || 1;
-      totalWeight += (product.weight || 0.3) * qty; // Default 300g per item
+      totalWeight += (product.weight || 0.3) * qty;
       totalInsuranceValue += (product.insurance_value || 0) * qty;
-      
-      // For dimensions, we stack items
       maxHeight = Math.max(maxHeight, product.height || 10);
       maxWidth = Math.max(maxWidth, product.width || 10);
       totalLength += (product.length || 10) * qty;
     }
 
-    // Ensure minimum dimensions (Melhor Envio requirements)
     const finalHeight = Math.max(maxHeight, 2);
     const finalWidth = Math.max(maxWidth, 11);
     const finalLength = Math.max(totalLength, 16);
     const finalWeight = Math.max(totalWeight, 0.3);
 
-    // Prepare request body for Melhor Envio API
     const apiBody: Record<string, unknown> = {
-      from: {
-        postal_code: cleanFromPostal,
-      },
-      to: {
-        postal_code: cleanToPostal,
-      },
+      from: { postal_code: cleanFromPostal },
+      to: { postal_code: cleanToPostal },
       products: [{
         id: 'package',
         width: Math.round(finalWidth),
@@ -175,15 +170,18 @@ serve(async (req) => {
       }],
     };
 
-    // Add services filter if specified
     if (services) {
       apiBody.services = services;
     }
 
-    console.log('Calling Melhor Envio API with:', JSON.stringify(apiBody, null, 2));
+    // Use correct API URL based on environment
+    const apiUrl = environment === 'sandbox'
+      ? 'https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate'
+      : 'https://melhorenvio.com.br/api/v2/me/shipment/calculate';
 
-    // Call Melhor Envio API
-    const response = await fetch('https://melhorenvio.com.br/api/v2/me/shipment/calculate', {
+    console.log(`Calling Melhor Envio API (${environment}):`, JSON.stringify(apiBody, null, 2));
+
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -212,21 +210,13 @@ serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ 
-          error: errorMessage,
-          code: 'API_ERROR',
-          status: response.status
-        }),
-        { 
-          status: response.status, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        JSON.stringify({ error: errorMessage, code: 'API_ERROR', status: response.status }),
+        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' }}
       );
     }
 
     const data: ShippingOption[] = JSON.parse(responseText);
 
-    // Filter out options with errors and format response
     const validOptions = data
       .filter(option => !option.error)
       .map(option => ({
@@ -243,14 +233,9 @@ serve(async (req) => {
       }))
       .sort((a, b) => a.price - b.price);
 
-    // Also include options with errors for debugging
     const errorOptions = data
       .filter(option => option.error)
-      .map(option => ({
-        id: option.id,
-        name: option.name,
-        error: option.error,
-      }));
+      .map(option => ({ id: option.id, name: option.name, error: option.error }));
 
     console.log(`Found ${validOptions.length} valid options, ${errorOptions.length} with errors`);
 
@@ -267,23 +252,15 @@ serve(async (req) => {
           insurance_value: totalInsuranceValue,
         },
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }}
     );
 
   } catch (error: unknown) {
     console.error('Error calculating shipping:', error);
     const errorMessage = error instanceof Error ? error.message : 'Erro interno ao calcular frete';
     return new Response(
-      JSON.stringify({ 
-        error: errorMessage,
-        code: 'INTERNAL_ERROR'
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ error: errorMessage, code: 'INTERNAL_ERROR' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }}
     );
   }
 });
