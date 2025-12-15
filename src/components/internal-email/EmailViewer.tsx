@@ -49,7 +49,8 @@ import {
   useClaimEmail,
   useReleaseEmail,
   useCompleteEmail,
-  useEmailActivityLog
+  useEmailActivityLog,
+  useUserSharedBoxes
 } from '@/hooks/useSharedEmailBoxes';
 import { EmailAttachmentPreview } from './EmailAttachmentPreview';
 import { toast } from 'sonner';
@@ -93,6 +94,7 @@ const actionLabels: Record<string, string> = {
 export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
   const { data: email, isLoading } = useInternalEmail(emailId);
   const { data: activityLog } = useEmailActivityLog(emailId);
+  const { data: userSharedBoxes } = useUserSharedBoxes();
   const markAsRead = useMarkEmailAsRead();
   const toggleStar = useToggleEmailStar();
   const moveToTrash = useMoveEmailToTrash();
@@ -189,6 +191,8 @@ export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
   const recipientsCc = email.recipients?.filter(r => r.recipient_type === 'cc') || [];
   const isStarred = email.recipient_data?.is_starred;
   const isSharedEmail = !!email.shared_box_id;
+  const isMemberOfSharedBox = email.shared_box_id && 
+    userSharedBoxes?.some(box => box.id === email.shared_box_id);
   const workflowStatus = (email.workflow_status || 'pending') as keyof typeof statusConfig;
   const StatusIcon = statusConfig[workflowStatus]?.icon || Clock;
   const claimedByName = email.claimed_by_user?.full_name;
@@ -212,8 +216,8 @@ export function EmailViewer({ emailId, onBack, onReply }: EmailViewerProps) {
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          {/* Ações de caixa compartilhada */}
-          {isSharedEmail && (
+          {/* Ações de caixa compartilhada - só mostra para membros da caixa */}
+          {isSharedEmail && isMemberOfSharedBox && (
             <>
               {!email.claimed_by && workflowStatus === 'pending' && (
                 <Button variant="outline" size="sm" onClick={handleClaim} className="gap-1">
