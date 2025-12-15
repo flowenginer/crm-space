@@ -1,5 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { User } from '@supabase/supabase-js';
+
+// Helper para obter usuário de forma robusta (getSession primeiro, depois getUser como fallback)
+async function getAuthenticatedUser(): Promise<User | null> {
+  // Primeiro tenta getSession (lê do localStorage, mais confiável e rápido)
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (sessionData.session?.user) {
+    return sessionData.session.user;
+  }
+  
+  // Fallback para getUser (verifica com servidor)
+  const { data: userData } = await supabase.auth.getUser();
+  if (userData.user) {
+    return userData.user;
+  }
+  
+  return null;
+}
 
 // Types
 export interface EmailSharedBox {
@@ -290,8 +308,9 @@ export function useClaimEmail() {
 
   return useMutation({
     mutationFn: async (emailId: string) => {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error('Usuário não autenticado');
+      // Usar helper de autenticação robusta
+      const user = await getAuthenticatedUser();
+      if (!user) throw new Error('Sessão expirada. Por favor, recarregue a página.');
 
       // Verificar se já foi assumido
       const { data: email } = await supabase
@@ -308,7 +327,7 @@ export function useClaimEmail() {
       const { error } = await supabase
         .from('internal_emails')
         .update({
-          claimed_by: userData.user.id,
+          claimed_by: user.id,
           claimed_at: new Date().toISOString(),
           workflow_status: 'in_progress'
         })
@@ -333,8 +352,9 @@ export function useReleaseEmail() {
 
   return useMutation({
     mutationFn: async (emailId: string) => {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error('Usuário não autenticado');
+      // Usar helper de autenticação robusta
+      const user = await getAuthenticatedUser();
+      if (!user) throw new Error('Sessão expirada. Por favor, recarregue a página.');
 
       console.log('[ReleaseEmail] Liberando e-mail:', emailId);
 
