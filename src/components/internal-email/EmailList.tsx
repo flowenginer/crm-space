@@ -274,7 +274,12 @@ export function EmailList({ folder, searchQuery, onSearchChange, onSelectEmail, 
               {filteredEmails?.map((email) => {
                 const isRead = folder === 'sent' || folder === 'drafts' ? true : email.recipient_data?.is_read;
                 const isStarred = email.recipient_data?.is_starred;
-                const senderName = email.sender?.full_name || 'Desconhecido';
+                
+                // Na pasta Enviados, mostrar destinatários; nas outras, mostrar remetente
+                const displayName = folder === 'sent'
+                  ? email.recipients?.map(r => r.user?.full_name).filter(Boolean).join(', ') || 'Desconhecido'
+                  : email.sender?.full_name || 'Desconhecido';
+                
                 const dateToShow = email.sent_at || email.updated_at || email.created_at;
                 const isSelected = selectedIds.has(email.id);
                 const attachments = email.attachments || [];
@@ -327,12 +332,12 @@ export function EmailList({ folder, searchQuery, onSearchChange, onSelectEmail, 
                       className="flex-1 flex items-center gap-3 min-w-0 overflow-hidden"
                       onClick={() => onSelectEmail(email.id)}
                     >
-                      {/* Sender name - fixed width */}
+                      {/* Sender/Recipient name - fixed width */}
                       <span className={cn(
                         'text-sm w-40 shrink-0 truncate',
                         !isRead ? 'font-bold text-foreground' : 'text-muted-foreground'
                       )}>
-                        {senderName}
+                        {displayName}
                       </span>
 
                       {/* Subject and preview */}

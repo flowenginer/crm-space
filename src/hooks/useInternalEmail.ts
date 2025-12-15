@@ -124,7 +124,12 @@ export function useInternalEmails(folder: EmailFolder, search?: string) {
           .from('internal_emails')
           .select(`
             *,
-            sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url)
+            sender:profiles!internal_emails_sender_id_fkey(id, full_name, avatar_url),
+            recipients:internal_email_recipients(
+              id,
+              recipient_type,
+              user:profiles!internal_email_recipients_user_id_fkey(id, full_name, avatar_url)
+            )
           `)
           .eq('sender_id', user)
           .eq('status', 'sent')
