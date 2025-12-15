@@ -97,7 +97,10 @@ export function useUserSharedBoxes() {
 
       if (error) throw error;
       return data as EmailSharedBox[];
-    }
+    },
+    staleTime: 30000, // 30 segundos - evita refetch imediato
+    gcTime: 5 * 60 * 1000, // 5 minutos de cache
+    placeholderData: (previousData) => previousData, // Mantém dados anteriores durante refetch
   });
 }
 
@@ -252,8 +255,11 @@ export function useSharedBoxPendingCount(sharedBoxId: string | null) {
 export function useAllSharedBoxesCounts() {
   const { data: sharedBoxes } = useUserSharedBoxes();
 
+  // Criar queryKey estável usando IDs ordenados
+  const boxIds = sharedBoxes?.map(sb => sb.id).sort().join(',') || '';
+
   return useQuery({
-    queryKey: ['all-shared-boxes-counts', sharedBoxes?.map(sb => sb.id)],
+    queryKey: ['all-shared-boxes-counts', boxIds],
     queryFn: async () => {
       if (!sharedBoxes || sharedBoxes.length === 0) return {};
 
@@ -298,7 +304,9 @@ export function useAllSharedBoxesCounts() {
 
       return counts;
     },
-    enabled: !!sharedBoxes && sharedBoxes.length > 0
+    enabled: !!sharedBoxes && sharedBoxes.length > 0,
+    staleTime: 15000, // 15 segundos - evita refetch frequente
+    placeholderData: (previousData) => previousData, // Mantém dados durante refetch
   });
 }
 
