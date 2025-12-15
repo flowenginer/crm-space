@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -25,7 +26,7 @@ import {
   Settings
 } from 'lucide-react';
 import { useInternalEmailFolderCounts, useInternalEmailLabels, type EmailFolder } from '@/hooks/useInternalEmail';
-import { useUserSharedBoxes, useAllSharedBoxesCounts } from '@/hooks/useSharedEmailBoxes';
+import { useUserSharedBoxes, useAllSharedBoxesCounts, type EmailSharedBox } from '@/hooks/useSharedEmailBoxes';
 import { usePermissions } from '@/hooks/usePermissions';
 
 export type ExtendedEmailFolder = EmailFolder | 'all' | 'settings' | `shared_${string}` | `shared_${string}_pending` | `shared_${string}_progress` | `shared_${string}_completed`;
@@ -58,9 +59,24 @@ const labelIcons: Record<string, React.ReactNode> = {
 export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: EmailSidebarProps) {
   const { data: counts } = useInternalEmailFolderCounts();
   const { data: labels } = useInternalEmailLabels();
-  const { data: sharedBoxes } = useUserSharedBoxes();
+  const { data: sharedBoxes, isFetching: isSharedBoxesFetching } = useUserSharedBoxes();
   const { data: sharedBoxCounts } = useAllSharedBoxesCounts();
   const { isAdmin, isSupervisor } = usePermissions();
+
+  // Manter referência estável das caixas compartilhadas para evitar flickering
+  const stableSharedBoxesRef = useRef<EmailSharedBox[]>([]);
+  
+  // Atualiza a referência apenas quando os dados realmente mudam (não durante refetch)
+  useEffect(() => {
+    if (sharedBoxes && sharedBoxes.length > 0 && !isSharedBoxesFetching) {
+      stableSharedBoxesRef.current = sharedBoxes;
+    }
+  }, [sharedBoxes, isSharedBoxesFetching]);
+
+  // Usa dados estáveis: se temos dados atuais, usa; senão usa a referência
+  const displaySharedBoxes = sharedBoxes && sharedBoxes.length > 0 
+    ? sharedBoxes 
+    : stableSharedBoxesRef.current;
 
   const showAllEmails = isAdmin || isSupervisor;
 
@@ -143,15 +159,15 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
             })}
           </div>
 
-          {/* Caixas Compartilhadas */}
-          {sharedBoxes && sharedBoxes.length > 0 && (
+          {/* Caixas Compartilhadas - usa dados estáveis para evitar flickering */}
+          {displaySharedBoxes.length > 0 && (
             <>
               <Separator className="my-3" />
               <div className="space-y-0.5">
                 <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Caixas Compartilhadas
                 </p>
-                {sharedBoxes.map((box) => {
+                {displaySharedBoxes.map((box) => {
                   const boxCounts = sharedBoxCounts?.[box.id];
                   const pendingCount = boxCounts?.pending || 0;
                   const inProgressCount = boxCounts?.in_progress || 0;
