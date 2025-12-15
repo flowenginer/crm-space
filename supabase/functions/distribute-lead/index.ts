@@ -116,6 +116,7 @@ Deno.serve(async (req) => {
 
     const departmentId = settings.lead_distribution_department_id;
     const distributionType = settings.lead_distribution_type || 'sequential';
+    const includeOffline = settings.lead_distribution_include_offline || false;
     let currentPosition = settings.lead_distribution_position || 0;
     const configuredAgents: DistributionAgent[] = settings.lead_distribution_agents || [];
 
@@ -127,7 +128,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 2. Get available agents from the configured department
+    // 2. Get agents from the configured department
     const { data: departmentAgents, error: agentsError } = await supabase
       .from('user_departments')
       .select(`
@@ -166,32 +167,57 @@ Deno.serve(async (req) => {
         };
       });
 
+    // Filter to only active sellers (for offline fallback)
+    const activeAgents = departmentAgents
+      .filter(da => {
+        const profile = da.profiles as unknown as AgentProfile;
+        return profile && profile.is_active === true;
+      })
+      .map(da => {
+        const profile = da.profiles as unknown as AgentProfile;
+        return {
+          id: profile.id,
+          full_name: profile.full_name,
+          is_available: profile.is_available
+        };
+      });
+
+    // Determine which pool to use and whether to mark as pending
+    let agentPool: { id: string; full_name: string }[] = availableAgents;
+    let assignAsPending = false;
+
     if (availableAgents.length === 0) {
-      console.log('[distribute-lead] No available agents found');
-      return new Response(
-        JSON.stringify({ success: false, error: 'No available agents in the configured department' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (includeOffline && activeAgents.length > 0) {
+        console.log('[distribute-lead] No available agents, falling back to offline distribution');
+        agentPool = activeAgents;
+        assignAsPending = true;
+      } else {
+        console.log('[distribute-lead] No available agents found');
+        return new Response(
+          JSON.stringify({ success: false, error: 'No available agents in the configured department' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
-    console.log(`[distribute-lead] Found ${availableAgents.length} available agents`);
+    console.log(`[distribute-lead] Found ${agentPool.length} agents (assignAsPending: ${assignAsPending})`);
 
     // 3. Select the next agent based on distribution type
     let selectedAgent: { id: string; full_name: string };
 
     if (distributionType === 'percentage' && configuredAgents.length > 0) {
       // Percentage-based distribution
-      // Filter configured agents that are currently available
+      // Filter configured agents that are currently in the pool
       const activeConfiguredAgents = configuredAgents.filter(ca => {
-        return ca.is_active && availableAgents.some(aa => aa.id === ca.user_id);
+        return ca.is_active && agentPool.some(aa => aa.id === ca.user_id);
       });
 
       if (activeConfiguredAgents.length === 0) {
-        // Fallback to sequential if no configured agents are available
-        console.log('[distribute-lead] No configured agents available, falling back to sequential');
-        const agentIndex = currentPosition % availableAgents.length;
-        selectedAgent = availableAgents[agentIndex];
-        currentPosition = (currentPosition + 1) % availableAgents.length;
+        // Fallback to sequential if no configured agents are in pool
+        console.log('[distribute-lead] No configured agents in pool, falling back to sequential');
+        const agentIndex = currentPosition % agentPool.length;
+        selectedAgent = agentPool[agentIndex];
+        currentPosition = (currentPosition + 1) % agentPool.length;
       } else {
         // Calculate who should receive based on percentage distribution
         // Find agent with lowest percentage fulfillment
@@ -214,7 +240,7 @@ Deno.serve(async (req) => {
         }
 
         if (bestAgent) {
-          const agentData = availableAgents.find(a => a.id === bestAgent!.user_id);
+          const agentData = agentPool.find(a => a.id === bestAgent!.user_id);
           if (agentData) {
             selectedAgent = agentData;
             
@@ -232,10 +258,10 @@ Deno.serve(async (req) => {
               .eq('id', settings.id);
           } else {
             // Fallback
-            selectedAgent = availableAgents[0];
+            selectedAgent = agentPool[0];
           }
         } else {
-          selectedAgent = availableAgents[0];
+          selectedAgent = agentPool[0];
         }
       }
     } else {
@@ -243,32 +269,32 @@ Deno.serve(async (req) => {
       // If we have configured agents with order, use that order
       if (configuredAgents.length > 0) {
         const orderedAgents = configuredAgents
-          .filter(ca => ca.is_active && availableAgents.some(aa => aa.id === ca.user_id))
+          .filter(ca => ca.is_active && agentPool.some(aa => aa.id === ca.user_id))
           .sort((a, b) => a.order_position - b.order_position);
         
         if (orderedAgents.length > 0) {
           const agentIndex = currentPosition % orderedAgents.length;
           const selectedConfig = orderedAgents[agentIndex];
-          const agentData = availableAgents.find(a => a.id === selectedConfig.user_id);
+          const agentData = agentPool.find(a => a.id === selectedConfig.user_id);
           
           if (agentData) {
             selectedAgent = agentData;
             currentPosition = (agentIndex + 1) % orderedAgents.length;
           } else {
-            selectedAgent = availableAgents[currentPosition % availableAgents.length];
-            currentPosition = (currentPosition + 1) % availableAgents.length;
+            selectedAgent = agentPool[currentPosition % agentPool.length];
+            currentPosition = (currentPosition + 1) % agentPool.length;
           }
         } else {
-          // All configured agents are unavailable, use all available
-          const agentIndex = currentPosition % availableAgents.length;
-          selectedAgent = availableAgents[agentIndex];
-          currentPosition = (currentPosition + 1) % availableAgents.length;
+          // All configured agents are unavailable, use all in pool
+          const agentIndex = currentPosition % agentPool.length;
+          selectedAgent = agentPool[agentIndex];
+          currentPosition = (currentPosition + 1) % agentPool.length;
         }
       } else {
-        // No configured agents, use all available in department
-        const agentIndex = currentPosition % availableAgents.length;
-        selectedAgent = availableAgents[agentIndex];
-        currentPosition = (currentPosition + 1) % availableAgents.length;
+        // No configured agents, use all in pool
+        const agentIndex = currentPosition % agentPool.length;
+        selectedAgent = agentPool[agentIndex];
+        currentPosition = (currentPosition + 1) % agentPool.length;
       }
 
       // Update position in settings
@@ -278,7 +304,7 @@ Deno.serve(async (req) => {
         .eq('id', settings.id);
     }
 
-    console.log(`[distribute-lead] Selected agent: ${selectedAgent.full_name} (${selectedAgent.id})`);
+    console.log(`[distribute-lead] Selected agent: ${selectedAgent.full_name} (${selectedAgent.id}) - pending: ${assignAsPending}`);
 
     // 4. Update contact assignment
     const { error: contactError } = await supabase
@@ -299,12 +325,13 @@ Deno.serve(async (req) => {
     }
 
     // 5. Update active conversations for this contact
+    const conversationStatus = assignAsPending ? 'pending' : 'open';
     const { error: conversationError } = await supabase
       .from('conversations')
       .update({
         assigned_to: selectedAgent.id,
         department_id: departmentId,
-        status: 'open',
+        status: conversationStatus,
         updated_at: new Date().toISOString()
       })
       .eq('contact_id', contact_id)
@@ -316,12 +343,13 @@ Deno.serve(async (req) => {
     }
 
     // 6. Record assignment history
+    const assignmentType = assignAsPending ? 'auto_distribution_offline' : 'auto_distribution';
     const { error: historyError } = await supabase
       .from('lead_assignment_history')
       .insert({
         contact_id: contact_id,
         assigned_to: selectedAgent.id,
-        assignment_type: 'auto_distribution',
+        assignment_type: assignmentType,
         assigned_at: new Date().toISOString()
       });
 
@@ -330,7 +358,7 @@ Deno.serve(async (req) => {
       // Don't fail the whole operation
     }
 
-    console.log(`[distribute-lead] Successfully distributed contact ${contact_id} to ${selectedAgent.full_name}`);
+    console.log(`[distribute-lead] Successfully distributed contact ${contact_id} to ${selectedAgent.full_name} (status: ${conversationStatus})`);
 
     return new Response(
       JSON.stringify({
@@ -341,7 +369,8 @@ Deno.serve(async (req) => {
           name: selectedAgent.full_name
         },
         department_id: departmentId,
-        distribution_type: distributionType
+        distribution_type: distributionType,
+        assigned_as_pending: assignAsPending
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

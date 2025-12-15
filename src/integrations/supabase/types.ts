@@ -383,6 +383,7 @@ export type Database = {
           lead_distribution_agents: Json | null
           lead_distribution_department_id: string | null
           lead_distribution_enabled: boolean | null
+          lead_distribution_include_offline: boolean | null
           lead_distribution_position: number | null
           lead_distribution_type: string | null
           logo_url: string | null
@@ -415,6 +416,7 @@ export type Database = {
           lead_distribution_agents?: Json | null
           lead_distribution_department_id?: string | null
           lead_distribution_enabled?: boolean | null
+          lead_distribution_include_offline?: boolean | null
           lead_distribution_position?: number | null
           lead_distribution_type?: string | null
           logo_url?: string | null
@@ -447,6 +449,7 @@ export type Database = {
           lead_distribution_agents?: Json | null
           lead_distribution_department_id?: string | null
           lead_distribution_enabled?: boolean | null
+          lead_distribution_include_offline?: boolean | null
           lead_distribution_position?: number | null
           lead_distribution_type?: string | null
           logo_url?: string | null
