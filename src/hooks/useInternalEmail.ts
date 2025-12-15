@@ -1,6 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import type { User } from '@supabase/supabase-js';
+
+// Helper para obter usuário de forma robusta (getSession primeiro, depois getUser como fallback)
+async function getAuthenticatedUser(): Promise<User | null> {
+  // Primeiro tenta getSession (lê do localStorage, mais confiável e rápido)
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (sessionData.session?.user) {
+    return sessionData.session.user;
+  }
+  
+  // Fallback para getUser (verifica com servidor)
+  const { data: userData } = await supabase.auth.getUser();
+  if (userData.user) {
+    return userData.user;
+  }
+  
+  return null;
+}
 
 // Types
 export interface EmailAttachment {
@@ -481,16 +499,19 @@ export function useSendInternalEmail() {
     }) => {
       console.log('[useSendInternalEmail] Iniciando envio:', data);
       
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error('Usuário não autenticado');
+      // Usar helper de autenticação robusta
+      const user = await getAuthenticatedUser();
+      if (!user) {
+        throw new Error('Sessão expirada. Por favor, recarregue a página e tente novamente.');
+      }
 
-      console.log('[useSendInternalEmail] Usuário:', userData.user.id);
+      console.log('[useSendInternalEmail] Usuário:', user.id);
 
       // Criar o e-mail
       const { data: email, error: emailError } = await supabase
         .from('internal_emails')
         .insert({
-          sender_id: userData.user.id,
+          sender_id: user.id,
           subject: data.subject,
           body: data.body,
           body_html: data.body_html,
@@ -758,22 +779,22 @@ export function useEmailRecipientOptions() {
 export function useUploadEmailAttachment() {
   return useMutation({
     mutationFn: async (file: File) => {
-      // Verificar autenticação primeiro
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        throw new Error('Você precisa estar autenticado para enviar anexos');
+      // Usar helper de autenticação robusta (getSession primeiro, getUser como fallback)
+      const user = await getAuthenticatedUser();
+      if (!user) {
+        throw new Error('Sessão expirada. Por favor, recarregue a página e tente novamente.');
       }
 
       console.log('[useUploadEmailAttachment] Iniciando upload:', {
         fileName: file.name,
         fileSize: file.size,
         fileType: file.type,
-        userId: userData.user.id
+        userId: user.id
       });
       
       const fileExt = file.name.split('.').pop();
       // Usar caminho com ID do usuário para organização e RLS
-      const fileName = `${userData.user.id}/${crypto.randomUUID()}.${fileExt}`;
+      const fileName = `${user.id}/${crypto.randomUUID()}.${fileExt}`;
       
       console.log('[useUploadEmailAttachment] Caminho do arquivo:', fileName);
 

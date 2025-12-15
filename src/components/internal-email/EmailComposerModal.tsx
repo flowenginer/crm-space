@@ -220,8 +220,16 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
       try {
         const result = await uploadAttachment.mutateAsync(file);
         setAttachments(prev => [...prev, result]);
-      } catch (error) {
-        toast.error(`Erro ao enviar ${file.name}`);
+        toast.success(`${file.name} anexado`);
+      } catch (error: any) {
+        console.error('[EmailComposer] Erro ao anexar arquivo:', error);
+        const errorMessage = error?.message || `Erro ao enviar ${file.name}`;
+        toast.error(errorMessage);
+        
+        // Se for erro de sessão, sugerir recarregar a página
+        if (errorMessage.includes('Sessão') || errorMessage.includes('recarreg')) {
+          toast.error('Tente recarregar a página e faça login novamente', { duration: 5000 });
+        }
       }
     }
     e.target.value = '';
