@@ -279,7 +279,16 @@ export function EmailComposerModal({ open, onOpenChange, replyTo }: EmailCompose
       onOpenChange(false);
     } catch (error: any) {
       console.error('[EmailComposer] Erro ao enviar e-mail:', error);
-      toast.error(error?.message || 'Erro ao enviar e-mail');
+      
+      // Mensagem de erro mais específica
+      let errorMessage = 'Erro ao enviar e-mail';
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (error?.name === 'TypeError' && error?.message?.includes('fetch')) {
+        errorMessage = 'Erro de conexão. Verifique sua internet e tente novamente.';
+      }
+      
+      toast.error(errorMessage);
     }
   };
 
