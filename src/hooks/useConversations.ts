@@ -55,6 +55,8 @@ export interface Conversation {
     origin?: string | null;
     origin_campaign?: string | null;
     referral_data?: any | null;
+    segment_id?: string | null;
+    segment?: { id: string; name: string; color: string } | null;
   } | null;
   assignee?: { id: string; full_name: string | null } | null;
   channel?: { id: string; name: string } | null;

@@ -555,6 +555,26 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
                   <span className="text-xs text-blue-600 font-medium">Ads</span>
                 </div>
               )}
+
+              {/* Segment Badge - Visual indicator only */}
+              {conversation.contact?.segment && (
+                <div 
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full"
+                  style={{ backgroundColor: `${conversation.contact.segment.color}20` }}
+                  title={conversation.contact.segment.name}
+                >
+                  <div 
+                    className="w-2 h-2 rounded-full flex-shrink-0" 
+                    style={{ backgroundColor: conversation.contact.segment.color }}
+                  />
+                  <span 
+                    className="text-xs font-medium truncate max-w-[60px]"
+                    style={{ color: conversation.contact.segment.color }}
+                  >
+                    {conversation.contact.segment.name}
+                  </span>
+                </div>
+              )}
               
               {/* Reopen Badge */}
               {reopenCount > 0 && (
