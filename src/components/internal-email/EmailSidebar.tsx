@@ -99,13 +99,15 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
 
           {/* Pastas Pessoais */}
           <div className="space-y-0.5">
-            {folderItems.map((item) => {
+          {folderItems.map((item) => {
               const count = counts?.[item.id] || 0;
               const unreadCount = counts?.inbox_unread || 0;
               const isActive = currentFolder === item.id;
               const isInbox = item.id === 'inbox';
+              const isTrash = item.id === 'trash';
               
-              // For inbox, show unread count; for others, show total count
+              // Só mostrar badge para Entrada (não lidos) e Lixeira (total)
+              const showBadge = isInbox || isTrash;
               const displayCount = isInbox ? unreadCount : count;
               
               return (
@@ -125,7 +127,7 @@ export function EmailSidebar({ currentFolder, onFolderChange, onCompose }: Email
                       {item.label}
                     </span>
                   </div>
-                  {displayCount > 0 && (
+                  {showBadge && displayCount > 0 && (
                     <Badge 
                       variant={isActive ? 'secondary' : 'outline'} 
                       className={cn(
