@@ -343,6 +343,22 @@ export function useClaimEmail() {
 
       if (error) throw error;
 
+      // MODELO HÍBRIDO: Adicionar o designer como recipient para aparecer na inbox pessoal
+      const { error: recipientError } = await supabase
+        .from('internal_email_recipients')
+        .insert({
+          email_id: emailId,
+          user_id: user.id,
+          recipient_type: 'to',
+          is_read: false,
+          folder: 'inbox'
+        });
+
+      // Se já existe (em caso de re-claim), ignorar erro de duplicata
+      if (recipientError && !recipientError.message?.includes('duplicate')) {
+        console.warn('[ClaimEmail] Erro ao adicionar como recipient:', recipientError);
+      }
+
       return emailId;
     },
     onSuccess: () => {
@@ -350,6 +366,7 @@ export function useClaimEmail() {
       queryClient.invalidateQueries({ queryKey: ['shared-box-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['all-shared-boxes-counts'] });
       queryClient.invalidateQueries({ queryKey: ['internal-email'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-emails'] }); // Atualiza inbox pessoal
     }
   });
 }
@@ -365,6 +382,17 @@ export function useReleaseEmail() {
       if (!user) throw new Error('Sessão expirada. Por favor, recarregue a página.');
 
       console.log('[ReleaseEmail] Liberando e-mail:', emailId);
+
+      // MODELO HÍBRIDO: Remover o designer da lista de recipients ao liberar
+      const { error: deleteRecipientError } = await supabase
+        .from('internal_email_recipients')
+        .delete()
+        .eq('email_id', emailId)
+        .eq('user_id', user.id);
+
+      if (deleteRecipientError) {
+        console.warn('[ReleaseEmail] Erro ao remover recipient:', deleteRecipientError);
+      }
 
       // Liberar o e-mail (o trigger log_email_activity já registra automaticamente)
       const { data, error } = await supabase
@@ -390,6 +418,7 @@ export function useReleaseEmail() {
       queryClient.invalidateQueries({ queryKey: ['shared-box-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['all-shared-boxes-counts'] });
       queryClient.invalidateQueries({ queryKey: ['internal-email'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-emails'] }); // Atualiza inbox pessoal
     }
   });
 }
