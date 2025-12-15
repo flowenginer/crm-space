@@ -758,26 +758,48 @@ export function useEmailRecipientOptions() {
 export function useUploadEmailAttachment() {
   return useMutation({
     mutationFn: async (file: File) => {
-      console.log('[useUploadEmailAttachment] Iniciando upload:', file.name, file.size, file.type);
+      // Verificar autenticação primeiro
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        throw new Error('Você precisa estar autenticado para enviar anexos');
+      }
+
+      console.log('[useUploadEmailAttachment] Iniciando upload:', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        userId: userData.user.id
+      });
       
       const fileExt = file.name.split('.').pop();
-      const fileName = `${crypto.randomUUID()}.${fileExt}`;
-      const filePath = `attachments/${fileName}`;
+      // Usar caminho com ID do usuário para organização e RLS
+      const fileName = `${userData.user.id}/${crypto.randomUUID()}.${fileExt}`;
+      
+      console.log('[useUploadEmailAttachment] Caminho do arquivo:', fileName);
 
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('internal-email-attachments')
-        .upload(filePath, file);
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
       if (uploadError) {
-        console.error('[useUploadEmailAttachment] Erro no upload:', uploadError);
-        throw new Error(`Erro ao fazer upload do arquivo: ${uploadError.message}`);
+        console.error('[useUploadEmailAttachment] Erro no upload:', {
+          error: uploadError,
+          message: uploadError.message,
+          statusCode: (uploadError as any).statusCode
+        });
+        throw new Error(`Erro ao fazer upload: ${uploadError.message}`);
       }
+
+      console.log('[useUploadEmailAttachment] Upload concluído:', uploadData);
 
       const { data: urlData } = supabase.storage
         .from('internal-email-attachments')
-        .getPublicUrl(filePath);
+        .getPublicUrl(fileName);
 
-      console.log('[useUploadEmailAttachment] Upload concluído:', urlData.publicUrl);
+      console.log('[useUploadEmailAttachment] URL pública:', urlData.publicUrl);
 
       return {
         file_name: file.name,
