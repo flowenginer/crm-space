@@ -54,6 +54,7 @@ interface QuoteItem {
   height_cm?: number;
   width_cm?: number;
   length_cm?: number;
+  packaging_type?: 'stack' | 'box' | 'side_by_side' | 'layered' | 'custom';
 }
 
 interface QuoteModalProps {
@@ -344,6 +345,7 @@ export function QuoteModal({ open, onOpenChange, quote, conversationId, contactI
         height_cm: product.height_cm || 10,
         width_cm: product.width_cm || 10,
         length_cm: product.length_cm || 10,
+        packaging_type: product.packaging_type || 'stack',
       };
       setItems(newItems);
     }
