@@ -3,6 +3,8 @@ import { useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+export type PackagingType = 'stack' | 'box' | 'side_by_side' | 'layered' | 'custom';
+
 export interface ShippingProduct {
   weight: number;
   height: number;
@@ -10,6 +12,7 @@ export interface ShippingProduct {
   length: number;
   quantity: number;
   insurance_value?: number;
+  packaging_type?: PackagingType;
 }
 
 export interface ShippingOption {
@@ -38,6 +41,7 @@ export interface ShippingQuoteResult {
     width: number;
     length: number;
     insurance_value: number;
+    packaging_type?: string;
   };
 }
 

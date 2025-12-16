@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+export type PackagingType = 'stack' | 'box' | 'side_by_side' | 'layered' | 'custom';
+
 export interface ProductForOrder {
   id: string;
   type: 'product' | 'variation';
@@ -18,6 +20,7 @@ export interface ProductForOrder {
   height_cm?: number;
   width_cm?: number;
   length_cm?: number;
+  packaging_type?: PackagingType;
 }
 
 export function useProductsForOrders(search?: string) {
@@ -29,7 +32,7 @@ export function useProductsForOrders(search?: string) {
       // 1. Fetch simple products (without variations)
       const { data: simpleProducts, error: productsError } = await supabase
         .from('products')
-        .select('id, name, base_price, sku, main_image_url, peso_bruto, height_cm, width_cm, length_cm')
+        .select('id, name, base_price, sku, main_image_url, peso_bruto, height_cm, width_cm, length_cm, packaging_type')
         .eq('is_active', true)
         .eq('has_variations', false);
 
@@ -53,6 +56,7 @@ export function useProductsForOrders(search?: string) {
             height_cm: product.height_cm || undefined,
             width_cm: product.width_cm || undefined,
             length_cm: product.length_cm || undefined,
+            packaging_type: (product.packaging_type as PackagingType) || undefined,
           });
         }
       }
@@ -73,7 +77,7 @@ export function useProductsForOrders(search?: string) {
           height_cm,
           width_cm,
           length_cm,
-          product:products!inner(id, name, base_price, main_image_url, is_active, peso_bruto, height_cm, width_cm, length_cm)
+          product:products!inner(id, name, base_price, main_image_url, is_active, peso_bruto, height_cm, width_cm, length_cm, packaging_type)
         `)
         .eq('is_active', true);
 
@@ -92,6 +96,7 @@ export function useProductsForOrders(search?: string) {
             height_cm: number | null;
             width_cm: number | null;
             length_cm: number | null;
+            packaging_type: string | null;
           };
           
           // Skip if parent product is inactive
@@ -118,6 +123,7 @@ export function useProductsForOrders(search?: string) {
             height_cm: variation.height_cm || product.height_cm || undefined,
             width_cm: variation.width_cm || product.width_cm || undefined,
             length_cm: variation.length_cm || product.length_cm || undefined,
+            packaging_type: (product.packaging_type as PackagingType) || undefined,
           });
         }
       }

@@ -4465,6 +4465,7 @@ export type Database = {
           name: string
           ncm: string | null
           origem: number | null
+          packaging_type: string | null
           peso_bruto: number | null
           peso_liquido: number | null
           reducao_base_icms: number | null
@@ -4526,6 +4527,7 @@ export type Database = {
           name: string
           ncm?: string | null
           origem?: number | null
+          packaging_type?: string | null
           peso_bruto?: number | null
           peso_liquido?: number | null
           reducao_base_icms?: number | null
@@ -4587,6 +4589,7 @@ export type Database = {
           name?: string
           ncm?: string | null
           origem?: number | null
+          packaging_type?: string | null
           peso_bruto?: number | null
           peso_liquido?: number | null
           reducao_base_icms?: number | null

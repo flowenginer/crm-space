@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+type PackagingType = 'stack' | 'box' | 'side_by_side' | 'layered' | 'custom';
+
 interface ShippingProduct {
   weight: number;
   height: number;
@@ -13,6 +15,7 @@ interface ShippingProduct {
   length: number;
   quantity: number;
   insurance_value?: number;
+  packaging_type?: PackagingType;
 }
 
 interface ShippingRequest {
@@ -59,6 +62,172 @@ interface ShippingOption {
     insurance_value: string;
   }>;
   error?: string;
+}
+
+/**
+ * Calculate package dimensions based on packaging type
+ * Each type has a different strategy for combining multiple items
+ */
+function calculateDimensions(products: ShippingProduct[]): {
+  height: number;
+  width: number;
+  length: number;
+  weight: number;
+  insuranceValue: number;
+  packagingType: string;
+} {
+  let totalWeight = 0;
+  let totalInsuranceValue = 0;
+  
+  // Group products by packaging type
+  const productsByType: Record<PackagingType, ShippingProduct[]> = {
+    stack: [],
+    box: [],
+    side_by_side: [],
+    layered: [],
+    custom: []
+  };
+  
+  for (const product of products) {
+    const type = product.packaging_type || 'stack';
+    productsByType[type].push(product);
+    totalWeight += (product.weight || 0.3) * (product.quantity || 1);
+    totalInsuranceValue += (product.insurance_value || 0) * (product.quantity || 1);
+  }
+  
+  // Calculate dimensions for each packaging type
+  let finalHeight = 0;
+  let finalWidth = 0;
+  let finalLength = 0;
+  let dominantType = 'stack';
+  
+  // STACK: Heights are summed, width/length take maximum
+  // Ideal for: shirts, books, plates, towels, documents
+  if (productsByType.stack.length > 0) {
+    dominantType = 'stack';
+    let stackHeight = 0;
+    let stackMaxWidth = 0;
+    let stackMaxLength = 0;
+    
+    for (const p of productsByType.stack) {
+      const qty = p.quantity || 1;
+      stackHeight += (p.height || 2) * qty;
+      stackMaxWidth = Math.max(stackMaxWidth, p.width || 20);
+      stackMaxLength = Math.max(stackMaxLength, p.length || 20);
+    }
+    
+    finalHeight = Math.max(finalHeight, stackHeight);
+    finalWidth = Math.max(finalWidth, stackMaxWidth);
+    finalLength = Math.max(finalLength, stackMaxLength);
+    
+    console.log(`STACK calculation: ${stackHeight}h x ${stackMaxWidth}w x ${stackMaxLength}l`);
+  }
+  
+  // BOX: Total volume distributed in cubic format
+  // Ideal for: electronics, appliances, fragile items in boxes
+  if (productsByType.box.length > 0) {
+    dominantType = 'box';
+    let totalVolume = 0;
+    
+    for (const p of productsByType.box) {
+      const qty = p.quantity || 1;
+      const h = p.height || 10;
+      const w = p.width || 10;
+      const l = p.length || 10;
+      totalVolume += (h * w * l) * qty;
+    }
+    
+    // Distribute volume in cubic format (cube root)
+    const cubicDimension = Math.cbrt(totalVolume);
+    const boxDim = Math.ceil(cubicDimension);
+    
+    finalHeight = Math.max(finalHeight, boxDim);
+    finalWidth = Math.max(finalWidth, boxDim);
+    finalLength = Math.max(finalLength, boxDim);
+    
+    console.log(`BOX calculation: volume=${totalVolume}, cubic=${boxDim}cm each side`);
+  }
+  
+  // SIDE_BY_SIDE: Widths are summed, height/length take maximum
+  // Ideal for: bottles, vases, lamps, trophies
+  if (productsByType.side_by_side.length > 0) {
+    dominantType = 'side_by_side';
+    let sideMaxHeight = 0;
+    let sideTotalWidth = 0;
+    let sideMaxLength = 0;
+    
+    for (const p of productsByType.side_by_side) {
+      const qty = p.quantity || 1;
+      sideMaxHeight = Math.max(sideMaxHeight, p.height || 10);
+      sideTotalWidth += (p.width || 10) * qty;
+      sideMaxLength = Math.max(sideMaxLength, p.length || 10);
+    }
+    
+    finalHeight = Math.max(finalHeight, sideMaxHeight);
+    finalWidth = Math.max(finalWidth, sideTotalWidth);
+    finalLength = Math.max(finalLength, sideMaxLength);
+    
+    console.log(`SIDE_BY_SIDE calculation: ${sideMaxHeight}h x ${sideTotalWidth}w x ${sideMaxLength}l`);
+  }
+  
+  // LAYERED: Products organized in optimized grid layers
+  // Ideal for: cosmetics, chocolates, jewelry, accessories
+  if (productsByType.layered.length > 0) {
+    dominantType = 'layered';
+    
+    for (const p of productsByType.layered) {
+      const qty = p.quantity || 1;
+      const h = p.height || 5;
+      const w = p.width || 5;
+      const l = p.length || 5;
+      
+      // Calculate optimal grid layout
+      const itemsPerLayer = Math.ceil(Math.sqrt(qty));
+      const layers = Math.ceil(qty / (itemsPerLayer * itemsPerLayer));
+      
+      const layerHeight = h * layers;
+      const layerWidth = w * itemsPerLayer;
+      const layerLength = l * itemsPerLayer;
+      
+      finalHeight = Math.max(finalHeight, layerHeight);
+      finalWidth = Math.max(finalWidth, layerWidth);
+      finalLength = Math.max(finalLength, layerLength);
+      
+      console.log(`LAYERED calculation: ${itemsPerLayer}x${itemsPerLayer} grid, ${layers} layers = ${layerHeight}h x ${layerWidth}w x ${layerLength}l`);
+    }
+  }
+  
+  // CUSTOM: Exact dimensions × quantity (for pre-packaged items)
+  // Ideal for: ready kits, combos, master boxes
+  if (productsByType.custom.length > 0) {
+    dominantType = 'custom';
+    
+    for (const p of productsByType.custom) {
+      const qty = p.quantity || 1;
+      const h = (p.height || 10) * qty;
+      const w = p.width || 10;
+      const l = p.length || 10;
+      
+      finalHeight = Math.max(finalHeight, h);
+      finalWidth = Math.max(finalWidth, w);
+      finalLength = Math.max(finalLength, l);
+      
+      console.log(`CUSTOM calculation: ${h}h x ${w}w x ${l}l (qty=${qty})`);
+    }
+  }
+  
+  // Limit insurance value to carrier maximum (Correios SEDEX limit)
+  const maxInsuranceValue = 38000;
+  totalInsuranceValue = Math.min(totalInsuranceValue, maxInsuranceValue);
+  
+  return {
+    height: finalHeight,
+    width: finalWidth,
+    length: finalLength,
+    weight: totalWeight,
+    insuranceValue: totalInsuranceValue,
+    packagingType: dominantType
+  };
 }
 
 serve(async (req) => {
@@ -135,33 +304,16 @@ serve(async (req) => {
       );
     }
 
-    // Calculate package dimensions with stacking logic
-    // Height is SUMMED (stacking products on top of each other)
-    // Width and Length take the MAXIMUM value (base dimensions)
-    let totalWeight = 0;
-    let totalInsuranceValue = 0;
-    let totalHeight = 0;  // Heights are summed (stacking)
-    let maxWidth = 0;     // Width is the maximum value
-    let maxLength = 0;    // Length is the maximum value
-
-    for (const product of products) {
-      const qty = product.quantity || 1;
-      totalWeight += (product.weight || 0.3) * qty;
-      totalInsuranceValue += (product.insurance_value || 0) * qty;
-      totalHeight += (product.height || 2) * qty;  // Stack heights
-      maxWidth = Math.max(maxWidth, product.width || 20);
-      maxLength = Math.max(maxLength, product.length || 20);
-    }
-
-    // Apply minimum dimensions required by carriers and limit insurance
-    const finalHeight = Math.max(totalHeight, 2);
-    const finalWidth = Math.max(maxWidth, 11);
-    const finalLength = Math.max(maxLength, 16);
-    const finalWeight = Math.max(totalWeight, 0.3);
+    // Calculate package dimensions based on packaging types
+    const dimensions = calculateDimensions(products);
     
-    // Limit insurance value to carrier maximum (Correios SEDEX limit)
-    const maxInsuranceValue = 38000;
-    totalInsuranceValue = Math.min(totalInsuranceValue, maxInsuranceValue);
+    console.log('Calculated dimensions:', dimensions);
+
+    // Apply minimum dimensions required by carriers
+    const finalHeight = Math.max(dimensions.height, 2);
+    const finalWidth = Math.max(dimensions.width, 11);
+    const finalLength = Math.max(dimensions.length, 16);
+    const finalWeight = Math.max(dimensions.weight, 0.3);
 
     const apiBody: Record<string, unknown> = {
       from: { postal_code: cleanFromPostal },
@@ -172,7 +324,7 @@ serve(async (req) => {
         height: Math.round(finalHeight),
         length: Math.round(finalLength),
         weight: Number(finalWeight.toFixed(2)),
-        insurance_value: totalInsuranceValue,
+        insurance_value: dimensions.insuranceValue,
         quantity: 1,
       }],
     };
@@ -256,7 +408,8 @@ serve(async (req) => {
           height: finalHeight,
           width: finalWidth,
           length: finalLength,
-          insurance_value: totalInsuranceValue,
+          insurance_value: dimensions.insuranceValue,
+          packaging_type: dimensions.packagingType,
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }}

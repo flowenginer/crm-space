@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { useCurrentTenantId } from './useTenant';
 import type { Json } from '@/integrations/supabase/types';
 
+export type PackagingType = 'stack' | 'box' | 'side_by_side' | 'layered' | 'custom';
+
 export interface Product {
   id: string;
   tenant_id: string | null;
@@ -60,6 +62,8 @@ export interface Product {
   aliquota_cofins: number | null;
   informacoes_adicionais: string | null;
   regime_tributario: string | null;
+  // Shipping
+  packaging_type: PackagingType | null;
 }
 
 export interface ProductWithCatalog extends Product {
