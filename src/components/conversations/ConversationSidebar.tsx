@@ -1510,8 +1510,9 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
         </div>
 
         {/* Meta Ads / Referral Data */}
-        {(contact.origin === 'meta_ads' || contact.referral_data || conversation.referral_data) && (() => {
-          const referralData = contact.referral_data || conversation.referral_data;
+        {(contact.origin === 'meta_ads' || contact.referral_data || conversation.referral_data || contactReferralData) && (() => {
+          // Usa dados do contato, da conversa atual, ou de qualquer outra conversa do contato (fallback)
+          const referralData = contact.referral_data || conversation.referral_data || contactReferralData;
           if (!referralData || typeof referralData !== 'object') return null;
           
           const rd = referralData as Record<string, any>;
