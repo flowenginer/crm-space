@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
@@ -87,6 +87,7 @@ export function ConversationPreviewDialog({
   onClose,
 }: ConversationPreviewDialogProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -94,6 +95,35 @@ export function ConversationPreviewDialog({
 
   // Ativar subscription realtime quando o diálogo estiver aberto
   useRealtimeMessages(isOpen ? conversationId : null);
+
+  // Subscription direta para atualizações em tempo real instantâneas
+  useEffect(() => {
+    if (!conversationId || !isOpen) return;
+
+    console.log('[Preview] Setting up realtime subscription for:', conversationId);
+
+    const channel = supabase
+      .channel(`preview-messages:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          console.log('[Preview] Realtime message event:', payload.eventType);
+          queryClient.invalidateQueries({ queryKey: ['messages-preview', conversationId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('[Preview] Removing realtime subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId, isOpen, queryClient]);
 
   // Fetch conversation details
   const { data: conversation, isLoading: conversationLoading } = useQuery({
@@ -120,6 +150,7 @@ export function ConversationPreviewDialog({
     queryKey: ['messages-preview', conversationId],
     queryFn: async () => {
       if (!conversationId) return [];
+      console.log('[Preview] Fetching messages for:', conversationId);
       const { data, error } = await supabase
         .from('messages')
         .select(`
@@ -137,12 +168,15 @@ export function ConversationPreviewDialog({
         .order('created_at', { ascending: true })
         .limit(100);
       if (error) throw error;
+      console.log('[Preview] Loaded messages count:', data?.length || 0);
       return (data || []).map(m => ({
         ...m,
         reactions: (m.reactions as unknown as MessageReaction[]) || null,
       })) as PreviewMessage[];
     },
     enabled: !!conversationId && isOpen,
+    staleTime: 0, // Sempre considerar dados como stale
+    refetchOnMount: 'always', // Sempre refetch ao montar/abrir
   });
 
   // Scroll to bottom when messages load
