@@ -6254,6 +6254,18 @@ export type Database = {
           source: string
         }[]
       }
+      find_contact_by_phone_suffix: {
+        Args: { phone_suffix: string }
+        Returns: {
+          assigned_to: string
+          avatar_url: string
+          department_id: string
+          email: string
+          full_name: string
+          id: string
+          phone: string
+        }[]
+      }
       find_or_create_direct_thread: {
         Args: { p_other_user_id: string; p_user_id: string }
         Returns: string
