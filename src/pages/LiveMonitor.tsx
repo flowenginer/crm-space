@@ -141,7 +141,11 @@ export default function LiveMonitorPage() {
         unassignedCount: unassignedConvs.length
       };
     },
-    staleTime: 30000,
+    // Sempre buscar dados atuais ao entrar na tela (evita "conversas vazias" por cache)
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
     enabled: hasAccess,
   });
 
@@ -150,7 +154,7 @@ export default function LiveMonitorPage() {
     if (!hasAccess) return;
 
     let debounceTimer: NodeJS.Timeout | null = null;
-    
+
     const debouncedRefetch = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => refetch(), 500);
@@ -173,7 +177,10 @@ export default function LiveMonitorPage() {
         { event: 'UPDATE', schema: 'public', table: 'profiles' },
         debouncedRefetch
       )
-      .subscribe();
+      .subscribe((status) => {
+        // Garante primeira atualização assim que a subscription estiver pronta
+        if (status === 'SUBSCRIBED') debouncedRefetch();
+      });
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
