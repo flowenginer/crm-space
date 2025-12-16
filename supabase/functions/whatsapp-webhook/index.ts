@@ -716,17 +716,21 @@ serve(async (req) => {
       
       if (directContact) {
         contact = directContact;
-        // Buscar conversa existente com esse contato
+        // Buscar conversa existente com esse contato (QUALQUER status - incluindo fechadas)
+        // Para mensagens fromMe (BOT), usamos a conversa mais recente sem filtrar por status
         const { data: conv } = await supabase
           .from("conversations")
-          .select("id, assigned_to")
+          .select("id, assigned_to, status")
           .eq("contact_id", contact.id)
           .eq("channel_id", channel.id)
-          .in("status", ["open", "pending"])
-          .order("created_at", { ascending: false })
+          .order("last_message_at", { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
         conversation = conv;
+        
+        if (conv) {
+          console.log(`[Webhook] FromMe: Found existing conversation ${conv.id} with status "${conv.status}"`);
+        }
       } else {
         // Contato não encontrado pelo telefone
         // IMPORTANTE: NÃO usar fallback de "conversa mais recente" para fromMe
@@ -799,44 +803,62 @@ serve(async (req) => {
       }
 
       if (!conversation) {
-        console.log(`[Webhook] 🆕 Creating conversation for fromMe message (external system)`);
+        // IMPORTANTE: Para mensagens fromMe, primeiro buscar QUALQUER conversa existente (incluindo fechadas)
+        // para evitar criar duplicatas. O BOT não deve criar novas conversas se já existe uma fechada.
+        console.log(`[Webhook] FromMe: No conversation found yet, searching for any existing (including closed)...`);
         
-        const { data: newConv, error: convError } = await supabase
+        const { data: anyExistingConv } = await supabase
           .from("conversations")
-          .insert({
-            contact_id: contact.id,
-            channel_id: channel.id,
-            department_id: channel.department_id || null,
-            status: "open",
-            is_unread: false, // Mensagem enviada por nós, não é unread
-            unread_count: 0,
-            last_message_at: new Date().toISOString(),
-            last_message_preview: normalizedMessage.content?.substring(0, 100) || "[Mídia]",
-          })
-          .select("id, assigned_to")
-          .single();
+          .select("id, assigned_to, status")
+          .eq("contact_id", contact.id)
+          .eq("channel_id", channel.id)
+          .order("last_message_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
         
-        if (convError) {
-          // Se erro de duplicata (race condition), buscar existente
-          if (convError.code === '23505') {
-            console.log(`[Webhook] Conversation already exists (race condition), fetching...`);
-            const { data: existingConv } = await supabase
-              .from("conversations")
-              .select("id, assigned_to")
-              .eq("contact_id", contact.id)
-              .eq("channel_id", channel.id)
-              .in("status", ["open", "pending"])
-              .order("created_at", { ascending: false })
-              .limit(1)
-              .single();
-            conversation = existingConv;
-          } else {
-            console.error(`[Webhook] Error creating conversation:`, convError);
-            throw convError;
-          }
+        if (anyExistingConv) {
+          conversation = anyExistingConv;
+          console.log(`[Webhook] FromMe: Found existing conversation ${anyExistingConv.id} with status "${anyExistingConv.status}" - using WITHOUT reopening`);
         } else {
-          conversation = newConv;
-          console.log(`[Webhook] ✅ Conversation created: ${conversation.id}`);
+          // Realmente não existe nenhuma conversa - criar nova (caso de campanha proativa)
+          console.log(`[Webhook] 🆕 Creating conversation for fromMe message (external system/proactive campaign)`);
+          
+          const { data: newConv, error: convError } = await supabase
+            .from("conversations")
+            .insert({
+              contact_id: contact.id,
+              channel_id: channel.id,
+              department_id: channel.department_id || null,
+              status: "open",
+              is_unread: false, // Mensagem enviada por nós, não é unread
+              unread_count: 0,
+              last_message_at: new Date().toISOString(),
+              last_message_preview: normalizedMessage.content?.substring(0, 100) || "[Mídia]",
+            })
+            .select("id, assigned_to, status")
+            .single();
+          
+          if (convError) {
+            // Se erro de duplicata (race condition), buscar existente (qualquer status)
+            if (convError.code === '23505') {
+              console.log(`[Webhook] Conversation already exists (race condition), fetching...`);
+              const { data: existingConv } = await supabase
+                .from("conversations")
+                .select("id, assigned_to, status")
+                .eq("contact_id", contact.id)
+                .eq("channel_id", channel.id)
+                .order("last_message_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              conversation = existingConv;
+            } else {
+              console.error(`[Webhook] Error creating conversation:`, convError);
+              throw convError;
+            }
+          } else {
+            conversation = newConv;
+            console.log(`[Webhook] ✅ Conversation created: ${conversation.id}`);
+          }
         }
       }
 
@@ -1118,13 +1140,19 @@ serve(async (req) => {
         throw msgError;
       }
 
-      // Atualizar conversa
+      // Atualizar conversa - IMPORTANTE: NÃO alterar status!
+      // Mensagens do BOT (fromMe) NÃO devem reabrir conversas fechadas
+      // Apenas atualizar timestamp e preview, mantendo o status atual
+      const conversationStatus = (conversation as any).status;
+      console.log(`[Webhook] FromMe: Updating conversation ${conversation.id}, keeping status "${conversationStatus}"`);
+      
       await supabase
         .from("conversations")
         .update({
           last_message_at: normalizedMessage.timestamp.toISOString(),
-          last_message_preview: normalizedMessage.content.substring(0, 100),
+          last_message_preview: normalizedMessage.content?.substring(0, 100) || "[Mídia]",
           updated_at: new Date().toISOString(),
+          // NÃO atualiza status! Permanece como estava (open, pending ou closed)
         })
         .eq("id", conversation.id);
 
