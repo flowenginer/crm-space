@@ -31,18 +31,21 @@ export interface ShippingOption {
   currency: string;
 }
 
+export interface PackageInfo {
+  weight: number;
+  height: number;
+  width: number;
+  length: number;
+  insurance_value: number;
+  packaging_type?: string;
+  volume?: number;
+}
+
 export interface ShippingQuoteResult {
   success: boolean;
   options: ShippingOption[];
   errors?: Array<{ id: number; name: string; error: string }>;
-  package?: {
-    weight: number;
-    height: number;
-    width: number;
-    length: number;
-    insurance_value: number;
-    packaging_type?: string;
-  };
+  package?: PackageInfo;
 }
 
 interface CalculateShippingParams {
@@ -55,6 +58,7 @@ interface CalculateShippingParams {
 export function useShippingQuote() {
   const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
   const [selectedOption, setSelectedOption] = useState<ShippingOption | null>(null);
+  const [packageInfo, setPackageInfo] = useState<PackageInfo | null>(null);
 
   const calculateShippingMutation = useMutation({
     mutationFn: async ({ fromPostalCode, toPostalCode, products, services }: CalculateShippingParams): Promise<ShippingQuoteResult> => {
@@ -79,6 +83,12 @@ export function useShippingQuote() {
     },
     onSuccess: (data) => {
       setShippingOptions(data.options);
+      if (data.package) {
+        setPackageInfo({
+          ...data.package,
+          volume: data.package.height * data.package.width * data.package.length,
+        });
+      }
       if (data.options.length === 0) {
         toast.warning('Nenhuma opção de frete disponível para este CEP');
       }
@@ -87,6 +97,7 @@ export function useShippingQuote() {
       console.error('Shipping quote error:', error);
       toast.error(error.message || 'Erro ao calcular frete');
       setShippingOptions([]);
+      setPackageInfo(null);
     },
   });
 
@@ -101,6 +112,7 @@ export function useShippingQuote() {
   const clearShippingOptions = () => {
     setShippingOptions([]);
     setSelectedOption(null);
+    setPackageInfo(null);
   };
 
   return {
@@ -110,5 +122,6 @@ export function useShippingQuote() {
     selectedOption,
     selectShippingOption,
     clearShippingOptions,
+    packageInfo,
   };
 }

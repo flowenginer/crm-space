@@ -3,8 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Truck, Package, Clock, Check, AlertCircle } from 'lucide-react';
-import { useShippingQuote, ShippingOption, ShippingProduct } from '@/hooks/useShippingQuote';
+import { Loader2, Truck, Package, Clock, Check, AlertCircle, Box, Layers, LayoutGrid, Boxes, Settings2 } from 'lucide-react';
+import { useShippingQuote, ShippingOption, ShippingProduct, PackagingType } from '@/hooks/useShippingQuote';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +17,7 @@ interface ShippingCalculatorProps {
     length_cm?: number;
     quantity: number;
     unit_price: number;
+    packaging_type?: PackagingType;
   }>;
   onSelectShipping: (option: { 
     method: string; 
@@ -27,6 +28,14 @@ interface ShippingCalculatorProps {
   }) => void;
   selectedServiceId?: number;
 }
+
+const PACKAGING_TYPE_INFO: Record<PackagingType, { label: string; icon: React.ReactNode; description: string }> = {
+  stack: { label: 'Empilhar', icon: <Layers className="h-3 w-3" />, description: 'Soma alturas' },
+  box: { label: 'Caixa', icon: <Box className="h-3 w-3" />, description: 'Volume cúbico' },
+  side_by_side: { label: 'Lado a lado', icon: <LayoutGrid className="h-3 w-3" />, description: 'Soma larguras' },
+  layered: { label: 'Camadas', icon: <Boxes className="h-3 w-3" />, description: 'Grid otimizado' },
+  custom: { label: 'Personalizado', icon: <Settings2 className="h-3 w-3" />, description: 'Multiplica dimensões' },
+};
 
 export function ShippingCalculator({ 
   destinationPostalCode: initialPostalCode = '', 
@@ -40,7 +49,8 @@ export function ShippingCalculator({
     calculateShipping, 
     isLoading, 
     shippingOptions,
-    clearShippingOptions 
+    clearShippingOptions,
+    packageInfo,
   } = useShippingQuote();
 
   useEffect(() => {
@@ -61,6 +71,16 @@ export function ShippingCalculator({
     clearShippingOptions();
   };
 
+  // Get dominant packaging type from products
+  const getDominantPackagingType = (): PackagingType => {
+    const types = products.map(p => p.packaging_type || 'stack');
+    const counts = types.reduce((acc, type) => {
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] as PackagingType || 'stack';
+  };
+
   const handleCalculate = async () => {
     if (!companySettings?.zip_code) {
       return;
@@ -71,6 +91,8 @@ export function ShippingCalculator({
       return;
     }
 
+    const dominantPackagingType = getDominantPackagingType();
+
     // Convert products to shipping format
     const shippingProducts: ShippingProduct[] = products.map(p => ({
       weight: p.weight_kg || 0.3, // Default 300g
@@ -79,6 +101,7 @@ export function ShippingCalculator({
       length: p.length_cm || 10,
       quantity: p.quantity,
       insurance_value: p.unit_price * p.quantity,
+      packaging_type: p.packaging_type || dominantPackagingType,
     }));
 
     await calculateShipping({
@@ -107,6 +130,9 @@ export function ShippingCalculator({
 
   const originCep = companySettings?.zip_code;
   const canCalculate = originCep && destinationCep.replace(/\D/g, '').length === 8;
+
+  const packagingTypeKey = (packageInfo?.packaging_type || 'stack') as PackagingType;
+  const packagingInfo = PACKAGING_TYPE_INFO[packagingTypeKey];
 
   return (
     <div className="space-y-4">
@@ -160,6 +186,41 @@ export function ShippingCalculator({
         <p className="text-xs text-muted-foreground">
           Origem: {originCep}
         </p>
+      )}
+
+      {/* Package Info Display */}
+      {packageInfo && (
+        <div className="p-3 bg-muted/50 border border-border rounded-lg space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Package className="h-4 w-4 text-primary" />
+            <span>Dimensões Calculadas</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="flex items-center gap-1.5">
+              {packagingInfo?.icon}
+              <span className="text-muted-foreground">Tipo:</span>
+              <span className="font-medium">{packagingInfo?.label}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Peso:</span>
+              <span className="font-medium ml-1">{packageInfo.weight.toFixed(2)} kg</span>
+            </div>
+            <div className="col-span-2">
+              <span className="text-muted-foreground">Dimensões (A×L×C):</span>
+              <span className="font-medium ml-1">
+                {packageInfo.height}×{packageInfo.width}×{packageInfo.length} cm
+              </span>
+            </div>
+            {packageInfo.volume && (
+              <div className="col-span-2">
+                <span className="text-muted-foreground">Volume:</span>
+                <span className="font-medium ml-1">
+                  {(packageInfo.volume / 1000).toFixed(1)} L ({packageInfo.volume.toLocaleString()} cm³)
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {shippingOptions.length > 0 && (
