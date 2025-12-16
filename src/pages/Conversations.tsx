@@ -148,7 +148,7 @@ const formatWhatsAppText = (text: string): React.ReactNode => {
     // Order matters: we process in order of precedence
     const formatPatterns = [
       { regex: /\*([^*]+)\*/, tag: 'bold' },
-      { regex: /_([^_]+)_/, tag: 'italic' },
+      { regex: /(?<![a-zA-Z0-9])_([^_]+)_(?![a-zA-Z0-9])/, tag: 'italic' },
       { regex: /~([^~]+)~/, tag: 'strikethrough' },
     ];
     
