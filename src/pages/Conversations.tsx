@@ -1300,9 +1300,11 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  // Usar Map com timestamp para proteção temporal (5 segundos de proteção)
-  const markedUnreadAtRef = useRef<Map<string, number>>(new Map());
-
+  // Set persistente de conversas que NÃO devem ser auto-marcadas como lidas
+  // A proteção só é removida por ação EXPLÍCITA do usuário (clicar na conversa ou enviar mensagem)
+  const manuallyMarkedUnreadRef = useRef<Set<string>>(new Set());
+  // Flag para distinguir clique do usuário vs. atualização de dados
+  const userClickedConversationRef = useRef<string | null>(null);
   // Função para redimensionar o textarea baseado no conteúdo
   const resizeTextarea = useCallback(() => {
     if (messageInputRef.current) {
@@ -1863,26 +1865,37 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       return;
     }
     
-    // Verificar se a conversa foi marcada como não lida recentemente (dentro de 10 segundos)
-    const markedAt = markedUnreadAtRef.current.get(selectedConversationId);
-    if (markedAt) {
-      const elapsed = Date.now() - markedAt;
-      if (elapsed < 10000) { // 10 segundos de proteção
-        console.log('[Auto-read] Bloqueado: marcado como não lida há', Math.round(elapsed / 1000), 'segundos');
-        return;
+    // Verificar se a conversa foi manualmente marcada como não lida (proteção persistente)
+    if (manuallyMarkedUnreadRef.current.has(selectedConversationId)) {
+      // Só remove a proteção se foi um clique EXPLÍCITO do usuário
+      if (userClickedConversationRef.current === selectedConversationId) {
+        console.log('[Auto-read] Usuário clicou explicitamente, removendo proteção:', selectedConversationId);
+        manuallyMarkedUnreadRef.current.delete(selectedConversationId);
+        userClickedConversationRef.current = null;
       } else {
-        // Remover entradas antigas
-        markedUnreadAtRef.current.delete(selectedConversationId);
+        console.log('[Auto-read] Bloqueado: conversa marcada como não lida manualmente');
+        return;
       }
     }
     
-    // Marcar como lida apenas se não foi recentemente marcada como não lida
-    console.log('[Auto-read] Marcando conversa como lida:', selectedConversationId);
-    updateConversation.mutate({
-      id: selectedConversationId,
-      is_unread: false,
-      unread_count: 0,
-    });
+    // Debounce de 500ms para evitar múltiplos disparos
+    const timeoutId = setTimeout(() => {
+      // Re-verificar proteção após debounce
+      if (manuallyMarkedUnreadRef.current.has(selectedConversationId)) {
+        console.log('[Auto-read] Bloqueado após debounce: ainda com proteção');
+        return;
+      }
+      
+      // Marcar como lida
+      console.log('[Auto-read] Marcando conversa como lida:', selectedConversationId);
+      updateConversation.mutate({
+        id: selectedConversationId,
+        is_unread: false,
+        unread_count: 0,
+      });
+    }, 500);
+    
+    return () => clearTimeout(timeoutId);
   }, [selectedConversationId, selectedConversation?.is_unread]);
 
   // Combine messages, internal notes, and conversation events, sorted by created_at
@@ -2177,9 +2190,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   // Conversation action handlers
   const handleMarkAsUnread = () => {
     if (selectedConversationId) {
-      // Proteger contra auto-marcar como lida por 10 segundos
-      console.log('[Mark Unread] Adicionando proteção para:', selectedConversationId);
-      markedUnreadAtRef.current.set(selectedConversationId, Date.now());
+      // Adicionar proteção PERSISTENTE (não expira por tempo)
+      console.log('[Mark Unread] Adicionando proteção persistente para:', selectedConversationId);
+      manuallyMarkedUnreadRef.current.add(selectedConversationId);
       updateConversation.mutate({ id: selectedConversationId, is_unread: true, unread_count: 1 });
       toast.success('Conversa marcada como não lida');
     }
@@ -2196,11 +2209,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     setIsConversationSelectionMode(false);
     
     try {
-      // Mark all IDs with timestamp to prevent auto-marking as read
-      const now = Date.now();
-      console.log('[Bulk Unread] Adicionando IDs ao markedUnreadAtRef:', ids);
-      ids.forEach(id => markedUnreadAtRef.current.set(id, now));
-      console.log('[Bulk Unread] markedUnreadAtRef atual:', Array.from(markedUnreadAtRef.current.entries()));
+      // Adicionar proteção PERSISTENTE para todos os IDs
+      console.log('[Bulk Unread] Adicionando proteção persistente para IDs:', ids);
+      ids.forEach(id => manuallyMarkedUnreadRef.current.add(id));
+      console.log('[Bulk Unread] IDs protegidos:', Array.from(manuallyMarkedUnreadRef.current));
       
       // Update all selected conversations - .select() ensures query execution
       const results = await Promise.all(
@@ -2386,6 +2398,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
     // ============ FIM DA VERIFICAÇÃO ============
     
+    // Marcar como clique EXPLÍCITO do usuário (para limpar proteção de "marcar como não lida")
+    userClickedConversationRef.current = conv.id;
+    console.log('[Auto-read] Usuário clicou explicitamente na conversa:', conv.id);
+    
     // Clear is_new_transfer flag when selecting a transferred conversation
     if ((conv as any).is_new_transfer && conv.assigned_to === profile?.id) {
       supabase
@@ -2428,6 +2444,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     const hasFiles = selectedFiles.length > 0;
     
     if (!hasText && !hasFiles) return;
+    
+    // Limpar proteção de "marcar como não lida" quando o usuário envia uma mensagem
+    if (manuallyMarkedUnreadRef.current.has(selectedConversationId)) {
+      console.log('[Auto-read] Removendo proteção ao enviar mensagem:', selectedConversationId);
+      manuallyMarkedUnreadRef.current.delete(selectedConversationId);
+    }
     
     if (isInternalNoteMode) {
       if (!hasText) return;
