@@ -103,6 +103,7 @@ export default function LiveMonitorPage() {
           tags:conversation_tags(tag:tags(id, name, color))
         `)
         .in('status', ['open', 'pending'])
+        .not('last_message_at', 'is', null)
         .order('last_message_at', { ascending: false });
 
       if (convsError) throw convsError;
