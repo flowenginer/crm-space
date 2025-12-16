@@ -1,5 +1,14 @@
 export function formatBrazilianPhone(value: string): string {
-  const digits = value.replace(/\D/g, '').slice(0, 11);
+  let digits = value.replace(/\D/g, '');
+  
+  // Se começar com 55 e tiver mais de 11 dígitos, o usuário digitou o código do país
+  // mesmo que a interface já mostre BR +55 - remover automaticamente
+  if (digits.startsWith('55') && digits.length > 11) {
+    digits = digits.slice(2);
+  }
+  
+  // Limitar a 11 dígitos (DDD + número)
+  digits = digits.slice(0, 11);
   
   if (digits.length <= 2) {
     return digits;
