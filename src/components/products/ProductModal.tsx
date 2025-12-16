@@ -35,7 +35,7 @@ import { useProductCatalogs } from '@/hooks/useProductCatalogs';
 import { useProductTemplatesWithVariations, useApplyTemplateToProduct, ProductTemplateWithVariations } from '@/hooks/useProductTemplates';
 import { useCreateBulkVariations } from '@/hooks/useProductVariations';
 import { usePriceRules } from '@/hooks/useAttributePriceRules';
-import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles, AlertTriangle, Grid3X3, Info, ExternalLink, Layers } from 'lucide-react';
+import { Loader2, Package, DollarSign, FileText, Calculator, Boxes, LayoutTemplate, Sparkles, AlertTriangle, Grid3X3, Info, ExternalLink, Layers, PackageOpen, AlignHorizontalJustifyCenter, Maximize, HelpCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ProductImageUploader } from './ProductImageUploader';
 import { ProductVariationsGenerator } from './ProductVariationsGenerator';
@@ -54,7 +54,51 @@ import {
   REGIME_TRIBUTARIO_OPTIONS,
   CFOP_VENDA_OPTIONS,
 } from './fiscal-constants';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
+// Packaging type options with detailed explanations
+const PACKAGING_TYPE_OPTIONS = [
+  {
+    value: 'stack',
+    label: 'Empilhar (Vertical)',
+    icon: Layers,
+    description: 'Produtos empilhados um sobre o outro. As alturas são somadas, largura e comprimento mantêm o maior valor.',
+    examples: 'Camisas, livros, pratos, toalhas, jogos de cama, documentos, revistas, tecidos dobrados',
+    calculation: 'Altura = soma | Largura/Comprimento = maior valor'
+  },
+  {
+    value: 'box',
+    label: 'Caixa Individual',
+    icon: Package,
+    description: 'Cada unidade é uma caixa separada. Calcula o volume total e distribui em formato cúbico otimizado.',
+    examples: 'Eletrodomésticos, eletrônicos, móveis desmontados, produtos frágeis em caixa, brinquedos grandes',
+    calculation: 'Volume total → distribuído em cubo'
+  },
+  {
+    value: 'side_by_side',
+    label: 'Lado a Lado (Horizontal)',
+    icon: AlignHorizontalJustifyCenter,
+    description: 'Produtos colocados lado a lado na horizontal. As larguras são somadas, altura e comprimento mantêm o maior valor.',
+    examples: 'Garrafas em pé, vasos, luminárias, troféus, potes de vidro, caixas de sapato em fila',
+    calculation: 'Largura = soma | Altura/Comprimento = maior valor'
+  },
+  {
+    value: 'layered',
+    label: 'Em Camadas (Grade)',
+    icon: Grid3X3,
+    description: 'Produtos organizados em camadas otimizadas dentro da caixa, como uma grade com várias camadas.',
+    examples: 'Cosméticos, chocolates, bijuterias, acessórios pequenos, canecas, copos, velas',
+    calculation: 'Distribuição em grid otimizado'
+  },
+  {
+    value: 'custom',
+    label: 'Dimensão Fixa (Já Embalado)',
+    icon: Maximize,
+    description: 'As dimensões informadas já representam a embalagem final. Multiplica diretamente pela quantidade.',
+    examples: 'Kits prontos, produtos já embalados, combos, caixas master, paletes',
+    calculation: 'Dimensões × quantidade (sem otimização)'
+  }
+] as const;
 const productSchema = z.object({
   // Dados básicos
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -93,6 +137,8 @@ const productSchema = z.object({
   height_cm: z.coerce.number().min(0).optional(),
   width_cm: z.coerce.number().min(0).optional(),
   length_cm: z.coerce.number().min(0).optional(),
+  // Packaging type for shipping calculation
+  packaging_type: z.enum(['stack', 'box', 'side_by_side', 'layered', 'custom']).optional(),
   // Impostos - ICMS
   regime_tributario: z.string().optional(),
   cst_icms: z.string().max(3).optional(),
@@ -183,6 +229,7 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
       height_cm: 0,
       width_cm: 0,
       length_cm: 0,
+      packaging_type: 'stack' as const,
       regime_tributario: '',
       cst_icms: '',
       csosn: '',
@@ -239,6 +286,7 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
         height_cm: (product as any).height_cm || 0,
         width_cm: (product as any).width_cm || 0,
         length_cm: (product as any).length_cm || 0,
+        packaging_type: (product as any).packaging_type || 'stack',
         regime_tributario: product.regime_tributario || '',
         cst_icms: product.cst_icms || '',
         csosn: product.csosn || '',
@@ -291,6 +339,7 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
         height_cm: 0,
         width_cm: 0,
         length_cm: 0,
+        packaging_type: 'stack' as const,
         regime_tributario: '',
         cst_icms: '',
         csosn: '',
@@ -360,6 +409,7 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
       height_cm: data.height_cm || undefined,
       width_cm: data.width_cm || undefined,
       length_cm: data.length_cm || undefined,
+      packaging_type: data.packaging_type || undefined,
       regime_tributario: data.regime_tributario || undefined,
       cst_icms: data.cst_icms || undefined,
       csosn: data.csosn || undefined,
@@ -1177,7 +1227,102 @@ export function ProductModal({ open, onOpenChange, product }: ProductModalProps)
                         </FormItem>
                       )}
                     />
+                  </div>
 
+                  {/* Tipo de Embalagem para Frete */}
+                  <div className="mt-6 p-4 border rounded-lg bg-muted/30">
+                    <FormField
+                      control={form.control}
+                      name="packaging_type"
+                      render={({ field }) => {
+                        const selectedOption = PACKAGING_TYPE_OPTIONS.find(opt => opt.value === field.value);
+                        const IconComponent = selectedOption?.icon || Package;
+                        
+                        return (
+                          <FormItem>
+                            <div className="flex items-center gap-2 mb-3">
+                              <Package className="h-4 w-4 text-primary" />
+                              <FormLabel className="text-base font-medium">Tipo de Embalagem para Frete</FormLabel>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent side="right" className="max-w-sm">
+                                    <p>Define como o sistema calcula as dimensões do pacote quando múltiplas unidades são compradas.</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                            <Select 
+                              value={field.value || 'stack'} 
+                              onValueChange={field.onChange}
+                            >
+                              <FormControl>
+                                <SelectTrigger className="w-full">
+                                  <SelectValue>
+                                    <div className="flex items-center gap-2">
+                                      <IconComponent className="h-4 w-4" />
+                                      {selectedOption?.label || 'Empilhar (Vertical)'}
+                                    </div>
+                                  </SelectValue>
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent className="w-[450px]">
+                                {PACKAGING_TYPE_OPTIONS.map((option) => {
+                                  const Icon = option.icon;
+                                  return (
+                                    <SelectItem 
+                                      key={option.value} 
+                                      value={option.value}
+                                      className="py-3"
+                                    >
+                                      <div className="flex items-start gap-3">
+                                        <Icon className="h-5 w-5 mt-0.5 text-primary shrink-0" />
+                                        <div className="space-y-1">
+                                          <div className="font-medium">{option.label}</div>
+                                          <div className="text-xs text-muted-foreground">
+                                            {option.description}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                            
+                            {/* Dynamic description based on selection */}
+                            {selectedOption && (
+                              <div className="mt-3 space-y-2 text-sm">
+                                <div className="flex items-start gap-2 text-muted-foreground">
+                                  <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                                  <span>{selectedOption.description}</span>
+                                </div>
+                                <div className="pl-6 space-y-1">
+                                  <p className="text-xs">
+                                    <span className="font-medium text-foreground">Exemplos de produtos: </span>
+                                    <span className="text-muted-foreground">{selectedOption.examples}</span>
+                                  </p>
+                                  <p className="text-xs">
+                                    <span className="font-medium text-foreground">Cálculo: </span>
+                                    <span className="text-muted-foreground">{selectedOption.calculation}</span>
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Benefício Fiscal */}
+                <div>
+                  <h4 className="text-sm font-medium mb-3 text-muted-foreground">Benefício Fiscal</h4>
+                  <div className="grid grid-cols-3 gap-4">
                     <FormField
                       control={form.control}
                       name="codigo_beneficio_fiscal"
