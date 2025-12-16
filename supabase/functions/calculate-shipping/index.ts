@@ -135,26 +135,33 @@ serve(async (req) => {
       );
     }
 
-    // Calculate package dimensions
+    // Calculate package dimensions with stacking logic
+    // Height is SUMMED (stacking products on top of each other)
+    // Width and Length take the MAXIMUM value (base dimensions)
     let totalWeight = 0;
     let totalInsuranceValue = 0;
-    let maxHeight = 0;
-    let maxWidth = 0;
-    let totalLength = 0;
+    let totalHeight = 0;  // Heights are summed (stacking)
+    let maxWidth = 0;     // Width is the maximum value
+    let maxLength = 0;    // Length is the maximum value
 
     for (const product of products) {
       const qty = product.quantity || 1;
       totalWeight += (product.weight || 0.3) * qty;
       totalInsuranceValue += (product.insurance_value || 0) * qty;
-      maxHeight = Math.max(maxHeight, product.height || 10);
-      maxWidth = Math.max(maxWidth, product.width || 10);
-      totalLength += (product.length || 10) * qty;
+      totalHeight += (product.height || 2) * qty;  // Stack heights
+      maxWidth = Math.max(maxWidth, product.width || 20);
+      maxLength = Math.max(maxLength, product.length || 20);
     }
 
-    const finalHeight = Math.max(maxHeight, 2);
+    // Apply minimum dimensions required by carriers and limit insurance
+    const finalHeight = Math.max(totalHeight, 2);
     const finalWidth = Math.max(maxWidth, 11);
-    const finalLength = Math.max(totalLength, 16);
+    const finalLength = Math.max(maxLength, 16);
     const finalWeight = Math.max(totalWeight, 0.3);
+    
+    // Limit insurance value to carrier maximum (Correios SEDEX limit)
+    const maxInsuranceValue = 38000;
+    totalInsuranceValue = Math.min(totalInsuranceValue, maxInsuranceValue);
 
     const apiBody: Record<string, unknown> = {
       from: { postal_code: cleanFromPostal },
