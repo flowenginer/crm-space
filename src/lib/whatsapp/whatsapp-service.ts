@@ -342,17 +342,31 @@ class WhatsAppService {
         created_at: msg.timestamp.toISOString(),
       });
 
-      // 4. Atualizar conversa
+      // 4. Atualizar conversa com TODOS os campos necessários
+      // Buscar unread_count atual primeiro
+      const { data: currentConv } = await supabase
+        .from('conversations')
+        .select('unread_count')
+        .eq('id', conversation.id)
+        .single();
+      
+      const preview = msg.type === 'image' 
+        ? '📷 Imagem' 
+        : msg.type === 'audio'
+        ? '🎵 Áudio'
+        : msg.type === 'video'
+        ? '🎬 Vídeo'
+        : msg.type === 'document'
+        ? '📄 Documento'
+        : msg.content.substring(0, 100);
+
       await supabase
         .from('conversations')
         .update({
           last_message_at: msg.timestamp.toISOString(),
-          last_message_preview: msg.content.substring(0, 100),
-          unread_count: (await supabase
-            .from('conversations')
-            .select('unread_count')
-            .eq('id', conversation.id)
-            .single()).data?.unread_count || 0 + 1,
+          last_message_preview: preview,
+          last_message_is_from_me: msg.isFromMe, // CRÍTICO: Atualizar este campo!
+          unread_count: (currentConv?.unread_count || 0) + 1,
           is_unread: true,
           updated_at: new Date().toISOString(),
         })
