@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { MessageSquare, Send, Loader2, Phone, User, Smartphone, ShieldAlert, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatBrazilianPhone, normalizePhoneForStorage, getPhoneSearchVariations, isValidBrazilianPhone } from '@/utils/phone';
+import { formatBrazilianPhone, normalizePhoneForStorage, getPhoneSearchVariations, isValidBrazilianPhone, extractLast8Digits } from '@/utils/phone';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { ContactRequestModal } from './ContactRequestModal';
@@ -207,17 +207,16 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
     setIsLoading(true);
     try {
       const normalizedPhone = normalizePhoneForStorage(phoneNumber);
-      const searchVariations = getPhoneSearchVariations(normalizedPhone);
       
-      // Search contact by phone using all variations
-      const orConditions = searchVariations.map(v => `phone.eq.${v}`).join(',');
-      const { data: contact, error } = await supabase
-        .from('contacts')
-        .select('*')
-        .or(orConditions)
-        .maybeSingle();
+      // Search contact by last 8 digits to prevent duplicates from 9th digit variation
+      const last8Digits = extractLast8Digits(normalizedPhone);
+      const { data: contactResult, error } = await supabase
+        .rpc('find_contact_by_phone_suffix', { phone_suffix: last8Digits });
 
       if (error) throw error;
+      
+      // RPC returns array, get the first match (most recent)
+      const contact = contactResult && contactResult.length > 0 ? contactResult[0] : null;
 
       if (contact) {
         // *** CRITICAL: First check if user can access the CONTACT itself ***
@@ -418,14 +417,14 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           return;
         }
       } else {
-        // Verificar duplicata uma última vez antes de criar
-        const searchVariations = getPhoneSearchVariations(normalizedPhone);
-        const orConditions = searchVariations.map(v => `phone.eq.${v}`).join(',');
-        const { data: existingByPhone } = await supabase
-          .from('contacts')
-          .select('id, full_name, assigned_to, department_id')
-          .or(orConditions)
-          .maybeSingle();
+        // Verificar duplicata uma última vez antes de criar usando RPC
+        const last8Digits = extractLast8Digits(normalizedPhone);
+        const { data: existingByPhoneResult } = await supabase
+          .rpc('find_contact_by_phone_suffix', { phone_suffix: last8Digits });
+        
+        const existingByPhone = existingByPhoneResult && existingByPhoneResult.length > 0 
+          ? existingByPhoneResult[0] 
+          : null;
         
         if (existingByPhone) {
           // *** CRITICAL: Check if this existing contact belongs to another user ***
@@ -496,13 +495,14 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
             .single();
 
           if (contactError) {
-            // Se for erro de constraint de duplicata, buscar o existente
+            // Se for erro de constraint de duplicata, buscar o existente usando RPC
             if (contactError.code === '23505') {
-              const { data: foundContact } = await supabase
-                .from('contacts')
-                .select('id, full_name, assigned_to, department_id')
-                .or(orConditions)
-                .maybeSingle();
+              const { data: foundContactResult } = await supabase
+                .rpc('find_contact_by_phone_suffix', { phone_suffix: last8Digits });
+              
+              const foundContact = foundContactResult && foundContactResult.length > 0 
+                ? foundContactResult[0] 
+                : null;
               
               if (foundContact) {
                 // Check access for this found contact
