@@ -152,6 +152,30 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   const { data: quoteNotificationConfig } = useQuoteNotificationConfig();
   const isNotificationsGloballyEnabled = quoteNotificationConfig?.quote_expiration_enabled ?? false;
 
+  // Fetch referral_data from any conversation of the contact (fallback when current conversation doesn't have it)
+  const { data: contactReferralData } = useQuery({
+    queryKey: ['contact-referral-data', conversationContactId],
+    queryFn: async () => {
+      if (!conversationContactId) return null;
+      
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('referral_data')
+        .eq('contact_id', conversationContactId)
+        .not('referral_data', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('Error fetching contact referral data:', error);
+        return null;
+      }
+      return data?.referral_data;
+    },
+    enabled: !!conversationContactId,
+    staleTime: 60000, // 1 minuto de cache
+  });
+
   // Fetch all tags (with visibility filter) - campos específicos
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
