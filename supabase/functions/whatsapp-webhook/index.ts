@@ -1396,15 +1396,36 @@ serve(async (req) => {
 
     if (!conversation) {
       // Check if there's a closed conversation to potentially reopen
-      const { data: closedConversation } = await supabase
-        .from("conversations")
-        .select("id, status, assigned_to, close_reason, closed_at, closed_by, last_message_at")
-        .eq("contact_id", contact.id)
-        .eq("channel_id", channel.id)
-        .eq("status", "closed")
-        .order("closed_at", { ascending: false })
-        .limit(1)
-        .single();
+      // Use retry mechanism to handle race condition when API closes conversation
+      // and bot sends message immediately after (before transaction commits)
+      let closedConversation = null;
+      
+      const findClosedConversation = async () => {
+        const { data } = await supabase
+          .from("conversations")
+          .select("id, status, assigned_to, close_reason, closed_at, closed_by, last_message_at")
+          .eq("contact_id", contact.id)
+          .eq("channel_id", channel.id)
+          .eq("status", "closed")
+          .order("closed_at", { ascending: false })
+          .limit(1)
+          .single();
+        return data;
+      };
+      
+      // First attempt
+      closedConversation = await findClosedConversation();
+      
+      // If not found, wait 200ms and retry (handles race condition with API closure)
+      if (!closedConversation) {
+        console.log(`[Webhook] No closed conversation found, retrying in 200ms...`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        closedConversation = await findClosedConversation();
+        
+        if (closedConversation) {
+          console.log(`[Webhook] ✅ Found closed conversation on retry: ${closedConversation.id}`);
+        }
+      }
 
       if (closedConversation) {
         // Reopen the closed conversation
@@ -1600,13 +1621,102 @@ serve(async (req) => {
           console.error(`[Webhook] Error creating conversation:`, convError);
           throw convError;
         }
-        conversation = newConversation;
         
-        if (conversationReferralSource) {
-          console.log(`[Webhook] 📣 New conversation from ${conversationReferralSource}! (detected via ${originDetectionMethod})`);
-        }
-        if (initialAssignedTo) {
-          console.log(`[Webhook] 👤 New conversation assigned to owner agent: ${initialAssignedTo}`);
+        // SAFETY CHECK: After creating, verify if a very recently closed conversation exists
+        // This handles extreme race conditions where retry still didn't catch the closed conversation
+        const thirtySecondsAgo = new Date(Date.now() - 30 * 1000).toISOString();
+        const { data: recentlyClosed } = await supabase
+          .from("conversations")
+          .select("id, assigned_to, close_reason, closed_at, closed_by")
+          .eq("contact_id", contact.id)
+          .eq("channel_id", channel.id)
+          .eq("status", "closed")
+          .gte("closed_at", thirtySecondsAgo)
+          .neq("id", newConversation.id)
+          .order("closed_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (recentlyClosed) {
+          // Found a recently closed conversation - delete the new one and reopen the existing
+          console.log(`[Webhook] ⚠️ RACE CONDITION DETECTED: Found recently closed conversation ${recentlyClosed.id} after creating new one ${newConversation.id}`);
+          console.log(`[Webhook] 🔄 Deleting new conversation and reopening existing...`);
+          
+          // Delete the mistakenly created conversation
+          await supabase.from("conversations").delete().eq("id", newConversation.id);
+          
+          // Get current reopen count
+          const { data: convDataRecent } = await supabase
+            .from("conversations")
+            .select("reopen_count")
+            .eq("id", recentlyClosed.id)
+            .single();
+          
+          const currentReopenCountRecent = convDataRecent?.reopen_count || 0;
+          
+          // Determine who should be assigned
+          let newAssignedToRecent = recentlyClosed.assigned_to;
+          if (ownerAgentEnabled && ownerAgentId && reopenToOwner) {
+            const closeReasonRecent = recentlyClosed.close_reason || '';
+            if (reopenReasons.includes(closeReasonRecent) || reopenReasons.length === 0) {
+              newAssignedToRecent = ownerAgentId;
+            }
+          }
+          
+          const reopenStatusRecent = newAssignedToRecent ? "open" : "pending";
+          
+          // Reopen the recently closed conversation
+          await supabase
+            .from("conversations")
+            .update({
+              status: reopenStatusRecent,
+              is_unread: true,
+              unread_count: 1,
+              last_message_at: new Date().toISOString(),
+              last_message_preview: normalizedMessage.content.substring(0, 100),
+              assigned_to: newAssignedToRecent,
+              reopened_at: new Date().toISOString(),
+              reopen_count: currentReopenCountRecent + 1,
+              previous_close_reason: recentlyClosed.close_reason,
+              previous_closed_at: recentlyClosed.closed_at,
+              previous_closed_by: recentlyClosed.closed_by,
+              closed_at: null,
+              closed_by: null,
+              close_reason: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", recentlyClosed.id);
+          
+          // Register reopen event
+          await supabase.from("conversation_events").insert({
+            conversation_id: recentlyClosed.id,
+            event_type: "reopen",
+            actor_id: null,
+            data: {
+              previous_close_reason: recentlyClosed.close_reason,
+              previous_closed_at: recentlyClosed.closed_at,
+              trigger: "client_message_race_condition_fix",
+            }
+          });
+          
+          console.log(`[Webhook] ✅ Successfully reopened conversation ${recentlyClosed.id} instead of creating duplicate`);
+          
+          conversation = { 
+            id: recentlyClosed.id, 
+            status: reopenStatusRecent, 
+            assigned_to: newAssignedToRecent,
+            close_reason: null,
+            last_message_at: new Date().toISOString()
+          };
+        } else {
+          conversation = newConversation;
+          
+          if (conversationReferralSource) {
+            console.log(`[Webhook] 📣 New conversation from ${conversationReferralSource}! (detected via ${originDetectionMethod})`);
+          }
+          if (initialAssignedTo) {
+            console.log(`[Webhook] 👤 New conversation assigned to owner agent: ${initialAssignedTo}`);
+          }
         }
       }
     } else {
