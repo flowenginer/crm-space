@@ -1,7 +1,9 @@
 import { ArrowRightLeft, Building2, User, Undo2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
 import type { ConversationEvent } from '@/hooks/useConversationEvents';
 
 interface TransferEventCardProps {
@@ -23,9 +25,41 @@ export function TransferEventCard({
 }: TransferEventCardProps) {
   const { data, created_at } = event;
   
-  const fromName = data.from_user_name || 'Usuário';
-  const toName = data.to_user_name || data.to_department_name || 'Destino';
-  const isTransferToDepartment = !!data.to_department_id;
+  // Buscar nome do usuário destino se não estiver no data
+  const { data: toUser } = useQuery({
+    queryKey: ['profile-name', data.to_user_id],
+    queryFn: async () => {
+      if (!data.to_user_id) return null;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', data.to_user_id)
+        .single();
+      return profile;
+    },
+    enabled: !!data.to_user_id && !data.to_user_name,
+    staleTime: 60000,
+  });
+
+  // Buscar nome do departamento destino se não estiver no data
+  const { data: toDept } = useQuery({
+    queryKey: ['department-name', data.to_department_id],
+    queryFn: async () => {
+      if (!data.to_department_id) return null;
+      const { data: dept } = await supabase
+        .from('departments')
+        .select('name')
+        .eq('id', data.to_department_id)
+        .single();
+      return dept;
+    },
+    enabled: !!data.to_department_id && !data.to_department_name,
+    staleTime: 60000,
+  });
+
+  const fromName = data.from_user_name || 'Sistema N8N';
+  const toName = data.to_user_name || toUser?.full_name || data.to_department_name || toDept?.name || 'Destino';
+  const isTransferToDepartment = !!data.to_department_id && !data.to_user_id;
   const isReturn = (data as any).is_return === true;
 
   // Show return button only if:

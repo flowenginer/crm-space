@@ -1201,11 +1201,6 @@ function InternalNoteCard({ note, onUpdate }: InternalNoteCardProps) {
           )}
         </div>
 
-        {/* Author */}
-        <div className="text-sm font-semibold text-amber-900 mb-1">
-          {note.author?.full_name || 'Equipe'}:
-        </div>
-
         {/* Content */}
         {isEditing ? (
           <div className="space-y-2">
