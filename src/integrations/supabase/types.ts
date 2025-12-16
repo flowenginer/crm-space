@@ -482,6 +482,48 @@ export type Database = {
           },
         ]
       }
+      contact_merge_log: {
+        Row: {
+          conversations_transferred: number | null
+          id: string
+          keep_contact_id: string
+          keep_name: string | null
+          keep_phone: string | null
+          merged_at: string | null
+          merged_contact_id: string
+          merged_name: string | null
+          merged_phone: string | null
+          messages_transferred: number | null
+          tags_transferred: number | null
+        }
+        Insert: {
+          conversations_transferred?: number | null
+          id?: string
+          keep_contact_id: string
+          keep_name?: string | null
+          keep_phone?: string | null
+          merged_at?: string | null
+          merged_contact_id: string
+          merged_name?: string | null
+          merged_phone?: string | null
+          messages_transferred?: number | null
+          tags_transferred?: number | null
+        }
+        Update: {
+          conversations_transferred?: number | null
+          id?: string
+          keep_contact_id?: string
+          keep_name?: string | null
+          keep_phone?: string | null
+          merged_at?: string | null
+          merged_contact_id?: string
+          merged_name?: string | null
+          merged_phone?: string | null
+          messages_transferred?: number | null
+          tags_transferred?: number | null
+        }
+        Relationships: []
+      }
       contact_requests: {
         Row: {
           contact_id: string
