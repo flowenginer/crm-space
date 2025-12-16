@@ -87,65 +87,74 @@ async function sendEvolutionMessage(
   
   console.log('[Evolution] Sending message:', { instanceName, phone: formattedPhone, type, quotedMessageId });
   
-  let endpoint = '';
-  let body: any = {};
-  
-  // Add quoted context if available - include remoteJid for media messages
-  const quotedContext = quotedMessageId ? {
-    quoted: {
-      key: {
-        remoteJid: formattedPhone,
-        id: quotedMessageId
+  // Helper to build request body
+  const buildBody = (includeQuote: boolean) => {
+    const quotedContext = (includeQuote && quotedMessageId) ? {
+      quoted: {
+        key: {
+          remoteJid: formattedPhone,
+          id: quotedMessageId
+        }
       }
+    } : {};
+    
+    if (type === 'text') {
+      return {
+        number: formattedPhone,
+        text: content,
+        ...quotedContext,
+      };
+    } else if (type === 'image') {
+      return {
+        number: formattedPhone,
+        mediatype: 'image',
+        media: mediaUrl,
+        caption: content || '',
+        ...quotedContext,
+      };
+    } else if (type === 'audio') {
+      return {
+        number: formattedPhone,
+        audio: mediaUrl,
+        ...quotedContext,
+      };
+    } else if (type === 'video') {
+      return {
+        number: formattedPhone,
+        mediatype: 'video',
+        media: mediaUrl,
+        caption: content || '',
+        ...quotedContext,
+      };
+    } else if (type === 'document') {
+      return {
+        number: formattedPhone,
+        mediatype: 'document',
+        media: mediaUrl,
+        fileName: filename || content || 'document',
+        ...quotedContext,
+      };
     }
-  } : {};
+    return { number: formattedPhone, text: content };
+  };
   
+  // Build endpoint
+  let endpoint = '';
   if (type === 'text') {
     endpoint = `${normalizedUrl}/message/sendText/${instanceName}`;
-    body = {
-      number: formattedPhone,
-      text: content,
-      ...quotedContext,
-    };
-  } else if (type === 'image') {
-    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
-    body = {
-      number: formattedPhone,
-      mediatype: 'image',
-      media: mediaUrl,
-      caption: content || '',
-      ...quotedContext,
-    };
   } else if (type === 'audio') {
     endpoint = `${normalizedUrl}/message/sendWhatsAppAudio/${instanceName}`;
-    body = {
-      number: formattedPhone,
-      audio: mediaUrl,
-      ...quotedContext,
-    };
-  } else if (type === 'video') {
+  } else {
     endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
-    body = {
-      number: formattedPhone,
-      mediatype: 'video',
-      media: mediaUrl,
-      caption: content || '',
-      ...quotedContext,
-    };
-  } else if (type === 'document') {
-    endpoint = `${normalizedUrl}/message/sendMedia/${instanceName}`;
-    body = {
-      number: formattedPhone,
-      mediatype: 'document',
-      media: mediaUrl,
-      fileName: filename || content || 'document',
-      ...quotedContext,
-    };
   }
   
-  console.log('[Evolution] Request:', { endpoint, body });
+  // Try with quote first, retry without if fails
+  const tryWithQuote = !!quotedMessageId;
+  let body = buildBody(tryWithQuote);
   
-  const response = await fetch(endpoint, {
+  console.log('[Evolution] Request:', { endpoint, body, tryWithQuote });
+  
+  let response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -153,6 +162,22 @@ async function sendEvolutionMessage(
     },
     body: JSON.stringify(body),
   });
+  
+  // If failed with quote, retry without it
+  if (!response.ok && tryWithQuote) {
+    const errorText = await response.text();
+    console.log('[Evolution] Send failed with quote, retrying without:', errorText.substring(0, 200));
+    
+    body = buildBody(false);
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+  }
   
   const data = await safeJsonParse(response, 'Evolution Send');
   
