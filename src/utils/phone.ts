@@ -53,21 +53,65 @@ export function cleanBrazilianPhone(phone: string): string {
 }
 
 /**
+ * Extrai os últimos 8 dígitos do telefone (identificador único)
+ * Ignora código do país (55) e DDD - foca apenas no número local
+ */
+export function extractLast8Digits(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  return digits.slice(-8);
+}
+
+/**
  * Gera variações do telefone para busca no banco
- * Útil para encontrar contatos com formatos diferentes
+ * Inclui variações com/sem código do país e com/sem o 9° dígito brasileiro
  */
 export function getPhoneSearchVariations(phone: string): string[] {
   const normalized = normalizePhoneForStorage(phone);
   const variations: string[] = [normalized];
   
+  if (!normalized) return variations;
+  
   // Versão sem código do país
   if (normalized.startsWith('55')) {
-    variations.push(normalized.slice(2));
+    const withoutCountry = normalized.slice(2);
+    if (!variations.includes(withoutCountry)) {
+      variations.push(withoutCountry);
+    }
   }
   
   // Versão com código do país se não tiver
   if (!normalized.startsWith('55') && normalized.length >= 10) {
-    variations.push(`55${normalized}`);
+    const withCountry = `55${normalized}`;
+    if (!variations.includes(withCountry)) {
+      variations.push(withCountry);
+    }
+  }
+  
+  // =====================================================
+  // VARIAÇÕES DO 9° DÍGITO - CRÍTICO PARA CELULARES BR
+  // =====================================================
+  // Extrair DDD e resto do número
+  const hasCountry = normalized.startsWith('55');
+  const baseNumber = hasCountry ? normalized.slice(2) : normalized;
+  const ddd = baseNumber.slice(0, 2);
+  const rest = baseNumber.slice(2);
+  
+  // Se tem 9 dígitos após o DDD e começa com 9, tentar SEM o 9
+  if (rest.length === 9 && rest.startsWith('9')) {
+    const without9 = rest.slice(1);
+    const variation1 = `55${ddd}${without9}`;
+    const variation2 = `${ddd}${without9}`;
+    if (!variations.includes(variation1)) variations.push(variation1);
+    if (!variations.includes(variation2)) variations.push(variation2);
+  }
+  
+  // Se tem 8 dígitos após o DDD, tentar COM o 9 na frente
+  if (rest.length === 8) {
+    const with9 = `9${rest}`;
+    const variation1 = `55${ddd}${with9}`;
+    const variation2 = `${ddd}${with9}`;
+    if (!variations.includes(variation1)) variations.push(variation1);
+    if (!variations.includes(variation2)) variations.push(variation2);
   }
   
   return [...new Set(variations)]; // Remove duplicatas
