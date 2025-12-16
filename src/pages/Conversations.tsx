@@ -144,36 +144,58 @@ const formatWhatsAppText = (text: string): React.ReactNode => {
     let remaining = segment;
     let keyCounter = 0;
     
-    // Combined regex for all WhatsApp formatting patterns
-    // Order matters: we process in order of precedence
+    // WhatsApp formatting patterns - delimiters only work with space/start before AND space/end/punctuation after
+    // Pattern: (prefix)(delimiter)(content)(delimiter)(suffix)
+    // Prefix: start of string OR whitespace
+    // Suffix: end of string OR whitespace OR punctuation
     const formatPatterns = [
-      { regex: /\*([^*]+)\*/, tag: 'bold' },
-      { regex: /(?<![a-zA-Z0-9])_([^_]+)_(?![a-zA-Z0-9])/, tag: 'italic' },
-      { regex: /~([^~]+)~/, tag: 'strikethrough' },
+      { regex: /(^|[\s])(\*)([^*]+)(\*)([\s.,!?;:\-)]|$)/, tag: 'bold', delimiter: '*' },
+      { regex: /(^|[\s])(_)([^_]+)(_)([\s.,!?;:\-)]|$)/, tag: 'italic', delimiter: '_' },
+      { regex: /(^|[\s])(~)([^~]+)(~)([\s.,!?;:\-)]|$)/, tag: 'strikethrough', delimiter: '~' },
     ];
     
     while (remaining.length > 0) {
-      let earliestMatch: { index: number; length: number; content: string; tag: string } | null = null;
+      let earliestMatch: { 
+        index: number; 
+        length: number; 
+        content: string; 
+        tag: string;
+        prefix: string;
+        suffix: string;
+      } | null = null;
       
       // Find the earliest formatting match
       for (const pattern of formatPatterns) {
         const match = remaining.match(pattern.regex);
         if (match && match.index !== undefined) {
-          if (!earliestMatch || match.index < earliestMatch.index) {
+          // match[1] = prefix (space or start)
+          // match[2] = opening delimiter
+          // match[3] = content
+          // match[4] = closing delimiter
+          // match[5] = suffix (space, punctuation or end)
+          const matchIndex = match.index + match[1].length; // Start after prefix
+          if (!earliestMatch || matchIndex < earliestMatch.index) {
             earliestMatch = {
               index: match.index,
               length: match[0].length,
-              content: match[1],
+              content: match[3],
               tag: pattern.tag,
+              prefix: match[1],
+              suffix: match[5],
             };
           }
         }
       }
       
       if (earliestMatch) {
-        // Add text before the match
+        // Add text before the match (including prefix which is a space)
         if (earliestMatch.index > 0) {
           elements.push(remaining.slice(0, earliestMatch.index));
+        }
+        
+        // Add the prefix (space) if it exists
+        if (earliestMatch.prefix) {
+          elements.push(earliestMatch.prefix);
         }
         
         // Add the formatted element
@@ -192,7 +214,12 @@ const formatWhatsAppText = (text: string): React.ReactNode => {
             break;
         }
         
-        // Continue with the rest
+        // Add the suffix (space/punctuation) if it exists and isn't end of string marker
+        if (earliestMatch.suffix) {
+          elements.push(earliestMatch.suffix);
+        }
+        
+        // Continue with the rest (after the full match including suffix)
         remaining = remaining.slice(earliestMatch.index + earliestMatch.length);
       } else {
         // No more formatting found, add remaining text
