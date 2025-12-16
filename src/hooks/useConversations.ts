@@ -224,26 +224,10 @@ export function useSendMessage() {
 
       if (error) throw error;
 
-      // Update conversation last message (fire and forget for speed)
-      const preview = message.message_type === 'image' 
-        ? '📷 Imagem' 
-        : message.message_type === 'audio'
-        ? '🎵 Áudio'
-        : message.message_type === 'video'
-        ? '🎬 Vídeo'
-        : message.message_type === 'document'
-        ? '📄 Documento'
-        : message.content.substring(0, 100);
-
-      supabase
-        .from('conversations')
-        .update({
-          last_message_at: new Date().toISOString(),
-          last_message_preview: preview,
-          last_message_is_from_me: message.is_from_me ?? true,
-        })
-        .eq('id', message.conversation_id)
-        .then(() => {});
+      // NOTE: O trigger do banco (update_last_message_is_from_me) agora cuida
+      // de atualizar last_message_at, last_message_preview e last_message_is_from_me
+      // automaticamente quando uma mensagem é inserida. Não fazemos update manual
+      // aqui para evitar race conditions.
 
       return data;
     },

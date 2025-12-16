@@ -6258,6 +6258,13 @@ export type Database = {
         Args: { p_other_user_id: string; p_user_id: string }
         Returns: string
       }
+      fix_conversation_last_message_sync: {
+        Args: never
+        Returns: {
+          details: Json
+          fixed_count: number
+        }[]
+      }
       fix_historical_origin_detection: {
         Args: never
         Returns: {
