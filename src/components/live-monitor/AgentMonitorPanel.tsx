@@ -47,13 +47,20 @@ import { ResponseTimeChart } from './ResponseTimeChart';
 import { WaitingConversationsModal } from './WaitingConversationsModal';
 import { AvailabilityTimerModal } from './AvailabilityTimerModal';
 
-export function AgentMonitorPanel() {
+interface AgentMonitorPanelProps {
+  hiddenAgentIds?: Set<string>;
+}
+
+export function AgentMonitorPanel({ hiddenAgentIds = new Set() }: AgentMonitorPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showChart, setShowChart] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [timerModalAgent, setTimerModalAgent] = useState<AgentStatus | null>(null);
   
-  const { data: agents = [], isLoading } = useAgentMonitorStatus();
+  const { data: allAgents = [], isLoading } = useAgentMonitorStatus();
+  
+  // Filter out hidden agents
+  const agents = allAgents.filter(agent => !hiddenAgentIds.has(agent.agent_id));
   const { data: alertMinutes = 5 } = useResponseAlertSettings();
   const toggleAvailability = useToggleAgentAvailability();
   const updateAlertSettings = useUpdateResponseAlertSettings();

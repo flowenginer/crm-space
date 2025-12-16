@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 import { AgentMonitorPanel } from '@/components/live-monitor/AgentMonitorPanel';
+import { UserVisibilityFilter } from '@/components/live-monitor/UserVisibilityFilter';
 
 interface ConversationContact {
   id: string;
@@ -55,14 +56,25 @@ interface Agent {
   totalMessages: number;
 }
 
+const HIDDEN_AGENTS_KEY = 'liveMonitor_hiddenAgents';
+
 export default function LiveMonitorPage() {
   const [viewMode, setViewMode] = useState<'users' | 'departments'>('users');
   const [search, setSearch] = useState('');
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [previewConversationId, setPreviewConversationId] = useState<string | null>(null);
+  const [hiddenAgentIds, setHiddenAgentIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem(HIDDEN_AGENTS_KEY);
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
   
   const navigate = useNavigate();
   const { isAdmin, role } = usePermissions();
+
+  // Persist hidden agents to localStorage
+  useEffect(() => {
+    localStorage.setItem(HIDDEN_AGENTS_KEY, JSON.stringify([...hiddenAgentIds]));
+  }, [hiddenAgentIds]);
 
   // Check permission - only admin and supervisor
   const hasAccess = isAdmin || role === 'supervisor';
@@ -200,18 +212,62 @@ export default function LiveMonitorPage() {
     setExpandedAgents(newExpanded);
   };
 
-  // Filter agents by search
-  const filteredAgents = data?.agents.filter(agent => {
-    if (!search) return true;
-    const searchLower = search.toLowerCase();
-    
-    if (agent.full_name?.toLowerCase().includes(searchLower)) return true;
-    
-    return agent.conversations.some(conv => 
-      conv.contact?.full_name?.toLowerCase().includes(searchLower) ||
-      conv.contact?.phone?.includes(search)
-    );
-  }) || [];
+  // Filter agents by search and visibility
+  const filteredAgents = useMemo(() => {
+    return data?.agents.filter(agent => {
+      // Never hide "Pendentes" column
+      if (agent.id === 'unassigned') return true;
+      
+      // Apply visibility filter
+      if (hiddenAgentIds.has(agent.id)) return false;
+      
+      // Apply search filter
+      if (!search) return true;
+      const searchLower = search.toLowerCase();
+      
+      if (agent.full_name?.toLowerCase().includes(searchLower)) return true;
+      
+      return agent.conversations.some(conv => 
+        conv.contact?.full_name?.toLowerCase().includes(searchLower) ||
+        conv.contact?.phone?.includes(search)
+      );
+    }) || [];
+  }, [data?.agents, hiddenAgentIds, search]);
+
+  // Agents for visibility filter (exclude "unassigned")
+  const agentsForFilter = useMemo(() => {
+    return (data?.agents || [])
+      .filter(a => a.id !== 'unassigned')
+      .map(a => ({
+        id: a.id,
+        full_name: a.full_name,
+        conversationCount: a.conversations.length,
+      }));
+  }, [data?.agents]);
+
+  // Visibility filter handlers
+  const toggleAgentVisibility = useCallback((agentId: string) => {
+    setHiddenAgentIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(agentId)) {
+        newSet.delete(agentId);
+      } else {
+        newSet.add(agentId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const showAllAgents = useCallback(() => {
+    setHiddenAgentIds(new Set());
+  }, []);
+
+  const hideAgentsWithoutConversations = useCallback(() => {
+    const toHide = (data?.agents || [])
+      .filter(a => a.id !== 'unassigned' && a.conversations.length === 0)
+      .map(a => a.id);
+    setHiddenAgentIds(new Set(toHide));
+  }, [data?.agents]);
 
   // Open conversation preview
   const openConversationPreview = (conversationId: string) => {
@@ -296,6 +352,15 @@ export default function LiveMonitorPage() {
                 className="pl-10"
               />
             </div>
+
+            {/* User Visibility Filter */}
+            <UserVisibilityFilter
+              agents={agentsForFilter}
+              hiddenAgentIds={hiddenAgentIds}
+              onToggleAgent={toggleAgentVisibility}
+              onShowAll={showAllAgents}
+              onHideWithoutConversations={hideAgentsWithoutConversations}
+            />
           </div>
 
           <div className="flex items-center gap-2 bg-muted rounded-lg p-1">
@@ -327,7 +392,7 @@ export default function LiveMonitorPage() {
 
       {/* Agent Monitor Panel */}
       <div className="px-6 pt-6">
-        <AgentMonitorPanel />
+        <AgentMonitorPanel hiddenAgentIds={hiddenAgentIds} />
       </div>
 
       {/* Kanban Board */}
