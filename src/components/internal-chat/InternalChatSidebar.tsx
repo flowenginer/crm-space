@@ -52,7 +52,7 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
     if (!name) return null;
     return (
       <span 
-        className="px-2 py-0.5 rounded text-[10px] font-medium text-white truncate max-w-[80px]"
+        className="px-2 py-0.5 rounded text-[10px] font-medium text-white truncate max-w-[120px]"
         style={{ backgroundColor: color || 'hsl(var(--muted-foreground))' }}
       >
         {name}
@@ -164,7 +164,7 @@ export function InternalChatSidebar({ selectedThreadId, onSelectThread }: Intern
                         {/* Linha 2: Preview + Badge não lidas */}
                         <div className="flex items-center gap-2 mt-0.5">
                           <p className={cn(
-                            "text-xs truncate flex-1 min-w-0",
+                            "text-xs line-clamp-2 flex-1 min-w-0",
                             hasUnread ? "text-foreground/80 font-medium" : "text-muted-foreground"
                           )}>
                             {thread.last_message_preview || 'Nova conversa'}
