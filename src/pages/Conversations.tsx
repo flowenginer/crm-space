@@ -128,6 +128,7 @@ import { MediaDownloadButton } from '@/components/conversations/MediaDownloadBut
 import { DocumentPreview } from '@/components/conversations/DocumentPreview';
 import { CallLogModal } from '@/components/conversations/CallLogModal';
 import { WaitingCard } from '@/components/conversations/WaitingCard';
+import { useRequiredFieldsValidation } from '@/hooks/useRequiredFieldsValidation';
 import type { Profile } from '@/types';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
@@ -1776,6 +1777,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   // Find selected conversation from the merged list
   const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
 
+  // Validação de campos obrigatórios para envio de mensagens
+  const requiredFieldsValidation = useRequiredFieldsValidation(selectedConversation?.contact || null);
+
   // ============ VERIFICAÇÃO DE PERMISSÃO VIA URL ============
   // Bloquear acesso quando a conversa é carregada via URL e está atribuída a outro vendedor
   // EXCEÇÃO: Conversas compartilhadas com o usuário têm acesso permitido
@@ -2481,6 +2485,16 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       });
       setMessageInput('');
       setIsInternalNoteMode(false);
+      return;
+    }
+
+    // Validação de campos obrigatórios (não aplica para notas internas)
+    if (!requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0) {
+      const missingLabels = requiredFieldsValidation.missingFields.map(f => f.label).join(', ');
+      toast.error(`Preencha os campos obrigatórios: ${missingLabels}`, {
+        description: 'Os campos obrigatórios devem ser preenchidos na lateral direita antes de enviar mensagens.',
+        duration: 5000,
+      });
       return;
     }
 
