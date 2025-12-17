@@ -4280,13 +4280,28 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   </button>
                 </div>
               ) : (
-                <div className="flex items-end gap-2 md:gap-3">
+                <div className="flex flex-col gap-2">
+                  {/* Required Fields Warning Banner */}
+                  {!isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-700 dark:text-amber-400">
+                      <Lock size={16} className="flex-shrink-0" />
+                      <span className="text-sm">
+                        Preencha os campos obrigatórios na lateral direita: <strong>{requiredFieldsValidation.missingFields.map(f => f.label).join(', ')}</strong>
+                      </span>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-end gap-2 md:gap-3">
                   {/* Emoji Picker */}
                   <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
                     <PopoverTrigger asChild>
                       <button 
-                        className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex"
+                        className={cn(
+                          "p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex",
+                          !isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0 && "opacity-50 pointer-events-none"
+                        )}
                         title="Emoji"
+                        disabled={!isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0}
                       >
                         <Smile size={22} className="text-muted-foreground" />
                       </button>
@@ -4306,8 +4321,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   {/* Attachment Button */}
                   <button 
                     onClick={handleAttachmentClick}
-                    className="p-2 hover:bg-muted rounded-lg transition-colors"
+                    className={cn(
+                      "p-2 hover:bg-muted rounded-lg transition-colors",
+                      !isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0 && "opacity-50 pointer-events-none"
+                    )}
                     title="Anexar arquivo"
+                    disabled={!isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0}
                   >
                     <Paperclip size={22} className="text-muted-foreground" />
                   </button>
@@ -4315,8 +4334,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   {/* Schedule Message */}
                   <button 
                     onClick={() => setShowScheduleModal(true)}
-                    className="p-2 hover:bg-muted rounded-lg transition-colors"
+                    className={cn(
+                      "p-2 hover:bg-muted rounded-lg transition-colors",
+                      !isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0 && "opacity-50 pointer-events-none"
+                    )}
                     title="Agendar mensagem"
+                    disabled={!isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0}
                   >
                     <Calendar size={22} className="text-muted-foreground" />
                   </button>
@@ -4501,7 +4524,13 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   <div className="flex-1">
                     <Textarea
                       ref={messageInputRef}
-                      placeholder={isInternalNoteMode ? "Digite sua nota interna..." : "Digite sua mensagem..."}
+                      placeholder={
+                        !isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0
+                          ? "Preencha os campos obrigatórios para enviar mensagens..."
+                          : isInternalNoteMode 
+                            ? "Digite sua nota interna..." 
+                            : "Digite sua mensagem..."
+                      }
                       value={messageInput}
                       onChange={(e) => {
                         setMessageInput(e.target.value);
@@ -4526,11 +4555,13 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                           }
                         }
                       }}
+                      disabled={!isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0}
                       className={cn(
                         'min-h-[44px] max-h-[200px] resize-none rounded-xl overflow-y-auto transition-[height] duration-100',
                         isInternalNoteMode
                           ? 'bg-amber-500/10 border-amber-500/30 placeholder:text-amber-600/50 dark:placeholder:text-amber-400/50'
-                          : 'bg-muted/50 border-border/50'
+                          : 'bg-muted/50 border-border/50',
+                        !isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0 && 'opacity-60 cursor-not-allowed'
                       )}
                       rows={1}
                     />
@@ -4539,8 +4570,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   {/* Audio Recording Button */}
                   <button 
                     onClick={startRecording}
-                    className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex"
+                    className={cn(
+                      "p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex",
+                      !isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0 && "opacity-50 pointer-events-none"
+                    )}
                     title="Gravar áudio"
+                    disabled={!isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0}
                   >
                     <Mic size={22} className="text-muted-foreground" />
                   </button>
@@ -4548,7 +4583,13 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   {/* Send Button */}
                   <button 
                     onClick={handleSendMessage}
-                    disabled={(!messageInput.trim() && selectedFiles.length === 0) || sendMessage.isPending || createInternalNote.isPending || isUploading}
+                    disabled={
+                      (!messageInput.trim() && selectedFiles.length === 0) || 
+                      sendMessage.isPending || 
+                      createInternalNote.isPending || 
+                      isUploading ||
+                      (!isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0)
+                    }
                     className={cn(
                       'p-3 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50',
                       isInternalNoteMode ? 'bg-amber-500 hover:bg-amber-600' : 'btn-gradient'
@@ -4558,6 +4599,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       ? <Loader2 size={20} className="animate-spin" /> 
                       : <Send size={20} />}
                   </button>
+                  </div>
                 </div>
               )}
             </div>
