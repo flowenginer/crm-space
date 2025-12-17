@@ -335,13 +335,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           <span className="flex-1 flex items-center justify-between">
             {item.title}
             {badgeValue && badgeValue > 0 && (
-              <span className={cn(
-                'ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white',
-                item.show_badge === 'scheduledCount' && hasOverdueCallbacks ? 'bg-red-500' : 
-                item.show_badge === 'requestsCount' ? 'bg-destructive' :
-                item.show_badge === 'internalChatCount' ? 'bg-primary' :
-                'bg-amber-500'
-              )}>
+              <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white bg-red-500">
                 {badgeValue > 99 ? '99+' : badgeValue}
               </span>
             )}
