@@ -246,6 +246,7 @@ export function useStatusFunnel(filters: DashboardFilters) {
         p_date_to: dateTo,
         p_agent_id: filters.agentId || null,
         p_department_id: filters.departmentId || null,
+        p_origin: null,
       });
 
       if (error) {
@@ -254,11 +255,11 @@ export function useStatusFunnel(filters: DashboardFilters) {
       }
 
       return (data || []).map((row: any) => ({
-        status: row.status_name,
-        count: Number(row.status_count) || 0,
-        avgDuration: Number(row.avg_duration) || 0,
+        status: row.status,
+        count: Number(row.count) || 0,
+        avgDuration: Number(row.avg_duration_seconds) || 0,
         color: row.color || '#8B5CF6',
-        order: row.order_position,
+        order: row.status_order,
       }));
     },
     staleTime: STALE_TIME,
