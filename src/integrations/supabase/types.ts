@@ -81,6 +81,93 @@ export type Database = {
           },
         ]
       }
+      active_rescues: {
+        Row: {
+          activated_by: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          completed_at: string | null
+          contact_id: string
+          conversation_id: string
+          created_at: string | null
+          current_step: number | null
+          id: string
+          next_send_at: string | null
+          responded_at: string | null
+          status: string | null
+          template_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          activated_by?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          completed_at?: string | null
+          contact_id: string
+          conversation_id: string
+          created_at?: string | null
+          current_step?: number | null
+          id?: string
+          next_send_at?: string | null
+          responded_at?: string | null
+          status?: string | null
+          template_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          activated_by?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          completed_at?: string | null
+          contact_id?: string
+          conversation_id?: string
+          created_at?: string | null
+          current_step?: number | null
+          id?: string
+          next_send_at?: string | null
+          responded_at?: string | null
+          status?: string | null
+          template_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "active_rescues_activated_by_fkey"
+            columns: ["activated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_rescues_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_rescues_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_rescues_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_rescues_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "rescue_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       activity_log: {
         Row: {
           action: string
@@ -5305,6 +5392,97 @@ export type Database = {
           {
             foreignKeyName: "required_fields_rules_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rescue_scheduled_messages: {
+        Row: {
+          cancelled_at: string | null
+          content: string
+          created_at: string | null
+          id: string
+          rescue_id: string
+          scheduled_for: string
+          sent_at: string | null
+          status: string | null
+          step_number: number
+        }
+        Insert: {
+          cancelled_at?: string | null
+          content: string
+          created_at?: string | null
+          id?: string
+          rescue_id: string
+          scheduled_for: string
+          sent_at?: string | null
+          status?: string | null
+          step_number: number
+        }
+        Update: {
+          cancelled_at?: string | null
+          content?: string
+          created_at?: string | null
+          id?: string
+          rescue_id?: string
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: string | null
+          step_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rescue_scheduled_messages_rescue_id_fkey"
+            columns: ["rescue_id"]
+            isOneToOne: false
+            referencedRelation: "active_rescues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rescue_templates: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          final_action: string
+          final_action_config: Json | null
+          id: string
+          is_active: boolean | null
+          steps: Json
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          final_action?: string
+          final_action_config?: Json | null
+          id?: string
+          is_active?: boolean | null
+          steps?: Json
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          final_action?: string
+          final_action_config?: Json | null
+          id?: string
+          is_active?: boolean | null
+          steps?: Json
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rescue_templates_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
