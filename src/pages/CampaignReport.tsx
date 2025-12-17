@@ -14,6 +14,7 @@ import {
   DollarSign,
   FileSpreadsheet,
   Tag,
+  GitBranch,
 } from 'lucide-react';
 import {
   Popover,
@@ -28,9 +29,11 @@ import { useNavigate } from 'react-router-dom';
 import { useMetaLeadsCrossData } from '@/hooks/useMetaLeadsCrossData';
 import { useMetaCampaignROI } from '@/hooks/useMetaCampaignROI';
 import { useMetaLeadsBySegment } from '@/hooks/useMetaLeadsBySegment';
+import { useMetaSegmentJourney } from '@/hooks/useMetaSegmentJourney';
 import { CrossDataTable } from '@/components/campaigns/CrossDataTable';
 import { ROITable } from '@/components/campaigns/ROITable';
 import { SegmentTable } from '@/components/campaigns/SegmentTable';
+import { SegmentJourneyChart } from '@/components/campaigns/SegmentJourneyChart';
 import * as XLSX from 'xlsx';
 
 const datePresets = [
@@ -94,6 +97,7 @@ export default function CampaignReport() {
   const { data: crossData, isLoading: loadingCrossData } = useMetaLeadsCrossData(activeDateRange);
   const { data: roiData, isLoading: loadingROI } = useMetaCampaignROI(activeDateRange);
   const { data: segmentData, isLoading: loadingSegment } = useMetaLeadsBySegment(activeDateRange);
+  const { data: journeyData, isLoading: loadingJourney } = useMetaSegmentJourney(activeDateRange);
 
   const summary = crossData?.summary;
 
@@ -320,6 +324,21 @@ export default function CampaignReport() {
         <SegmentTable 
           data={segmentData || []}
           isLoading={loadingSegment}
+        />
+      </div>
+
+      {/* Jornada por Segmento */}
+      <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
+        <div className="flex items-center gap-2 mb-6">
+          <GitBranch className="h-5 w-5 text-primary" />
+          <h3 className="text-lg font-semibold text-foreground">Jornada por Segmento</h3>
+          <span className="text-sm text-muted-foreground ml-2">
+            (Campanha → Segmento Marcado → Status)
+          </span>
+        </div>
+        <SegmentJourneyChart 
+          data={journeyData || []}
+          isLoading={loadingJourney}
         />
       </div>
     </div>

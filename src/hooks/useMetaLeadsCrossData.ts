@@ -47,15 +47,15 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['meta_leads_cross_data', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async (): Promise<{ rows: CrossDataRow[]; summary: CrossDataSummary }> => {
-      // Fetch meta ads with campaign name
+      // Fetch meta ads with campaign name (only from active campaigns)
       const { data: metaAds } = await supabase
         .from('meta_ads')
         .select(`
           ad_id, 
           name,
-          campaign:meta_campaigns(name)
-        `);
-
+          campaign:meta_campaigns!inner(name, status)
+        `)
+        .eq('campaign.status', 'ACTIVE');
       const adInfoMap = new Map<string, { adName: string; campaignName: string }>();
       metaAds?.forEach((ad: any) => {
         adInfoMap.set(ad.ad_id, {
