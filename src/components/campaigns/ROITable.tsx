@@ -127,9 +127,9 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
 
   return (
     <ScrollArea className="h-[400px]">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-muted/50">
+      <Table className="relative">
+        <TableHeader className="sticky top-0 z-10">
+          <TableRow className="bg-card border-b border-border">
             <TableHead 
               className="cursor-pointer hover:bg-muted/70 select-none transition-colors"
               onClick={() => handleSort('name')}

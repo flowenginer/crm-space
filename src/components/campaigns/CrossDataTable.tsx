@@ -106,9 +106,9 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
   return (
     <>
       <ScrollArea className="h-[400px]">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
+        <Table className="relative">
+          <TableHeader className="sticky top-0 z-10">
+            <TableRow className="bg-card border-b border-border">
               <TableHead 
                 className="min-w-[250px] cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('name')}
