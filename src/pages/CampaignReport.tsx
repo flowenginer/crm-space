@@ -87,6 +87,13 @@ function StatCard({ title, value, subtitle, icon: Icon, gradient, isLoading }: S
   );
 }
 
+// Função para extrair segmento do nome da campanha
+function extractSegmentFromCampaignName(campaignName: string): string {
+  if (!campaignName) return 'Sem Segmento';
+  const parts = campaignName.split('|').map(p => p.trim());
+  return parts.length >= 2 ? parts[1] : 'Sem Segmento';
+}
+
 // Função para agrupar CrossData por campanha
 function groupByCampaign(rows: CrossDataRow[]): CrossDataRow[] {
   const grouped = new Map<string, CrossDataRow>();
@@ -112,6 +119,31 @@ function groupByCampaign(rows: CrossDataRow[]): CrossDataRow[] {
   return Array.from(grouped.values()).sort((a, b) => b.totalLeads - a.totalLeads);
 }
 
+// Função para agrupar CrossData por segmento
+function groupBySegment(rows: CrossDataRow[]): CrossDataRow[] {
+  const grouped = new Map<string, CrossDataRow>();
+  
+  rows.forEach(row => {
+    const segment = extractSegmentFromCampaignName(row.campaignName || '');
+    if (!grouped.has(segment)) {
+      grouped.set(segment, { 
+        ...row, 
+        adName: segment,
+        sourceId: segment,
+      });
+    } else {
+      const existing = grouped.get(segment)!;
+      existing.totalLeads += row.totalLeads;
+      existing.catalogoCount += row.catalogoCount;
+      existing.layoutCount += row.layoutCount;
+      existing.pedidoFechadoCount += row.pedidoFechadoCount;
+      existing.revenue += row.revenue;
+    }
+  });
+  
+  return Array.from(grouped.values()).sort((a, b) => b.totalLeads - a.totalLeads);
+}
+
 export default function CampaignReport() {
   const navigate = useNavigate();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -121,7 +153,7 @@ export default function CampaignReport() {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   
   // Estados para controlar visualização
-  const [crossDataView, setCrossDataView] = useState<'anuncio' | 'campanha'>('anuncio');
+  const [crossDataView, setCrossDataView] = useState<'anuncio' | 'campanha' | 'segmento'>('anuncio');
   const [roiView, setRoiView] = useState<'campanha' | 'segmento'>('campanha');
 
   const activeDateRange = dateRange?.from && dateRange?.to 
@@ -138,9 +170,9 @@ export default function CampaignReport() {
   // Dados processados baseado na view selecionada
   const crossDataDisplay = useMemo(() => {
     if (!crossData?.rows) return [];
-    return crossDataView === 'campanha' 
-      ? groupByCampaign(crossData.rows) 
-      : crossData.rows;
+    if (crossDataView === 'campanha') return groupByCampaign(crossData.rows);
+    if (crossDataView === 'segmento') return groupBySegment(crossData.rows);
+    return crossData.rows;
   }, [crossData?.rows, crossDataView]);
 
   const roiDataDisplay = useMemo(() => {
@@ -333,13 +365,14 @@ export default function CampaignReport() {
         <div className="flex items-center gap-2 mb-6">
           <FileSpreadsheet className="h-5 w-5 text-primary" />
           <span className="text-lg font-semibold text-foreground">Cruzamento por</span>
-          <Select value={crossDataView} onValueChange={(v: 'anuncio' | 'campanha') => setCrossDataView(v)}>
+          <Select value={crossDataView} onValueChange={(v: 'anuncio' | 'campanha' | 'segmento') => setCrossDataView(v)}>
             <SelectTrigger className="w-[140px] h-9 border-primary/30 bg-primary/5">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="anuncio">Anúncio</SelectItem>
               <SelectItem value="campanha">Campanha</SelectItem>
+              <SelectItem value="segmento">Segmento</SelectItem>
             </SelectContent>
           </Select>
         </div>
