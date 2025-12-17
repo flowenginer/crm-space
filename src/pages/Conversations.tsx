@@ -129,6 +129,7 @@ import { DocumentPreview } from '@/components/conversations/DocumentPreview';
 import { CallLogModal } from '@/components/conversations/CallLogModal';
 import { WaitingCard } from '@/components/conversations/WaitingCard';
 import { useRequiredFieldsValidation } from '@/hooks/useRequiredFieldsValidation';
+import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
 import type { Profile } from '@/types';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
@@ -2502,6 +2503,53 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     const selectedConv = conversations?.find(c => c.id === selectedConversationId);
     const channelId = selectedConv?.channel_id;
     const contactPhone = selectedConv?.contact?.phone;
+
+    // Auto-atribuição: Se conversa não tem owner e vendedor está enviando mensagem
+    if (selectedConv && !selectedConv.assigned_to && profile?.id) {
+      try {
+        const primaryDeptId = await getUserPrimaryDepartment(profile.id);
+        
+        // Atribuir conversa ao vendedor
+        await supabase
+          .from('conversations')
+          .update({ 
+            assigned_to: profile.id,
+            department_id: primaryDeptId,
+            status: 'open',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', selectedConversationId);
+
+        // Atribuir contato também se não tiver owner
+        if (selectedConv.contact?.id) {
+          const contactId = selectedConv.contact.id;
+          const { data: contactData } = await supabase
+            .from('contacts')
+            .select('assigned_to')
+            .eq('id', contactId)
+            .single();
+          
+          if (!contactData?.assigned_to) {
+            await supabase
+              .from('contacts')
+              .update({ 
+                assigned_to: profile.id,
+                department_id: primaryDeptId,
+              })
+              .eq('id', contactId);
+          }
+        }
+
+        // Invalidar cache para atualizar UI
+        queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+        queryClient.invalidateQueries({ queryKey: ['contacts'] });
+        
+        toast.success('Conversa atribuída a você');
+      } catch (autoAssignError) {
+        console.error('[Auto-assign Error]', autoAssignError);
+        // Continuar com o envio mesmo se a auto-atribuição falhar
+      }
+    }
 
     try {
       isSendingRef.current = true;
