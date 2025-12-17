@@ -21,6 +21,10 @@ import {
   FileImage,
   File,
   X,
+  UserRoundPlus,
+  Clock,
+  XCircle,
+  ArrowRight,
 } from 'lucide-react';
 import {
   Dialog,
@@ -53,6 +57,18 @@ import {
 import { AudioRecorder } from '@/components/quick-messages/AudioRecorder';
 import { FileUploader } from '@/components/quick-messages/FileUploader';
 import { EmojiPickerButton } from '@/components/quick-messages/EmojiPickerButton';
+import { useRescueTemplates, useDeleteRescueTemplate, RescueTemplate } from '@/hooks/useRescueTemplates';
+import { RescueTemplateModal } from '@/components/rescue/RescueTemplateModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const categoryConfig = [
   { id: 'messages', icon: MessageSquare, label: 'Mensagens' },
@@ -61,6 +77,7 @@ const categoryConfig = [
   { id: 'documents', icon: FileText, label: 'Documentos' },
   { id: 'funnels', icon: GitBranch, label: 'Funis' },
   { id: 'triggers', icon: Zap, label: 'Gatilhos' },
+  { id: 'rescue', icon: UserRoundPlus, label: 'Resgate' },
 ];
 
 const variableOptions = [
@@ -92,6 +109,15 @@ export default function QuickMessages() {
   const updateTemplate = useUpdateTemplate();
   const deleteTemplate = useDeleteTemplate();
 
+  // Rescue hooks
+  const { data: rescueTemplates = [], isLoading: isLoadingRescue } = useRescueTemplates();
+  const deleteRescueTemplate = useDeleteRescueTemplate();
+
+  // Rescue modal states
+  const [showRescueModal, setShowRescueModal] = useState(false);
+  const [editingRescue, setEditingRescue] = useState<RescueTemplate | null>(null);
+  const [rescueToDelete, setRescueToDelete] = useState<string | null>(null);
+
   // Modal states
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showUseTemplateModal, setShowUseTemplateModal] = useState(false);
@@ -114,10 +140,14 @@ export default function QuickMessages() {
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     categoryConfig.forEach((cat) => {
-      counts[cat.id] = templates.filter((t) => t.category === cat.id).length;
+      if (cat.id === 'rescue') {
+        counts[cat.id] = rescueTemplates.length;
+      } else {
+        counts[cat.id] = templates.filter((t) => t.category === cat.id).length;
+      }
     });
     return counts;
-  }, [templates]);
+  }, [templates, rescueTemplates]);
 
   // Filter templates
   const filteredTemplates = useMemo(() => {
@@ -347,6 +377,53 @@ export default function QuickMessages() {
 
   const isSaving = createTemplate.isPending || updateTemplate.isPending;
 
+  // Rescue helper functions
+  const formatTimer = (minutes: number) => {
+    if (minutes < 60) return `${minutes}min`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+  };
+
+  const getFinalActionLabel = (action: string) => {
+    switch (action) {
+      case 'close': return 'Encerrar conversa';
+      case 'transfer': return 'Transferir';
+      case 'none': return 'Nenhuma';
+      default: return action;
+    }
+  };
+
+  const handleNewRescue = () => {
+    setEditingRescue(null);
+    setShowRescueModal(true);
+  };
+
+  const handleEditRescue = (template: RescueTemplate) => {
+    setEditingRescue(template);
+    setShowRescueModal(true);
+  };
+
+  const handleDeleteRescue = async () => {
+    if (!rescueToDelete) return;
+    try {
+      await deleteRescueTemplate.mutateAsync(rescueToDelete);
+      toast({ title: 'Template de resgate excluído!' });
+      setRescueToDelete(null);
+    } catch (error) {
+      toast({ title: 'Erro ao excluir template', variant: 'destructive' });
+    }
+  };
+
+  // Filter rescue templates by search
+  const filteredRescueTemplates = useMemo(() => {
+    return rescueTemplates.filter((template) => {
+      if (searchQuery === '') return true;
+      return template.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (template.description || '').toLowerCase().includes(searchQuery.toLowerCase());
+    });
+  }, [rescueTemplates, searchQuery]);
+
   return (
     <div className="flex h-[calc(100vh-72px)]">
       {/* Left Sidebar - Categories */}
@@ -402,10 +479,10 @@ export default function QuickMessages() {
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold text-foreground">
-              Mensagens rápidas
+              {activeCategory === 'rescue' ? 'Templates de Resgate' : 'Mensagens rápidas'}
             </h1>
             <Badge variant="secondary" className="font-medium">
-              {filteredTemplates.length}
+              {activeCategory === 'rescue' ? filteredRescueTemplates.length : filteredTemplates.length}
             </Badge>
           </div>
 
@@ -423,7 +500,7 @@ export default function QuickMessages() {
             </div>
 
             {/* New Template Button */}
-            <Button onClick={handleNewTemplate} size="sm">
+            <Button onClick={activeCategory === 'rescue' ? handleNewRescue : handleNewTemplate} size="sm">
               <Plus size={16} className="mr-1" />
               ADICIONAR
             </Button>
@@ -434,118 +511,236 @@ export default function QuickMessages() {
         <ScrollArea className="flex-1">
           <div className="p-4">
             <div className="bg-card rounded-lg border border-border overflow-hidden">
-              {isLoading ? (
-                <div className="p-4 space-y-3">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <Skeleton className="h-4 w-8" />
-                      <Skeleton className="h-4 w-32" />
-                      <Skeleton className="h-4 flex-1" />
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-8 w-24" />
+              {/* Rescue Templates Table */}
+              {activeCategory === 'rescue' ? (
+                <>
+                  {isLoadingRescue ? (
+                    <div className="p-4 space-y-3">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="flex items-center gap-4">
+                          <Skeleton className="h-4 w-8" />
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-4 flex-1" />
+                          <Skeleton className="h-4 w-16" />
+                          <Skeleton className="h-8 w-24" />
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50 hover:bg-muted/50">
-                      <TableHead className="w-12 text-center">#</TableHead>
-                      <TableHead className="w-48">Chave</TableHead>
-                      <TableHead>Mensagem</TableHead>
-                      <TableHead className="w-20 text-center">Blocos</TableHead>
-                      <TableHead className="w-20 text-center">Anexo</TableHead>
-                      <TableHead className="w-32 text-center">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTemplates.map((template, index) => {
-                      const blocks = template.content_blocks as ContentBlock[] | null;
-                      const blockCount = blocks?.length || 1;
-                      
-                      return (
-                        <TableRow key={template.id} className="group">
-                          <TableCell className="text-center text-muted-foreground font-mono text-sm">
-                            {index + 1}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50 hover:bg-muted/50">
+                          <TableHead className="w-12 text-center">#</TableHead>
+                          <TableHead className="w-48">Título</TableHead>
+                          <TableHead>Descrição</TableHead>
+                          <TableHead className="w-24 text-center">Mensagens</TableHead>
+                          <TableHead className="w-36">Timers</TableHead>
+                          <TableHead className="w-36">Ação Final</TableHead>
+                          <TableHead className="w-28 text-center">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredRescueTemplates.map((template, index) => (
+                          <TableRow key={template.id} className="group">
+                            <TableCell className="text-center text-muted-foreground font-mono text-sm">
+                              {index + 1}
+                            </TableCell>
+                            <TableCell>
                               <span className="font-semibold text-foreground">
                                 {template.title}
                               </span>
-                              {template.is_favorite && (
-                                <Star size={12} className="text-yellow-500 fill-yellow-500" />
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-muted-foreground text-sm">
-                              {truncateMessage(template.content)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {blockCount > 1 ? (
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-muted-foreground text-sm">
+                                {template.description ? truncateMessage(template.description, 60) : '—'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
                               <Badge variant="secondary" className="text-xs">
-                                {blockCount}
+                                {template.steps.length}
                               </Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-sm">1</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {template.media_url ? (
-                              getMediaIcon(template.media_type) || <Paperclip size={14} className="mx-auto text-primary" />
-                            ) : (
-                              <span className="text-muted-foreground text-sm">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => handleUseTemplate(template.id)}
-                                title="Usar"
-                              >
-                                <Send size={14} />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => handleEditTemplate(template.id)}
-                                title="Editar"
-                              >
-                                <Edit3 size={14} />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                onClick={() => handleDeleteTemplate(template.id)}
-                                disabled={deleteTemplate.isPending}
-                                title="Excluir"
-                              >
-                                <Trash2 size={14} />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Clock size={12} />
+                                {template.steps.map((s, i) => formatTimer(s.timer_minutes)).join(', ')}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1.5 text-xs">
+                                {template.final_action === 'close' && (
+                                  <>
+                                    <XCircle size={12} className="text-destructive" />
+                                    <span className="text-muted-foreground">Encerrar</span>
+                                  </>
+                                )}
+                                {template.final_action === 'transfer' && (
+                                  <>
+                                    <ArrowRight size={12} className="text-blue-500" />
+                                    <span className="text-muted-foreground">Transferir</span>
+                                  </>
+                                )}
+                                {template.final_action === 'none' && (
+                                  <span className="text-muted-foreground">Nenhuma</span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleEditRescue(template)}
+                                  title="Editar"
+                                >
+                                  <Edit3 size={14} />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  onClick={() => setRescueToDelete(template.id)}
+                                  disabled={deleteRescueTemplate.isPending}
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={14} />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
 
-              {!isLoading && filteredTemplates.length === 0 && (
-                <div className="text-center py-12">
-                  <MessageSquare className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                  <h3 className="text-sm font-semibold text-foreground">Nenhum template encontrado</h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Crie um novo template ou ajuste os filtros
-                  </p>
-                </div>
+                  {!isLoadingRescue && filteredRescueTemplates.length === 0 && (
+                    <div className="text-center py-12">
+                      <UserRoundPlus className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                      <h3 className="text-sm font-semibold text-foreground">Nenhum template de resgate</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Crie sequências de mensagens para resgatar leads inativos
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Regular Templates Table */}
+                  {isLoading ? (
+                    <div className="p-4 space-y-3">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="flex items-center gap-4">
+                          <Skeleton className="h-4 w-8" />
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-4 flex-1" />
+                          <Skeleton className="h-4 w-16" />
+                          <Skeleton className="h-8 w-24" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50 hover:bg-muted/50">
+                          <TableHead className="w-12 text-center">#</TableHead>
+                          <TableHead className="w-48">Chave</TableHead>
+                          <TableHead>Mensagem</TableHead>
+                          <TableHead className="w-20 text-center">Blocos</TableHead>
+                          <TableHead className="w-20 text-center">Anexo</TableHead>
+                          <TableHead className="w-32 text-center">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredTemplates.map((template, index) => {
+                          const blocks = template.content_blocks as ContentBlock[] | null;
+                          const blockCount = blocks?.length || 1;
+                          
+                          return (
+                            <TableRow key={template.id} className="group">
+                              <TableCell className="text-center text-muted-foreground font-mono text-sm">
+                                {index + 1}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-foreground">
+                                    {template.title}
+                                  </span>
+                                  {template.is_favorite && (
+                                    <Star size={12} className="text-yellow-500 fill-yellow-500" />
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-muted-foreground text-sm">
+                                  {truncateMessage(template.content)}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {blockCount > 1 ? (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {blockCount}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">1</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {template.media_url ? (
+                                  getMediaIcon(template.media_type) || <Paperclip size={14} className="mx-auto text-primary" />
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => handleUseTemplate(template.id)}
+                                    title="Usar"
+                                  >
+                                    <Send size={14} />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => handleEditTemplate(template.id)}
+                                    title="Editar"
+                                  >
+                                    <Edit3 size={14} />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive hover:text-destructive"
+                                    onClick={() => handleDeleteTemplate(template.id)}
+                                    disabled={deleteTemplate.isPending}
+                                    title="Excluir"
+                                  >
+                                    <Trash2 size={14} />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+
+                  {!isLoading && filteredTemplates.length === 0 && (
+                    <div className="text-center py-12">
+                      <MessageSquare className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                      <h3 className="text-sm font-semibold text-foreground">Nenhum template encontrado</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Crie um novo template ou ajuste os filtros
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -977,6 +1172,34 @@ export default function QuickMessages() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Rescue Template Modal */}
+      <RescueTemplateModal
+        open={showRescueModal}
+        onOpenChange={setShowRescueModal}
+        template={editingRescue || undefined}
+      />
+
+      {/* Delete Rescue Confirmation */}
+      <AlertDialog open={!!rescueToDelete} onOpenChange={(open) => !open && setRescueToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir template de resgate?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O template será permanentemente removido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteRescue}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
