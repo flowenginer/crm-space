@@ -14,7 +14,10 @@ import {
   UserPlus,
   ArrowLeft,
   BarChart3,
-  Trophy,
+  DollarSign,
+  Wallet,
+  PiggyBank,
+  Table2,
   PieChart,
 } from 'lucide-react';
 import {
@@ -42,24 +45,15 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
 import { useNavigate } from 'react-router-dom';
-import {
-  useCampaignMetrics,
-  useDailyLeads,
-} from '@/hooks/useCampaignMetrics';
-import {
-  useMetaLeadsFunnel,
-  useAdsBreakdown,
-  useChampionCreative,
-  useTopCreatives,
-  useSegmentAnalytics,
-} from '@/hooks/useMetaAdsAnalytics';
+import { useDailyLeads } from '@/hooks/useCampaignMetrics';
+import { useMetaLeadsCrossData } from '@/hooks/useMetaLeadsCrossData';
+import { useMetaCampaignROI } from '@/hooks/useMetaCampaignROI';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
-import { MetaFunnelChart } from '@/components/campaigns/MetaFunnelChart';
-import { CreativeCard } from '@/components/campaigns/CreativeCard';
-import { AdsBreakdownTable } from '@/components/campaigns/AdsBreakdownTable';
-import { StatusLeadsModal } from '@/components/campaigns/StatusLeadsModal';
-import { SegmentChart } from '@/components/campaigns/SegmentChart';
+import { useSegments } from '@/hooks/useSegments';
+import { CrossDataTable } from '@/components/campaigns/CrossDataTable';
+import { ROITable } from '@/components/campaigns/ROITable';
 import { DashboardGrid, DashboardCardConfig } from '@/components/dashboard/DashboardGrid';
+import * as XLSX from 'xlsx';
 
 const datePresets = [
   { label: 'Hoje', getValue: () => ({ from: new Date(), to: new Date() }) },
@@ -132,26 +126,24 @@ export default function CampaignReport() {
     to: new Date(),
   });
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
-  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
 
   // Data hooks
-  const { data: metrics, isLoading: loadingMetrics } = useCampaignMetrics();
   const { data: dailyLeads = [], isLoading: loadingDaily } = useDailyLeads({
     from: dateRange?.from || subDays(new Date(), 29),
     to: dateRange?.to || new Date(),
   });
   const { data: statuses = [] } = useLeadStatuses();
+  const { data: segments = [] } = useSegments();
   
   const activeDateRange = dateRange?.from && dateRange?.to 
     ? { from: dateRange.from, to: dateRange.to }
     : undefined;
 
-  const { data: funnelData = [], isLoading: loadingFunnel } = useMetaLeadsFunnel(activeDateRange);
-  const { data: adsBreakdown = [], isLoading: loadingAds } = useAdsBreakdown(activeDateRange);
-  const { data: champion, isLoading: loadingChampion } = useChampionCreative(activeDateRange);
-  const { data: topCreatives = [], isLoading: loadingTopCreatives } = useTopCreatives(activeDateRange, 6);
-  const { data: segmentData = [], isLoading: loadingSegment } = useSegmentAnalytics(activeDateRange);
+  const { data: crossData, isLoading: loadingCrossData } = useMetaLeadsCrossData(activeDateRange);
+  const { data: roiData, isLoading: loadingROI } = useMetaCampaignROI(activeDateRange);
+
+  const summary = crossData?.summary;
+  const roiSummary = roiData?.summary;
 
   const formatDateRange = (range: DateRange | undefined) => {
     if (!range?.from) return 'Selecionar período';
@@ -164,12 +156,66 @@ export default function CampaignReport() {
     setIsDatePickerOpen(false);
   };
 
-  const handleStatusClick = (statusName: string) => {
-    setSelectedStatus(statusName);
-    setIsStatusModalOpen(true);
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
   };
 
-  const selectedStatusConfig = statuses.find(s => s.name === selectedStatus);
+  const handleExportExcel = () => {
+    if (!crossData?.rows) return;
+
+    // Preparar dados para export
+    const exportData = crossData.rows.map(row => ({
+      'Campanha': row.campaignName || '',
+      'Anúncio': row.adName || '',
+      'Total Leads': row.totalLeads,
+      'Leads Hoje': row.leadsToday,
+      'Leads Este Mês': row.leadsThisMonth,
+      'Com Vendedor': row.withAgent,
+      'Sem Vendedor': row.withoutAgent,
+      'Responderam': row.responded,
+      'Não Responderam': row.notResponded,
+      'Conversões': row.conversions,
+      'Receita': row.revenue,
+      'Taxa Conversão (%)': row.conversionRate.toFixed(2),
+      ...Object.fromEntries(
+        Object.entries(row.bySegment).map(([seg, count]) => [`Seg: ${seg}`, count])
+      ),
+      ...Object.fromEntries(
+        Object.entries(row.byStatus).map(([status, count]) => [`Status: ${status}`, count])
+      ),
+    }));
+
+    const wb = XLSX.utils.book_new();
+    
+    // Aba de cruzamento
+    const ws1 = XLSX.utils.json_to_sheet(exportData);
+    XLSX.utils.book_append_sheet(wb, ws1, 'Cruzamento por Anúncio');
+
+    // Aba de ROI
+    if (roiData?.campaigns) {
+      const roiExport = roiData.campaigns.map(c => ({
+        'Campanha': c.campaignName,
+        'Gastos (R$)': c.spend.toFixed(2),
+        'Leads': c.leads,
+        'CPL (R$)': c.cpl.toFixed(2),
+        'Conversões': c.conversions,
+        'CAC (R$)': c.cac.toFixed(2),
+        'Receita (R$)': c.revenue.toFixed(2),
+        'ROI (%)': c.roi.toFixed(2),
+        'ROAS': c.roas.toFixed(2),
+      }));
+      const ws2 = XLSX.utils.json_to_sheet(roiExport);
+      XLSX.utils.book_append_sheet(wb, ws2, 'ROI por Campanha');
+    }
+
+    const fileName = `relatorio-meta-ads-${format(new Date(), 'yyyy-MM-dd-HHmm')}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
 
   return (
     <div className="space-y-6">
@@ -192,7 +238,7 @@ export default function CampaignReport() {
               <h1 className="text-3xl font-bold text-foreground">Meta Ads - Cruzamento de Dados</h1>
             </div>
             <p className="text-muted-foreground">
-              Análise completa de leads por campanha, anúncio e etapa do funil
+              Análise completa de leads por anúncio: segmento, status, atribuição, resposta e conversões
             </p>
           </div>
         </div>
@@ -242,148 +288,172 @@ export default function CampaignReport() {
           </Popover>
 
           {/* Export Button */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 px-4 py-2.5 btn-gradient text-white rounded-xl font-medium hover:shadow-lg transition-all">
-                <Download size={18} />
-                Exportar
-                <ChevronDown size={16} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem className="flex items-center gap-2">
-                <FileText size={16} />
-                Exportar PDF
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex items-center gap-2">
-                <FileText size={16} />
-                Exportar Excel
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            onClick={handleExportExcel}
+            className="btn-gradient text-white rounded-xl font-medium"
+            disabled={!crossData?.rows?.length}
+          >
+            <Download size={18} className="mr-2" />
+            Exportar Excel
+          </Button>
         </div>
       </div>
 
       {/* Dashboard Grid */}
       <DashboardGrid
-        storageKey="campaign-report-card-order"
+        storageKey="campaign-report-v2-card-order"
         cards={[
+          // Métricas principais
           {
             id: 'metric-cards',
             fullWidth: true,
             component: (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 <StatCard
                   title="Total de Leads"
-                  value={metrics?.totalLeads.toLocaleString('pt-BR') || '0'}
-                  subtitle="Todos os tempos"
+                  value={summary?.totalLeads.toLocaleString('pt-BR') || '0'}
+                  subtitle="No período"
                   icon={Users}
                   gradient="from-blue-500 to-blue-600"
-                  isLoading={loadingMetrics}
+                  isLoading={loadingCrossData}
                 />
                 <StatCard
-                  title="Leads este mês"
-                  value={metrics?.leadsThisMonth.toLocaleString('pt-BR') || '0'}
+                  title="Leads Este Mês"
+                  value={summary?.totalLeadsThisMonth.toLocaleString('pt-BR') || '0'}
                   subtitle="Mês atual"
                   icon={UserPlus}
                   gradient="from-purple-500 to-pink-500"
-                  isLoading={loadingMetrics}
+                  isLoading={loadingCrossData}
                 />
                 <StatCard
-                  title="Leads hoje"
-                  value={metrics?.leadsToday.toLocaleString('pt-BR') || '0'}
+                  title="Leads Hoje"
+                  value={summary?.totalLeadsToday.toLocaleString('pt-BR') || '0'}
                   subtitle="Últimas 24h"
                   icon={TrendingUp}
                   gradient="from-green-500 to-emerald-500"
-                  isLoading={loadingMetrics}
+                  isLoading={loadingCrossData}
                 />
                 <StatCard
                   title="Conversões"
-                  value={metrics?.conversions.toLocaleString('pt-BR') || '0'}
-                  subtitle={`${metrics?.conversionRate.toFixed(1) || 0}% taxa de conversão`}
+                  value={summary?.totalConversions.toLocaleString('pt-BR') || '0'}
+                  subtitle={`${(summary?.overallConversionRate || 0).toFixed(1)}% taxa`}
                   icon={Target}
                   gradient="from-orange-500 to-red-500"
-                  isLoading={loadingMetrics}
+                  isLoading={loadingCrossData}
+                />
+                <StatCard
+                  title="Receita Total"
+                  value={formatCurrency(summary?.totalRevenue || 0)}
+                  subtitle="Pedidos fechados"
+                  icon={DollarSign}
+                  gradient="from-emerald-500 to-teal-500"
+                  isLoading={loadingCrossData}
+                />
+                <StatCard
+                  title="Gastos Meta"
+                  value={formatCurrency(roiSummary?.totalSpend || 0)}
+                  subtitle={`CPL: ${formatCurrency(roiSummary?.averageCPL || 0)}`}
+                  icon={Wallet}
+                  gradient="from-red-500 to-pink-500"
+                  isLoading={loadingROI}
                 />
               </div>
             ),
           },
+          // ROI Summary Cards
           {
-            id: 'funnel-chart',
+            id: 'roi-summary',
+            fullWidth: true,
             component: (
-              <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated h-full">
+              <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
+                <div className="flex items-center gap-2 mb-4">
+                  <PiggyBank className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold text-foreground">Resumo Financeiro</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                  <div className="text-center p-4 bg-muted/30 rounded-xl">
+                    <p className="text-sm text-muted-foreground mb-1">ROI Geral</p>
+                    <p className={`text-2xl font-bold ${(roiSummary?.overallROI || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {loadingROI ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : `${(roiSummary?.overallROI || 0).toFixed(1)}%`}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-muted/30 rounded-xl">
+                    <p className="text-sm text-muted-foreground mb-1">ROAS</p>
+                    <p className={`text-2xl font-bold ${(roiSummary?.overallROAS || 0) >= 1 ? 'text-green-600' : 'text-orange-600'}`}>
+                      {loadingROI ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : `${(roiSummary?.overallROAS || 0).toFixed(2)}x`}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-muted/30 rounded-xl">
+                    <p className="text-sm text-muted-foreground mb-1">CAC Médio</p>
+                    <p className="text-2xl font-bold text-foreground">
+                      {loadingROI ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : formatCurrency(roiSummary?.averageCAC || 0)}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-muted/30 rounded-xl">
+                    <p className="text-sm text-muted-foreground mb-1">Responderam</p>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {loadingCrossData ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : `${summary?.totalResponded || 0}`}
+                      <span className="text-sm text-muted-foreground ml-1">
+                        ({summary?.totalLeads ? ((summary.totalResponded / summary.totalLeads) * 100).toFixed(0) : 0}%)
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ),
+          },
+          // Cross Data Table
+          {
+            id: 'cross-data-table',
+            fullWidth: true,
+            component: (
+              <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
                 <div className="flex items-center gap-2 mb-6">
-                  <BarChart3 className="h-5 w-5 text-primary" />
-                  <h3 className="text-lg font-semibold text-foreground">Funil de Conversão</h3>
+                  <Table2 className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold text-foreground">Cruzamento por Anúncio</h3>
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Clique em uma etapa para ver os leads e de qual anúncio vieram
+                  Visão completa: leads, segmento, status, atribuição a vendedor, resposta do cliente e conversões por anúncio
                 </p>
-                <MetaFunnelChart 
-                  data={funnelData} 
-                  isLoading={loadingFunnel}
-                  onStatusClick={handleStatusClick}
-                  selectedStatus={selectedStatus}
+                <CrossDataTable 
+                  data={crossData?.rows || []}
+                  statuses={statuses}
+                  segments={segments}
+                  isLoading={loadingCrossData}
                 />
               </div>
             ),
           },
+          // ROI Table
           {
-            id: 'champion-creative',
-            component: (
-              <div className="h-full">
-                {loadingChampion ? (
-                  <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated h-full flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  </div>
-                ) : champion ? (
-                  <CreativeCard
-                    sourceId={champion.sourceId}
-                    sourceUrl={champion.sourceUrl}
-                    thumbnailUrl={champion.thumbnailUrl}
-                    imageUrl={champion.imageUrl}
-                    headline={champion.headline}
-                    mediaType={champion.mediaType}
-                    campaignName={champion.campaignName}
-                    adName={champion.adName}
-                    total={champion.total}
-                    conversions={champion.conversions}
-                    conversionRate={champion.conversionRate}
-                    isChampion
-                  />
-                ) : (
-                  <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated h-full flex items-center justify-center">
-                    <div className="text-center text-muted-foreground">
-                      <Trophy className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>Nenhum criativo com conversões ainda</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ),
-          },
-          {
-            id: 'segment-chart',
+            id: 'roi-table',
             fullWidth: true,
             component: (
               <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
                 <div className="flex items-center gap-2 mb-6">
                   <PieChart className="h-5 w-5 text-primary" />
-                  <h3 className="text-lg font-semibold text-foreground">Performance por Segmento</h3>
+                  <h3 className="text-lg font-semibold text-foreground">ROI por Campanha</h3>
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Análise de leads e conversões por segmento extraído do nome das campanhas
+                  Gastos vs Receita: CPL, CAC, ROI e ROAS por campanha
                 </p>
-                <SegmentChart data={segmentData} isLoading={loadingSegment} />
+                <ROITable 
+                  data={roiData?.campaigns || []}
+                  isLoading={loadingROI}
+                />
               </div>
             ),
           },
+          // Daily Leads Chart
           {
             id: 'daily-leads-chart',
             fullWidth: true,
             component: (
               <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-                <h3 className="text-lg font-semibold text-foreground mb-6">Leads por dia</h3>
+                <div className="flex items-center gap-2 mb-6">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold text-foreground">Leads por Dia</h3>
+                </div>
                 <div className="h-[250px]">
                   {loadingDaily ? (
                     <div className="h-full flex items-center justify-center">
@@ -438,58 +508,7 @@ export default function CampaignReport() {
               </div>
             ),
           },
-          ...(topCreatives.length > 0 ? [{
-            id: 'top-creatives',
-            fullWidth: true,
-            component: (
-              <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-                <h3 className="text-lg font-semibold text-foreground mb-6">Top Criativos por Conversão</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                  {topCreatives.map((creative) => (
-                    <CreativeCard
-                      key={creative.sourceId}
-                      sourceId={creative.sourceId}
-                      sourceUrl={creative.sourceUrl}
-                      thumbnailUrl={creative.thumbnailUrl}
-                      imageUrl={creative.imageUrl}
-                      headline={creative.headline}
-                      mediaType={creative.mediaType}
-                      campaignName={creative.campaignName}
-                      adName={creative.adName}
-                      total={creative.total}
-                      conversions={creative.conversions}
-                      conversionRate={creative.conversionRate}
-                      compact
-                    />
-                  ))}
-                </div>
-              </div>
-            ),
-          }] : []),
-          {
-            id: 'ads-breakdown',
-            fullWidth: true,
-            component: (
-              <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-                <h3 className="text-lg font-semibold text-foreground mb-6">Detalhamento por Anúncio</h3>
-                <AdsBreakdownTable 
-                  data={adsBreakdown} 
-                  statuses={statuses}
-                  isLoading={loadingAds}
-                />
-              </div>
-            ),
-          },
         ] as DashboardCardConfig[]}
-      />
-
-      {/* Status Leads Modal */}
-      <StatusLeadsModal
-        open={isStatusModalOpen}
-        onOpenChange={setIsStatusModalOpen}
-        statusName={selectedStatus}
-        statusColor={selectedStatusConfig?.color || undefined}
-        dateRange={activeDateRange}
       />
     </div>
   );
