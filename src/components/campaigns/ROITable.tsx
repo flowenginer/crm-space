@@ -1,4 +1,5 @@
 import { CampaignROIData } from '@/hooks/useMetaCampaignROI';
+import { SegmentROIData } from '@/hooks/useMetaSegmentROI';
 import {
   Table,
   TableBody,
@@ -12,11 +13,12 @@ import { Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ROITableProps {
-  data: CampaignROIData[];
+  data: CampaignROIData[] | SegmentROIData[];
   isLoading?: boolean;
+  viewMode?: 'campanha' | 'segmento';
 }
 
-export function ROITable({ data, isLoading }: ROITableProps) {
+export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITableProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -54,12 +56,26 @@ export function ROITable({ data, isLoading }: ROITableProps) {
     return 'text-muted-foreground';
   };
 
+  const columnLabel = viewMode === 'segmento' ? 'Segmento' : 'Campanha';
+
+  const getName = (row: CampaignROIData | SegmentROIData): string => {
+    if ('campaignName' in row) return row.campaignName;
+    if ('segmentName' in row) return row.segmentName;
+    return 'Desconhecido';
+  };
+
+  const getId = (row: CampaignROIData | SegmentROIData, index: number): string => {
+    if ('campaignId' in row) return row.campaignId;
+    if ('segmentName' in row) return row.segmentName;
+    return `row-${index}`;
+  };
+
   return (
     <ScrollArea className="h-[400px]">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/50">
-            <TableHead>Campanha</TableHead>
+            <TableHead>{columnLabel}</TableHead>
             <TableHead className="text-right">Gastos</TableHead>
             <TableHead className="text-center">Leads</TableHead>
             <TableHead className="text-right">CPL</TableHead>
@@ -71,65 +87,65 @@ export function ROITable({ data, isLoading }: ROITableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((campaign) => (
-            <TableRow key={campaign.campaignId} className="hover:bg-muted/30">
+          {data.map((row, index) => (
+            <TableRow key={getId(row, index)} className="hover:bg-muted/30">
               <TableCell>
                 <p className="text-sm font-medium truncate max-w-[250px]">
-                  {campaign.campaignName}
+                  {getName(row)}
                 </p>
               </TableCell>
               
               <TableCell className="text-right">
                 <span className="font-medium text-red-600">
-                  {formatCurrency(campaign.spend)}
+                  {formatCurrency(row.spend)}
                 </span>
               </TableCell>
 
               <TableCell className="text-center">
                 <Badge variant="secondary">
-                  {campaign.leads}
+                  {row.leads}
                 </Badge>
               </TableCell>
 
               <TableCell className="text-right">
                 <span className="text-sm">
-                  {campaign.leads > 0 ? formatCurrency(campaign.cpl) : '-'}
+                  {row.leads > 0 ? formatCurrency(row.cpl) : '-'}
                 </span>
               </TableCell>
 
               <TableCell className="text-center">
                 <Badge 
-                  variant={campaign.conversions > 0 ? 'default' : 'secondary'}
-                  className={campaign.conversions > 0 ? 'bg-green-500 hover:bg-green-600' : ''}
+                  variant={row.conversions > 0 ? 'default' : 'secondary'}
+                  className={row.conversions > 0 ? 'bg-green-500 hover:bg-green-600' : ''}
                 >
-                  {campaign.conversions}
+                  {row.conversions}
                 </Badge>
               </TableCell>
 
               <TableCell className="text-right">
                 <span className="text-sm">
-                  {campaign.conversions > 0 ? formatCurrency(campaign.cac) : '-'}
+                  {row.conversions > 0 ? formatCurrency(row.cac) : '-'}
                 </span>
               </TableCell>
 
               <TableCell className="text-right">
-                <span className={`font-medium ${campaign.revenue > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
-                  {campaign.revenue > 0 ? formatCurrency(campaign.revenue) : '-'}
+                <span className={`font-medium ${row.revenue > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                  {row.revenue > 0 ? formatCurrency(row.revenue) : '-'}
                 </span>
               </TableCell>
 
               <TableCell className="text-center">
                 <div className="flex items-center justify-center gap-1">
-                  {getRoiIcon(campaign.roi)}
-                  <span className={`font-semibold ${getRoiColor(campaign.roi)}`}>
-                    {campaign.roi.toFixed(1)}%
+                  {getRoiIcon(row.roi)}
+                  <span className={`font-semibold ${getRoiColor(row.roi)}`}>
+                    {row.roi.toFixed(1)}%
                   </span>
                 </div>
               </TableCell>
 
               <TableCell className="text-center">
-                <span className={`font-medium ${campaign.roas >= 1 ? 'text-green-600' : 'text-orange-600'}`}>
-                  {campaign.roas.toFixed(2)}x
+                <span className={`font-medium ${row.roas >= 1 ? 'text-green-600' : 'text-orange-600'}`}>
+                  {row.roas.toFixed(2)}x
                 </span>
               </TableCell>
             </TableRow>
