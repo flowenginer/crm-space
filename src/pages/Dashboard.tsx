@@ -8,7 +8,6 @@ import {
   useLeadJourneyMetrics,
   useAgentDistributionAdvanced,
   useStatusFunnel,
-  useLeadAlerts,
   type DashboardFilters as JourneyFilters
 } from '@/hooks/useLeadJourneyDashboard';
 import { useAgentsForFilter, useDepartmentsForFilter, useInteractionTimeline } from '@/hooks/useDashboardAdvanced';
@@ -19,7 +18,7 @@ import { OriginBreakdownChart } from '@/components/dashboard/OriginBreakdownChar
 import { StatusFunnelRealtime } from '@/components/dashboard/StatusFunnelRealtime';
 import { StatusDurationChart } from '@/components/dashboard/StatusDurationChart';
 import { AgentPerformanceTableAdvanced } from '@/components/dashboard/AgentPerformanceTableAdvanced';
-import { LeadAlertsPanel } from '@/components/dashboard/LeadAlertsPanel';
+
 import { AdvancedFilters } from '@/components/dashboard/AdvancedFilters';
 import { InteractionChart } from '@/components/dashboard/InteractionChart';
 import { DashboardGrid, DashboardCardConfig } from '@/components/dashboard/DashboardGrid';
@@ -53,7 +52,7 @@ export default function Dashboard() {
   const { data: journeyMetrics, isLoading: loadingMetrics } = useLeadJourneyMetrics(filters, selectedOrigin || undefined);
   const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentDistributionAdvanced(filters);
   const { data: statusFunnelData = [], isLoading: loadingFunnel } = useStatusFunnel(filters);
-  const { data: leadAlerts = [], isLoading: loadingAlerts } = useLeadAlerts(filters);
+  
   const { data: interactionData = [], isLoading: loadingInteraction } = useInteractionTimeline(filters);
   
   // Filter options
@@ -114,19 +113,15 @@ export default function Dashboard() {
     },
     {
       id: 'agent-performance',
+      fullWidth: true,
       component: <AgentPerformanceTableAdvanced data={agentPerformance} isLoading={loadingAgents} />,
-    },
-    {
-      id: 'lead-alerts',
-      component: <LeadAlertsPanel data={leadAlerts} isLoading={loadingAlerts} />,
     },
   ], [
     journeyMetrics, loadingMetrics,
     originData, loadingOrigin, selectedOrigin, filters.dateFrom, filters.dateTo,
     statusFunnelData, loadingFunnel,
     interactionData, loadingInteraction, selectedAgentName,
-    agentPerformance, loadingAgents,
-    leadAlerts, loadingAlerts
+    agentPerformance, loadingAgents
   ]);
 
   return (
