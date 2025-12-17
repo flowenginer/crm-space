@@ -44,6 +44,7 @@ import OrderSettings from "@/pages/orders/Settings";
 import Quotes from "@/pages/Quotes";
 import Financial from "@/pages/Financial";
 import SellerDashboard from "@/pages/SellerDashboard";
+import RescueTemplates from "@/pages/RescueTemplates";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -90,6 +91,11 @@ const App = () => (
               <Route path="/quick-messages" element={
                 <ProtectedRoute permission="templates.view">
                   <QuickMessages />
+                </ProtectedRoute>
+              } />
+              <Route path="/rescue-templates" element={
+                <ProtectedRoute permission="templates.view">
+                  <RescueTemplates />
                 </ProtectedRoute>
               } />
               <Route path="/crm" element={

@@ -130,6 +130,8 @@ import { CallLogModal } from '@/components/conversations/CallLogModal';
 import { WaitingCard } from '@/components/conversations/WaitingCard';
 import { useRequiredFieldsValidation } from '@/hooks/useRequiredFieldsValidation';
 import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
+import { RescueButton } from '@/components/rescue/RescueButton';
+import { RescueActiveAlert } from '@/components/rescue/RescueActiveAlert';
 import type { Profile } from '@/types';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
@@ -3748,6 +3750,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   >
                     <Phone size={18} className="text-muted-foreground" />
                   </button>
+                  {/* Rescue Button */}
+                  {selectedConversation && (
+                    <RescueButton
+                      conversationId={selectedConversation.id}
+                      contactId={selectedConversation.contact_id}
+                      contactName={selectedConversation.contact?.full_name || 'Cliente'}
+                    />
+                  )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button 
@@ -4329,6 +4339,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
+                  {/* Rescue Active Alert */}
+                  {selectedConversationId && (
+                    <RescueActiveAlert conversationId={selectedConversationId} />
+                  )}
+                  
                   {/* Required Fields Warning Banner */}
                   {!isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0 && (
                     <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-700 dark:text-amber-400">
