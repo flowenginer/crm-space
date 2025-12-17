@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -13,7 +13,6 @@ import {
   ArrowLeft,
   DollarSign,
   FileSpreadsheet,
-  Tag,
   GitBranch,
 } from 'lucide-react';
 import {
@@ -21,18 +20,24 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
 import { useNavigate } from 'react-router-dom';
-import { useMetaLeadsCrossData } from '@/hooks/useMetaLeadsCrossData';
+import { useMetaLeadsCrossData, CrossDataRow } from '@/hooks/useMetaLeadsCrossData';
 import { useMetaCampaignROI } from '@/hooks/useMetaCampaignROI';
-import { useMetaLeadsBySegment } from '@/hooks/useMetaLeadsBySegment';
+import { useMetaSegmentROI } from '@/hooks/useMetaSegmentROI';
 import { useMetaSegmentJourney } from '@/hooks/useMetaSegmentJourney';
 import { CrossDataTable } from '@/components/campaigns/CrossDataTable';
 import { ROITable } from '@/components/campaigns/ROITable';
-import { SegmentTable } from '@/components/campaigns/SegmentTable';
 import { SegmentJourneyChart } from '@/components/campaigns/SegmentJourneyChart';
 import * as XLSX from 'xlsx';
 
@@ -82,6 +87,31 @@ function StatCard({ title, value, subtitle, icon: Icon, gradient, isLoading }: S
   );
 }
 
+// Função para agrupar CrossData por campanha
+function groupByCampaign(rows: CrossDataRow[]): CrossDataRow[] {
+  const grouped = new Map<string, CrossDataRow>();
+  
+  rows.forEach(row => {
+    const key = row.campaignName || 'Sem Campanha';
+    if (!grouped.has(key)) {
+      grouped.set(key, { 
+        ...row, 
+        adName: key,
+        sourceId: key,
+      });
+    } else {
+      const existing = grouped.get(key)!;
+      existing.totalLeads += row.totalLeads;
+      existing.catalogoCount += row.catalogoCount;
+      existing.layoutCount += row.layoutCount;
+      existing.pedidoFechadoCount += row.pedidoFechadoCount;
+      existing.revenue += row.revenue;
+    }
+  });
+  
+  return Array.from(grouped.values()).sort((a, b) => b.totalLeads - a.totalLeads);
+}
+
 export default function CampaignReport() {
   const navigate = useNavigate();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -89,6 +119,10 @@ export default function CampaignReport() {
     to: new Date(),
   });
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  
+  // Estados para controlar visualização
+  const [crossDataView, setCrossDataView] = useState<'anuncio' | 'campanha'>('anuncio');
+  const [roiView, setRoiView] = useState<'campanha' | 'segmento'>('campanha');
 
   const activeDateRange = dateRange?.from && dateRange?.to 
     ? { from: dateRange.from, to: dateRange.to }
@@ -96,10 +130,25 @@ export default function CampaignReport() {
 
   const { data: crossData, isLoading: loadingCrossData } = useMetaLeadsCrossData(activeDateRange);
   const { data: roiData, isLoading: loadingROI } = useMetaCampaignROI(activeDateRange);
-  const { data: segmentData, isLoading: loadingSegment } = useMetaLeadsBySegment(activeDateRange);
+  const { data: segmentROIData, isLoading: loadingSegmentROI } = useMetaSegmentROI(activeDateRange);
   const { data: journeyData, isLoading: loadingJourney } = useMetaSegmentJourney(activeDateRange);
 
   const summary = crossData?.summary;
+
+  // Dados processados baseado na view selecionada
+  const crossDataDisplay = useMemo(() => {
+    if (!crossData?.rows) return [];
+    return crossDataView === 'campanha' 
+      ? groupByCampaign(crossData.rows) 
+      : crossData.rows;
+  }, [crossData?.rows, crossDataView]);
+
+  const roiDataDisplay = useMemo(() => {
+    if (roiView === 'segmento') {
+      return segmentROIData || [];
+    }
+    return roiData?.campaigns || [];
+  }, [roiView, roiData?.campaigns, segmentROIData]);
 
   const formatDateRange = (range: DateRange | undefined) => {
     if (!range?.from) return 'Selecionar período';
@@ -124,10 +173,11 @@ export default function CampaignReport() {
   const handleExportExcel = () => {
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: Cruzamento por Anúncio
-    if (crossData?.rows) {
-      const adSheet = crossData.rows.map(row => ({
-        'Anúncio': row.adName,
+    // Sheet 1: Cruzamento (por anúncio ou campanha)
+    if (crossDataDisplay.length > 0) {
+      const label = crossDataView === 'campanha' ? 'Campanha' : 'Anúncio';
+      const adSheet = crossDataDisplay.map(row => ({
+        [label]: row.adName,
         'Leads': row.totalLeads,
         'Catálogo': row.catalogoCount,
         'Layout': row.layoutCount,
@@ -135,13 +185,14 @@ export default function CampaignReport() {
         'Valor Negociado': row.revenue
       }));
       const ws1 = XLSX.utils.json_to_sheet(adSheet);
-      XLSX.utils.book_append_sheet(wb, ws1, 'Por Anúncio');
+      XLSX.utils.book_append_sheet(wb, ws1, `Por ${label}`);
     }
 
-    // Sheet 2: ROI por Campanha
-    if (roiData?.campaigns) {
-      const roiSheet = roiData.campaigns.map(row => ({
-        'Campanha': row.campaignName,
+    // Sheet 2: ROI (por campanha ou segmento)
+    if (roiDataDisplay.length > 0) {
+      const label = roiView === 'segmento' ? 'Segmento' : 'Campanha';
+      const roiSheet = roiDataDisplay.map((row: any) => ({
+        [label]: row.campaignName || row.segmentName,
         'Gastos': row.spend,
         'Leads': row.leads,
         'CPL': row.cpl,
@@ -152,21 +203,7 @@ export default function CampaignReport() {
         'ROAS': row.roas
       }));
       const ws2 = XLSX.utils.json_to_sheet(roiSheet);
-      XLSX.utils.book_append_sheet(wb, ws2, 'ROI por Campanha');
-    }
-
-    // Sheet 3: Por Segmento
-    if (segmentData) {
-      const segSheet = segmentData.map(row => ({
-        'Segmento': row.segmentName,
-        'Leads': row.totalLeads,
-        'Catálogo': row.catalogoCount,
-        'Layout': row.layoutCount,
-        'Pedido Fechado': row.pedidoFechadoCount,
-        'Valor Negociado': row.revenue
-      }));
-      const ws3 = XLSX.utils.json_to_sheet(segSheet);
-      XLSX.utils.book_append_sheet(wb, ws3, 'Por Segmento');
+      XLSX.utils.book_append_sheet(wb, ws2, `ROI por ${label}`);
     }
 
     const fileName = `relatorio-campanhas-${format(new Date(), 'yyyy-MM-dd-HHmm')}.xlsx`;
@@ -291,39 +328,47 @@ export default function CampaignReport() {
         />
       </div>
 
-      {/* Cruzamento por Anúncio */}
+      {/* Cruzamento por Anúncio/Campanha */}
       <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
         <div className="flex items-center gap-2 mb-6">
           <FileSpreadsheet className="h-5 w-5 text-primary" />
-          <h3 className="text-lg font-semibold text-foreground">Cruzamento por Anúncio</h3>
+          <span className="text-lg font-semibold text-foreground">Cruzamento por</span>
+          <Select value={crossDataView} onValueChange={(v: 'anuncio' | 'campanha') => setCrossDataView(v)}>
+            <SelectTrigger className="w-[140px] h-9 border-primary/30 bg-primary/5">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="anuncio">Anúncio</SelectItem>
+              <SelectItem value="campanha">Campanha</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <CrossDataTable 
-          data={crossData?.rows || []}
+          data={crossDataDisplay}
           isLoading={loadingCrossData}
+          viewMode={crossDataView}
         />
       </div>
 
-      {/* ROI por Campanha */}
+      {/* ROI por Campanha/Segmento */}
       <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
         <div className="flex items-center gap-2 mb-6">
           <DollarSign className="h-5 w-5 text-primary" />
-          <h3 className="text-lg font-semibold text-foreground">ROI por Campanha</h3>
+          <span className="text-lg font-semibold text-foreground">ROI por</span>
+          <Select value={roiView} onValueChange={(v: 'campanha' | 'segmento') => setRoiView(v)}>
+            <SelectTrigger className="w-[140px] h-9 border-primary/30 bg-primary/5">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="campanha">Campanha</SelectItem>
+              <SelectItem value="segmento">Segmento</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <ROITable 
-          data={roiData?.campaigns || []}
-          isLoading={loadingROI}
-        />
-      </div>
-
-      {/* Cruzamento por Segmento */}
-      <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-elevated">
-        <div className="flex items-center gap-2 mb-6">
-          <Tag className="h-5 w-5 text-primary" />
-          <h3 className="text-lg font-semibold text-foreground">Cruzamento por Segmento</h3>
-        </div>
-        <SegmentTable 
-          data={segmentData || []}
-          isLoading={loadingSegment}
+          data={roiDataDisplay}
+          isLoading={roiView === 'segmento' ? loadingSegmentROI : loadingROI}
+          viewMode={roiView}
         />
       </div>
 
