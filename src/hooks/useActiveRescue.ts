@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
 import type { RescueStep } from './useRescueTemplates';
+import { toast } from 'sonner';
 
 export interface ActiveRescue {
   id: string;
@@ -133,9 +134,29 @@ export function useActivateRescue() {
       steps: RescueStep[];
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      // Calculate next send time for first message (immediate)
       const now = new Date();
+      
+      // Get conversation and channel info for sending message
+      const { data: conversation, error: convError } = await supabase
+        .from('conversations')
+        .select('channel_id')
+        .eq('id', conversationId)
+        .single();
+      
+      if (convError || !conversation?.channel_id) {
+        throw new Error('Conversa não encontrada ou sem canal associado');
+      }
+      
+      // Get contact phone
+      const { data: contact, error: contactError } = await supabase
+        .from('contacts')
+        .select('phone')
+        .eq('id', contactId)
+        .single();
+      
+      if (contactError || !contact?.phone) {
+        throw new Error('Contato não encontrado ou sem telefone');
+      }
       
       // Create active rescue
       const { data: rescue, error: rescueError } = await supabase
@@ -154,20 +175,78 @@ export function useActivateRescue() {
 
       if (rescueError) throw rescueError;
 
-      // Schedule all messages with calculated times
-      let accumulatedMinutes = 0;
-      const scheduledMessages = steps.map((step, index) => {
-        const scheduledTime = new Date(now.getTime() + accumulatedMinutes * 60 * 1000);
-        accumulatedMinutes += step.timer_minutes;
+      // SEND FIRST MESSAGE IMMEDIATELY via WhatsApp
+      const firstMessage = steps[0]?.message;
+      if (firstMessage) {
+        console.log('[useActivateRescue] Sending first message immediately...');
         
-        return {
+        try {
+          // Send via WhatsApp API
+          const { data: sendResult, error: sendError } = await supabase.functions.invoke('whatsapp-instance', {
+            body: {
+              action: 'send',
+              channelId: conversation.channel_id,
+              phone: contact.phone,
+              content: firstMessage,
+              type: 'text',
+            },
+          });
+          
+          if (sendError) {
+            console.error('[useActivateRescue] Error sending first message:', sendError);
+            throw new Error('Falha ao enviar primeira mensagem');
+          }
+          
+          console.log('[useActivateRescue] First message sent successfully:', sendResult);
+          
+          // Insert message into messages table
+          await supabase
+            .from('messages')
+            .insert({
+              conversation_id: conversationId,
+              contact_id: contactId,
+              content: firstMessage,
+              is_from_me: true,
+              message_type: 'text',
+              status: 'sent',
+              whatsapp_message_id: sendResult?.messageId,
+            });
+            
+        } catch (err) {
+          console.error('[useActivateRescue] Error in first message flow:', err);
+          // Rollback: delete the rescue if first message fails
+          await supabase.from('active_rescues').delete().eq('id', rescue.id);
+          throw err;
+        }
+      }
+
+      // Schedule remaining messages (starting from step 1)
+      // First message timer = time until SECOND message
+      let accumulatedMinutes = steps[0]?.timer_minutes || 5; // First timer is for second message
+      const scheduledMessages = [];
+      
+      // First message is already sent, mark it
+      scheduledMessages.push({
+        rescue_id: rescue.id,
+        step_number: 0,
+        content: steps[0]?.message || '',
+        scheduled_for: now.toISOString(),
+        status: 'sent' as const,
+        sent_at: now.toISOString(),
+      });
+      
+      // Schedule remaining messages
+      for (let i = 1; i < steps.length; i++) {
+        const scheduledTime = new Date(now.getTime() + accumulatedMinutes * 60 * 1000);
+        scheduledMessages.push({
           rescue_id: rescue.id,
-          step_number: index,
-          content: step.message,
+          step_number: i,
+          content: steps[i].message,
           scheduled_for: scheduledTime.toISOString(),
           status: 'pending' as const,
-        };
-      });
+        });
+        accumulatedMinutes += steps[i].timer_minutes;
+      }
 
       const { error: messagesError } = await supabase
         .from('rescue_scheduled_messages')
@@ -175,10 +254,36 @@ export function useActivateRescue() {
 
       if (messagesError) throw messagesError;
 
+      // Update rescue with next send time (for second message)
+      if (steps.length > 1) {
+        const nextSendAt = new Date(now.getTime() + (steps[0]?.timer_minutes || 5) * 60 * 1000);
+        await supabase
+          .from('active_rescues')
+          .update({ 
+            current_step: 1, 
+            next_send_at: nextSendAt.toISOString() 
+          })
+          .eq('id', rescue.id);
+      } else {
+        // Only one message, mark as completed
+        await supabase
+          .from('active_rescues')
+          .update({ 
+            status: 'completed', 
+            completed_at: now.toISOString() 
+          })
+          .eq('id', rescue.id);
+      }
+
       return rescue;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['active-rescue', variables.conversationId] });
+      toast.success('Resgate ativado! Primeira mensagem enviada.');
+    },
+    onError: (error: any) => {
+      console.error('[useActivateRescue] Error:', error);
+      toast.error(error?.message || 'Erro ao ativar resgate');
     },
   });
 }
@@ -224,6 +329,7 @@ export function useCancelRescue() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['active-rescue', result.conversationId] });
+      toast.success('Resgate cancelado');
     },
   });
 }

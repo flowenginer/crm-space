@@ -11,10 +11,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     console.log('[process-rescue-messages] Starting processing...')
 
@@ -51,6 +51,7 @@ Deno.serve(async (req) => {
     for (const msg of pendingMessages || []) {
       // Skip if rescue is no longer active
       if (msg.rescue?.status !== 'active') {
+        console.log(`[process-rescue-messages] Rescue ${msg.rescue?.id} not active, cancelling message`)
         await supabase
           .from('rescue_scheduled_messages')
           .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
@@ -60,36 +61,59 @@ Deno.serve(async (req) => {
 
       try {
         // Get conversation and channel info
-        const { data: conversation } = await supabase
+        const { data: conversation, error: convError } = await supabase
           .from('conversations')
-          .select('channel_id, contact:contacts(phone)')
+          .select('channel_id')
           .eq('id', msg.rescue.conversation_id)
           .single()
 
-        const contactPhone = (conversation?.contact as any)?.[0]?.phone || (conversation?.contact as any)?.phone
-
-        if (!conversation?.channel_id || !contactPhone) {
-          console.error('[process-rescue-messages] Missing channel or phone for message:', msg.id)
+        if (convError || !conversation?.channel_id) {
+          console.error('[process-rescue-messages] Missing channel for message:', msg.id, convError)
           errors++
           continue
         }
 
-        // Get channel config
-        const { data: channel } = await supabase
-          .from('whatsapp_channels')
-          .select('*')
-          .eq('id', conversation.channel_id)
+        // Get contact phone
+        const { data: contact, error: contactError } = await supabase
+          .from('contacts')
+          .select('phone')
+          .eq('id', msg.rescue.contact_id)
           .single()
 
-        if (!channel) {
-          console.error('[process-rescue-messages] Channel not found:', conversation.channel_id)
+        if (contactError || !contact?.phone) {
+          console.error('[process-rescue-messages] Missing phone for message:', msg.id, contactError)
           errors++
           continue
         }
 
-        // Send message via WhatsApp API (simplified - you may need to adapt to your WhatsApp adapter)
-        console.log(`[process-rescue-messages] Sending message to ${contactPhone}: ${msg.content.substring(0, 50)}...`)
+        console.log(`[process-rescue-messages] Sending message to ${contact.phone}: ${msg.content.substring(0, 50)}...`)
         
+        // SEND MESSAGE VIA WHATSAPP API
+        const sendResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            action: 'send',
+            channelId: conversation.channel_id,
+            phone: contact.phone,
+            content: msg.content,
+            type: 'text',
+          }),
+        })
+
+        const sendResult = await sendResponse.json()
+        
+        if (!sendResponse.ok || sendResult.error) {
+          console.error('[process-rescue-messages] Error sending via WhatsApp:', sendResult)
+          errors++
+          continue
+        }
+
+        console.log('[process-rescue-messages] WhatsApp message sent:', sendResult)
+
         // Insert message into messages table
         const { error: msgError } = await supabase
           .from('messages')
@@ -100,12 +124,12 @@ Deno.serve(async (req) => {
             is_from_me: true,
             message_type: 'text',
             status: 'sent',
+            whatsapp_message_id: sendResult?.messageId,
           })
 
         if (msgError) {
           console.error('[process-rescue-messages] Error inserting message:', msgError)
-          errors++
-          continue
+          // Continue anyway, message was sent
         }
 
         // Mark scheduled message as sent
@@ -120,6 +144,7 @@ Deno.serve(async (req) => {
 
         if (nextStep >= steps.length) {
           // Last message - execute final action
+          console.log('[process-rescue-messages] Last message sent, executing final action')
           const finalAction = msg.rescue.template?.final_action
           const finalConfig = msg.rescue.template?.final_action_config || {}
 
@@ -132,6 +157,7 @@ Deno.serve(async (req) => {
                 closed_at: new Date().toISOString(),
               })
               .eq('id', msg.rescue.conversation_id)
+            console.log('[process-rescue-messages] Conversation closed')
           } else if (finalAction === 'transfer' && finalConfig.department_id) {
             await supabase
               .from('conversations')
@@ -140,6 +166,7 @@ Deno.serve(async (req) => {
                 assigned_to: null,
               })
               .eq('id', msg.rescue.conversation_id)
+            console.log('[process-rescue-messages] Conversation transferred to department:', finalConfig.department_id)
           }
 
           // Mark rescue as completed
@@ -149,13 +176,15 @@ Deno.serve(async (req) => {
             .eq('id', msg.rescue.id)
         } else {
           // Update to next step
-          const nextTimer = steps[nextStep]?.timer_minutes || 60
+          const nextTimer = (steps[nextStep] as any)?.timer_minutes || 60
           const nextSendAt = new Date(Date.now() + nextTimer * 60 * 1000)
 
           await supabase
             .from('active_rescues')
             .update({ current_step: nextStep, next_send_at: nextSendAt.toISOString() })
             .eq('id', msg.rescue.id)
+          
+          console.log(`[process-rescue-messages] Updated to step ${nextStep}, next send at: ${nextSendAt.toISOString()}`)
         }
 
         processed++
