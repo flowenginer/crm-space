@@ -5,6 +5,7 @@ export interface CrossDataRow {
   sourceId: string;
   adName: string;
   campaignName: string;
+  segmentName: string;
   sourceUrl: string;
   headline: string;
   thumbnailUrl: string;
@@ -43,10 +44,28 @@ function toUTCDate(date: Date, isEndOfDay: boolean = false): string {
   return utcDate.toISOString();
 }
 
+// Função para encontrar segmento no nome da campanha
+function findSegmentInCampaignName(campaignName: string, segments: { id: string; name: string }[]): string {
+  if (!campaignName || !segments || segments.length === 0) return 'Sem Segmento';
+  
+  for (const segment of segments) {
+    if (campaignName.toLowerCase().includes(segment.name.toLowerCase())) {
+      return segment.name;
+    }
+  }
+  return 'Sem Segmento';
+}
+
 export function useMetaLeadsCrossData(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['meta_leads_cross_data', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async (): Promise<{ rows: CrossDataRow[]; summary: CrossDataSummary }> => {
+      // Fetch active segments for matching
+      const { data: segments } = await supabase
+        .from('segments')
+        .select('id, name')
+        .eq('is_active', true);
+
       // Fetch meta ads with campaign name (all campaigns, including paused)
       const { data: metaAds } = await supabase
         .from('meta_ads')
@@ -55,11 +74,13 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
           name,
           campaign:meta_campaigns(name, status)
         `);
-      const adInfoMap = new Map<string, { adName: string; campaignName: string }>();
+      const adInfoMap = new Map<string, { adName: string; campaignName: string; segmentName: string }>();
       metaAds?.forEach((ad: any) => {
+        const campaignName = ad.campaign?.name || '';
         adInfoMap.set(ad.ad_id, {
           adName: ad.name,
-          campaignName: ad.campaign?.name || ''
+          campaignName,
+          segmentName: findSegmentInCampaignName(campaignName, segments || [])
         });
       });
 
@@ -133,6 +154,7 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
             // Use ONLY ad name from meta_ads table, never headline as fallback
             adName: adInfo?.adName || `Anúncio ${sourceId}`,
             campaignName: adInfo?.campaignName || '',
+            segmentName: adInfo?.segmentName || 'Sem Segmento',
             sourceUrl: refData?.sourceUrl || '',
             headline: refData?.headline || '',
             thumbnailUrl: refData?.thumbnailUrl || refData?.imageUrl || '',
