@@ -12,6 +12,12 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Loader2, TrendingUp, TrendingDown, Minus, ArrowUp, ArrowDown } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface ROITableProps {
   data: CampaignROIData[] | SegmentROIData[];
@@ -25,6 +31,7 @@ type SortDirection = 'asc' | 'desc';
 export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITableProps) {
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [selectedRow, setSelectedRow] = useState<CampaignROIData | SegmentROIData | null>(null);
 
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
@@ -223,9 +230,13 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
             {sortedData.map((row, index) => (
               <TableRow key={getId(row, index)} className="hover:bg-muted/30">
                 <TableCell className="w-[200px]">
-                  <p className="text-sm font-medium truncate">
+                  <button 
+                    onClick={() => setSelectedRow(row)}
+                    className="text-sm font-medium truncate text-left hover:text-primary hover:underline cursor-pointer max-w-full block"
+                    title={getName(row)}
+                  >
                     {getName(row)}
-                  </p>
+                  </button>
                 </TableCell>
                 
                 <TableCell className="w-[100px] text-right">
@@ -286,6 +297,54 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
           </TableBody>
         </Table>
       </ScrollArea>
+
+      {/* Dialog para ver detalhes da campanha/segmento */}
+      <Dialog open={!!selectedRow} onOpenChange={() => setSelectedRow(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Detalhes da {columnLabel}</DialogTitle>
+          </DialogHeader>
+          {selectedRow && (
+            <div className="space-y-4">
+              <p className="font-medium text-lg break-words">{getName(selectedRow)}</p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="flex justify-between p-2 bg-muted/50 rounded">
+                  <span className="text-muted-foreground">Gastos:</span>
+                  <span className="font-medium text-red-600">{formatCurrency(selectedRow.spend)}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-muted/50 rounded">
+                  <span className="text-muted-foreground">Leads:</span>
+                  <span className="font-medium">{selectedRow.leads}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-muted/50 rounded">
+                  <span className="text-muted-foreground">CPL:</span>
+                  <span className="font-medium">{selectedRow.leads > 0 ? formatCurrency(selectedRow.cpl) : '-'}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-muted/50 rounded">
+                  <span className="text-muted-foreground">Conversões:</span>
+                  <span className="font-medium text-green-600">{selectedRow.conversions}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-muted/50 rounded">
+                  <span className="text-muted-foreground">CAC:</span>
+                  <span className="font-medium">{selectedRow.conversions > 0 ? formatCurrency(selectedRow.cac) : '-'}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-muted/50 rounded">
+                  <span className="text-muted-foreground">Receita:</span>
+                  <span className="font-medium text-green-600">{selectedRow.revenue > 0 ? formatCurrency(selectedRow.revenue) : '-'}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-muted/50 rounded">
+                  <span className="text-muted-foreground">ROI:</span>
+                  <span className={`font-semibold ${getRoiColor(selectedRow.roi)}`}>{selectedRow.roi.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between p-2 bg-muted/50 rounded">
+                  <span className="text-muted-foreground">ROAS:</span>
+                  <span className={`font-medium ${selectedRow.roas >= 1 ? 'text-green-600' : 'text-orange-600'}`}>{selectedRow.roas.toFixed(2)}x</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
