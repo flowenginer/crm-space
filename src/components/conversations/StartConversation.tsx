@@ -254,16 +254,46 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
         // User CAN access this contact - now check for existing conversations
         const { data: openConv } = await supabase
           .from('conversations')
-          .select('id')
+          .select('id, assigned_to, department_id')
           .eq('contact_id', contact.id)
           .in('status', ['open', 'pending'])
           .order('last_message_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
+        // Get current user for assignment
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        const sellerDepartmentId = currentUser?.id ? await getUserPrimaryDepartment(currentUser.id) : null;
+
         if (openConv) {
-          // Navigate to existing open conversation
-          toast.info('Conversa existente encontrada');
+          // *** CRITICAL: Se conversa não tem owner, atribuir ao vendedor atual ***
+          if (!openConv.assigned_to && currentUser?.id) {
+            await supabase
+              .from('conversations')
+              .update({ 
+                assigned_to: currentUser.id,
+                department_id: sellerDepartmentId,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', openConv.id);
+
+            // Atualizar contato também se não tiver owner
+            await supabase
+              .from('contacts')
+              .update({ 
+                assigned_to: currentUser.id,
+                department_id: sellerDepartmentId,
+              })
+              .eq('id', contact.id)
+              .is('assigned_to', null);
+
+            queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+            queryClient.invalidateQueries({ queryKey: ['contacts'] });
+            toast.success('Conversa atribuída a você');
+          } else {
+            toast.info('Conversa existente encontrada');
+          }
+          
           if (onConversationCreated) {
             onConversationCreated(openConv.id);
           }
@@ -295,11 +325,13 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
             const previousClosedBy = convData?.closed_by;
             const currentReopenCount = convData?.reopen_count || 0;
             
-            // Update conversation for reopen
+            // Update conversation for reopen - *** CRITICAL: Atribuir ao vendedor ***
             await supabase
               .from('conversations')
               .update({ 
                 status: 'open', 
+                assigned_to: currentUser?.id,           // *** Atribuir ao vendedor ***
+                department_id: sellerDepartmentId,      // *** Atribuir departamento ***
                 reopened_at: new Date().toISOString(),
                 reopen_count: currentReopenCount + 1,
                 previous_close_reason: previousCloseReason,
@@ -311,6 +343,16 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
                 updated_at: new Date().toISOString()
               })
               .eq('id', closedConv.id);
+
+            // Atualizar contato também se não tiver owner
+            await supabase
+              .from('contacts')
+              .update({ 
+                assigned_to: currentUser?.id,
+                department_id: sellerDepartmentId,
+              })
+              .eq('id', contact.id)
+              .is('assigned_to', null);
             
             // Register reopen event
             await supabase.from('conversation_events').insert({
@@ -323,10 +365,35 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
                 trigger: 'manual',
               },
             });
-            
-            toast.success('Conversa reaberta');
+
+            queryClient.invalidateQueries({ queryKey: ['contacts'] });
+            toast.success('Conversa reaberta e atribuída a você');
           } else {
-            toast.info('Conversa existente encontrada');
+            // Conversa já está aberta - verificar se precisa atribuir
+            if (!closedConv.assigned_to && currentUser?.id) {
+              await supabase
+                .from('conversations')
+                .update({ 
+                  assigned_to: currentUser.id,
+                  department_id: sellerDepartmentId,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', closedConv.id);
+
+              await supabase
+                .from('contacts')
+                .update({ 
+                  assigned_to: currentUser.id,
+                  department_id: sellerDepartmentId,
+                })
+                .eq('id', contact.id)
+                .is('assigned_to', null);
+
+              queryClient.invalidateQueries({ queryKey: ['contacts'] });
+              toast.success('Conversa atribuída a você');
+            } else {
+              toast.info('Conversa existente encontrada');
+            }
           }
           
           // Invalidate correct query keys used by usePaginatedConversations
