@@ -16,6 +16,19 @@ interface DateRange {
   to: Date | undefined;
 }
 
+// Função para ajustar data para UTC considerando Brasília (UTC-3)
+function toUTCDate(date: Date, isEndOfDay: boolean = false): string {
+  const d = new Date(date);
+  if (isEndOfDay) {
+    d.setHours(23, 59, 59, 999);
+  } else {
+    d.setHours(0, 0, 0, 0);
+  }
+  // Adiciona 3 horas para compensar UTC-3 de Brasília
+  const utcDate = new Date(d.getTime() + (3 * 60 * 60 * 1000));
+  return utcDate.toISOString();
+}
+
 export function useMetaLeadsBySegment(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['meta_leads_by_segment', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
@@ -46,14 +59,12 @@ export function useMetaLeadsBySegment(dateRange?: DateRange) {
         `)
         .not('referral_source', 'is', null);
 
-      // Apply date filters
+      // Apply date filters with timezone correction
       if (dateRange?.from) {
-        query = query.gte('created_at', dateRange.from.toISOString());
+        query = query.gte('created_at', toUTCDate(dateRange.from, false));
       }
       if (dateRange?.to) {
-        const endDate = new Date(dateRange.to);
-        endDate.setHours(23, 59, 59, 999);
-        query = query.lte('created_at', endDate.toISOString());
+        query = query.lte('created_at', toUTCDate(dateRange.to, true));
       }
 
       const { data: conversations } = await query;

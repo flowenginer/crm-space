@@ -4,6 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 export interface CrossDataRow {
   sourceId: string;
   adName: string;
+  campaignName: string;
+  sourceUrl: string;
+  headline: string;
   totalLeads: number;
   catalogoCount: number;  // 03 - Catálogo
   layoutCount: number;    // 04 - Layout
@@ -22,6 +25,19 @@ export interface CrossDataSummary {
 interface DateRange {
   from: Date;
   to: Date;
+}
+
+// Função para ajustar data para UTC considerando Brasília (UTC-3)
+function toUTCDate(date: Date, isEndOfDay: boolean = false): string {
+  const d = new Date(date);
+  if (isEndOfDay) {
+    d.setHours(23, 59, 59, 999);
+  } else {
+    d.setHours(0, 0, 0, 0);
+  }
+  // Adiciona 3 horas para compensar UTC-3 de Brasília
+  const utcDate = new Date(d.getTime() + (3 * 60 * 60 * 1000));
+  return utcDate.toISOString();
 }
 
 export function useMetaLeadsCrossData(dateRange?: DateRange) {
@@ -55,12 +71,10 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
         .not('referral_data', 'is', null);
 
       if (dateRange?.from) {
-        query = query.gte('created_at', dateRange.from.toISOString());
+        query = query.gte('created_at', toUTCDate(dateRange.from, false));
       }
       if (dateRange?.to) {
-        const endOfDay = new Date(dateRange.to);
-        endOfDay.setHours(23, 59, 59, 999);
-        query = query.lte('created_at', endOfDay.toISOString());
+        query = query.lte('created_at', toUTCDate(dateRange.to, true));
       }
 
       const { data: conversations } = await query;
@@ -103,6 +117,9 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
           adData.set(sourceId, {
             sourceId,
             adName: adNameMap.get(sourceId) || refData?.headline || sourceId,
+            campaignName: refData?.body || '',
+            sourceUrl: refData?.sourceUrl || '',
+            headline: refData?.headline || '',
             totalLeads: 0,
             catalogoCount: 0,
             layoutCount: 0,

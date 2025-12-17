@@ -41,6 +41,19 @@ interface DateRange {
 // Constante para status de conversão
 const CONVERSION_STATUS = '07 - Pedido Fechado';
 
+// Função para ajustar data para UTC considerando Brasília (UTC-3)
+function toUTCDate(date: Date, isEndOfDay: boolean = false): string {
+  const d = new Date(date);
+  if (isEndOfDay) {
+    d.setHours(23, 59, 59, 999);
+  } else {
+    d.setHours(0, 0, 0, 0);
+  }
+  // Adiciona 3 horas para compensar UTC-3 de Brasília
+  const utcDate = new Date(d.getTime() + (3 * 60 * 60 * 1000));
+  return utcDate.toISOString();
+}
+
 export function useMetaCampaignROI(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['meta_campaign_roi', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
@@ -110,12 +123,10 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         .not('referral_data', 'is', null);
 
       if (dateRange?.from) {
-        convQuery = convQuery.gte('created_at', dateRange.from.toISOString());
+        convQuery = convQuery.gte('created_at', toUTCDate(dateRange.from, false));
       }
       if (dateRange?.to) {
-        const endOfDay = new Date(dateRange.to);
-        endOfDay.setHours(23, 59, 59, 999);
-        convQuery = convQuery.lte('created_at', endOfDay.toISOString());
+        convQuery = convQuery.lte('created_at', toUTCDate(dateRange.to, true));
       }
 
       const { data: conversations } = await convQuery;
