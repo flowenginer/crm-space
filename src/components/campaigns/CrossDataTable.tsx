@@ -105,12 +105,13 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
 
   return (
     <>
-      <ScrollArea className="h-[400px]">
-        <Table className="relative">
-          <TableHeader className="sticky top-0 z-10">
+      <div className="border rounded-lg overflow-hidden">
+        {/* Header fixo - fora do ScrollArea */}
+        <Table className="table-fixed w-full">
+          <TableHeader>
             <TableRow className="bg-card border-b border-border">
               <TableHead 
-                className="min-w-[250px] cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                className="w-[250px] cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('name')}
               >
                 <div className="flex items-center">
@@ -119,7 +120,7 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                 </div>
               </TableHead>
               <TableHead 
-                className="text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                className="w-[80px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('leads')}
               >
                 <div className="flex items-center justify-center">
@@ -128,7 +129,7 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                 </div>
               </TableHead>
               <TableHead 
-                className="text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                className="w-[90px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('catalogo')}
               >
                 <div className="flex items-center justify-center">
@@ -137,7 +138,7 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                 </div>
               </TableHead>
               <TableHead 
-                className="text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                className="w-[80px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('layout')}
               >
                 <div className="flex items-center justify-center">
@@ -146,7 +147,7 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                 </div>
               </TableHead>
               <TableHead 
-                className="text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                className="w-[120px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('pedidoFechado')}
               >
                 <div className="flex items-center justify-center">
@@ -155,7 +156,7 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
                 </div>
               </TableHead>
               <TableHead 
-                className="text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
+                className="w-[140px] text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
                 onClick={() => handleSort('revenue')}
               >
                 <div className="flex items-center justify-end">
@@ -165,30 +166,36 @@ export function CrossDataTable({ data, isLoading, viewMode = 'anuncio' }: CrossD
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {sortedData.map((row) => (
-              <TableRow 
-                key={row.sourceId} 
-                className={`hover:bg-muted/30 ${viewMode === 'anuncio' ? 'cursor-pointer' : ''}`}
-                onClick={() => viewMode === 'anuncio' && setSelectedAd(row)}
-              >
-                <TableCell className={`font-medium ${viewMode === 'anuncio' ? 'text-primary hover:underline' : ''}`}>
-                  {row.adName}
-                </TableCell>
-                <TableCell className="text-center font-semibold">{row.totalLeads}</TableCell>
-                <TableCell className="text-center">{row.catalogoCount}</TableCell>
-                <TableCell className="text-center">{row.layoutCount}</TableCell>
-                <TableCell className="text-center">
-                  <span className="text-green-600 font-semibold">{row.pedidoFechadoCount}</span>
-                </TableCell>
-                <TableCell className="text-right font-semibold text-green-600">
-                  {formatCurrency(row.revenue)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
         </Table>
-      </ScrollArea>
+
+        {/* Body scrollável - dentro do ScrollArea */}
+        <ScrollArea className="h-[350px]">
+          <Table className="table-fixed w-full">
+            <TableBody>
+              {sortedData.map((row) => (
+                <TableRow 
+                  key={row.sourceId} 
+                  className={`hover:bg-muted/30 ${viewMode === 'anuncio' ? 'cursor-pointer' : ''}`}
+                  onClick={() => viewMode === 'anuncio' && setSelectedAd(row)}
+                >
+                  <TableCell className={`w-[250px] font-medium ${viewMode === 'anuncio' ? 'text-primary hover:underline' : ''}`}>
+                    {row.adName}
+                  </TableCell>
+                  <TableCell className="w-[80px] text-center font-semibold">{row.totalLeads}</TableCell>
+                  <TableCell className="w-[90px] text-center">{row.catalogoCount}</TableCell>
+                  <TableCell className="w-[80px] text-center">{row.layoutCount}</TableCell>
+                  <TableCell className="w-[120px] text-center">
+                    <span className="text-green-600 font-semibold">{row.pedidoFechadoCount}</span>
+                  </TableCell>
+                  <TableCell className="w-[140px] text-right font-semibold text-green-600">
+                    {formatCurrency(row.revenue)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ScrollArea>
+      </div>
 
       {/* Dialog apenas para modo anúncio */}
       {viewMode === 'anuncio' && (

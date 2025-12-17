@@ -126,12 +126,13 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
   };
 
   return (
-    <ScrollArea className="h-[400px]">
-      <Table className="relative">
-        <TableHeader className="sticky top-0 z-10">
+    <div className="border rounded-lg overflow-hidden">
+      {/* Header fixo - fora do ScrollArea */}
+      <Table className="table-fixed w-full">
+        <TableHeader>
           <TableRow className="bg-card border-b border-border">
             <TableHead 
-              className="cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              className="w-[200px] cursor-pointer hover:bg-muted/70 select-none transition-colors"
               onClick={() => handleSort('name')}
             >
               <div className="flex items-center">
@@ -140,7 +141,7 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
               </div>
             </TableHead>
             <TableHead 
-              className="text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              className="w-[100px] text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
               onClick={() => handleSort('spend')}
             >
               <div className="flex items-center justify-end">
@@ -149,7 +150,7 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
               </div>
             </TableHead>
             <TableHead 
-              className="text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              className="w-[70px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
               onClick={() => handleSort('leads')}
             >
               <div className="flex items-center justify-center">
@@ -158,7 +159,7 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
               </div>
             </TableHead>
             <TableHead 
-              className="text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              className="w-[90px] text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
               onClick={() => handleSort('cpl')}
             >
               <div className="flex items-center justify-end">
@@ -167,7 +168,7 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
               </div>
             </TableHead>
             <TableHead 
-              className="text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              className="w-[70px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
               onClick={() => handleSort('conversions')}
             >
               <div className="flex items-center justify-center">
@@ -176,7 +177,7 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
               </div>
             </TableHead>
             <TableHead 
-              className="text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              className="w-[90px] text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
               onClick={() => handleSort('cac')}
             >
               <div className="flex items-center justify-end">
@@ -185,7 +186,7 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
               </div>
             </TableHead>
             <TableHead 
-              className="text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              className="w-[100px] text-right cursor-pointer hover:bg-muted/70 select-none transition-colors"
               onClick={() => handleSort('revenue')}
             >
               <div className="flex items-center justify-end">
@@ -194,7 +195,7 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
               </div>
             </TableHead>
             <TableHead 
-              className="text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              className="w-[80px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
               onClick={() => handleSort('roi')}
             >
               <div className="flex items-center justify-center">
@@ -203,7 +204,7 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
               </div>
             </TableHead>
             <TableHead 
-              className="text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
+              className="w-[80px] text-center cursor-pointer hover:bg-muted/70 select-none transition-colors"
               onClick={() => handleSort('roas')}
             >
               <div className="flex items-center justify-center">
@@ -213,72 +214,78 @@ export function ROITable({ data, isLoading, viewMode = 'campanha' }: ROITablePro
             </TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
-          {sortedData.map((row, index) => (
-            <TableRow key={getId(row, index)} className="hover:bg-muted/30">
-              <TableCell>
-                <p className="text-sm font-medium truncate max-w-[250px]">
-                  {getName(row)}
-                </p>
-              </TableCell>
-              
-              <TableCell className="text-right">
-                <span className="font-medium text-red-600">
-                  {formatCurrency(row.spend)}
-                </span>
-              </TableCell>
-
-              <TableCell className="text-center">
-                <Badge variant="secondary">
-                  {row.leads}
-                </Badge>
-              </TableCell>
-
-              <TableCell className="text-right">
-                <span className="text-sm">
-                  {row.leads > 0 ? formatCurrency(row.cpl) : '-'}
-                </span>
-              </TableCell>
-
-              <TableCell className="text-center">
-                <Badge 
-                  variant={row.conversions > 0 ? 'default' : 'secondary'}
-                  className={row.conversions > 0 ? 'bg-green-500 hover:bg-green-600' : ''}
-                >
-                  {row.conversions}
-                </Badge>
-              </TableCell>
-
-              <TableCell className="text-right">
-                <span className="text-sm">
-                  {row.conversions > 0 ? formatCurrency(row.cac) : '-'}
-                </span>
-              </TableCell>
-
-              <TableCell className="text-right">
-                <span className={`font-medium ${row.revenue > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
-                  {row.revenue > 0 ? formatCurrency(row.revenue) : '-'}
-                </span>
-              </TableCell>
-
-              <TableCell className="text-center">
-                <div className="flex items-center justify-center gap-1">
-                  {getRoiIcon(row.roi)}
-                  <span className={`font-semibold ${getRoiColor(row.roi)}`}>
-                    {row.roi.toFixed(1)}%
-                  </span>
-                </div>
-              </TableCell>
-
-              <TableCell className="text-center">
-                <span className={`font-medium ${row.roas >= 1 ? 'text-green-600' : 'text-orange-600'}`}>
-                  {row.roas.toFixed(2)}x
-                </span>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
       </Table>
-    </ScrollArea>
+
+      {/* Body scrollável - dentro do ScrollArea */}
+      <ScrollArea className="h-[350px]">
+        <Table className="table-fixed w-full">
+          <TableBody>
+            {sortedData.map((row, index) => (
+              <TableRow key={getId(row, index)} className="hover:bg-muted/30">
+                <TableCell className="w-[200px]">
+                  <p className="text-sm font-medium truncate">
+                    {getName(row)}
+                  </p>
+                </TableCell>
+                
+                <TableCell className="w-[100px] text-right">
+                  <span className="font-medium text-red-600">
+                    {formatCurrency(row.spend)}
+                  </span>
+                </TableCell>
+
+                <TableCell className="w-[70px] text-center">
+                  <Badge variant="secondary">
+                    {row.leads}
+                  </Badge>
+                </TableCell>
+
+                <TableCell className="w-[90px] text-right">
+                  <span className="text-sm">
+                    {row.leads > 0 ? formatCurrency(row.cpl) : '-'}
+                  </span>
+                </TableCell>
+
+                <TableCell className="w-[70px] text-center">
+                  <Badge 
+                    variant={row.conversions > 0 ? 'default' : 'secondary'}
+                    className={row.conversions > 0 ? 'bg-green-500 hover:bg-green-600' : ''}
+                  >
+                    {row.conversions}
+                  </Badge>
+                </TableCell>
+
+                <TableCell className="w-[90px] text-right">
+                  <span className="text-sm">
+                    {row.conversions > 0 ? formatCurrency(row.cac) : '-'}
+                  </span>
+                </TableCell>
+
+                <TableCell className="w-[100px] text-right">
+                  <span className={`font-medium ${row.revenue > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    {row.revenue > 0 ? formatCurrency(row.revenue) : '-'}
+                  </span>
+                </TableCell>
+
+                <TableCell className="w-[80px] text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    {getRoiIcon(row.roi)}
+                    <span className={`font-semibold ${getRoiColor(row.roi)}`}>
+                      {row.roi.toFixed(1)}%
+                    </span>
+                  </div>
+                </TableCell>
+
+                <TableCell className="w-[80px] text-center">
+                  <span className={`font-medium ${row.roas >= 1 ? 'text-green-600' : 'text-orange-600'}`}>
+                    {row.roas.toFixed(2)}x
+                  </span>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </ScrollArea>
+    </div>
   );
 }
