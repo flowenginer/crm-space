@@ -87,12 +87,6 @@ function StatCard({ title, value, subtitle, icon: Icon, gradient, isLoading }: S
   );
 }
 
-// Função para extrair segmento do nome da campanha
-function extractSegmentFromCampaignName(campaignName: string): string {
-  if (!campaignName) return 'Sem Segmento';
-  const parts = campaignName.split('|').map(p => p.trim());
-  return parts.length >= 2 ? parts[1] : 'Sem Segmento';
-}
 
 // Função para agrupar CrossData por campanha
 function groupByCampaign(rows: CrossDataRow[]): CrossDataRow[] {
@@ -119,12 +113,12 @@ function groupByCampaign(rows: CrossDataRow[]): CrossDataRow[] {
   return Array.from(grouped.values()).sort((a, b) => b.totalLeads - a.totalLeads);
 }
 
-// Função para agrupar CrossData por segmento
+// Função para agrupar CrossData por segmento (usando segmentName já calculado no hook)
 function groupBySegment(rows: CrossDataRow[]): CrossDataRow[] {
   const grouped = new Map<string, CrossDataRow>();
   
   rows.forEach(row => {
-    const segment = extractSegmentFromCampaignName(row.campaignName || '');
+    const segment = row.segmentName || 'Sem Segmento';
     if (!grouped.has(segment)) {
       grouped.set(segment, { 
         ...row, 
