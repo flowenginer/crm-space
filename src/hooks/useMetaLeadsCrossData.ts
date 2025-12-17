@@ -102,17 +102,17 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
         };
       }
 
-      // Group by sourceId (ad) - separate leads with sourceId vs message_pattern detection
+      // Group by sourceId (ad) - ONLY leads with valid sourceId
       const adData = new Map<string, CrossDataRow>();
       const contactsByAd = new Map<string, Set<string>>();
-      
-      // Special key for leads detected via message_pattern (no sourceId)
-      const MESSAGE_PATTERN_KEY = '__message_pattern__';
 
       conversations.forEach((conv: any) => {
         const refData = conv.referral_data as any;
-        const hasSourceId = refData?.sourceId && refData.sourceId !== '';
-        const sourceId = hasSourceId ? refData.sourceId : MESSAGE_PATTERN_KEY;
+        const sourceId = refData?.sourceId;
+        
+        // Skip leads without sourceId - they don't have direct ad tracking
+        if (!sourceId || sourceId === '') return;
+        
         const contact = conv.contact;
 
         if (!contact) return;
@@ -128,41 +128,23 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
         contactsByAd.get(sourceId)!.add(contact.id);
 
         if (!adData.has(sourceId)) {
-          if (sourceId === MESSAGE_PATTERN_KEY) {
-            // Leads detected via message pattern (no direct ad tracking)
-            adData.set(sourceId, {
-              sourceId: MESSAGE_PATTERN_KEY,
-              adName: '📩 Detectado via Padrão de Mensagem',
-              campaignName: 'Sem rastreamento direto',
-              sourceUrl: '',
-              headline: 'Leads identificados pelo padrão da mensagem inicial',
-              thumbnailUrl: '',
-              imageUrl: '',
-              mediaType: 'none',
-              totalLeads: 0,
-              catalogoCount: 0,
-              layoutCount: 0,
-              pedidoFechadoCount: 0,
-              revenue: 0
-            });
-          } else {
-            const adInfo = adInfoMap.get(sourceId);
-            adData.set(sourceId, {
-              sourceId,
-              adName: adInfo?.adName || refData?.headline || sourceId,
-              campaignName: adInfo?.campaignName || refData?.body || '',
-              sourceUrl: refData?.sourceUrl || '',
-              headline: refData?.headline || '',
-              thumbnailUrl: refData?.thumbnailUrl || refData?.imageUrl || '',
-              imageUrl: refData?.imageUrl || refData?.thumbnailUrl || '',
-              mediaType: refData?.mediaType || 'image',
-              totalLeads: 0,
-              catalogoCount: 0,
-              layoutCount: 0,
-              pedidoFechadoCount: 0,
-              revenue: 0
-            });
-          }
+          const adInfo = adInfoMap.get(sourceId);
+          adData.set(sourceId, {
+            sourceId,
+            // Use ONLY ad name from meta_ads table, never headline as fallback
+            adName: adInfo?.adName || `Anúncio ${sourceId}`,
+            campaignName: adInfo?.campaignName || '',
+            sourceUrl: refData?.sourceUrl || '',
+            headline: refData?.headline || '',
+            thumbnailUrl: refData?.thumbnailUrl || refData?.imageUrl || '',
+            imageUrl: refData?.imageUrl || refData?.thumbnailUrl || '',
+            mediaType: refData?.mediaType || 'image',
+            totalLeads: 0,
+            catalogoCount: 0,
+            layoutCount: 0,
+            pedidoFechadoCount: 0,
+            revenue: 0
+          });
         }
 
         const data = adData.get(sourceId)!;
