@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Loader2, ExternalLink } from 'lucide-react';
+import { Loader2, ExternalLink, Play, Image } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface CrossDataTableProps {
@@ -90,12 +90,58 @@ export function CrossDataTable({ data, isLoading }: CrossDataTableProps) {
       </ScrollArea>
 
       <Dialog open={!!selectedAd} onOpenChange={() => setSelectedAd(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Detalhes do Anúncio</DialogTitle>
           </DialogHeader>
           {selectedAd && (
             <div className="space-y-4">
+              {/* Thumbnail do Criativo */}
+              {(selectedAd.thumbnailUrl || selectedAd.imageUrl) && (
+                <div 
+                  className="relative group cursor-pointer rounded-lg overflow-hidden bg-muted"
+                  onClick={() => selectedAd.sourceUrl && window.open(selectedAd.sourceUrl, '_blank')}
+                >
+                  <img 
+                    src={selectedAd.thumbnailUrl || selectedAd.imageUrl} 
+                    alt={selectedAd.adName}
+                    className="w-full h-48 object-cover transition-transform group-hover:scale-105"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    {selectedAd.mediaType === 'video' ? (
+                      <Play className="h-12 w-12 text-white" fill="white" />
+                    ) : (
+                      <ExternalLink className="h-8 w-8 text-white" />
+                    )}
+                  </div>
+                  {selectedAd.sourceUrl && (
+                    <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                      <ExternalLink className="h-3 w-3" />
+                      Abrir no Instagram
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Placeholder se não tiver imagem */}
+              {!selectedAd.thumbnailUrl && !selectedAd.imageUrl && (
+                <div 
+                  className="relative group cursor-pointer rounded-lg overflow-hidden bg-muted flex items-center justify-center h-32"
+                  onClick={() => selectedAd.sourceUrl && window.open(selectedAd.sourceUrl, '_blank')}
+                >
+                  <Image className="h-12 w-12 text-muted-foreground" />
+                  {selectedAd.sourceUrl && (
+                    <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                      <ExternalLink className="h-3 w-3" />
+                      Abrir no Instagram
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Nome do Anúncio</label>
                 <p className="text-foreground font-medium">{selectedAd.adName}</p>
@@ -104,7 +150,7 @@ export function CrossDataTable({ data, isLoading }: CrossDataTableProps) {
               {selectedAd.campaignName && (
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Campanha</label>
-                  <p className="text-foreground">{selectedAd.campaignName}</p>
+                  <p className="text-foreground font-semibold text-primary">{selectedAd.campaignName}</p>
                 </div>
               )}
               
@@ -117,21 +163,6 @@ export function CrossDataTable({ data, isLoading }: CrossDataTableProps) {
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Headline</label>
                   <p className="text-foreground">{selectedAd.headline}</p>
-                </div>
-              )}
-              
-              {selectedAd.sourceUrl && (
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">URL do Anúncio</label>
-                  <a 
-                    href={selectedAd.sourceUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-primary hover:underline"
-                  >
-                    Abrir no Facebook
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
                 </div>
               )}
 

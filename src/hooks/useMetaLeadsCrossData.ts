@@ -7,6 +7,9 @@ export interface CrossDataRow {
   campaignName: string;
   sourceUrl: string;
   headline: string;
+  thumbnailUrl: string;
+  imageUrl: string;
+  mediaType: string;
   totalLeads: number;
   catalogoCount: number;  // 03 - Catálogo
   layoutCount: number;    // 04 - Layout
@@ -44,14 +47,21 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['meta_leads_cross_data', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async (): Promise<{ rows: CrossDataRow[]; summary: CrossDataSummary }> => {
-      // Fetch meta ads for name mapping
+      // Fetch meta ads with campaign name
       const { data: metaAds } = await supabase
         .from('meta_ads')
-        .select('ad_id, name');
+        .select(`
+          ad_id, 
+          name,
+          campaign:meta_campaigns(name)
+        `);
 
-      const adNameMap = new Map<string, string>();
-      metaAds?.forEach(ad => {
-        adNameMap.set(ad.ad_id, ad.name);
+      const adInfoMap = new Map<string, { adName: string; campaignName: string }>();
+      metaAds?.forEach((ad: any) => {
+        adInfoMap.set(ad.ad_id, {
+          adName: ad.name,
+          campaignName: ad.campaign?.name || ''
+        });
       });
 
       // Build query for conversations with Meta Ads referral
@@ -114,12 +124,16 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
         contactsByAd.get(sourceId)!.add(contact.id);
 
         if (!adData.has(sourceId)) {
+          const adInfo = adInfoMap.get(sourceId);
           adData.set(sourceId, {
             sourceId,
-            adName: adNameMap.get(sourceId) || refData?.headline || sourceId,
-            campaignName: refData?.body || '',
+            adName: adInfo?.adName || refData?.headline || sourceId,
+            campaignName: adInfo?.campaignName || refData?.body || '',
             sourceUrl: refData?.sourceUrl || '',
             headline: refData?.headline || '',
+            thumbnailUrl: refData?.thumbnailUrl || refData?.imageUrl || '',
+            imageUrl: refData?.imageUrl || refData?.thumbnailUrl || '',
+            mediaType: refData?.mediaType || 'image',
             totalLeads: 0,
             catalogoCount: 0,
             layoutCount: 0,
