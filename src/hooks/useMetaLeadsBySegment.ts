@@ -57,7 +57,7 @@ export function useMetaLeadsBySegment(dateRange?: DateRange) {
             negotiated_value
           )
         `)
-        .not('referral_source', 'is', null);
+        .eq('referral_source', 'meta_ads');
 
       // Apply date filters with timezone correction
       if (dateRange?.from) {
