@@ -3115,43 +3115,96 @@ function extractReferralDataUAZAPI(message: any): ReferralData | null {
 
 /**
  * Detecta tipo de mensagem no formato UAZAPI
+ * IMPORTANTE: Prioriza messageType sobre type porque UAZAPI pode enviar:
+ * - type: "chat" + messageType: "AudioMessage"
+ * - type: "chat" + messageType: "ImageMessage"
+ * Se usarmos type primeiro, detectamos incorretamente como "text"
  */
 function detectUAZAPIMessageTypeNew(msg: any): MessageType {
-  const type = (msg.type || msg.messageType || "").toLowerCase();
+  // Logar os valores para debug
+  console.log(`[Webhook UAZAPI] detectUAZAPIMessageTypeNew - type: "${msg.type}", messageType: "${msg.messageType}", messageid: ${msg.messageid}`);
   
-  switch (type) {
-    case "text":
-    case "extendedtextmessage":
-    case "chat":
-      return "text";
-    case "image":
-    case "imagemessage":
-      return "image";
-    case "audio":
-    case "ptt":
-    case "audiomessage":
+  // PRIORIZAR messageType sobre type (corrige detecção de mídia)
+  const messageType = (msg.messageType || "").toLowerCase();
+  const type = (msg.type || "").toLowerCase();
+  
+  // Função helper para match flexível
+  const matchesType = (value: string, ...patterns: string[]): boolean => {
+    return patterns.some(p => value.includes(p));
+  };
+  
+  // Primeiro checar messageType (mais específico)
+  if (messageType) {
+    if (matchesType(messageType, "audio", "ptt", "voice")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected AUDIO from messageType: ${messageType}`);
       return "audio";
-    case "video":
-    case "videomessage":
+    }
+    if (matchesType(messageType, "image")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected IMAGE from messageType: ${messageType}`);
+      return "image";
+    }
+    if (matchesType(messageType, "video")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected VIDEO from messageType: ${messageType}`);
       return "video";
-    case "document":
-    case "documentmessage":
+    }
+    if (matchesType(messageType, "document", "file")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected DOCUMENT from messageType: ${messageType}`);
       return "document";
-    case "sticker":
-    case "stickermessage":
+    }
+    if (matchesType(messageType, "sticker")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected STICKER from messageType: ${messageType}`);
       return "sticker";
-    case "location":
-    case "locationmessage":
+    }
+    if (matchesType(messageType, "location")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected LOCATION from messageType: ${messageType}`);
       return "location";
-    case "vcard":
-    case "contact":
-    case "contactmessage":
+    }
+    if (matchesType(messageType, "vcard", "contact")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected CONTACT from messageType: ${messageType}`);
       return "contact";
-    default:
-      // Fallback: verificar se tem texto
-      if (msg.text || msg.content?.text) return "text";
-      return "text";
+    }
   }
+  
+  // Depois checar type (fallback)
+  if (type) {
+    if (matchesType(type, "audio", "ptt", "voice")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected AUDIO from type: ${type}`);
+      return "audio";
+    }
+    if (matchesType(type, "image")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected IMAGE from type: ${type}`);
+      return "image";
+    }
+    if (matchesType(type, "video")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected VIDEO from type: ${type}`);
+      return "video";
+    }
+    if (matchesType(type, "document", "file")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected DOCUMENT from type: ${type}`);
+      return "document";
+    }
+    if (matchesType(type, "sticker")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected STICKER from type: ${type}`);
+      return "sticker";
+    }
+    if (matchesType(type, "location")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected LOCATION from type: ${type}`);
+      return "location";
+    }
+    if (matchesType(type, "vcard", "contact")) {
+      console.log(`[Webhook UAZAPI] ✅ Detected CONTACT from type: ${type}`);
+      return "contact";
+    }
+    // text/chat/extendedtextmessage = text
+    if (matchesType(type, "text", "chat", "extended")) {
+      return "text";
+    }
+  }
+  
+  // Fallback: verificar se tem texto
+  if (msg.text || msg.content?.text) return "text";
+  console.log(`[Webhook UAZAPI] ⚠️ Unknown message type - defaulting to text`);
+  return "text";
 }
 
 /**
