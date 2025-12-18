@@ -463,3 +463,32 @@ export async function configureChannelFull(
     return { success: false, error: error.message || 'Erro ao configurar canal' };
   }
 }
+
+// =====================================================
+// FUNÇÃO - SINCRONIZAR STATUS DO CANAL
+// =====================================================
+export async function syncChannelStatus(
+  channelId: string
+): Promise<{ success: boolean; status?: string; phone?: string; message?: string; error?: string }> {
+  try {
+    console.log('[Instance Creator] Syncing status for channel:', channelId);
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'syncStatus',
+        channelId,
+      },
+    });
+
+    console.log('[Instance Creator] SyncStatus Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao sincronizar status' };
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error('[Instance Creator] SyncStatus Error:', error);
+    return { success: false, error: error.message || 'Erro ao sincronizar status' };
+  }
+}

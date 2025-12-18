@@ -10,7 +10,7 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage' | 'sendReaction' | 'reconfigureWebhook';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage' | 'sendReaction' | 'reconfigureWebhook' | 'syncStatus';
   providerCode?: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -2142,6 +2142,104 @@ serve(async (req) => {
     }
 
     // =====================================================
+    // SYNC STATUS - Sincroniza status do provedor para o banco
+    // =====================================================
+    if (action === 'syncStatus') {
+      const syncChannelId = body.channelId as string;
+      console.log('[WhatsApp Instance] Syncing status for channel:', syncChannelId);
+      
+      if (!syncChannelId) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'channelId é obrigatório' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      // Fetch channel from database
+      const { data: syncChannel, error: syncChannelError } = await supabase
+        .from('whatsapp_channels')
+        .select('*, provider:whatsapp_providers(*)')
+        .eq('id', syncChannelId)
+        .single();
+      
+      if (syncChannelError || !syncChannel) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+
+      const syncProvider = syncChannel.provider as any;
+      const syncConfig: ProviderConfig = {
+        baseUrl: normalizeBaseUrl(syncProvider?.base_url || ''),
+        adminToken: syncProvider?.admin_token || '',
+        clientToken: syncProvider?.client_token || '',
+      };
+      
+      let statusResult: any;
+      
+      // Get status from provider
+      switch (syncProvider?.code) {
+        case 'uazapi':
+          statusResult = await getUAZAPIStatus(syncConfig, syncChannel.instance_id!, syncChannel.instance_token);
+          break;
+        case 'evolution':
+          statusResult = await getEvolutionStatus(syncConfig, syncChannel.instance_id!);
+          break;
+        default:
+          statusResult = { success: false, error: 'Provedor não suporta sincronização' };
+      }
+      
+      console.log('[WhatsApp Instance] Status result:', statusResult);
+      
+      if (statusResult.success) {
+        // Determine new status and phone
+        let newStatus = 'disconnected';
+        let phone = syncChannel.phone || '';
+        
+        if (statusResult.state?.connected || statusResult.state?.loggedIn) {
+          newStatus = 'connected';
+          if (statusResult.state?.jid) {
+            const jidPhone = statusResult.state.jid.split(':')[0].split('@')[0];
+            if (jidPhone) phone = jidPhone;
+          }
+        }
+        
+        // Update channel in database
+        const { error: updateError } = await supabase
+          .from('whatsapp_channels')
+          .update({
+            status: newStatus,
+            phone: phone,
+            last_sync_at: new Date().toISOString(),
+          })
+          .eq('id', syncChannelId);
+        
+        if (updateError) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Erro ao atualizar banco: ' + updateError.message }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+          );
+        }
+        
+        return new Response(
+          JSON.stringify({
+            success: true,
+            status: newStatus,
+            phone: phone,
+            message: newStatus === 'connected' ? 'Canal conectado e sincronizado!' : 'Status sincronizado'
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        return new Response(
+          JSON.stringify({ success: false, error: statusResult.error || 'Erro ao obter status do provedor' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // =====================================================
     // OUTRAS AÇÕES - Requerem providerCode
     // =====================================================
     if (!providerCode) {
@@ -2388,6 +2486,90 @@ serve(async (req) => {
           webhookEvents: verifyResult.events,
           messagesUpsertActive: hasMessagesUpsert
         };
+      }
+    } else if (action === 'syncStatus') {
+      // Sync status from provider to database
+      const channelId = body.channelId as string;
+      console.log('[WhatsApp Instance] Syncing status for channel:', channelId);
+      
+      if (!channelId) {
+        result = { success: false, error: 'channelId é obrigatório' };
+      } else {
+        // Fetch channel from database
+        const { data: channel, error: channelError } = await supabase
+          .from('whatsapp_channels')
+          .select('*, provider:whatsapp_providers(*)')
+          .eq('id', channelId)
+          .single();
+        
+        if (channelError || !channel) {
+          result = { success: false, error: 'Canal não encontrado' };
+        } else {
+          const provider = channel.provider as any;
+          const pCode = provider?.code as 'zapi' | 'uazapi' | 'evolution';
+          const pConfig: ProviderConfig = {
+            baseUrl: normalizeBaseUrl(provider?.base_url || ''),
+            adminToken: provider?.admin_token || '',
+            clientToken: provider?.client_token || '',
+          };
+          
+          let statusResult: any;
+          
+          // Get status from provider
+          switch (pCode) {
+            case 'uazapi':
+              statusResult = await getUAZAPIStatus(pConfig, channel.instance_id!, channel.instance_token);
+              break;
+            case 'evolution':
+              statusResult = await getEvolutionStatus(pConfig, channel.instance_id!);
+              break;
+            default:
+              statusResult = { success: false, error: 'Provedor não suporta sincronização' };
+          }
+          
+          console.log('[WhatsApp Instance] Status result:', statusResult);
+          
+          if (statusResult.success) {
+            // Determine new status and phone
+            let newStatus = 'disconnected';
+            let phone = channel.phone || '';
+            
+            if (statusResult.state?.connected || statusResult.state?.loggedIn) {
+              newStatus = 'connected';
+              // Extract phone from JID if available
+              if (statusResult.state?.jid) {
+                const jidPhone = statusResult.state.jid.split(':')[0].split('@')[0];
+                if (jidPhone) phone = jidPhone;
+              }
+            }
+            
+            console.log('[WhatsApp Instance] Updating channel:', { newStatus, phone });
+            
+            // Update channel in database
+            const { error: updateError } = await supabase
+              .from('whatsapp_channels')
+              .update({
+                status: newStatus,
+                phone: phone,
+                last_sync_at: new Date().toISOString(),
+              })
+              .eq('id', channelId);
+            
+            if (updateError) {
+              console.error('[WhatsApp Instance] Update error:', updateError);
+              result = { success: false, error: 'Erro ao atualizar banco: ' + updateError.message };
+            } else {
+              result = {
+                success: true,
+                status: newStatus,
+                phone: phone,
+                message: newStatus === 'connected' ? 'Canal conectado e sincronizado!' : 'Status sincronizado'
+              };
+            }
+          } else {
+            result = { success: false, error: statusResult.error || 'Erro ao obter status do provedor' };
+          }
+        }
       }
     } else {
       result = { success: false, error: 'Ação inválida' };

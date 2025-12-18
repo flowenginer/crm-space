@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { createWhatsAppInstance, getWhatsAppQRCode } from '@/lib/whatsapp/instance-creator';
+import { createWhatsAppInstance, getWhatsAppQRCode, syncChannelStatus } from '@/lib/whatsapp/instance-creator';
 
 interface CreateChannelData {
   name: string;
@@ -175,6 +175,35 @@ export function useRefreshQRCode() {
     },
     onError: (error: any) => {
       toast.error(error.message || 'Erro ao atualizar QR Code');
+    },
+  });
+}
+
+// Hook para sincronizar status do canal
+export function useSyncChannelStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (channelId: string) => {
+      const result = await syncChannelStatus(channelId);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Falha ao sincronizar status');
+      }
+
+      return result;
+    },
+    onSuccess: (data) => {
+      if (data.status === 'connected') {
+        toast.success(`Canal conectado! Telefone: ${data.phone || 'N/A'}`);
+      } else {
+        toast.info('Status sincronizado: ' + (data.message || data.status));
+      }
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-channels'] });
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Erro ao sincronizar status');
     },
   });
 }
