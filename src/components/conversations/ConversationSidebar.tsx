@@ -315,6 +315,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
       toast.success('Valor negociado atualizado!');
     },
@@ -385,6 +386,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       toast.success('Atendente responsável atualizado!');
     },
