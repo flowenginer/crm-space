@@ -1774,10 +1774,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       }
     }
     
-    // If we have a directly fetched conversation and it's not already in the list, append it (don't move to top)
-    // The conversation will only move to the top naturally when a message is sent (due to last_message_at sorting)
-    if (directSelectedConversation && !existingIds.has(directSelectedConversation.id)) {
-      result = [...result, directSelectedConversation];
+    // CORREÇÃO: Se temos directSelectedConversation, SUBSTITUIR dados existentes
+    // Isso garante que os dados mais frescos (staleTime: 10s) sejam usados na validação
+    // ao invés dos dados potencialmente antigos da lista paginada (staleTime: 60s)
+    if (directSelectedConversation) {
+      const existingIndex = result.findIndex(c => c.id === directSelectedConversation.id);
+      if (existingIndex >= 0) {
+        // SUBSTITUIR a conversa existente com dados mais frescos
+        result[existingIndex] = directSelectedConversation;
+      } else {
+        // Adicionar se não existe
+        result = [...result, directSelectedConversation];
+      }
     }
     
     return result;
@@ -1786,8 +1794,17 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   // Find selected conversation from the merged list
   const selectedConversation = conversations.find(c => c.id === selectedConversationId) || null;
 
+  // CORREÇÃO: Usar dados mais frescos para validação
+  // Priorizar directSelectedConversation pois tem staleTime menor (10s vs 60s da lista paginada)
+  const contactForValidation = useMemo(() => {
+    if (directSelectedConversation?.contact) {
+      return directSelectedConversation.contact;
+    }
+    return selectedConversation?.contact || null;
+  }, [directSelectedConversation, selectedConversation]);
+
   // Validação de campos obrigatórios para envio de mensagens
-  const requiredFieldsValidation = useRequiredFieldsValidation(selectedConversation?.contact || null);
+  const requiredFieldsValidation = useRequiredFieldsValidation(contactForValidation);
 
   // ============ VERIFICAÇÃO DE PERMISSÃO VIA URL ============
   // Bloquear acesso quando a conversa é carregada via URL e está atribuída a outro vendedor
