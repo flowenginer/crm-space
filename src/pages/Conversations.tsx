@@ -17,6 +17,7 @@ import {
   Check,
   CheckCheck,
   X,
+  XCircle,
   Mail,
   ChevronLeft,
   ChevronDown,
@@ -464,9 +465,11 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
             ? 'bg-success/15 border-l-4 border-l-success'
             : isNewTransfer
               ? 'bg-emerald-500/20 border-l-4 border-l-emerald-500 animate-pulse'
-              : isUnread 
-                ? 'bg-[hsl(var(--unread-bg))] border-l-3 border-l-purple-400/60' 
-                : 'hover:bg-muted/50'
+              : conversation.status === 'closed'
+                ? 'bg-red-500/10 border-l-4 border-l-red-400'
+                : isUnread 
+                  ? 'bg-[hsl(var(--unread-bg))] border-l-3 border-l-purple-400/60' 
+                  : 'hover:bg-muted/50'
       )}
     >
       <div className="flex items-start gap-3">
@@ -509,6 +512,9 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
               )}
               {isShared && (
                 <Link2 size={12} className="text-blue-500 flex-shrink-0" />
+              )}
+              {conversation.status === 'closed' && (
+                <XCircle size={12} className="text-red-500 flex-shrink-0" />
               )}
               <h3 className={cn(
                 'text-sm truncate',
