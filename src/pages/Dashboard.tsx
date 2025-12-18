@@ -53,7 +53,7 @@ export default function Dashboard() {
   const { data: journeyMetrics, isLoading: loadingMetrics } = useLeadJourneyMetrics(filters, selectedOrigin || undefined);
   const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentDistributionAdvanced(filters);
   const { data: statusFunnelData = [], isLoading: loadingFunnel } = useStatusFunnel(filters);
-  const { data: returningMetrics, isLoading: loadingReturning } = useReturningLeadsMetrics(filters);
+  const { data: returningMetrics, isLoading: loadingReturning } = useReturningLeadsMetrics(filters, selectedOrigin || undefined);
   
   const { data: interactionData = [], isLoading: loadingInteraction } = useInteractionTimeline(filters);
   

@@ -6968,21 +6968,38 @@ export type Database = {
           other_count: number
         }[]
       }
-      get_returning_leads_metrics: {
-        Args: {
-          p_agent_id?: string
-          p_channel_id?: string
-          p_date_from: string
-          p_date_to: string
-          p_department_id?: string
-        }
-        Returns: {
-          new_contact_rate: number
-          new_contacts: number
-          returning_contacts: number
-          total_conversations: number
-        }[]
-      }
+      get_returning_leads_metrics:
+        | {
+            Args: {
+              p_agent_id?: string
+              p_channel_id?: string
+              p_date_from: string
+              p_date_to: string
+              p_department_id?: string
+            }
+            Returns: {
+              new_contact_rate: number
+              new_contacts: number
+              returning_contacts: number
+              total_conversations: number
+            }[]
+          }
+        | {
+            Args: {
+              p_agent_id?: string
+              p_channel_id?: string
+              p_date_from: string
+              p_date_to: string
+              p_department_id?: string
+              p_origin?: string
+            }
+            Returns: {
+              new_contact_rate: number
+              new_contacts: number
+              returning_contacts: number
+              total_conversations: number
+            }[]
+          }
       get_shared_conversation_count: {
         Args: { p_user_id: string }
         Returns: {
