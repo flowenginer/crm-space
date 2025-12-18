@@ -202,68 +202,54 @@ async function sendUAZAPIMessage(
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   const formattedPhone = phone.replace(/\D/g, '');
   
-  console.log('[UAZAPI] Sending message:', { instanceName, phone: formattedPhone, type, quotedMessageId });
+  console.log('[UAZAPI V2] Sending message:', { instanceName, phone: formattedPhone, type, quotedMessageId });
   
   let endpoint = '';
   let body: any = {};
   
-  // UAZAPI usa token da instância e endpoints diferentes
-  // Docs: https://docs.uazapi.com/endpoint/post/message~text
+  // UAZAPI V2 - Endpoints corretos conforme docs.uazapi.com
+  // /send/text para texto, /send/media para todos os tipos de mídia
   if (type === 'text') {
-    endpoint = `${normalizedUrl}/message/text`;
+    endpoint = `${normalizedUrl}/send/text`;
     body = {
-      phone: formattedPhone,
-      message: content,
-      ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
+      number: formattedPhone,
+      text: content,
+      ...(quotedMessageId && { replyid: quotedMessageId }),
     };
-  } else if (type === 'image') {
-    endpoint = `${normalizedUrl}/message/image`;
+  } else {
+    // Todos os tipos de mídia usam o mesmo endpoint /send/media
+    endpoint = `${normalizedUrl}/send/media`;
+    
+    // Mapear tipo para o formato UAZAPI V2
+    let uazapiType = type;
+    if (type === 'audio') uazapiType = 'ptt'; // Mensagem de voz (Push-to-Talk)
+    
     body = {
-      phone: formattedPhone,
-      image: mediaUrl,
-      caption: content || '',
-      ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
-    };
-  } else if (type === 'audio') {
-    endpoint = `${normalizedUrl}/message/audio`;
-    body = {
-      phone: formattedPhone,
-      audio: mediaUrl,
-      ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
-    };
-  } else if (type === 'video') {
-    endpoint = `${normalizedUrl}/message/video`;
-    body = {
-      phone: formattedPhone,
-      video: mediaUrl,
-      caption: content || '',
-      ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
-    };
-  } else if (type === 'document') {
-    endpoint = `${normalizedUrl}/message/document`;
-    body = {
-      phone: formattedPhone,
-      document: mediaUrl,
-      fileName: filename || content || 'document',
-      ...(quotedMessageId && { quotedMsgId: quotedMessageId }),
+      number: formattedPhone,
+      type: uazapiType,
+      file: mediaUrl,
+      ...(content && type !== 'audio' && { caption: content }),
+      ...(filename && { filename: filename }),
+      ...(quotedMessageId && { replyid: quotedMessageId }),
     };
   }
   
-  console.log('[UAZAPI] Request:', { endpoint, body });
+  console.log('[UAZAPI V2] Request:', { endpoint, body });
   
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
       'token': instanceToken,
     },
     body: JSON.stringify(body),
   });
   
-  const data = await safeJsonParse(response, 'UAZAPI Send');
+  const data = await safeJsonParse(response, 'UAZAPI V2 Send');
   
   return {
-    success: true,
+    success: data.status === true || !!data.messageId || !!data.key?.id,
     messageId: data.key?.id || data.id || data.messageId,
     data,
   };

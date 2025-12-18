@@ -21,7 +21,8 @@ export class UAZAPIAdapter implements WhatsAppAdapter {
   private get headers() {
     return {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${this.config.token}`,
+      'Accept': 'application/json',
+      'token': this.config.token,
     };
   }
 
@@ -102,13 +103,16 @@ export class UAZAPIAdapter implements WhatsAppAdapter {
   // =====================================================
   // ENVIO DE MENSAGENS
   // =====================================================
+  // =====================================================
+  // UAZAPI V2 - Endpoints corretos conforme docs.uazapi.com
+  // /send/text para texto, /send/media para todos os tipos de mídia
+  // =====================================================
   async sendText(phone: string, message: string): Promise<SendMessageResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/message/sendText`, {
+      const response = await fetch(`${this.baseUrl}/send/text`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify({
-          session: this.config.instanceId,
           number: this.formatPhone(phone),
           text: message,
         }),
@@ -121,113 +125,114 @@ export class UAZAPIAdapter implements WhatsAppAdapter {
         error: data.message || data.error,
       };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   }
 
   async sendImage(phone: string, imageUrl: string, caption?: string): Promise<SendMessageResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/message/sendImage`, {
+      const response = await fetch(`${this.baseUrl}/send/media`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify({
-          session: this.config.instanceId,
           number: this.formatPhone(phone),
-          image: imageUrl,
+          type: 'image',
+          file: imageUrl,
           caption: caption || '',
         }),
       });
       const data = await response.json();
       return {
-        success: !!data.messageId || data.status === true,
-        messageId: data.messageId || data.id,
-        error: data.message,
+        success: data.status === true || !!data.messageId,
+        messageId: data.messageId || data.id || data.key?.id,
+        error: data.message || data.error,
       };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   }
 
   async sendAudio(phone: string, audioUrl: string): Promise<SendMessageResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/message/sendAudio`, {
+      // UAZAPI V2: ptt = Push-to-Talk (mensagem de voz)
+      const response = await fetch(`${this.baseUrl}/send/media`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify({
-          session: this.config.instanceId,
           number: this.formatPhone(phone),
-          audio: audioUrl,
+          type: 'ptt',
+          file: audioUrl,
         }),
       });
       const data = await response.json();
       return {
-        success: !!data.messageId || data.status === true,
-        messageId: data.messageId || data.id,
-        error: data.message,
+        success: data.status === true || !!data.messageId,
+        messageId: data.messageId || data.id || data.key?.id,
+        error: data.message || data.error,
       };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   }
 
   async sendDocument(phone: string, documentUrl: string, filename: string): Promise<SendMessageResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/message/sendDocument`, {
+      const response = await fetch(`${this.baseUrl}/send/media`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify({
-          session: this.config.instanceId,
           number: this.formatPhone(phone),
-          document: documentUrl,
-          fileName: filename,
+          type: 'document',
+          file: documentUrl,
+          filename: filename,
         }),
       });
       const data = await response.json();
       return {
-        success: !!data.messageId || data.status === true,
-        messageId: data.messageId || data.id,
-        error: data.message,
+        success: data.status === true || !!data.messageId,
+        messageId: data.messageId || data.id || data.key?.id,
+        error: data.message || data.error,
       };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   }
 
   async sendVideo(phone: string, videoUrl: string, caption?: string): Promise<SendMessageResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/message/sendVideo`, {
+      const response = await fetch(`${this.baseUrl}/send/media`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify({
-          session: this.config.instanceId,
           number: this.formatPhone(phone),
-          video: videoUrl,
+          type: 'video',
+          file: videoUrl,
           caption: caption || '',
         }),
       });
       const data = await response.json();
       return {
-        success: !!data.messageId || data.status === true,
-        messageId: data.messageId || data.id,
-        error: data.message,
+        success: data.status === true || !!data.messageId,
+        messageId: data.messageId || data.id || data.key?.id,
+        error: data.message || data.error,
       };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   }
 
   async sendLocation(phone: string, lat: number, lng: number, name?: string): Promise<SendMessageResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/message/sendLocation`, {
+      // UAZAPI V2: /send/location
+      const response = await fetch(`${this.baseUrl}/send/location`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify({
-          session: this.config.instanceId,
           number: this.formatPhone(phone),
           latitude: lat,
           longitude: lng,
@@ -236,18 +241,19 @@ export class UAZAPIAdapter implements WhatsAppAdapter {
       });
       const data = await response.json();
       return {
-        success: !!data.messageId || data.status === true,
-        messageId: data.messageId || data.id,
-        error: data.message,
+        success: data.status === true || !!data.messageId,
+        messageId: data.messageId || data.id || data.key?.id,
+        error: data.message || data.error,
       };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   }
 
   // =====================================================
-  // ENVIAR BOTÕES (Diferencial UAZAPI!)
+  // UAZAPI V2 - Menu Interativo (Botões)
+  // Docs: https://docs.uazapi.com/endpoint/post/send~menu
   // =====================================================
   async sendButtons(
     phone: string, 
@@ -255,30 +261,59 @@ export class UAZAPIAdapter implements WhatsAppAdapter {
     buttons: Array<{ id: string; text: string }>
   ): Promise<SendMessageResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/message/sendButtons`, {
+      const response = await fetch(`${this.baseUrl}/send/menu`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify({
-          session: this.config.instanceId,
           number: this.formatPhone(phone),
-          title: 'Menu',
-          description: text,
+          type: 'buttons',
+          text: text,
           buttons: buttons.map(b => ({
-            buttonId: b.id,
-            buttonText: { displayText: b.text },
-            type: 1,
+            id: b.id,
+            text: b.text,
           })),
         }),
       });
       const data = await response.json();
       return {
-        success: !!data.messageId || data.status === true,
-        messageId: data.messageId || data.id,
-        error: data.message,
+        success: data.status === true || !!data.messageId,
+        messageId: data.messageId || data.id || data.key?.id,
+        error: data.message || data.error,
       };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
+    }
+  }
+
+  // =====================================================
+  // UAZAPI V2 - Enviar Contato (vCard)
+  // Docs: https://docs.uazapi.com/endpoint/post/send~contact
+  // =====================================================
+  async sendContact(
+    phone: string,
+    contactName: string,
+    contactPhone: string
+  ): Promise<SendMessageResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/send/contact`, {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify({
+          number: this.formatPhone(phone),
+          name: contactName,
+          phone: this.formatPhone(contactPhone),
+        }),
+      });
+      const data = await response.json();
+      return {
+        success: data.status === true || !!data.messageId,
+        messageId: data.messageId || data.id || data.key?.id,
+        error: data.message || data.error,
+      };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   }
 
