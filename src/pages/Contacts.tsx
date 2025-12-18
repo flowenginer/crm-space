@@ -25,6 +25,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
+import { ContactFormModal } from '@/components/contacts/ContactFormModal';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 import {
   Dialog,
@@ -34,12 +35,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useContactsCount, useCreateContact, useUpdateContact, useDeleteContact, useDeleteContactPermanently, type Contact } from '@/hooks/useContacts';
+import { useContactsCount, useDeleteContact, useDeleteContactPermanently, type Contact } from '@/hooks/useContacts';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -170,8 +171,6 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
   const contactCountByState = filterCounts?.byState ?? {};
   const contactCountByLeadStatus = filterCounts?.byStatus ?? {};
   
-  const createContact = useCreateContact();
-  const updateContact = useUpdateContact();
   const deleteContact = useDeleteContact();
   const deleteContactPermanently = useDeleteContactPermanently();
   const createTag = useCreateTag();
@@ -212,29 +211,6 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
   const [isEditing, setIsEditing] = useState(false);
   const [importStep, setImportStep] = useState(1);
 
-  // Form state
-  const [formData, setFormData] = useState({
-    full_name: '',
-    phone: '',
-    email: '',
-    birth_date: '',
-    cpf_cnpj: '',
-    person_type: 'individual',
-    contact_type: 'customer' as 'customer' | 'supplier' | 'both',
-    street: '',
-    number: '',
-    complement: '',
-    neighborhood: '',
-    city: '',
-    state: '',
-    zip_code: '',
-    country: 'Brasil',
-    lead_status: 'new',
-    assigned_to: '',
-    department_id: '',
-    origin: '',
-    notes: '',
-  });
 
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#8B5CF6');
@@ -266,93 +242,15 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
   const handleNewContact = () => {
     setIsEditing(false);
     setSelectedContact(null);
-    setFormData({
-      full_name: '',
-      phone: '',
-      email: '',
-      birth_date: '',
-      cpf_cnpj: '',
-      person_type: 'individual',
-      contact_type: 'customer',
-      street: '',
-      number: '',
-      complement: '',
-      neighborhood: '',
-      city: '',
-      state: '',
-      zip_code: '',
-      country: 'Brasil',
-      lead_status: 'new',
-      assigned_to: '',
-      department_id: '',
-      origin: '',
-      notes: '',
-    });
     setShowContactModal(true);
   };
 
   const handleEditContact = (contact: Contact) => {
     setIsEditing(true);
     setSelectedContact(contact);
-    setFormData({
-      full_name: contact.full_name,
-      phone: contact.phone,
-      email: contact.email || '',
-      birth_date: contact.birth_date || '',
-      cpf_cnpj: contact.cpf_cnpj || '',
-      person_type: contact.person_type || 'individual',
-      contact_type: ((contact as any).contact_type || 'customer') as 'customer' | 'supplier' | 'both',
-      street: contact.street || '',
-      number: contact.number || '',
-      complement: contact.complement || '',
-      neighborhood: contact.neighborhood || '',
-      city: contact.city || '',
-      state: contact.state || '',
-      zip_code: contact.zip_code || '',
-      country: contact.country || 'Brasil',
-      lead_status: contact.lead_status || 'new',
-      assigned_to: contact.assigned_to || '',
-      department_id: contact.department_id || '',
-      origin: contact.origin || '',
-      notes: contact.notes || '',
-    });
     setShowContactModal(true);
   };
 
-  const handleSaveContact = async () => {
-    if (!formData.full_name || !formData.phone) {
-      toast.error('Nome e telefone são obrigatórios');
-      return;
-    }
-
-    try {
-      if (isEditing && selectedContact) {
-        await updateContact.mutateAsync({
-          id: selectedContact.id,
-          ...formData,
-          email: formData.email || null,
-          birth_date: formData.birth_date || null,
-          assigned_to: formData.assigned_to || null,
-          department_id: formData.department_id || null,
-          contact_type: formData.contact_type,
-        } as any);
-        toast.success('Contato atualizado com sucesso!');
-      } else {
-        await createContact.mutateAsync({
-          ...formData,
-          email: formData.email || null,
-          birth_date: formData.birth_date || null,
-          assigned_to: formData.assigned_to || null,
-          department_id: formData.department_id || null,
-          contact_type: formData.contact_type,
-        } as any);
-        toast.success('Contato criado com sucesso!');
-      }
-      setShowContactModal(false);
-    } catch (error) {
-      toast.error('Erro ao salvar contato');
-    }
-  };
 
   const handleDeleteContact = (contact: Contact) => {
     if (isAdmin) {
@@ -1117,421 +1015,15 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
       )}
 
       {/* Add/Edit Contact Modal */}
-      <Dialog open={showContactModal} onOpenChange={setShowContactModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{isEditing ? 'Editar Contato' : 'Novo Contato'}</DialogTitle>
-          </DialogHeader>
-
-          <Tabs defaultValue="basic" className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className="grid grid-cols-4 w-full mb-4">
-              <TabsTrigger value="basic">Informações Básicas</TabsTrigger>
-              <TabsTrigger value="address">Endereço</TabsTrigger>
-              <TabsTrigger value="crm">Detalhes CRM</TabsTrigger>
-              <TabsTrigger value="custom">Campos Customizados</TabsTrigger>
-            </TabsList>
-
-            <div className="flex-1 overflow-y-auto">
-              <TabsContent value="basic" className="space-y-4">
-                <div className="flex items-center gap-6">
-                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-pink-500 flex items-center justify-center text-primary-foreground text-3xl font-bold shadow-xl">
-                    {formData.full_name?.charAt(0) || 'N'}
-                  </div>
-                  <div>
-                    <button className="px-4 py-2 border border-border rounded-lg text-sm font-medium text-foreground hover:bg-muted">
-                      Alterar foto
-                    </button>
-                    <p className="text-xs text-muted-foreground mt-1">JPG, PNG. Máx 2MB</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Nome completo <span className="text-destructive">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Fernando Silva Santos"
-                      value={formData.full_name}
-                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Telefone / WhatsApp <span className="text-destructive">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      placeholder="+55 (00) 00000-0000"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Email</label>
-                    <input
-                      type="email"
-                      placeholder="email@exemplo.com"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Data de nascimento</label>
-                    <input
-                      type="date"
-                      value={formData.birth_date}
-                      onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">CPF / CNPJ</label>
-                    <input
-                      type="text"
-                      placeholder="000.000.000-00"
-                      value={formData.cpf_cnpj}
-                      onChange={(e) => setFormData({ ...formData, cpf_cnpj: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Tipo de pessoa</label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="personType"
-                          value="individual"
-                          checked={formData.person_type === 'individual'}
-                          onChange={(e) => setFormData({ ...formData, person_type: e.target.value })}
-                        />
-                        <span className="text-sm text-foreground">Pessoa física</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="personType"
-                          value="company"
-                          checked={formData.person_type === 'company'}
-                          onChange={(e) => setFormData({ ...formData, person_type: e.target.value })}
-                        />
-                        <span className="text-sm text-foreground">Pessoa jurídica</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Tipo de contato</label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="contactType"
-                          value="customer"
-                          checked={formData.contact_type === 'customer'}
-                          onChange={(e) => setFormData({ ...formData, contact_type: e.target.value as 'customer' | 'supplier' | 'both' })}
-                        />
-                        <span className="text-sm text-foreground">Cliente</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="contactType"
-                          value="supplier"
-                          checked={formData.contact_type === 'supplier'}
-                          onChange={(e) => setFormData({ ...formData, contact_type: e.target.value as 'customer' | 'supplier' | 'both' })}
-                        />
-                        <span className="text-sm text-foreground">Fornecedor</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="contactType"
-                          value="both"
-                          checked={formData.contact_type === 'both'}
-                          onChange={(e) => setFormData({ ...formData, contact_type: e.target.value as 'customer' | 'supplier' | 'both' })}
-                        />
-                        <span className="text-sm text-foreground">Ambos</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="address" className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">CEP</label>
-                    <input
-                      type="text"
-                      placeholder="00000-000"
-                      value={formData.zip_code}
-                      onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-foreground mb-2">Logradouro</label>
-                    <input
-                      type="text"
-                      placeholder="Rua, Avenida..."
-                      value={formData.street}
-                      onChange={(e) => setFormData({ ...formData, street: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Número</label>
-                    <input
-                      type="text"
-                      placeholder="123"
-                      value={formData.number}
-                      onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-foreground mb-2">Complemento</label>
-                    <input
-                      type="text"
-                      placeholder="Apto, Sala, Bloco..."
-                      value={formData.complement}
-                      onChange={(e) => setFormData({ ...formData, complement: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Bairro</label>
-                    <input
-                      type="text"
-                      placeholder="Centro"
-                      value={formData.neighborhood}
-                      onChange={(e) => setFormData({ ...formData, neighborhood: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Cidade</label>
-                    <input
-                      type="text"
-                      placeholder="São Paulo"
-                      value={formData.city}
-                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Estado</label>
-                    <select
-                      value={formData.state}
-                      onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    >
-                      <option value="">Selecione</option>
-                      {brazilianStates.map((state) => (
-                        <option key={state} value={state}>{state}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">País</label>
-                  <input
-                    type="text"
-                    value={formData.country}
-                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent value="crm" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Status do Lead</label>
-                    <select
-                      value={formData.lead_status}
-                      onChange={(e) => setFormData({ ...formData, lead_status: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    >
-                      <option value="">Selecione</option>
-                      {leadStatuses.map((status) => (
-                        <option key={status.id} value={status.name}>
-                          {status.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Origem</label>
-                    <select
-                      value={formData.origin}
-                      onChange={(e) => setFormData({ ...formData, origin: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    >
-                      <option value="">Selecione</option>
-                      <option value="whatsapp">WhatsApp</option>
-                      <option value="instagram">Instagram</option>
-                      <option value="facebook">Facebook</option>
-                      <option value="website">Website</option>
-                      <option value="indicacao">Indicação</option>
-                      <option value="outro">Outro</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Atendente responsável</label>
-                    <select
-                      value={formData.assigned_to}
-                      onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    >
-                      <option value="">Selecione</option>
-                      {team.map((member) => (
-                        <option key={member.id} value={member.id}>{member.full_name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Departamento</label>
-                    <select
-                      value={formData.department_id}
-                      onChange={(e) => setFormData({ ...formData, department_id: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    >
-                      <option value="">Selecione</option>
-                      {departments.map((dept) => (
-                        <option key={dept.id} value={dept.id}>{dept.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-foreground mb-2">Etiquetas</label>
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {(selectedContact?.tags || []).map((tag) => (
-                        <span
-                          key={tag.id}
-                          className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-medium flex items-center gap-1"
-                        >
-                          {tag.name}
-                          <button 
-                            className="hover:text-primary/70"
-                            onClick={() => removeTagFromContact.mutate({ contactId: selectedContact!.id, tagId: tag.id })}
-                          >
-                            <X size={14} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                    <button className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1">
-                      <Plus size={14} />
-                      Adicionar etiqueta
-                    </button>
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-foreground mb-2">Observações</label>
-                    <textarea
-                      rows={4}
-                      placeholder="Anotações sobre o contato..."
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none bg-background"
-                    />
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="custom" className="space-y-4">
-                <p className="text-sm text-muted-foreground mb-4">
-                  Campos customizados definidos nas configurações do sistema.
-                </p>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Tamanho de camisa</label>
-                    <select className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background">
-                      <option value="">Selecione</option>
-                      <option value="P">P</option>
-                      <option value="M">M</option>
-                      <option value="G">G</option>
-                      <option value="GG">GG</option>
-                      <option value="G1">G1</option>
-                      <option value="G2">G2</option>
-                      <option value="G3">G3</option>
-                      <option value="G4">G4</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Esporte preferido</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Futebol, Vôlei..."
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Time/Equipe</label>
-                    <input
-                      type="text"
-                      placeholder="Nome do time"
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">Quantidade usual de pedido</label>
-                    <input
-                      type="number"
-                      placeholder="Ex: 50"
-                      className="w-full px-4 py-2.5 border border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 bg-background"
-                    />
-                  </div>
-                </div>
-              </TabsContent>
-            </div>
-          </Tabs>
-
-          <DialogFooter className="border-t border-border pt-4 mt-4">
-            <button
-              onClick={() => setShowContactModal(false)}
-              className="px-4 py-2 text-muted-foreground hover:bg-muted rounded-lg transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSaveContact}
-              disabled={createContact.isPending || updateContact.isPending}
-              className="px-6 py-2 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-lg font-medium hover:shadow-lg transition-all disabled:opacity-50"
-            >
-              {(createContact.isPending || updateContact.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin inline" />}
-              {isEditing ? 'Salvar alterações' : 'Criar contato'}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ContactFormModal
+        open={showContactModal}
+        onOpenChange={setShowContactModal}
+        initialData={isEditing ? selectedContact : null}
+        mode={isEditing ? 'edit' : 'create'}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['paginated-contacts'] });
+        }}
+      />
 
       {/* Import Modal */}
       <Dialog open={showImportModal} onOpenChange={setShowImportModal}>
