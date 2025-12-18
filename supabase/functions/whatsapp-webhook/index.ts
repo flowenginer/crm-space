@@ -1952,6 +1952,57 @@ serve(async (req) => {
       console.error(`[Webhook] Error in quote auto-pause logic:`, autoPauseError);
     }
 
+    // =====================================================
+    // AUTO-CANCEL RESCUE ON CLIENT RESPONSE
+    // =====================================================
+    try {
+      // Check for active rescue for this conversation
+      const { data: activeRescue, error: rescueError } = await supabase
+        .from('active_rescues')
+        .select('id, template_id')
+        .eq('conversation_id', conversation.id)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (rescueError) {
+        console.error(`[Webhook] Error checking active rescue:`, rescueError);
+      } else if (activeRescue) {
+        console.log(`[Webhook] 🛑 Client responded - cancelling rescue ${activeRescue.id}`);
+        
+        // Update rescue status to responded
+        const { error: cancelRescueError } = await supabase
+          .from('active_rescues')
+          .update({ 
+            status: 'responded',
+            responded_at: new Date().toISOString(),
+          })
+          .eq('id', activeRescue.id);
+        
+        if (cancelRescueError) {
+          console.error(`[Webhook] Error cancelling rescue:`, cancelRescueError);
+        }
+        
+        // Cancel all pending scheduled messages for this rescue
+        const { error: cancelMessagesError } = await supabase
+          .from('rescue_scheduled_messages')
+          .update({ 
+            status: 'cancelled',
+            cancelled_at: new Date().toISOString(),
+          })
+          .eq('rescue_id', activeRescue.id)
+          .eq('status', 'pending');
+        
+        if (cancelMessagesError) {
+          console.error(`[Webhook] Error cancelling rescue messages:`, cancelMessagesError);
+        } else {
+          console.log(`[Webhook] ✅ Rescue cancelled successfully - client responded`);
+        }
+      }
+    } catch (rescueCancelError) {
+      // Non-critical error - log but don't fail the webhook
+      console.error(`[Webhook] Error in rescue cancel logic:`, rescueCancelError);
+    }
+
     // Update channel stats
     await supabase
       .from("whatsapp_channels")
