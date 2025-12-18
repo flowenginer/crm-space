@@ -86,64 +86,66 @@ Deno.serve(async (req) => {
           continue
         }
 
-        // Determine message type and media URL
-        let messageType = 'text'
-        let mediaUrl: string | null = null
+        // Send each media type SEPARATELY: text, audio, attachment
+        console.log(`[process-rescue-messages] Processing message for ${contact.phone}...`)
         
-        if (msg.audio_url) {
-          messageType = 'audio'
-          mediaUrl = msg.audio_url
-        } else if (msg.attachment_url) {
-          messageType = msg.attachment_type || 'document'
-          mediaUrl = msg.attachment_url
-        }
-        
-        console.log(`[process-rescue-messages] Sending ${messageType} message to ${contact.phone}: ${msg.content?.substring(0, 50) || '(media)'}...`)
-        
-        // SEND MESSAGE VIA WHATSAPP API
-        const sendResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({
-            action: 'send',
-            channelId: conversation.channel_id,
-            phone: contact.phone,
-            content: msg.content || '',
-            type: messageType,
-            mediaUrl: mediaUrl,
-          }),
-        })
+        // Helper function to send and insert message
+        const sendAndInsert = async (type: string, content: string, mediaUrl: string | null) => {
+          const sendResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              action: 'send',
+              channelId: conversation.channel_id,
+              phone: contact.phone,
+              content: content,
+              type: type,
+              mediaUrl: mediaUrl,
+            }),
+          })
 
-        const sendResult = await sendResponse.json()
-        
-        if (!sendResponse.ok || sendResult.error) {
-          console.error('[process-rescue-messages] Error sending via WhatsApp:', sendResult)
-          errors++
-          continue
-        }
+          const sendResult = await sendResponse.json()
+          
+          if (!sendResponse.ok || sendResult.error) {
+            console.error(`[process-rescue-messages] Error sending ${type}:`, sendResult)
+            throw new Error(`Failed to send ${type}`)
+          }
 
-        console.log('[process-rescue-messages] WhatsApp message sent:', sendResult)
+          console.log(`[process-rescue-messages] ${type} sent:`, sendResult)
 
-        // Insert message into messages table
-        const { error: msgError } = await supabase
-          .from('messages')
-          .insert({
+          // Insert message into messages table
+          await supabase.from('messages').insert({
             conversation_id: msg.rescue.conversation_id,
             contact_id: msg.rescue.contact_id,
-            content: msg.content || '',
+            content: content,
             is_from_me: true,
-            message_type: messageType,
+            message_type: type,
             media_url: mediaUrl,
             status: 'sent',
             whatsapp_message_id: sendResult?.messageId,
           })
+        }
 
-        if (msgError) {
-          console.error('[process-rescue-messages] Error inserting message:', msgError)
-          // Continue anyway, message was sent
+        // 1. Send TEXT message first (if exists)
+        if (msg.content?.trim()) {
+          console.log('[process-rescue-messages] Sending text...')
+          await sendAndInsert('text', msg.content, null)
+        }
+        
+        // 2. Send AUDIO (if exists)
+        if (msg.audio_url) {
+          console.log('[process-rescue-messages] Sending audio...')
+          await sendAndInsert('audio', '', msg.audio_url)
+        }
+        
+        // 3. Send ATTACHMENT (if exists)
+        if (msg.attachment_url) {
+          console.log('[process-rescue-messages] Sending attachment...')
+          const attachmentType = msg.attachment_type || 'document'
+          await sendAndInsert(attachmentType, '', msg.attachment_url)
         }
 
         // Mark scheduled message as sent

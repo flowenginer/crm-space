@@ -126,8 +126,14 @@ export function RescueTemplateModal({
   };
 
   const handleStepChange = (index: number, field: keyof ExtendedRescueStep, value: any) => {
-    setSteps(steps.map((step, i) => 
+    setSteps(prevSteps => prevSteps.map((step, i) => 
       i === index ? { ...step, [field]: value } : step
+    ));
+  };
+
+  const handleStepMultiChange = (index: number, updates: Partial<ExtendedRescueStep>) => {
+    setSteps(prevSteps => prevSteps.map((step, i) => 
+      i === index ? { ...step, ...updates } : step
     ));
   };
 
@@ -415,14 +421,18 @@ export function RescueTemplateModal({
                     attachmentType={currentStep?.attachment_type}
                     attachmentName={currentStep?.attachment_name}
                     onFileChange={(url, type, name) => {
-                      handleStepChange(activeStepIndex, 'attachment_url', url);
-                      handleStepChange(activeStepIndex, 'attachment_type', type);
-                      handleStepChange(activeStepIndex, 'attachment_name', name);
+                      handleStepMultiChange(activeStepIndex, {
+                        attachment_url: url,
+                        attachment_type: type,
+                        attachment_name: name,
+                      });
                     }}
                     onRemove={() => {
-                      handleStepChange(activeStepIndex, 'attachment_url', undefined);
-                      handleStepChange(activeStepIndex, 'attachment_type', undefined);
-                      handleStepChange(activeStepIndex, 'attachment_name', undefined);
+                      handleStepMultiChange(activeStepIndex, {
+                        attachment_url: undefined,
+                        attachment_type: undefined,
+                        attachment_name: undefined,
+                      });
                     }}
                   />
 
