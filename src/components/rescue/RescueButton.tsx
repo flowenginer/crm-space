@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { UserRoundPlus, Loader2, Check } from 'lucide-react';
+import { UserRoundPlus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -77,21 +77,22 @@ export function RescueButton({ conversationId, contactId, contactName }: RescueB
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <Button
-              variant="ghost"
-              size="icon"
+              variant="outline"
+              size="sm"
               className={cn(
-                "h-8 w-8",
-                hasActiveRescue && "text-muted-foreground opacity-50 cursor-not-allowed"
+                "gap-1.5 font-semibold border-0",
+                hasActiveRescue 
+                  ? "bg-green-500 hover:bg-green-600 text-white" 
+                  : "bg-yellow-500 hover:bg-yellow-600 text-white"
               )}
-              disabled={hasActiveRescue || isLoading}
+              disabled={isLoading}
             >
               {isLoading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : hasActiveRescue ? (
-                <Check size={16} className="text-success" />
+                <Loader2 size={14} className="animate-spin" />
               ) : (
-                <UserRoundPlus size={16} />
+                <UserRoundPlus size={14} />
               )}
+              <span>RESGATE</span>
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
