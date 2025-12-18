@@ -199,24 +199,26 @@ serve(async (req) => {
             errorMessage = errorData.message || 'Erro Evolution';
           }
         } else if (provider?.code === 'uazapi') {
-          // UAZAPI usa base_url do provider
+          // UAZAPI V2 - Endpoint correto: /send/text
           const apiUrl = provider.base_url?.replace(/\/$/, '');
           const apiToken = channelToUse.instance_token || provider.admin_token;
           if (!apiUrl) {
             throw new Error('Provider UAZAPI sem URL da API configurada');
           }
-          const response = await fetch(`${apiUrl}/chat/send`, {
+          console.log(`UAZAPI V2 API URL: ${apiUrl}/send/text`);
+          const response = await fetch(`${apiUrl}/send/text`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiToken}`,
+              'Accept': 'application/json',
+              'token': apiToken || '',
             },
-            body: JSON.stringify({ phone, message }),
+            body: JSON.stringify({ number: phone, text: message }),
           });
-          sendSuccess = response.ok;
+          const responseData = await response.json();
+          sendSuccess = response.ok || responseData.status === true || !!responseData.messageId;
           if (!sendSuccess) {
-            const errorData = await response.json();
-            errorMessage = errorData.message || 'Erro UAZAPI';
+            errorMessage = responseData.message || responseData.error || 'Erro UAZAPI';
           }
         }
 
@@ -690,23 +692,26 @@ serve(async (req) => {
                 errorMessage = errorData.message || 'Unknown Evolution error';
               }
             } else if (provider?.code === 'uazapi') {
+              // UAZAPI V2 - Endpoint correto: /send/text
               const apiUrl = provider.base_url?.replace(/\/$/, '');
               const apiToken = channelToUse.instance_token || provider.admin_token;
               if (!apiUrl) {
                 throw new Error('Provider UAZAPI sem URL da API configurada');
               }
-              const response = await fetch(`${apiUrl}/chat/send`, {
+              console.log(`UAZAPI V2 API URL: ${apiUrl}/send/text`);
+              const response = await fetch(`${apiUrl}/send/text`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${apiToken}`,
+                  'Accept': 'application/json',
+                  'token': apiToken || '',
                 },
-                body: JSON.stringify({ phone, message }),
+                body: JSON.stringify({ number: phone, text: message }),
               });
-              sendSuccess = response.ok;
+              const responseData = await response.json();
+              sendSuccess = response.ok || responseData.status === true || !!responseData.messageId;
               if (!sendSuccess) {
-                const errorData = await response.json();
-                errorMessage = errorData.message || 'Unknown UAZAPI error';
+                errorMessage = responseData.message || responseData.error || 'Unknown UAZAPI error';
               }
             }
 

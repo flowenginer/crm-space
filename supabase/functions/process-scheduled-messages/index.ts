@@ -155,6 +155,114 @@ async function sendEvolutionMedia(
   }
 }
 
+// =====================================================
+// UAZAPI V2 - Send text message
+// Docs: https://docs.uazapi.com/endpoint/post/send~text
+// =====================================================
+async function sendUAZAPIText(
+  baseUrl: string,
+  instanceToken: string,
+  phone: string,
+  content: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, '')
+    const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
+    
+    const url = `${baseUrl}/send/text`
+    const body = { number: formattedPhone, text: content }
+    
+    console.log(`[Scheduled] Sending text via UAZAPI V2 to ${formattedPhone}`)
+    console.log(`[Scheduled] UAZAPI URL: ${url}`)
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'token': instanceToken,
+      },
+      body: JSON.stringify(body),
+    })
+
+    const data = await response.json()
+    console.log(`[Scheduled] UAZAPI V2 text response:`, JSON.stringify(data))
+
+    if (response.ok || data.status === true || data.messageId) {
+      return { success: true, messageId: data.messageId || data.id || data.key?.id }
+    } else {
+      return { success: false, error: data.message || data.error || 'Unknown error' }
+    }
+  } catch (error) {
+    console.error('[Scheduled] UAZAPI V2 text send error:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+  }
+}
+
+// =====================================================
+// UAZAPI V2 - Send media message
+// Docs: https://docs.uazapi.com/endpoint/post/send~media
+// =====================================================
+async function sendUAZAPIMedia(
+  baseUrl: string,
+  instanceToken: string,
+  phone: string,
+  messageType: string,
+  mediaUrl: string,
+  caption?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const cleanPhone = phone.replace(/\D/g, '')
+    const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
+    
+    // UAZAPI V2: Mapear tipo para formato correto
+    let uazapiType = messageType
+    if (messageType === 'audio') uazapiType = 'ptt' // Push-to-Talk (mensagem de voz)
+    
+    const url = `${baseUrl}/send/media`
+    const body: Record<string, unknown> = {
+      number: formattedPhone,
+      type: uazapiType,
+      file: mediaUrl,
+    }
+    
+    // Áudio não suporta caption
+    if (caption && messageType !== 'audio') {
+      body.caption = caption
+    }
+    
+    if (messageType === 'document') {
+      body.filename = 'documento'
+    }
+    
+    console.log(`[Scheduled] Sending ${messageType} via UAZAPI V2 to ${formattedPhone}`)
+    console.log(`[Scheduled] UAZAPI URL: ${url}`)
+    console.log(`[Scheduled] UAZAPI body: ${JSON.stringify(body)}`)
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'token': instanceToken,
+      },
+      body: JSON.stringify(body),
+    })
+
+    const data = await response.json()
+    console.log(`[Scheduled] UAZAPI V2 media response:`, JSON.stringify(data))
+
+    if (response.ok || data.status === true || data.messageId) {
+      return { success: true, messageId: data.messageId || data.id || data.key?.id }
+    } else {
+      return { success: false, error: data.message || data.error || 'Unknown error' }
+    }
+  } catch (error) {
+    console.error('[Scheduled] UAZAPI V2 media send error:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+  }
+}
+
 // Send text message via Z-API
 async function sendZAPIText(
   instanceId: string,
@@ -419,7 +527,7 @@ Deno.serve(async (req) => {
         if (hasText && (needsSeparateTextMessage || !hasMedia)) {
           console.log(`[Scheduled] Sending text message...`)
           
-          if (provider.code === 'evolution') {
+        if (provider.code === 'evolution') {
             sendResult = await sendEvolutionText(
               provider.base_url,
               typedChannel.instance_id,
@@ -430,6 +538,14 @@ Deno.serve(async (req) => {
           } else if (provider.code === 'zapi') {
             sendResult = await sendZAPIText(
               typedChannel.instance_id,
+              typedChannel.instance_token,
+              contactPhone,
+              finalTextContent
+            )
+          } else if (provider.code === 'uazapi') {
+            // UAZAPI V2
+            sendResult = await sendUAZAPIText(
+              provider.base_url,
               typedChannel.instance_token,
               contactPhone,
               finalTextContent
@@ -464,6 +580,16 @@ Deno.serve(async (req) => {
           } else if (provider.code === 'zapi') {
             sendResult = await sendZAPIMedia(
               typedChannel.instance_id,
+              typedChannel.instance_token,
+              contactPhone,
+              msgType,
+              scheduled.media_url!,
+              caption
+            )
+          } else if (provider.code === 'uazapi') {
+            // UAZAPI V2
+            sendResult = await sendUAZAPIMedia(
+              provider.base_url,
               typedChannel.instance_token,
               contactPhone,
               msgType,
