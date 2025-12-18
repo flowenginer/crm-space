@@ -1702,9 +1702,16 @@ serve(async (req) => {
         );
       } catch (profileError: any) {
         console.error('[FetchProfile] Error:', profileError);
+        // Return 200 with success: false to allow graceful client-side handling
+        // "Connection Closed" means the WhatsApp instance is disconnected
         return new Response(
-          JSON.stringify({ success: false, error: profileError.message }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+          JSON.stringify({ 
+            success: false, 
+            error: profileError.message,
+            profilePictureUrl: null,
+            name: null,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
     }
