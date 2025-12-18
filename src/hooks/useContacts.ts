@@ -306,3 +306,30 @@ export function useDeleteContact() {
     },
   });
 }
+
+/**
+ * Exclui um contato permanentemente (apenas admin)
+ * Remove todas as dependências: orders, quotes, transactions, deals, etc.
+ */
+export function useDeleteContactPermanently() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc('delete_contact_permanently', { 
+        p_contact_id: id 
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-filtered-count'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-filter-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    },
+  });
+}
