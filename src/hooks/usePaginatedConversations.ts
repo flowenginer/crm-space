@@ -412,13 +412,14 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         }
       }
 
-      // *** FILTRO DE DATA - SERVIDOR (usando INNER JOIN) ***
+      // *** FILTRO DE DATA - SERVIDOR (usando created_at da conversa) ***
       if (hasDateFilter && dateRange) {
         const startISO = dateRange.start.toISOString();
         const endISO = dateRange.end.toISOString();
+        // CORREÇÃO: Usar data de criação da CONVERSA, não do contato
         query = query
-          .gte('contact.first_contact_at', startISO)
-          .lte('contact.first_contact_at', endISO);
+          .gte('created_at', startISO)
+          .lte('created_at', endISO);
       }
 
       // *** BUSCA POR TELEFONE OU NOME - SERVIDOR (com busca sem acentos) ***
