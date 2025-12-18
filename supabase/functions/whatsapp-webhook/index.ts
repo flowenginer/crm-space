@@ -349,45 +349,71 @@ async function downloadUAZAPIMedia(
 
 /**
  * Get UAZAPI channel credentials for media download
+ * IMPORTANTE: Usa busca flexível (ILIKE) e busca base_url do provider
  */
 async function getUAZAPIChannelCredentials(
   supabase: any,
   instanceName: string
 ): Promise<{ baseUrl: string; instanceToken: string } | null> {
   try {
-    // Search by instance_id (instanceName from UAZAPI)
-    const { data, error } = await supabase
-      .from('whatsapp_channels')
-      .select('base_url, instance_token')
-      .eq('instance_id', instanceName)
-      .eq('is_deleted', false)
-      .single();
+    console.log(`[Webhook UAZAPI] Looking for channel credentials - instanceName: "${instanceName}"`);
     
-    if (error || !data) {
-      console.log(`[Webhook UAZAPI] Channel not found by instance_id: ${instanceName}`);
-      
-      // Fallback: search by name
-      const { data: dataByName } = await supabase
-        .from('whatsapp_channels')
-        .select('base_url, instance_token')
-        .eq('name', instanceName)
-        .eq('is_deleted', false)
-        .single();
-      
-      if (!dataByName) {
-        console.log(`[Webhook UAZAPI] Channel not found by name either: ${instanceName}`);
-        return null;
-      }
-      
-      return {
-        baseUrl: dataByName.base_url,
-        instanceToken: dataByName.instance_token,
-      };
+    // Normalizar o instanceName para busca (remover espaços, lowercase, etc.)
+    const normalizedName = instanceName.replace(/\s+/g, '-').toLowerCase();
+    console.log(`[Webhook UAZAPI] Normalized name for search: "${normalizedName}"`);
+    
+    // Busca flexível usando ILIKE para encontrar por instance_id ou name
+    const { data: channels, error } = await supabase
+      .from('whatsapp_channels')
+      .select('id, instance_id, instance_token, provider_id, name')
+      .eq('is_deleted', false)
+      .or(`instance_id.ilike.%${normalizedName}%,name.ilike.%${instanceName}%`);
+    
+    if (error) {
+      console.error(`[Webhook UAZAPI] Error searching for channel:`, error);
+      return null;
     }
     
+    if (!channels || channels.length === 0) {
+      console.log(`[Webhook UAZAPI] ❌ Channel not found with pattern search: instanceName="${instanceName}", normalizedName="${normalizedName}"`);
+      return null;
+    }
+    
+    // Usar o primeiro canal encontrado
+    const channel = channels[0];
+    console.log(`[Webhook UAZAPI] ✅ Found channel: "${channel.name}" (instance_id: ${channel.instance_id}, provider_id: ${channel.provider_id})`);
+    
+    // Verificar se tem instance_token
+    if (!channel.instance_token) {
+      console.log(`[Webhook UAZAPI] ⚠️ Channel "${channel.name}" has no instance_token configured`);
+      return null;
+    }
+    
+    // Buscar base_url do provider (NÃO está em whatsapp_channels, está em whatsapp_providers)
+    const { data: provider, error: providerError } = await supabase
+      .from('whatsapp_providers')
+      .select('base_url, name')
+      .eq('id', channel.provider_id)
+      .single();
+    
+    if (providerError || !provider) {
+      console.log(`[Webhook UAZAPI] ❌ Provider not found for provider_id: ${channel.provider_id}`, providerError);
+      return null;
+    }
+    
+    if (!provider.base_url) {
+      console.log(`[Webhook UAZAPI] ⚠️ Provider "${provider.name}" has no base_url configured`);
+      return null;
+    }
+    
+    // Remover barra final do base_url se existir
+    const baseUrl = provider.base_url.replace(/\/$/, '');
+    
+    console.log(`[Webhook UAZAPI] ✅ Got credentials - provider: "${provider.name}", baseUrl: ${baseUrl}, token: ${channel.instance_token?.substring(0, 8)}...`);
+    
     return {
-      baseUrl: data.base_url,
-      instanceToken: data.instance_token,
+      baseUrl,
+      instanceToken: channel.instance_token,
     };
   } catch (error) {
     console.error('[Webhook UAZAPI] Error getting channel credentials:', error);
