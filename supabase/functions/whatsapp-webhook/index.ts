@@ -2678,9 +2678,9 @@ function extractInstanceId(provider: WhatsAppProvider, payload: any): string {
     case "zapi":
       return payload.instanceId || "";
     case "uazapi":
-      // UAZAPI usa body.instanceName (nome da instância, não ID)
-      // Também pode ter EventType no body
-      return payload.body?.instanceName || payload.instance || payload.session || payload.instanceId || "";
+      // UAZAPI V2: instanceName pode estar no ROOT ou em body
+      // Prioridade: root > body > fallbacks
+      return payload.instanceName || payload.body?.instanceName || payload.instance || payload.session || payload.instanceId || "";
     case "evolution":
       return payload.instance || "";
     default:
@@ -2699,9 +2699,12 @@ function isMessageEvent(provider: WhatsAppProvider, payload: any): boolean {
       isMsg = !!(payload.phone && payload.text) || !!(payload.phone && (payload.image || payload.audio || payload.video || payload.document));
       break;
     case "uazapi":
-      // UAZAPI novo formato: body.EventType === "messages" com body.message
-      const uazapiEventType = (payload.body?.EventType || "").toLowerCase();
-      if (uazapiEventType === "messages" && payload.body?.message) {
+      // UAZAPI V2: EventType pode estar no ROOT ou em body
+      // Prioridade: root > body
+      const uazapiEventType = (payload.EventType || payload.body?.EventType || "").toLowerCase();
+      const hasMessage = payload.message || payload.body?.message;
+      
+      if (uazapiEventType === "messages" && hasMessage) {
         isMsg = true;
       } else {
         // Fallback para formato antigo
@@ -2717,7 +2720,7 @@ function isMessageEvent(provider: WhatsAppProvider, payload: any): boolean {
   
   // DEBUG: Log detalhado para diagnóstico
   if (!isMsg) {
-    console.log(`[Webhook DEBUG] Event NOT processed as message - Provider: ${provider}, RawEvent: "${event}", NormalizedEvent: "${normalizedEvent}", UAZAPIEventType: "${payload.body?.EventType || 'N/A'}", IsMessageEvent: false`);
+    console.log(`[Webhook DEBUG] Event NOT processed as message - Provider: ${provider}, RawEvent: "${event}", NormalizedEvent: "${normalizedEvent}", UAZAPIEventType: "${payload.EventType || payload.body?.EventType || 'N/A'}", IsMessageEvent: false`);
   }
   
   return isMsg;
@@ -2958,9 +2961,24 @@ function extractUAZAPIMediaUrl(msg: any): string | undefined {
  * }
  */
 function normalizeUAZAPIMessage(payload: any): NormalizedMessage | null {
-  // Verificar se é o novo formato UAZAPI (body.EventType)
-  if (payload.body?.EventType === "messages" && payload.body?.message) {
-    return normalizeUAZAPIMessageNew(payload);
+  // UAZAPI V2: EventType e message podem estar no ROOT ou em body
+  // Prioridade: root > body
+  const eventType = payload.EventType || payload.body?.EventType;
+  const message = payload.message || payload.body?.message;
+  const chat = payload.chat || payload.body?.chat;
+  const instanceName = payload.instanceName || payload.body?.instanceName;
+  
+  if (eventType === "messages" && message) {
+    // Normalizar payload para formato esperado pelo normalizeUAZAPIMessageNew
+    const normalizedPayload = {
+      body: {
+        EventType: eventType,
+        message: message,
+        chat: chat,
+        instanceName: instanceName,
+      }
+    };
+    return normalizeUAZAPIMessageNew(normalizedPayload);
   }
   
   // Fallback para formato legado

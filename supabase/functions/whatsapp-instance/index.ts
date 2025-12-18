@@ -248,9 +248,10 @@ async function sendUAZAPIMessage(
   
   const data = await safeJsonParse(response, 'UAZAPI V2 Send');
   
+  // UAZAPI V2 retorna 'messageid' (minúsculo) e status: "Pending" (string)
   return {
-    success: data.status === true || !!data.messageId || !!data.key?.id,
-    messageId: data.key?.id || data.id || data.messageId,
+    success: !!data.messageid || !!data.messageId || !!data.id || !!data.key?.id || data.status === 'Pending',
+    messageId: data.messageid || data.messageId || data.key?.id || data.id,
     data,
   };
 }
