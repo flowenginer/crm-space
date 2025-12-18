@@ -8,6 +8,11 @@ export interface RescueStep {
   attachment_url?: string | null;
   attachment_type?: string | null;
   attachment_name?: string | null;
+  // Individual actions per message
+  on_reply_action?: RescueActionType;
+  on_reply_config?: RescueActionConfig;
+  on_no_reply_action?: RescueActionType;
+  on_no_reply_config?: RescueActionConfig;
 }
 
 export type RescueActionType = 
@@ -17,7 +22,8 @@ export type RescueActionType =
   | 'transfer_department' 
   | 'add_tag' 
   | 'change_lead_status' 
-  | 'add_segment';
+  | 'add_segment'
+  | 'continue'; // Continue to next message (default for on_no_reply)
 
 export interface RescueActionConfig {
   close_reason_id?: string;

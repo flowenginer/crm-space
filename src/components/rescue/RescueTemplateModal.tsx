@@ -71,12 +71,16 @@ interface RescueTemplateModalProps {
   template?: RescueTemplate | null;
 }
 
-// Extended step with attachments
+// Extended step with attachments and individual actions
 interface ExtendedRescueStep extends RescueStep {
   audio_url?: string;
   attachment_url?: string;
   attachment_type?: string;
   attachment_name?: string;
+  on_reply_action?: RescueActionType;
+  on_reply_config?: RescueActionConfig;
+  on_no_reply_action?: RescueActionType;
+  on_no_reply_config?: RescueActionConfig;
 }
 
 const VARIABLES = [
@@ -295,12 +299,8 @@ export function RescueTemplateModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [steps, setSteps] = useState<ExtendedRescueStep[]>([
-    { message: '', timer_minutes: 10 },
+    { message: '', timer_minutes: 10, on_reply_action: 'none', on_reply_config: {}, on_no_reply_action: 'none', on_no_reply_config: {} },
   ]);
-  const [finalAction, setFinalAction] = useState<RescueActionType>('close');
-  const [finalActionConfig, setFinalActionConfig] = useState<RescueActionConfig>({});
-  const [onReplyAction, setOnReplyAction] = useState<RescueActionType>('none');
-  const [onReplyConfig, setOnReplyConfig] = useState<RescueActionConfig>({});
   const [activeStepIndex, setActiveStepIndex] = useState(0);
 
   const { data: closeReasons = [] } = useCloseReasons();
@@ -319,27 +319,27 @@ export function RescueTemplateModal({
     if (template) {
       setTitle(template.title);
       setDescription(template.description || '');
-      setSteps(template.steps.length > 0 ? template.steps : [{ message: '', timer_minutes: 10 }]);
-      // Handle legacy 'transfer' value
-      const finalAct = template.final_action === 'transfer' ? 'transfer_department' : template.final_action as RescueActionType;
-      setFinalAction(finalAct);
-      setFinalActionConfig(template.final_action_config || {});
-      setOnReplyAction(template.on_reply_action || 'none');
-      setOnReplyConfig(template.on_reply_config || {});
+      // Map steps with default action values
+      const mappedSteps = template.steps.length > 0 
+        ? template.steps.map(step => ({
+            ...step,
+            on_reply_action: step.on_reply_action || 'none',
+            on_reply_config: step.on_reply_config || {},
+            on_no_reply_action: step.on_no_reply_action || 'none',
+            on_no_reply_config: step.on_no_reply_config || {},
+          }))
+        : [{ message: '', timer_minutes: 10, on_reply_action: 'none' as RescueActionType, on_reply_config: {}, on_no_reply_action: 'none' as RescueActionType, on_no_reply_config: {} }];
+      setSteps(mappedSteps);
     } else {
       setTitle('');
       setDescription('');
-      setSteps([{ message: '', timer_minutes: 10 }]);
-      setFinalAction('close');
-      setFinalActionConfig({});
-      setOnReplyAction('none');
-      setOnReplyConfig({});
+      setSteps([{ message: '', timer_minutes: 10, on_reply_action: 'none', on_reply_config: {}, on_no_reply_action: 'none', on_no_reply_config: {} }]);
     }
     setActiveStepIndex(0);
   }, [template, open]);
 
   const handleAddStep = () => {
-    setSteps([...steps, { message: '', timer_minutes: 60 }]);
+    setSteps([...steps, { message: '', timer_minutes: 60, on_reply_action: 'none', on_reply_config: {}, on_no_reply_action: 'none', on_no_reply_config: {} }]);
     setActiveStepIndex(steps.length);
   };
 
@@ -468,6 +468,11 @@ export function RescueTemplateModal({
     }
 
     try {
+      // Get final action from last step (for backwards compatibility)
+      const lastStep = validSteps[validSteps.length - 1];
+      const finalAction = lastStep?.on_no_reply_action || 'none';
+      const finalActionConfig = lastStep?.on_no_reply_config || {};
+      
       if (isEditing && template) {
         await updateTemplate.mutateAsync({
           id: template.id,
@@ -476,8 +481,6 @@ export function RescueTemplateModal({
           steps: validSteps,
           final_action: finalAction,
           final_action_config: finalActionConfig,
-          on_reply_action: onReplyAction,
-          on_reply_config: onReplyConfig,
         });
         toast.success('Template atualizado!');
       } else {
@@ -487,8 +490,6 @@ export function RescueTemplateModal({
           steps: validSteps,
           final_action: finalAction,
           final_action_config: finalActionConfig,
-          on_reply_action: onReplyAction,
-          on_reply_config: onReplyConfig,
         });
         toast.success('Template criado!');
       }
@@ -686,129 +687,128 @@ export function RescueTemplateModal({
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
-              </div>
 
-              {/* Actions Section */}
-              <div className="space-y-6 pt-4 border-t border-border">
-                {/* On Reply Action */}
-                <div className="space-y-3 p-4 rounded-lg bg-green-500/10 border border-green-500/20">
-                  <div className="flex items-center gap-2">
-                    <MessageSquareReply size={18} className="text-green-600" />
-                    <Label className="text-base font-semibold text-green-700 dark:text-green-400">
-                      Se o cliente RESPONDER
-                    </Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info size={14} className="text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="max-w-xs text-sm">
-                          <p className="font-semibold mb-1">Quando o cliente responder:</p>
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>A ação selecionada será executada automaticamente</li>
-                            <li>Todas as próximas mensagens pendentes serão <strong>canceladas</strong></li>
-                            <li>O resgate será marcado como "respondido"</li>
-                          </ul>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                  {/* Individual Actions for this Message */}
+                  <div className="space-y-4 pt-4 border-t border-border">
+                    {/* On Reply Action */}
+                    <div className="space-y-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                      <div className="flex items-center gap-2">
+                        <MessageSquareReply size={16} className="text-green-600" />
+                        <Label className="text-sm font-semibold text-green-700 dark:text-green-400">
+                          Se o cliente RESPONDER nesta mensagem
+                        </Label>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info size={14} className="text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-xs text-sm">
+                              <p className="font-semibold mb-1">Quando o cliente responder:</p>
+                              <ul className="list-disc list-inside space-y-1 text-xs">
+                                <li>A ação selecionada será executada automaticamente</li>
+                                <li>Todas as próximas mensagens pendentes serão <strong>canceladas</strong></li>
+                                <li>O resgate será marcado como "respondido"</li>
+                              </ul>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      
+                      <Select
+                        value={currentStep?.on_reply_action || 'none'}
+                        onValueChange={(value: RescueActionType) => {
+                          handleStepMultiChange(activeStepIndex, { 
+                            on_reply_action: value, 
+                            on_reply_config: {} 
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ACTION_OPTIONS.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <ActionConfigFields
+                        action={currentStep?.on_reply_action || 'none'}
+                        config={currentStep?.on_reply_config || {}}
+                        onChange={(config) => handleStepChange(activeStepIndex, 'on_reply_config', config)}
+                        closeReasons={closeReasons}
+                        departments={departments}
+                        agents={team}
+                        tags={tags}
+                        leadStatuses={leadStatuses}
+                        segments={segments}
+                      />
+                    </div>
+
+                    {/* On No Reply Action */}
+                    <div className="space-y-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <div className="flex items-center gap-2">
+                        <Timer size={16} className="text-amber-600" />
+                        <Label className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                          Se o cliente NÃO responder
+                        </Label>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info size={14} className="text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-xs text-sm">
+                              <p className="font-semibold mb-1">Se "Nenhuma ação":</p>
+                              <ul className="list-disc list-inside space-y-1 text-xs mb-2">
+                                <li>O sistema <strong>segue automaticamente para a próxima mensagem</strong></li>
+                              </ul>
+                              <p className="font-semibold mb-1">Outras ações:</p>
+                              <ul className="list-disc list-inside space-y-1 text-xs">
+                                <li>A ação será executada <strong>antes de seguir</strong> para a próxima mensagem</li>
+                                <li>Na última mensagem, a ação configurada aqui será a <strong>ação final</strong> do resgate</li>
+                              </ul>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+
+                      <Select
+                        value={currentStep?.on_no_reply_action || 'none'}
+                        onValueChange={(value: RescueActionType) => {
+                          handleStepMultiChange(activeStepIndex, { 
+                            on_no_reply_action: value, 
+                            on_no_reply_config: {} 
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {FINAL_ACTION_OPTIONS.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <ActionConfigFields
+                        action={currentStep?.on_no_reply_action || 'none'}
+                        config={currentStep?.on_no_reply_config || {}}
+                        onChange={(config) => handleStepChange(activeStepIndex, 'on_no_reply_config', config)}
+                        closeReasons={closeReasons}
+                        departments={departments}
+                        agents={team}
+                        tags={tags}
+                        leadStatuses={leadStatuses}
+                        segments={segments}
+                      />
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Ação executada automaticamente quando o cliente enviar uma mensagem durante o resgate
-                  </p>
-                  
-                  <Select
-                    value={onReplyAction}
-                    onValueChange={(value: RescueActionType) => {
-                      setOnReplyAction(value);
-                      setOnReplyConfig({});
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ACTION_OPTIONS.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <ActionConfigFields
-                    action={onReplyAction}
-                    config={onReplyConfig}
-                    onChange={setOnReplyConfig}
-                    closeReasons={closeReasons}
-                    departments={departments}
-                    agents={team}
-                    tags={tags}
-                    leadStatuses={leadStatuses}
-                    segments={segments}
-                  />
-                </div>
-
-                {/* Final Action (No Reply) */}
-                <div className="space-y-3 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                  <div className="flex items-center gap-2">
-                    <Timer size={18} className="text-amber-600" />
-                    <Label className="text-base font-semibold text-amber-700 dark:text-amber-400">
-                      Se o cliente NÃO responder
-                    </Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info size={14} className="text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="max-w-xs text-sm">
-                          <p className="font-semibold mb-1">Durante o resgate:</p>
-                          <ul className="list-disc list-inside space-y-1 text-xs mb-2">
-                            <li>Se "Nenhuma ação" estiver selecionada, o sistema <strong>segue automaticamente para a próxima mensagem</strong></li>
-                          </ul>
-                          <p className="font-semibold mb-1">Após a última mensagem:</p>
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>A ação configurada aqui será executada apenas quando <strong>todas as mensagens</strong> forem enviadas sem resposta</li>
-                          </ul>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Ação executada após todas as mensagens serem enviadas sem resposta do cliente
-                  </p>
-
-                  <Select
-                    value={finalAction}
-                    onValueChange={(value: RescueActionType) => {
-                      setFinalAction(value);
-                      setFinalActionConfig({});
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FINAL_ACTION_OPTIONS.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <ActionConfigFields
-                    action={finalAction}
-                    config={finalActionConfig}
-                    onChange={setFinalActionConfig}
-                    closeReasons={closeReasons}
-                    departments={departments}
-                    agents={team}
-                    tags={tags}
-                    leadStatuses={leadStatuses}
-                    segments={segments}
-                  />
                 </div>
               </div>
             </div>
