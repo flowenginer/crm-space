@@ -503,9 +503,9 @@ export interface ReturningLeadsMetrics {
   newContactRate: number;
 }
 
-export function useReturningLeadsMetrics(filters: DashboardFilters) {
+export function useReturningLeadsMetrics(filters: DashboardFilters, origin?: string) {
   return useQuery({
-    queryKey: ['returning_leads_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, filters.channelId],
+    queryKey: ['returning_leads_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, filters.channelId, origin],
     queryFn: async (): Promise<ReturningLeadsMetrics> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
@@ -516,6 +516,7 @@ export function useReturningLeadsMetrics(filters: DashboardFilters) {
         p_agent_id: filters.agentId || null,
         p_department_id: filters.departmentId || null,
         p_channel_id: filters.channelId || null,
+        p_origin: origin || null,
       });
 
       if (error) {
