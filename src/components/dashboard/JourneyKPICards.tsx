@@ -5,13 +5,15 @@ import {
   TrendingUp, 
   MessageSquare, 
   Target,
-  Loader2 
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { LeadJourneyMetrics, formatDuration } from '@/hooks/useLeadJourneyDashboard';
+import { LeadJourneyMetrics, ReturningLeadsMetrics, formatDuration } from '@/hooks/useLeadJourneyDashboard';
 
 interface JourneyKPICardsProps {
   metrics: LeadJourneyMetrics | undefined;
+  returningMetrics?: ReturningLeadsMetrics;
   isLoading?: boolean;
 }
 
@@ -90,19 +92,41 @@ function KPICard({ title, value, subtitle, icon, color, isLoading }: KPICardProp
 
 export function JourneyKPICards({ 
   metrics, 
+  returningMetrics,
   isLoading 
 }: JourneyKPICardsProps) {
-  const totalLeads = (metrics?.totalAssigned || 0) + (metrics?.totalUnassigned || 0);
+  const totalConversations = returningMetrics?.totalConversations || 0;
+  const newContacts = returningMetrics?.newContacts || 0;
+  const returningContacts = returningMetrics?.returningContacts || 0;
   const conversions = metrics?.conversions || 0;
   const conversionRate = metrics?.conversionRate || 0;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
       <KPICard
-        title="Leads no Período"
-        value={totalLeads}
-        icon={<UserPlus className="h-5 w-5" />}
+        title="Conversas Iniciadas"
+        value={totalConversations}
+        subtitle="No período"
+        icon={<MessageSquare className="h-5 w-5" />}
         color="primary"
+        isLoading={isLoading}
+      />
+
+      <KPICard
+        title="Novos Contatos"
+        value={newContacts}
+        subtitle={`${returningMetrics?.newContactRate.toFixed(0) || 0}% do total`}
+        icon={<UserPlus className="h-5 w-5" />}
+        color="green"
+        isLoading={isLoading}
+      />
+
+      <KPICard
+        title="Retornantes"
+        value={returningContacts}
+        subtitle="Já tinham histórico"
+        icon={<RefreshCw className="h-5 w-5" />}
+        color="orange"
         isLoading={isLoading}
       />
       
@@ -120,15 +144,6 @@ export function JourneyKPICards({
         value={formatDuration(metrics?.avgTimeToAssignment || 0)}
         subtitle="Média"
         icon={<Clock className="h-5 w-5" />}
-        color="orange"
-        isLoading={isLoading}
-      />
-      
-      <KPICard
-        title="Tempo p/ Resposta"
-        value={formatDuration(metrics?.avgTimeToFirstResponse || 0)}
-        subtitle="Primeira resposta"
-        icon={<MessageSquare className="h-5 w-5" />}
         color="purple"
         isLoading={isLoading}
       />
