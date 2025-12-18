@@ -38,6 +38,8 @@ import {
   Image as ImageIcon,
   Video,
   File,
+  MessageSquareReply,
+  Timer,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -45,9 +47,15 @@ import {
   useUpdateRescueTemplate,
   type RescueTemplate,
   type RescueStep,
+  type RescueActionType,
+  type RescueActionConfig,
 } from '@/hooks/useRescueTemplates';
 import { useCloseReasons } from '@/hooks/useCloseReasons';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useTeam } from '@/hooks/useTeam';
+import { useTags } from '@/hooks/useTags';
+import { useLeadStatuses } from '@/hooks/useLeadStatuses';
+import { useSegments } from '@/hooks/useSegments';
 import { supabase } from '@/integrations/supabase/client';
 
 interface RescueTemplateModalProps {
@@ -70,6 +78,208 @@ const VARIABLES = [
   { key: '{{email}}', label: 'Email' },
 ];
 
+const ACTION_OPTIONS: { value: RescueActionType; label: string; description?: string }[] = [
+  { value: 'none', label: 'Nenhuma ação' },
+  { value: 'transfer_agent', label: 'Transferir para vendedor' },
+  { value: 'transfer_department', label: 'Transferir para setor' },
+  { value: 'add_tag', label: 'Adicionar etiqueta' },
+  { value: 'change_lead_status', label: 'Mudar status do lead' },
+  { value: 'add_segment', label: 'Anexar segmento' },
+];
+
+const FINAL_ACTION_OPTIONS: { value: RescueActionType; label: string }[] = [
+  { value: 'none', label: 'Nenhuma ação' },
+  { value: 'close', label: 'Fechar conversa' },
+  { value: 'transfer_agent', label: 'Transferir para vendedor' },
+  { value: 'transfer_department', label: 'Transferir para setor' },
+  { value: 'add_tag', label: 'Adicionar etiqueta' },
+  { value: 'change_lead_status', label: 'Mudar status do lead' },
+  { value: 'add_segment', label: 'Anexar segmento' },
+];
+
+// Component to render action config fields based on selected action
+function ActionConfigFields({
+  action,
+  config,
+  onChange,
+  closeReasons,
+  departments,
+  agents,
+  tags,
+  leadStatuses,
+  segments,
+}: {
+  action: RescueActionType;
+  config: RescueActionConfig;
+  onChange: (config: RescueActionConfig) => void;
+  closeReasons: any[];
+  departments: any[];
+  agents: any[];
+  tags: any[];
+  leadStatuses: any[];
+  segments: any[];
+}) {
+  if (action === 'none') return null;
+
+  if (action === 'close') {
+    return (
+      <div>
+        <Label className="text-sm">Motivo de fechamento</Label>
+        <Select 
+          value={config.close_reason_id || ''} 
+          onValueChange={(value) => onChange({ ...config, close_reason_id: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione um motivo" />
+          </SelectTrigger>
+          <SelectContent>
+            {closeReasons.filter(r => r.is_active).map((reason) => (
+              <SelectItem key={reason.id} value={reason.id}>
+                {reason.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+
+  if (action === 'transfer_agent') {
+    return (
+      <div>
+        <Label className="text-sm">Vendedor</Label>
+        <Select 
+          value={config.agent_id || ''} 
+          onValueChange={(value) => onChange({ ...config, agent_id: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione um vendedor" />
+          </SelectTrigger>
+          <SelectContent>
+            {agents.filter(a => a.is_active).map((agent) => (
+              <SelectItem key={agent.id} value={agent.id}>
+                {agent.full_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+
+  if (action === 'transfer_department') {
+    return (
+      <div>
+        <Label className="text-sm">Departamento</Label>
+        <Select 
+          value={config.department_id || ''} 
+          onValueChange={(value) => onChange({ ...config, department_id: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione um departamento" />
+          </SelectTrigger>
+          <SelectContent>
+            {departments.filter(d => d.is_active).map((dept) => (
+              <SelectItem key={dept.id} value={dept.id}>
+                {dept.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+
+  if (action === 'add_tag') {
+    return (
+      <div>
+        <Label className="text-sm">Etiqueta</Label>
+        <Select 
+          value={config.tag_id || ''} 
+          onValueChange={(value) => onChange({ ...config, tag_id: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione uma etiqueta" />
+          </SelectTrigger>
+          <SelectContent>
+            {tags.map((tag) => (
+              <SelectItem key={tag.id} value={tag.id}>
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded-full" 
+                    style={{ backgroundColor: tag.color }} 
+                  />
+                  {tag.name}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+
+  if (action === 'change_lead_status') {
+    return (
+      <div>
+        <Label className="text-sm">Status do Lead</Label>
+        <Select 
+          value={config.lead_status || ''} 
+          onValueChange={(value) => onChange({ ...config, lead_status: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione um status" />
+          </SelectTrigger>
+          <SelectContent>
+            {leadStatuses.filter(s => s.is_active).map((status) => (
+              <SelectItem key={status.id} value={status.name}>
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded-full" 
+                    style={{ backgroundColor: status.color }} 
+                  />
+                  {status.name}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+
+  if (action === 'add_segment') {
+    return (
+      <div>
+        <Label className="text-sm">Segmento</Label>
+        <Select 
+          value={config.segment_id || ''} 
+          onValueChange={(value) => onChange({ ...config, segment_id: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione um segmento" />
+          </SelectTrigger>
+          <SelectContent>
+            {segments.filter(s => s.is_active).map((segment) => (
+              <SelectItem key={segment.id} value={segment.id}>
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded-full" 
+                    style={{ backgroundColor: segment.color }} 
+                  />
+                  {segment.name}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 export function RescueTemplateModal({
   open,
   onOpenChange,
@@ -80,13 +290,18 @@ export function RescueTemplateModal({
   const [steps, setSteps] = useState<ExtendedRescueStep[]>([
     { message: '', timer_minutes: 10 },
   ]);
-  const [finalAction, setFinalAction] = useState<'close' | 'transfer' | 'none'>('close');
-  const [closeReasonId, setCloseReasonId] = useState<string>('');
-  const [departmentId, setDepartmentId] = useState<string>('');
+  const [finalAction, setFinalAction] = useState<RescueActionType>('close');
+  const [finalActionConfig, setFinalActionConfig] = useState<RescueActionConfig>({});
+  const [onReplyAction, setOnReplyAction] = useState<RescueActionType>('none');
+  const [onReplyConfig, setOnReplyConfig] = useState<RescueActionConfig>({});
   const [activeStepIndex, setActiveStepIndex] = useState(0);
 
   const { data: closeReasons = [] } = useCloseReasons();
   const { data: departments = [] } = useDepartments();
+  const { data: team = [] } = useTeam();
+  const { data: tags = [] } = useTags();
+  const { data: leadStatuses = [] } = useLeadStatuses();
+  const { data: segments = [] } = useSegments();
   const createTemplate = useCreateRescueTemplate();
   const updateTemplate = useUpdateRescueTemplate();
 
@@ -98,16 +313,20 @@ export function RescueTemplateModal({
       setTitle(template.title);
       setDescription(template.description || '');
       setSteps(template.steps.length > 0 ? template.steps : [{ message: '', timer_minutes: 10 }]);
-      setFinalAction(template.final_action);
-      setCloseReasonId(template.final_action_config?.close_reason_id || '');
-      setDepartmentId(template.final_action_config?.department_id || '');
+      // Handle legacy 'transfer' value
+      const finalAct = template.final_action === 'transfer' ? 'transfer_department' : template.final_action as RescueActionType;
+      setFinalAction(finalAct);
+      setFinalActionConfig(template.final_action_config || {});
+      setOnReplyAction(template.on_reply_action || 'none');
+      setOnReplyConfig(template.on_reply_config || {});
     } else {
       setTitle('');
       setDescription('');
       setSteps([{ message: '', timer_minutes: 10 }]);
       setFinalAction('close');
-      setCloseReasonId('');
-      setDepartmentId('');
+      setFinalActionConfig({});
+      setOnReplyAction('none');
+      setOnReplyConfig({});
     }
     setActiveStepIndex(0);
   }, [template, open]);
@@ -167,7 +386,7 @@ export function RescueTemplateModal({
     };
 
     return (
-      <div className="bg-[#0b141a] rounded-lg p-4 min-h-[300px]">
+      <div className="bg-[#0b141a] rounded-lg p-4 min-h-[200px]">
         <div className="flex flex-col gap-2">
           {/* Audio preview */}
           {step.audio_url && (
@@ -241,13 +460,6 @@ export function RescueTemplateModal({
       return;
     }
 
-    const finalActionConfig: { close_reason_id?: string; department_id?: string } = {};
-    if (finalAction === 'close' && closeReasonId) {
-      finalActionConfig.close_reason_id = closeReasonId;
-    } else if (finalAction === 'transfer' && departmentId) {
-      finalActionConfig.department_id = departmentId;
-    }
-
     try {
       if (isEditing && template) {
         await updateTemplate.mutateAsync({
@@ -257,6 +469,8 @@ export function RescueTemplateModal({
           steps: validSteps,
           final_action: finalAction,
           final_action_config: finalActionConfig,
+          on_reply_action: onReplyAction,
+          on_reply_config: onReplyConfig,
         });
         toast.success('Template atualizado!');
       } else {
@@ -266,6 +480,8 @@ export function RescueTemplateModal({
           steps: validSteps,
           final_action: finalAction,
           final_action_config: finalActionConfig,
+          on_reply_action: onReplyAction,
+          on_reply_config: onReplyConfig,
         });
         toast.success('Template criado!');
       }
@@ -464,71 +680,97 @@ export function RescueTemplateModal({
                     </Select>
                   </div>
                 </div>
-
-                {/* Cancellation Info */}
-                <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                  <AlertTriangle size={16} className="text-amber-500 mt-0.5 shrink-0" />
-                  <p className="text-sm text-amber-700 dark:text-amber-400">
-                    O resgate será cancelado automaticamente se o lead responder.
-                  </p>
-                </div>
               </div>
 
-              {/* Final Action */}
-              <div className="space-y-4 pt-4 border-t border-border">
-                <Label className="text-base font-semibold">
-                  Ação Final (se não responder)
-                </Label>
-
-                <Select
-                  value={finalAction}
-                  onValueChange={(value: 'close' | 'transfer' | 'none') => setFinalAction(value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Nenhuma ação</SelectItem>
-                    <SelectItem value="close">Fechar conversa</SelectItem>
-                    <SelectItem value="transfer">Transferir para departamento</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {finalAction === 'close' && (
-                  <div>
-                    <Label>Motivo de fechamento</Label>
-                    <Select value={closeReasonId} onValueChange={setCloseReasonId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um motivo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {closeReasons.filter(r => r.is_active).map((reason) => (
-                          <SelectItem key={reason.id} value={reason.id}>
-                            {reason.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              {/* Actions Section */}
+              <div className="space-y-6 pt-4 border-t border-border">
+                {/* On Reply Action */}
+                <div className="space-y-3 p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <div className="flex items-center gap-2">
+                    <MessageSquareReply size={18} className="text-green-600" />
+                    <Label className="text-base font-semibold text-green-700 dark:text-green-400">
+                      Se o cliente RESPONDER
+                    </Label>
                   </div>
-                )}
+                  <p className="text-xs text-muted-foreground">
+                    Ação executada automaticamente quando o cliente enviar uma mensagem durante o resgate
+                  </p>
+                  
+                  <Select
+                    value={onReplyAction}
+                    onValueChange={(value: RescueActionType) => {
+                      setOnReplyAction(value);
+                      setOnReplyConfig({});
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ACTION_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                {finalAction === 'transfer' && (
-                  <div>
-                    <Label>Departamento destino</Label>
-                    <Select value={departmentId} onValueChange={setDepartmentId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um departamento" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.filter(d => d.is_active).map((dept) => (
-                          <SelectItem key={dept.id} value={dept.id}>
-                            {dept.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <ActionConfigFields
+                    action={onReplyAction}
+                    config={onReplyConfig}
+                    onChange={setOnReplyConfig}
+                    closeReasons={closeReasons}
+                    departments={departments}
+                    agents={team}
+                    tags={tags}
+                    leadStatuses={leadStatuses}
+                    segments={segments}
+                  />
+                </div>
+
+                {/* Final Action (No Reply) */}
+                <div className="space-y-3 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <div className="flex items-center gap-2">
+                    <Timer size={18} className="text-amber-600" />
+                    <Label className="text-base font-semibold text-amber-700 dark:text-amber-400">
+                      Se o cliente NÃO responder
+                    </Label>
                   </div>
-                )}
+                  <p className="text-xs text-muted-foreground">
+                    Ação executada após todas as mensagens serem enviadas sem resposta do cliente
+                  </p>
+
+                  <Select
+                    value={finalAction}
+                    onValueChange={(value: RescueActionType) => {
+                      setFinalAction(value);
+                      setFinalActionConfig({});
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FINAL_ACTION_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <ActionConfigFields
+                    action={finalAction}
+                    config={finalActionConfig}
+                    onChange={setFinalActionConfig}
+                    closeReasons={closeReasons}
+                    departments={departments}
+                    agents={team}
+                    tags={tags}
+                    leadStatuses={leadStatuses}
+                    segments={segments}
+                  />
+                </div>
               </div>
             </div>
           </ScrollArea>
@@ -608,8 +850,7 @@ function AudioRecorderInline({
         setRecordingTime(prev => prev + 1);
       }, 1000);
     } catch (error) {
-      console.error('Error starting recording:', error);
-      toast.error('Erro ao iniciar gravação. Verifique permissões do microfone.');
+      toast.error('Erro ao acessar microfone');
     }
   };
 
@@ -626,64 +867,71 @@ function AudioRecorderInline({
   const uploadAudio = async (blob: Blob) => {
     setIsUploading(true);
     try {
-      const filePath = `rescue-audios/${Date.now()}_audio.webm`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('template-attachments')
-        .upload(filePath, blob, { contentType: 'audio/webm' });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('template-attachments')
-        .getPublicUrl(filePath);
-
-      onAudioChange(publicUrl);
+      const fileName = `rescue_audio_${Date.now()}.webm`;
+      const { data, error } = await supabase.storage
+        .from('rescue-media')
+        .upload(fileName, blob, { contentType: 'audio/webm' });
+      
+      if (error) throw error;
+      
+      const { data: urlData } = supabase.storage
+        .from('rescue-media')
+        .getPublicUrl(fileName);
+      
+      onAudioChange(urlData.publicUrl);
       toast.success('Áudio salvo!');
     } catch (error) {
-      console.error('Error uploading audio:', error);
       toast.error('Erro ao salvar áudio');
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
+    
+    if (!file.type.startsWith('audio/')) {
+      toast.error('Selecione um arquivo de áudio');
+      return;
+    }
+    
     await uploadAudio(file);
+  };
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
   };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (audioUrl) {
     return (
-      <div className="flex items-center gap-2 bg-muted rounded-lg p-2">
+      <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+        <audio ref={audioRef} src={audioUrl} onEnded={() => setIsPlaying(false)} />
         <Button
           type="button"
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          onClick={() => {
-            if (!audioRef.current) {
-              audioRef.current = new Audio(audioUrl);
-              audioRef.current.onended = () => setIsPlaying(false);
-            }
-            if (isPlaying) {
-              audioRef.current.pause();
-            } else {
-              audioRef.current.play();
-            }
-            setIsPlaying(!isPlaying);
-          }}
+          onClick={togglePlay}
         >
-          {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+          {isPlaying ? <Pause size={14} /> : <Play size={14} />}
         </Button>
-        <div className="flex-1 h-1 bg-border rounded-full" />
+        <div className="flex-1 h-1 bg-primary/20 rounded-full">
+          <div className="h-full w-0 bg-primary rounded-full" />
+        </div>
         <Button
           type="button"
           variant="ghost"
@@ -691,50 +939,60 @@ function AudioRecorderInline({
           className="h-8 w-8 text-destructive"
           onClick={() => onAudioChange(undefined)}
         >
-          <X size={16} />
+          <X size={14} />
         </Button>
       </div>
     );
   }
 
   return (
-    <div className="flex gap-2">
-      <Button
-        type="button"
-        variant={isRecording ? 'destructive' : 'outline'}
-        size="sm"
-        onClick={isRecording ? stopRecording : startRecording}
-        disabled={isUploading}
-        className="flex-1"
-      >
-        {isRecording ? (
-          <>
+    <div className="flex items-center gap-2">
+      {isRecording ? (
+        <>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={stopRecording}
+          >
             <Square size={14} className="mr-1" />
             Parar ({formatTime(recordingTime)})
-          </>
-        ) : (
-          <>
+          </Button>
+        </>
+      ) : isUploading ? (
+        <Button type="button" variant="outline" size="sm" disabled>
+          <Loader2 size={14} className="mr-1 animate-spin" />
+          Salvando...
+        </Button>
+      ) : (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={startRecording}
+          >
             <Mic size={14} className="mr-1" />
-            Gravar Áudio
-          </>
-        )}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => fileInputRef.current?.click()}
-        disabled={isRecording || isUploading}
-      >
-        {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-      </Button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="audio/*"
-        onChange={handleFileUpload}
-        className="hidden"
-      />
+            Gravar
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*"
+            className="hidden"
+            onChange={handleFileUpload}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload size={14} className="mr-1" />
+            Upload
+          </Button>
+        </>
+      )}
     </div>
   );
 }
@@ -756,46 +1014,49 @@ function FileUploaderInline({
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const uploadFile = async (file: File) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     setIsUploading(true);
     try {
-      const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const filePath = `rescue-files/${Date.now()}_${sanitizedName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('template-attachments')
-        .upload(filePath, file, { contentType: file.type });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('template-attachments')
-        .getPublicUrl(filePath);
-
-      const mediaType = file.type.startsWith('image') ? 'image' : 
-                       file.type.startsWith('video') ? 'video' : 'document';
+      const fileExt = file.name.split('.').pop();
+      const fileName = `rescue_${Date.now()}.${fileExt}`;
       
-      onFileChange(publicUrl, mediaType, file.name);
-      toast.success('Arquivo enviado!');
+      const { data, error } = await supabase.storage
+        .from('rescue-media')
+        .upload(fileName, file);
+      
+      if (error) throw error;
+      
+      const { data: urlData } = supabase.storage
+        .from('rescue-media')
+        .getPublicUrl(fileName);
+      
+      let type = 'document';
+      if (file.type.startsWith('image/')) type = 'image';
+      else if (file.type.startsWith('video/')) type = 'video';
+      
+      onFileChange(urlData.publicUrl, type, file.name);
+      toast.success('Arquivo anexado!');
     } catch (error) {
-      console.error('Error uploading file:', error);
-      toast.error('Erro ao enviar arquivo');
+      toast.error('Erro ao anexar arquivo');
     } finally {
       setIsUploading(false);
     }
   };
 
   const getFileIcon = () => {
-    if (attachmentType === 'image') return <ImageIcon size={16} />;
-    if (attachmentType === 'video') return <Video size={16} />;
-    return <FileText size={16} />;
+    if (attachmentType === 'image') return <ImageIcon size={14} />;
+    if (attachmentType === 'video') return <Video size={14} />;
+    return <FileText size={14} />;
   };
 
   if (attachmentUrl) {
     return (
-      <div className="flex items-center gap-2 bg-muted rounded-lg p-2">
+      <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
         {getFileIcon()}
-        <span className="flex-1 text-sm truncate">{attachmentName || 'Arquivo'}</span>
+        <span className="text-sm truncate flex-1">{attachmentName || 'Arquivo'}</span>
         <Button
           type="button"
           variant="ghost"
@@ -803,36 +1064,35 @@ function FileUploaderInline({
           className="h-8 w-8 text-destructive"
           onClick={onRemove}
         >
-          <X size={16} />
+          <X size={14} />
         </Button>
       </div>
     );
   }
 
   return (
-    <>
+    <div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={handleFileUpload}
+        accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+      />
       <Button
         type="button"
         variant="outline"
         size="sm"
         onClick={() => fileInputRef.current?.click()}
         disabled={isUploading}
-        className="w-full"
       >
         {isUploading ? (
           <Loader2 size={14} className="mr-1 animate-spin" />
         ) : (
           <Paperclip size={14} className="mr-1" />
         )}
-        Anexar Arquivo (PNG, PDF, JPG...)
+        {isUploading ? 'Enviando...' : 'Anexar arquivo'}
       </Button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,video/*,.pdf,.doc,.docx"
-        onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0])}
-        className="hidden"
-      />
-    </>
+    </div>
   );
 }

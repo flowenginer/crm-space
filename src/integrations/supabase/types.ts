@@ -5463,6 +5463,8 @@ export type Database = {
           final_action_config: Json | null
           id: string
           is_active: boolean | null
+          on_reply_action: string | null
+          on_reply_config: Json | null
           steps: Json
           title: string
           updated_at: string | null
@@ -5475,6 +5477,8 @@ export type Database = {
           final_action_config?: Json | null
           id?: string
           is_active?: boolean | null
+          on_reply_action?: string | null
+          on_reply_config?: Json | null
           steps?: Json
           title: string
           updated_at?: string | null
@@ -5487,6 +5491,8 @@ export type Database = {
           final_action_config?: Json | null
           id?: string
           is_active?: boolean | null
+          on_reply_action?: string | null
+          on_reply_config?: Json | null
           steps?: Json
           title?: string
           updated_at?: string | null
