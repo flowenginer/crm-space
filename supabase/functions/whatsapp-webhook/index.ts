@@ -27,6 +27,11 @@ interface ReferralData {
   showAdAttribution?: boolean;
   adName?: string;          // Nome do anúncio
   campaignName?: string;    // Nome da campanha
+  // Campos UAZAPI para Meta Ads
+  sourceApp?: string;           // "instagram" | "facebook"
+  conversionSource?: string;    // "FB_Ads"
+  ctwaPayload?: string;         // Payload completo base64
+  greetingMessageBody?: string; // Mensagem de saudação do anúncio
 }
 
 interface NormalizedMessage {
@@ -2673,7 +2678,9 @@ function extractInstanceId(provider: WhatsAppProvider, payload: any): string {
     case "zapi":
       return payload.instanceId || "";
     case "uazapi":
-      return payload.instance || payload.session || payload.instanceId || "";
+      // UAZAPI usa body.instanceName (nome da instância, não ID)
+      // Também pode ter EventType no body
+      return payload.body?.instanceName || payload.instance || payload.session || payload.instanceId || "";
     case "evolution":
       return payload.instance || "";
     default:
@@ -2692,7 +2699,14 @@ function isMessageEvent(provider: WhatsAppProvider, payload: any): boolean {
       isMsg = !!(payload.phone && payload.text) || !!(payload.phone && (payload.image || payload.audio || payload.video || payload.document));
       break;
     case "uazapi":
-      isMsg = normalizedEvent === "message" || normalizedEvent === "messages.upsert" || !!payload.message;
+      // UAZAPI novo formato: body.EventType === "messages" com body.message
+      const uazapiEventType = (payload.body?.EventType || "").toLowerCase();
+      if (uazapiEventType === "messages" && payload.body?.message) {
+        isMsg = true;
+      } else {
+        // Fallback para formato antigo
+        isMsg = normalizedEvent === "message" || normalizedEvent === "messages.upsert" || !!payload.message;
+      }
       break;
     case "evolution":
       isMsg = normalizedEvent === "messages.upsert" || normalizedEvent === "send.message";
@@ -2703,7 +2717,7 @@ function isMessageEvent(provider: WhatsAppProvider, payload: any): boolean {
   
   // DEBUG: Log detalhado para diagnóstico
   if (!isMsg) {
-    console.log(`[Webhook DEBUG] Event NOT processed as message - Provider: ${provider}, RawEvent: "${event}", NormalizedEvent: "${normalizedEvent}", IsMessageEvent: false`);
+    console.log(`[Webhook DEBUG] Event NOT processed as message - Provider: ${provider}, RawEvent: "${event}", NormalizedEvent: "${normalizedEvent}", UAZAPIEventType: "${payload.body?.EventType || 'N/A'}", IsMessageEvent: false`);
   }
   
   return isMsg;
@@ -2793,27 +2807,278 @@ function extractZAPIContent(payload: any, type: MessageType): string {
   }
 }
 
+// =====================================================
+// UAZAPI NORMALIZATION - FORMATO NOVO (body.EventType = "messages")
+// =====================================================
+
+/**
+ * Extrai dados de referral/Meta Ads do formato UAZAPI
+ * O UAZAPI fornece dados muito mais completos que o Evolution:
+ * - sourceApp: "instagram" | "facebook"
+ * - conversionSource: "FB_Ads"
+ * - ctwaPayload: Payload completo base64
+ * - greetingMessageBody: Mensagem de saudação do anúncio
+ */
+function extractReferralDataUAZAPI(message: any): ReferralData | null {
+  const content = message?.content;
+  const contextInfo = content?.contextInfo;
+  
+  if (!contextInfo) return null;
+  
+  // Verificar se é de Meta Ads
+  const isFromAds = 
+    contextInfo.conversionSource === 'FB_Ads' ||
+    contextInfo.externalAdReply?.showAdAttribution ||
+    contextInfo.entryPointConversionSource === 'ctwa_ad' ||
+    contextInfo.externalAdReply?.sourceType === 'ad';
+  
+  if (!isFromAds) return null;
+  
+  const externalAd = contextInfo.externalAdReply || {};
+  
+  const referralData: ReferralData = {
+    ctwaClid: externalAd.ctwaClid,
+    sourceId: externalAd.sourceID,
+    sourceType: externalAd.sourceType || 'ad',
+    sourceUrl: externalAd.sourceURL,
+    headline: externalAd.title,
+    body: externalAd.greetingMessageBody,
+    thumbnailUrl: externalAd.thumbnailURL,
+    imageUrl: externalAd.originalImageURL || externalAd.thumbnailURL,
+    videoUrl: externalAd.mediaURL,
+    showAdAttribution: externalAd.showAdAttribution,
+    // Campos UAZAPI específicos:
+    sourceApp: externalAd.sourceApp, // "instagram" ou "facebook"
+    conversionSource: contextInfo.conversionSource, // "FB_Ads"
+    ctwaPayload: contextInfo.ctwaPayload, // Payload completo base64
+    greetingMessageBody: externalAd.greetingMessageBody,
+  };
+  
+  // Limpar campos undefined
+  Object.keys(referralData).forEach(key => {
+    if (referralData[key as keyof ReferralData] === undefined) {
+      delete referralData[key as keyof ReferralData];
+    }
+  });
+  
+  if (Object.keys(referralData).length === 0) {
+    return null;
+  }
+  
+  console.log(`[Webhook UAZAPI] 📣 REFERRAL DATA EXTRACTED (Meta Ads):`, JSON.stringify(referralData));
+  
+  return referralData;
+}
+
+/**
+ * Detecta tipo de mensagem no formato UAZAPI
+ */
+function detectUAZAPIMessageTypeNew(msg: any): MessageType {
+  const type = (msg.type || msg.messageType || "").toLowerCase();
+  
+  switch (type) {
+    case "text":
+    case "extendedtextmessage":
+    case "chat":
+      return "text";
+    case "image":
+    case "imagemessage":
+      return "image";
+    case "audio":
+    case "ptt":
+    case "audiomessage":
+      return "audio";
+    case "video":
+    case "videomessage":
+      return "video";
+    case "document":
+    case "documentmessage":
+      return "document";
+    case "sticker":
+    case "stickermessage":
+      return "sticker";
+    case "location":
+    case "locationmessage":
+      return "location";
+    case "vcard":
+    case "contact":
+    case "contactmessage":
+      return "contact";
+    default:
+      // Fallback: verificar se tem texto
+      if (msg.text || msg.content?.text) return "text";
+      return "text";
+  }
+}
+
+/**
+ * Extrai conteúdo de mensagem UAZAPI (novo formato)
+ */
+function extractUAZAPIContentNew(msg: any, type: MessageType): string {
+  switch (type) {
+    case "text": 
+      return msg.text || msg.content?.text || msg.body || "";
+    case "image": 
+      return msg.content?.caption || msg.caption || "[Imagem]";
+    case "audio": 
+      return "[Áudio]";
+    case "video": 
+      return msg.content?.caption || msg.caption || "[Vídeo]";
+    case "document": 
+      return msg.fileName || msg.title || "[Documento]";
+    case "sticker": 
+      return "[Sticker]";
+    case "location": 
+      return "[Localização]";
+    case "contact": 
+      return "[Contato]";
+    default: 
+      return "";
+  }
+}
+
+/**
+ * Extrai URL de mídia do UAZAPI
+ */
+function extractUAZAPIMediaUrl(msg: any): string | undefined {
+  return msg.mediaUrl || msg.media?.url || msg.content?.mediaUrl || undefined;
+}
+
+/**
+ * Normaliza mensagem do UAZAPI - NOVO FORMATO
+ * 
+ * Estrutura esperada:
+ * {
+ *   body: {
+ *     EventType: "messages",
+ *     instanceName: "Vendas 07",
+ *     message: { ... },
+ *     chat: { ... }
+ *   }
+ * }
+ */
 function normalizeUAZAPIMessage(payload: any): NormalizedMessage | null {
+  // Verificar se é o novo formato UAZAPI (body.EventType)
+  if (payload.body?.EventType === "messages" && payload.body?.message) {
+    return normalizeUAZAPIMessageNew(payload);
+  }
+  
+  // Fallback para formato legado
+  return normalizeUAZAPIMessageLegacy(payload);
+}
+
+/**
+ * Normaliza mensagem UAZAPI - NOVO FORMATO (body.EventType = "messages")
+ */
+function normalizeUAZAPIMessageNew(payload: any): NormalizedMessage | null {
+  const body = payload.body;
+  if (!body || body.EventType !== "messages") return null;
+  
+  const message = body.message;
+  const chat = body.chat;
+  
+  if (!message) return null;
+  
+  console.log(`[Webhook UAZAPI] Processing NEW format message - instanceName: ${body.instanceName}`);
+  
+  // =====================================================
+  // RESOLUÇÃO LID: UAZAPI fornece sender_pn separado!
+  // =====================================================
+  let from = "";
+  
+  // Prioridade 1: sender_pn (número real)
+  if (message.sender_pn) {
+    from = message.sender_pn
+      .replace("@s.whatsapp.net", "")
+      .replace("@c.us", "")
+      .replace(/\D/g, "");
+    console.log(`[Webhook UAZAPI] Using sender_pn: ${from}`);
+  }
+  // Prioridade 2: chat.phone
+  else if (chat?.phone) {
+    from = chat.phone.replace(/\D/g, "");
+    console.log(`[Webhook UAZAPI] Using chat.phone: ${from}`);
+  }
+  // Prioridade 3: chatid
+  else if (message.chatid) {
+    from = message.chatid
+      .replace("@s.whatsapp.net", "")
+      .replace("@c.us", "")
+      .replace(/\D/g, "");
+    console.log(`[Webhook UAZAPI] Using chatid: ${from}`);
+  }
+  
+  // Validar telefone brasileiro
+  if (!isValidBrazilianPhone(from)) {
+    console.log(`[Webhook UAZAPI] ⚠️ REJECTING message - Invalid phone (LID?): ${from}, sender_pn: ${message.sender_pn || 'N/A'}, chat.phone: ${chat?.phone || 'N/A'}`);
+    return null;
+  }
+  
+  // Ignorar grupos
+  if (message.isGroup || chat?.wa_isGroup) {
+    console.log(`[Webhook UAZAPI] Ignoring group message`);
+    return null;
+  }
+  
+  // Detectar tipo de mensagem
+  const messageType = detectUAZAPIMessageTypeNew(message);
+  
+  // Extrair referral data (Meta Ads) - apenas para mensagens recebidas (não fromMe)
+  const referralData = !message.fromMe 
+    ? extractReferralDataUAZAPI(message) 
+    : null;
+  
+  // Timestamp: UAZAPI usa milissegundos
+  const timestamp = message.messageTimestamp 
+    ? new Date(message.messageTimestamp)
+    : new Date();
+  
+  console.log(`[Webhook UAZAPI] ✅ Normalized - Type: ${messageType}, From: ${from}, FromMe: ${message.fromMe}, HasReferral: ${!!referralData}`);
+  
+  return {
+    id: `uazapi_${message.messageid}`,
+    provider: "uazapi",
+    instanceId: body.instanceName || "",
+    from,
+    fromName: message.senderName || chat?.wa_name || "",
+    isFromMe: message.fromMe || false,
+    type: messageType,
+    content: extractUAZAPIContentNew(message, messageType),
+    mediaUrl: extractUAZAPIMediaUrl(message),
+    mediaMimeType: message.mediaType || undefined,
+    caption: message.content?.caption,
+    timestamp,
+    quotedMessageId: message.quoted || message.content?.contextInfo?.stanzaId,
+    status: "delivered",
+    originalId: message.messageid,
+    referralData: referralData || undefined,
+  };
+}
+
+/**
+ * Normaliza mensagem UAZAPI - FORMATO LEGADO (para retrocompatibilidade)
+ */
+function normalizeUAZAPIMessageLegacy(payload: any): NormalizedMessage | null {
   const msg = payload.data || payload.message || payload;
   if (!msg) return null;
 
   let rawFrom = msg.from || msg.remoteJid || msg.phone || "";
   
   if (rawFrom.includes("@g.us")) {
-    console.log(`[Webhook UAZAPI] Ignoring group message from: ${rawFrom}`);
+    console.log(`[Webhook UAZAPI Legacy] Ignoring group message from: ${rawFrom}`);
     return null;
   }
   
   let from = rawFrom.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
   
   if (from.startsWith("120363")) {
-    console.log(`[Webhook UAZAPI] Ignoring group message from ID: ${from}`);
+    console.log(`[Webhook UAZAPI Legacy] Ignoring group message from ID: ${from}`);
     return null;
   }
   
   // Validate Brazilian phone to prevent LID contacts
   if (!isValidBrazilianPhone(from)) {
-    console.log(`[Webhook UAZAPI] ⚠️ REJECTING message - Invalid phone (LID?): ${from}`);
+    console.log(`[Webhook UAZAPI Legacy] ⚠️ REJECTING message - Invalid phone (LID?): ${from}`);
     return null;
   }
 
