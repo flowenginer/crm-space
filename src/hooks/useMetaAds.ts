@@ -64,6 +64,7 @@ export interface CampaignWithInsights extends MetaCampaign {
   };
   ctwLeads?: number;
   realCpl?: number | null;
+  conversationsStarted?: number;
 }
 
 export interface AggregatedInsights {
@@ -77,6 +78,7 @@ export interface AggregatedInsights {
   avgCpm: number;
   ctwLeads: number;
   realCpl: number | null;
+  conversationsStarted: number;
 }
 
 export function useMetaAccounts() {
@@ -185,7 +187,8 @@ export function useMetaAccountInsights(accountId: string | null, dateFrom?: stri
         avgCpc: 0,
         avgCpm: 0,
         ctwLeads: 0,
-        realCpl: null
+        realCpl: null,
+        conversationsStarted: 0
       };
 
       if (insights && insights.length > 0) {
@@ -216,7 +219,7 @@ export function useMetaAccountInsights(accountId: string | null, dateFrom?: stri
         leadsQuery = leadsQuery.gte('created_at', dateFrom);
       }
       if (dateTo) {
-        leadsQuery = leadsQuery.lte('created_at', dateTo);
+        leadsQuery = leadsQuery.lte('created_at', dateTo + 'T23:59:59');
       }
 
       const { count: ctwLeads } = await leadsQuery;
@@ -225,6 +228,22 @@ export function useMetaAccountInsights(accountId: string | null, dateFrom?: stri
       if (aggregated.ctwLeads > 0 && aggregated.totalSpend > 0) {
         aggregated.realCpl = aggregated.totalSpend / aggregated.ctwLeads;
       }
+
+      // Get conversations started from meta_ads origin
+      let conversationsQuery = supabase
+        .from('conversations')
+        .select('id', { count: 'exact' })
+        .eq('referral_source', 'meta_ads');
+
+      if (dateFrom) {
+        conversationsQuery = conversationsQuery.gte('created_at', dateFrom);
+      }
+      if (dateTo) {
+        conversationsQuery = conversationsQuery.lte('created_at', dateTo + 'T23:59:59');
+      }
+
+      const { count: conversationsStarted } = await conversationsQuery;
+      aggregated.conversationsStarted = conversationsStarted || 0;
 
       return aggregated;
     },
@@ -265,10 +284,34 @@ export function useCampaignsWithInsights(accountId: string | null, dateFrom?: st
       const { data: allInsights } = await insightsQuery;
 
       // Get CTWA leads per campaign from referral_data
-      const { data: leadsData } = await supabase
+      let leadsDataQuery = supabase
         .from('contacts')
-        .select('referral_data')
+        .select('referral_data, created_at')
         .eq('origin', 'meta_ads');
+
+      if (dateFrom) {
+        leadsDataQuery = leadsDataQuery.gte('created_at', dateFrom);
+      }
+      if (dateTo) {
+        leadsDataQuery = leadsDataQuery.lte('created_at', dateTo + 'T23:59:59');
+      }
+
+      const { data: leadsData } = await leadsDataQuery;
+
+      // Get conversations per campaign
+      let conversationsDataQuery = supabase
+        .from('conversations')
+        .select('referral_data, created_at')
+        .eq('referral_source', 'meta_ads');
+
+      if (dateFrom) {
+        conversationsDataQuery = conversationsDataQuery.gte('created_at', dateFrom);
+      }
+      if (dateTo) {
+        conversationsDataQuery = conversationsDataQuery.lte('created_at', dateTo + 'T23:59:59');
+      }
+
+      const { data: conversationsData } = await conversationsDataQuery;
 
       // Map leads to campaigns
       const leadsPerCampaign: Record<string, number> = {};
@@ -277,6 +320,17 @@ export function useCampaignsWithInsights(accountId: string | null, dateFrom?: st
           const refData = contact.referral_data as any;
           if (refData?.sourceId) {
             leadsPerCampaign[refData.sourceId] = (leadsPerCampaign[refData.sourceId] || 0) + 1;
+          }
+        });
+      }
+
+      // Map conversations to campaigns
+      const conversationsPerCampaign: Record<string, number> = {};
+      if (conversationsData) {
+        conversationsData.forEach(conv => {
+          const refData = conv.referral_data as any;
+          if (refData?.sourceId) {
+            conversationsPerCampaign[refData.sourceId] = (conversationsPerCampaign[refData.sourceId] || 0) + 1;
           }
         });
       }
@@ -315,13 +369,15 @@ export function useCampaignsWithInsights(accountId: string | null, dateFrom?: st
         }
 
         const ctwLeads = leadsPerCampaign[campaign.campaign_id] || 0;
+        const conversationsStarted = conversationsPerCampaign[campaign.campaign_id] || 0;
         const realCpl = ctwLeads > 0 && aggregated.spend > 0 ? aggregated.spend / ctwLeads : null;
 
         return {
           ...campaign,
           insights: aggregated,
           ctwLeads,
-          realCpl
+          realCpl,
+          conversationsStarted
         };
       });
 
