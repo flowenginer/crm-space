@@ -87,10 +87,35 @@ Deno.serve(async (req) => {
         }
 
         // Send each media type SEPARATELY: text, audio, attachment
+        // Using INSERT FIRST pattern to prevent race condition with webhook
         console.log(`[process-rescue-messages] Processing message for ${contact.phone}...`)
         
-        // Helper function to send and insert message
-        const sendAndInsert = async (type: string, content: string, mediaUrl: string | null) => {
+        // Helper function: INSERT first (pending) -> SEND to WhatsApp -> UPDATE with messageId
+        const sendWithInsertFirst = async (type: string, content: string, mediaUrl: string | null) => {
+          // 1. INSERT message first with status 'pending' (no whatsapp_message_id yet)
+          const { data: insertedMsg, error: insertError } = await supabase
+            .from('messages')
+            .insert({
+              conversation_id: msg.rescue.conversation_id,
+              contact_id: msg.rescue.contact_id,
+              content: content,
+              is_from_me: true,
+              message_type: type,
+              media_url: mediaUrl,
+              status: 'pending',
+              whatsapp_message_id: null,
+            })
+            .select('id')
+            .single()
+
+          if (insertError) {
+            console.error(`[process-rescue-messages] Error inserting ${type} message:`, insertError)
+            throw new Error(`Failed to insert ${type} message`)
+          }
+
+          console.log(`[process-rescue-messages] Inserted pending ${type} message:`, insertedMsg.id)
+
+          // 2. SEND to WhatsApp
           const sendResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
             method: 'POST',
             headers: {
@@ -111,41 +136,46 @@ Deno.serve(async (req) => {
           
           if (!sendResponse.ok || sendResult.error) {
             console.error(`[process-rescue-messages] Error sending ${type}:`, sendResult)
+            // Rollback: delete the pending message
+            await supabase.from('messages').delete().eq('id', insertedMsg.id)
             throw new Error(`Failed to send ${type}`)
           }
 
           console.log(`[process-rescue-messages] ${type} sent:`, sendResult)
 
-          // Insert message into messages table
-          await supabase.from('messages').insert({
-            conversation_id: msg.rescue.conversation_id,
-            contact_id: msg.rescue.contact_id,
-            content: content,
-            is_from_me: true,
-            message_type: type,
-            media_url: mediaUrl,
-            status: 'sent',
-            whatsapp_message_id: sendResult?.messageId,
-          })
+          // 3. UPDATE message with whatsapp_message_id and status 'sent'
+          const { error: updateError } = await supabase
+            .from('messages')
+            .update({
+              whatsapp_message_id: sendResult?.messageId,
+              status: 'sent',
+            })
+            .eq('id', insertedMsg.id)
+
+          if (updateError) {
+            console.error(`[process-rescue-messages] Error updating ${type} message:`, updateError)
+          }
+
+          console.log(`[process-rescue-messages] ${type} message updated with whatsapp_message_id`)
         }
 
         // 1. Send TEXT message first (if exists)
         if (msg.content?.trim()) {
           console.log('[process-rescue-messages] Sending text...')
-          await sendAndInsert('text', msg.content, null)
+          await sendWithInsertFirst('text', msg.content, null)
         }
         
         // 2. Send AUDIO (if exists)
         if (msg.audio_url) {
           console.log('[process-rescue-messages] Sending audio...')
-          await sendAndInsert('audio', '', msg.audio_url)
+          await sendWithInsertFirst('audio', '', msg.audio_url)
         }
         
         // 3. Send ATTACHMENT (if exists)
         if (msg.attachment_url) {
           console.log('[process-rescue-messages] Sending attachment...')
           const attachmentType = msg.attachment_type || 'document'
-          await sendAndInsert(attachmentType, '', msg.attachment_url)
+          await sendWithInsertFirst(attachmentType, '', msg.attachment_url)
         }
 
         // Mark scheduled message as sent

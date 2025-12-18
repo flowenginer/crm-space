@@ -183,98 +183,91 @@ export function useActivateRescue() {
         console.log('[useActivateRescue] Sending first message immediately...');
         
         try {
-          const sendPromises: Promise<any>[] = [];
-          const insertPromises: Promise<any>[] = [];
-          
+          // Helper to: INSERT first (pending) -> SEND to WhatsApp -> UPDATE with messageId
+          // This prevents race condition with webhook creating duplicates
+          const sendMessageWithInsertFirst = async (
+            type: string,
+            content: string,
+            mediaUrl: string | null
+          ) => {
+            // 1. INSERT message first with status 'pending' (no whatsapp_message_id yet)
+            const { data: insertedMsg, error: insertError } = await supabase
+              .from('messages')
+              .insert({
+                conversation_id: conversationId,
+                contact_id: contactId,
+                content: content,
+                is_from_me: true,
+                message_type: type,
+                media_url: mediaUrl,
+                status: 'pending',
+                whatsapp_message_id: null,
+              })
+              .select('id')
+              .single();
+
+            if (insertError) {
+              console.error(`[useActivateRescue] Error inserting ${type} message:`, insertError);
+              throw insertError;
+            }
+
+            console.log(`[useActivateRescue] Inserted pending ${type} message:`, insertedMsg.id);
+
+            // 2. SEND to WhatsApp
+            const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+              body: {
+                action: 'send',
+                channelId,
+                phone,
+                content: content,
+                type: type,
+                mediaUrl: mediaUrl,
+              },
+            });
+
+            if (error) {
+              // Rollback: delete the pending message
+              await supabase.from('messages').delete().eq('id', insertedMsg.id);
+              throw error;
+            }
+
+            // 3. UPDATE message with whatsapp_message_id and status 'sent'
+            const { error: updateError } = await supabase
+              .from('messages')
+              .update({
+                whatsapp_message_id: data?.messageId,
+                status: 'sent',
+              })
+              .eq('id', insertedMsg.id);
+
+            if (updateError) {
+              console.error(`[useActivateRescue] Error updating ${type} message:`, updateError);
+            }
+
+            console.log(`[useActivateRescue] ${type} message sent and updated:`, data?.messageId);
+            return data;
+          };
+
+          // Send messages SEQUENTIALLY to maintain order, each with insert-first pattern
           // 1. Send TEXT message first (if exists)
           if (firstStep.message?.trim()) {
             console.log('[useActivateRescue] Sending text message...');
-            sendPromises.push(
-              supabase.functions.invoke('whatsapp-instance', {
-                body: {
-                  action: 'send',
-                  channelId,
-                  phone,
-                  content: firstStep.message,
-                  type: 'text',
-                },
-              }).then(({ data, error }) => {
-                if (error) throw error;
-                // Insert text message record
-                return supabase.from('messages').insert({
-                  conversation_id: conversationId,
-                  contact_id: contactId,
-                  content: firstStep.message,
-                  is_from_me: true,
-                  message_type: 'text',
-                  status: 'sent',
-                  whatsapp_message_id: data?.messageId,
-                });
-              })
-            );
+            await sendMessageWithInsertFirst('text', firstStep.message, null);
           }
           
           // 2. Send AUDIO (if exists)
           if (firstStep.audio_url) {
             console.log('[useActivateRescue] Sending audio message...');
-            sendPromises.push(
-              supabase.functions.invoke('whatsapp-instance', {
-                body: {
-                  action: 'send',
-                  channelId,
-                  phone,
-                  content: '',
-                  type: 'audio',
-                  mediaUrl: firstStep.audio_url,
-                },
-              }).then(({ data, error }) => {
-                if (error) throw error;
-                return supabase.from('messages').insert({
-                  conversation_id: conversationId,
-                  contact_id: contactId,
-                  content: '',
-                  is_from_me: true,
-                  message_type: 'audio',
-                  media_url: firstStep.audio_url,
-                  status: 'sent',
-                  whatsapp_message_id: data?.messageId,
-                });
-              })
-            );
+            await sendMessageWithInsertFirst('audio', '', firstStep.audio_url);
           }
           
           // 3. Send ATTACHMENT (if exists)
           if (firstStep.attachment_url) {
             console.log('[useActivateRescue] Sending attachment message...');
             const attachmentType = firstStep.attachment_type || 'document';
-            sendPromises.push(
-              supabase.functions.invoke('whatsapp-instance', {
-                body: {
-                  action: 'send',
-                  channelId,
-                  phone,
-                  content: '',
-                  type: attachmentType,
-                  mediaUrl: firstStep.attachment_url,
-                },
-              }).then(({ data, error }) => {
-                if (error) throw error;
-                return supabase.from('messages').insert({
-                  conversation_id: conversationId,
-                  contact_id: contactId,
-                  content: '',
-                  is_from_me: true,
-                  message_type: attachmentType,
-                  media_url: firstStep.attachment_url,
-                  status: 'sent',
-                  whatsapp_message_id: data?.messageId,
-                });
-              })
-            );
+            await sendMessageWithInsertFirst(attachmentType, '', firstStep.attachment_url);
           }
           
-          // Execute all sends in parallel for speed
-          await Promise.all(sendPromises);
           console.log('[useActivateRescue] All messages sent successfully');
             
         } catch (err) {
