@@ -3,10 +3,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { MessageSquare, Send, Loader2, Phone, User, Smartphone, ShieldAlert, UserPlus } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { MessageSquare, Send, Loader2, Phone, User, Smartphone, ShieldAlert, UserPlus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatBrazilianPhone, normalizePhoneForStorage, getPhoneSearchVariations, isValidBrazilianPhone, extractLast8Digits } from '@/utils/phone';
+import { formatBrazilianPhone, normalizePhoneForStorage, isValidBrazilianPhone, extractLast8Digits } from '@/utils/phone';
+import { formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { ContactRequestModal } from './ContactRequestModal';
@@ -22,6 +25,16 @@ interface BlockedContactInfo {
   conversationId?: string | null;
 }
 
+interface OpenConversation {
+  id: string;
+  assigned_to: string | null;
+  department_id: string | null;
+  channel_id: string | null;
+  last_message_at: string | null;
+  last_message_preview: string | null;
+  channel: { id: string; name: string; phone: string } | null;
+}
+
 export function StartConversation({ onConversationCreated }: StartConversationProps) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -31,6 +44,12 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
   const [pendingContact, setPendingContact] = useState<any>(null);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [blockedContactInfo, setBlockedContactInfo] = useState<BlockedContactInfo | null>(null);
+  
+  // New states for improved flow
+  const [showCreateContactModal, setShowCreateContactModal] = useState(false);
+  const [showMultipleConversationsModal, setShowMultipleConversationsModal] = useState(false);
+  const [openConversations, setOpenConversations] = useState<OpenConversation[]>([]);
+  const [newContactName, setNewContactName] = useState('');
   
   const queryClient = useQueryClient();
   const { can } = usePermissions();
@@ -122,81 +141,6 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
     return { canAccess: true };
   };
 
-  // Check if user can access a conversation
-  const checkConversationAccess = async (conversationId: string): Promise<{ 
-    canAccess: boolean; 
-    ownerName?: string;
-    ownerId?: string;
-    ownerAvatar?: string | null;
-  }> => {
-    // Admin/supervisor can access all
-    if (can.viewAllConversations()) {
-      return { canAccess: true };
-    }
-
-    // Check if conversation is assigned to current user or unassigned in their department
-    const { data: conv } = await supabase
-      .from('conversations')
-      .select('assigned_to, department_id')
-      .eq('id', conversationId)
-      .single();
-
-    if (!conv) {
-      return { canAccess: false };
-    }
-
-    // User is the owner
-    if (conv.assigned_to === user?.id) {
-      return { canAccess: true };
-    }
-
-    // EXCEÇÃO: Verificar se a conversa foi compartilhada COM o usuário
-    const { data: sharedWithMe } = await supabase
-      .from('shared_conversations')
-      .select('id')
-      .eq('conversation_id', conversationId)
-      .eq('shared_with', user?.id!)
-      .maybeSingle();
-
-    if (sharedWithMe) {
-      return { canAccess: true };
-    }
-
-    // Conversation is unassigned - check department using user_departments
-    if (!conv.assigned_to) {
-      // Get user's departments from user_departments table
-      const { data: userDepartments } = await supabase
-        .from('user_departments')
-        .select('department_id')
-        .eq('user_id', user?.id!);
-
-      const userDeptIds = userDepartments?.map(d => d.department_id) || [];
-
-      // If conversation has no department or user belongs to that department
-      if (!conv.department_id || userDeptIds.includes(conv.department_id)) {
-        return { canAccess: true };
-      }
-    }
-
-    // Get owner info for the request modal
-    if (conv.assigned_to) {
-      const { data: ownerProfile } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .eq('id', conv.assigned_to)
-        .single();
-      
-      return { 
-        canAccess: false, 
-        ownerName: ownerProfile?.full_name || 'outro atendente',
-        ownerId: ownerProfile?.id,
-        ownerAvatar: ownerProfile?.avatar_url
-      };
-    }
-
-    return { canAccess: false, ownerName: 'outro departamento' };
-  };
-
   // Search for existing contact and conversation
   const searchContact = async () => {
     if (!isValidPhone()) {
@@ -228,7 +172,6 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
         if (!contactAccessResult.canAccess) {
           // Contact belongs to another user - show request modal immediately
-          // Find the most recent conversation for context
           const { data: anyConv } = await supabase
             .from('conversations')
             .select('id')
@@ -251,126 +194,33 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           return;
         }
 
-        // User CAN access this contact - now check for existing conversations
-        const { data: openConv } = await supabase
+        // User CAN access this contact - now check for ALL existing open conversations
+        const { data: openConvs } = await supabase
           .from('conversations')
-          .select('id, assigned_to, department_id')
+          .select(`
+            id, 
+            assigned_to, 
+            department_id, 
+            channel_id,
+            last_message_at,
+            last_message_preview,
+            channel:whatsapp_channels(id, name, phone)
+          `)
           .eq('contact_id', contact.id)
           .in('status', ['open', 'pending'])
-          .order('last_message_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .order('last_message_at', { ascending: false });
 
         // Get current user for assignment
         const { data: { user: currentUser } } = await supabase.auth.getUser();
         const sellerDepartmentId = currentUser?.id ? await getUserPrimaryDepartment(currentUser.id) : null;
 
-        if (openConv) {
-          // *** CRITICAL: Se conversa não tem owner, atribuir ao vendedor atual ***
-          if (!openConv.assigned_to && currentUser?.id) {
-            await supabase
-              .from('conversations')
-              .update({ 
-                assigned_to: currentUser.id,
-                department_id: sellerDepartmentId,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', openConv.id);
-
-            // Atualizar contato também se não tiver owner
-            await supabase
-              .from('contacts')
-              .update({ 
-                assigned_to: currentUser.id,
-                department_id: sellerDepartmentId,
-              })
-              .eq('id', contact.id)
-              .is('assigned_to', null);
-
-            queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
-            queryClient.invalidateQueries({ queryKey: ['contacts'] });
-            toast.success('Conversa atribuída a você');
-          } else {
-            toast.info('Conversa existente encontrada');
-          }
-          
-          if (onConversationCreated) {
-            onConversationCreated(openConv.id);
-          }
-          setPhoneNumber('');
-          return;
-        }
-
-        // Check for any conversation (including closed) and reopen it
-        const { data: closedConv } = await supabase
-          .from('conversations')
-          .select('id, status, assigned_to')
-          .eq('contact_id', contact.id)
-          .order('last_message_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (closedConv) {
-          // Reopen the conversation if it was closed
-          if (closedConv.status === 'closed') {
-            // Get previous close data for history
-            const { data: convData } = await supabase
-              .from('conversations')
-              .select('close_reason, closed_at, closed_by, reopen_count')
-              .eq('id', closedConv.id)
-              .single();
+        if (openConvs && openConvs.length > 0) {
+          if (openConvs.length === 1) {
+            // Only ONE open conversation - open it directly
+            const openConv = openConvs[0];
             
-            const previousCloseReason = convData?.close_reason;
-            const previousClosedAt = convData?.closed_at;
-            const previousClosedBy = convData?.closed_by;
-            const currentReopenCount = convData?.reopen_count || 0;
-            
-            // Update conversation for reopen - *** CRITICAL: Atribuir ao vendedor ***
-            await supabase
-              .from('conversations')
-              .update({ 
-                status: 'open', 
-                assigned_to: currentUser?.id,           // *** Atribuir ao vendedor ***
-                department_id: sellerDepartmentId,      // *** Atribuir departamento ***
-                reopened_at: new Date().toISOString(),
-                reopen_count: currentReopenCount + 1,
-                previous_close_reason: previousCloseReason,
-                previous_closed_at: previousClosedAt,
-                previous_closed_by: previousClosedBy,
-                closed_at: null, 
-                closed_by: null,
-                close_reason: null,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', closedConv.id);
-
-            // Atualizar contato também se não tiver owner
-            await supabase
-              .from('contacts')
-              .update({ 
-                assigned_to: currentUser?.id,
-                department_id: sellerDepartmentId,
-              })
-              .eq('id', contact.id)
-              .is('assigned_to', null);
-            
-            // Register reopen event
-            await supabase.from('conversation_events').insert({
-              conversation_id: closedConv.id,
-              event_type: 'reopen',
-              actor_id: user?.id || null,
-              data: {
-                previous_close_reason: previousCloseReason,
-                previous_closed_at: previousClosedAt,
-                trigger: 'manual',
-              },
-            });
-
-            queryClient.invalidateQueries({ queryKey: ['contacts'] });
-            toast.success('Conversa reaberta e atribuída a você');
-          } else {
-            // Conversa já está aberta - verificar se precisa atribuir
-            if (!closedConv.assigned_to && currentUser?.id) {
+            // If conversation has no owner, assign to current user
+            if (!openConv.assigned_to && currentUser?.id) {
               await supabase
                 .from('conversations')
                 .update({ 
@@ -378,8 +228,9 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
                   department_id: sellerDepartmentId,
                   updated_at: new Date().toISOString()
                 })
-                .eq('id', closedConv.id);
+                .eq('id', openConv.id);
 
+              // Update contact too if no owner
               await supabase
                 .from('contacts')
                 .update({ 
@@ -389,17 +240,86 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
                 .eq('id', contact.id)
                 .is('assigned_to', null);
 
+              queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
               queryClient.invalidateQueries({ queryKey: ['contacts'] });
               toast.success('Conversa atribuída a você');
             } else {
               toast.info('Conversa existente encontrada');
             }
+            
+            if (onConversationCreated) {
+              onConversationCreated(openConv.id);
+            }
+            setPhoneNumber('');
+            return;
+          } else {
+            // MULTIPLE open conversations - show selection modal
+            setOpenConversations(openConvs as OpenConversation[]);
+            setSearchResult(contact);
+            setShowMultipleConversationsModal(true);
+            toast.info(`${openConvs.length} conversas abertas encontradas`);
+            return;
           }
+        }
+
+        // No open conversations - check for closed ones to reopen
+        const { data: closedConv } = await supabase
+          .from('conversations')
+          .select('id, status, assigned_to, close_reason, closed_at, closed_by, reopen_count')
+          .eq('contact_id', contact.id)
+          .eq('status', 'closed')
+          .order('last_message_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (closedConv) {
+          // Reopen the conversation
+          await supabase
+            .from('conversations')
+            .update({ 
+              status: 'open', 
+              assigned_to: currentUser?.id,
+              department_id: sellerDepartmentId,
+              reopened_at: new Date().toISOString(),
+              reopen_count: (closedConv.reopen_count || 0) + 1,
+              previous_close_reason: closedConv.close_reason,
+              previous_closed_at: closedConv.closed_at,
+              previous_closed_by: closedConv.closed_by,
+              closed_at: null, 
+              closed_by: null,
+              close_reason: null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', closedConv.id);
+
+          // Update contact too if no owner
+          await supabase
+            .from('contacts')
+            .update({ 
+              assigned_to: currentUser?.id,
+              department_id: sellerDepartmentId,
+            })
+            .eq('id', contact.id)
+            .is('assigned_to', null);
           
-          // Invalidate correct query keys used by usePaginatedConversations
+          // Register reopen event
+          await supabase.from('conversation_events').insert({
+            conversation_id: closedConv.id,
+            event_type: 'reopen',
+            actor_id: user?.id || null,
+            data: {
+              previous_close_reason: closedConv.close_reason,
+              previous_closed_at: closedConv.closed_at,
+              trigger: 'manual',
+            },
+          });
+
           queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
           queryClient.invalidateQueries({ queryKey: ['conversations-counts'] });
+          queryClient.invalidateQueries({ queryKey: ['contacts'] });
           queryClient.invalidateQueries({ queryKey: ['conversation-events', closedConv.id] });
+          
+          toast.success('Conversa reaberta e atribuída a você');
           
           if (onConversationCreated) {
             onConversationCreated(closedConv.id);
@@ -410,15 +330,85 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
 
         // Contact exists but no conversation - show channel selector
         setSearchResult(contact);
+        setPendingContact(contact);
         setShowSearchResult(true);
       } else {
-        // No contact found - show channel selector to create both
+        // *** NO CONTACT FOUND - Show create contact modal ***
         setPendingContact({ phone: normalizedPhone });
-        setShowChannelSelector(true);
+        setNewContactName('');
+        setShowCreateContactModal(true);
       }
     } catch (error) {
       console.error(error);
       toast.error('Erro ao buscar contato');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle creating contact and showing channel selector
+  const handleCreateContactAndShowChannels = () => {
+    if (!newContactName.trim()) {
+      toast.error('Nome é obrigatório');
+      return;
+    }
+    
+    // Save the name along with the phone
+    setPendingContact({
+      phone: pendingContact?.phone,
+      full_name: newContactName.trim()
+    });
+    
+    setShowCreateContactModal(false);
+    setShowChannelSelector(true);
+  };
+
+  // Handle selecting a conversation from multiple open ones
+  const handleSelectConversation = async (conv: OpenConversation) => {
+    setIsLoading(true);
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      
+      // Assign to user if no owner
+      if (!conv.assigned_to && currentUser?.id) {
+        const departmentId = await getUserPrimaryDepartment(currentUser.id);
+        await supabase
+          .from('conversations')
+          .update({ 
+            assigned_to: currentUser.id,
+            department_id: departmentId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', conv.id);
+        
+        // Update contact too
+        if (searchResult?.id) {
+          await supabase
+            .from('contacts')
+            .update({ 
+              assigned_to: currentUser.id,
+              department_id: departmentId,
+            })
+            .eq('id', searchResult.id)
+            .is('assigned_to', null);
+        }
+        
+        queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+        queryClient.invalidateQueries({ queryKey: ['contacts'] });
+        toast.success('Conversa atribuída a você');
+      }
+      
+      setShowMultipleConversationsModal(false);
+      setOpenConversations([]);
+      setSearchResult(null);
+      setPhoneNumber('');
+      
+      if (onConversationCreated) {
+        onConversationCreated(conv.id);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao abrir conversa');
     } finally {
       setIsLoading(false);
     }
@@ -466,7 +456,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           .from('conversations')
           .select('id')
           .eq('contact_id', contactId)
-          .eq('channel_id', channelId) // *** CRITICAL: Filter by specific channel ***
+          .eq('channel_id', channelId)
           .in('status', ['open', 'pending'])
           .limit(1)
           .maybeSingle();
@@ -484,7 +474,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           return;
         }
       } else {
-        // Verificar duplicata uma última vez antes de criar usando RPC
+        // Verify duplicate one last time before creating using RPC
         const last8Digits = extractLast8Digits(normalizedPhone);
         const { data: existingByPhoneResult } = await supabase
           .rpc('find_contact_by_phone_suffix', { phone_suffix: last8Digits });
@@ -525,7 +515,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
             .from('conversations')
             .select('id')
             .eq('contact_id', contactId)
-            .eq('channel_id', channelId) // *** CRITICAL: Filter by specific channel ***
+            .eq('channel_id', channelId)
             .in('status', ['open', 'pending'])
             .limit(1)
             .maybeSingle();
@@ -543,26 +533,27 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
             return;
           }
         } else {
-          // *** CRITICAL: Buscar departamento primário do usuário antes de criar contato ***
+          // *** CRITICAL: Get user's primary department before creating contact ***
           const userDepartmentId = currentUser?.id ? await getUserPrimaryDepartment(currentUser.id) : null;
 
           // Create new contact with normalized phone - assign to current user AND department
+          // *** USE THE PROVIDED NAME FROM MODAL ***
           const { data: newContact, error: contactError } = await supabase
             .from('contacts')
             .insert({
               phone: normalizedPhone,
-              full_name: `+${normalizedPhone}`,
+              full_name: pendingContact?.full_name || `+${normalizedPhone}`,
               lead_status: 'new',
               origin: 'manual',
               first_contact_at: new Date().toISOString(),
               assigned_to: currentUser?.id,
-              department_id: userDepartmentId, // *** CRITICAL: Assign department ***
+              department_id: userDepartmentId,
             })
             .select()
             .single();
 
           if (contactError) {
-            // Se for erro de constraint de duplicata, buscar o existente usando RPC
+            // If duplicate constraint error, find the existing one using RPC
             if (contactError.code === '23505') {
               const { data: foundContactResult } = await supabase
                 .rpc('find_contact_by_phone_suffix', { phone_suffix: last8Digits });
@@ -610,7 +601,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
         }
       }
 
-      // *** CRITICAL: Buscar departamento primário para a conversa ***
+      // *** CRITICAL: Get primary department for conversation ***
       const convDepartmentId = currentUser?.id ? await getUserPrimaryDepartment(currentUser.id) : null;
 
       // Create new conversation with selected channel AND department
@@ -621,7 +612,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           channel_id: channelId,
           status: 'open',
           assigned_to: currentUser?.id,
-          department_id: convDepartmentId, // *** CRITICAL: Assign department ***
+          department_id: convDepartmentId,
           is_unread: false,
           unread_count: 0,
           last_message_at: new Date().toISOString(),
@@ -637,7 +628,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
         .from('contacts')
         .update({ 
           assigned_to: currentUser?.id,
-          department_id: convDepartmentId, // *** CRITICAL: Update department too ***
+          department_id: convDepartmentId,
         })
         .eq('id', contactId)
         .is('assigned_to', null);
@@ -793,6 +784,132 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           <p className="text-xs text-muted-foreground">Conversa aberta</p>
         </div>
       </div>
+
+      {/* ==================== CREATE CONTACT MODAL ==================== */}
+      <Dialog open={showCreateContactModal} onOpenChange={setShowCreateContactModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-primary" />
+              Criar Novo Contato
+            </DialogTitle>
+            <DialogDescription>
+              Este número não está cadastrado. Informe o nome para criar o contato.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+              <Phone className="h-5 w-5 text-muted-foreground" />
+              <span className="font-medium text-foreground">+55 {phoneNumber}</span>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="contact-name">
+                Nome do contato <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="contact-name"
+                placeholder="Ex: João da Silva"
+                value={newContactName}
+                onChange={(e) => setNewContactName(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newContactName.trim()) {
+                    handleCreateContactAndShowChannels();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowCreateContactModal(false);
+                setPhoneNumber('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleCreateContactAndShowChannels}
+              disabled={!newContactName.trim() || isLoading}
+            >
+              {isLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : null}
+              Continuar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== MULTIPLE CONVERSATIONS MODAL ==================== */}
+      <Dialog open={showMultipleConversationsModal} onOpenChange={setShowMultipleConversationsModal}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              Conversas Abertas
+            </DialogTitle>
+            <DialogDescription>
+              {searchResult && (
+                <span className="flex items-center gap-2 mt-2">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground text-xs font-semibold">
+                    {searchResult.full_name?.charAt(0)?.toUpperCase() || '?'}
+                  </div>
+                  <span className="font-medium text-foreground">{searchResult.full_name}</span>
+                  <span className="text-muted-foreground">possui {openConversations.length} conversas abertas</span>
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-2 max-h-[300px] overflow-y-auto py-2">
+            {openConversations.map((conv) => (
+              <button
+                key={conv.id}
+                onClick={() => handleSelectConversation(conv)}
+                disabled={isLoading}
+                className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted transition-colors text-left disabled:opacity-50"
+              >
+                <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                  <Smartphone className="h-5 w-5 text-green-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-foreground truncate">
+                    {conv.channel?.name || 'Canal desconhecido'}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {conv.last_message_preview || 'Sem mensagens'}
+                  </p>
+                  {conv.last_message_at && (
+                    <p className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(new Date(conv.last_message_at), { locale: ptBR, addSuffix: true })}
+                    </p>
+                  )}
+                </div>
+                <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+          
+          <div className="border-t border-border pt-4">
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={() => {
+                setShowMultipleConversationsModal(false);
+                setPendingContact(searchResult);
+                setShowChannelSelector(true);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Iniciar nova conversa em outro canal
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Channel Selector Dialog */}
       <Dialog open={showChannelSelector} onOpenChange={setShowChannelSelector}>
