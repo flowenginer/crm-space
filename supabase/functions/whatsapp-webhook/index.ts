@@ -326,8 +326,8 @@ async function downloadUAZAPIMedia(
     
     const data = await response.json();
     
-    // UAZAPI returns base64 directly or as a field
-    const base64Data = data.base64 || data.data || data.file;
+    // UAZAPI returns base64 in different fields depending on version
+    const base64Data = data.base64Data || data.base64 || data.data || data.file;
     const mimeType = data.mimeType || data.mimetype || data.contentType || 'application/octet-stream';
     
     if (base64Data) {
