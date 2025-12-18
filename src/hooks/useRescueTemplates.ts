@@ -4,6 +4,10 @@ import { supabase } from '@/integrations/supabase/client';
 export interface RescueStep {
   message: string;
   timer_minutes: number;
+  audio_url?: string | null;
+  attachment_url?: string | null;
+  attachment_type?: string | null;
+  attachment_name?: string | null;
 }
 
 export interface RescueTemplate {
