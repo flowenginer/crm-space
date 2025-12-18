@@ -80,7 +80,7 @@ import { useProviders, useConfiguredProviders } from '@/hooks/useProviders';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useCreateChannelWithInstance, useRefreshQRCode } from '@/hooks/useCreateChannelWithInstance';
 import { whatsappService } from '@/lib/whatsapp';
-import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, setChannelWebhook, configureChannelFull, fetchChannelWebhook, ProviderInstance } from '@/lib/whatsapp/instance-creator';
+import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, reconfigureChannelWebhook, configureChannelFull, fetchChannelWebhook, ProviderInstance } from '@/lib/whatsapp/instance-creator';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import ImportInstancesModal from '@/components/whatsapp/ImportInstancesModal';
@@ -557,29 +557,23 @@ export default function WhatsAppChannels() {
   };
 
   const handleReconfigureWebhook = async (channel: WhatsAppChannel) => {
-    const provider = providers.find(p => p.id === channel.provider_id);
-    if (!provider || !channel.instance_id) {
-      toast.error('Canal sem provedor ou instância configurada');
-      return;
-    }
-
-    if (provider.code === 'zapi') {
-      toast.error('Z-API não suporta reconfiguração de webhook via API');
+    if (!channel.instance_id) {
+      toast.error('Canal sem instância configurada');
       return;
     }
 
     toast.loading('Reconfigurando webhook...');
     
     try {
-      const result = await setChannelWebhook(
-        provider.code as 'uazapi' | 'evolution',
-        channel.instance_id
-      );
+      // Usar nova função que busca dados do canal e atualiza o banco
+      const result = await reconfigureChannelWebhook(channel.id);
 
       toast.dismiss();
 
       if (result.success) {
-        toast.success('Webhook reconfigurado com sucesso! Agora as mensagens serão recebidas corretamente.');
+        toast.success(result.message || 'Webhook reconfigurado com sucesso! O status do canal será atualizado automaticamente.');
+        // Refetch para atualizar UI
+        refetchChannels();
       } else {
         toast.error(result.error || 'Erro ao reconfigurar webhook');
       }

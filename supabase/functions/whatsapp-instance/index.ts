@@ -10,7 +10,7 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage' | 'sendReaction';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage' | 'sendReaction' | 'reconfigureWebhook';
   providerCode?: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -2209,7 +2209,7 @@ serve(async (req) => {
         default:
           result = { success: false, error: 'Provedor desconhecido' };
       }
-    } else if (action === 'configureChannel') {
+  } else if (action === 'configureChannel') {
       // Full channel configuration: settings + webhook + restart + verify
       console.log('[WhatsApp Instance] Full channel configuration for:', instanceId);
       const finalWebhookUrl = webhookUrl || `${supabaseUrl}/functions/v1/whatsapp-webhook?provider=${providerCode}`;
@@ -2253,6 +2253,114 @@ serve(async (req) => {
           messagesUpsertActive: hasMessagesUpsert
         };
       }
+    } else if (action === 'reconfigureWebhook') {
+      // =====================================================
+      // RECONFIGURE WEBHOOK - Busca canal por ID e reconfigura webhook
+      // =====================================================
+      if (!channelId) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'channelId é obrigatório' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      console.log('[WhatsApp Instance] Reconfiguring webhook for channel:', channelId);
+
+      // Buscar dados do canal
+      const { data: channelData, error: channelError } = await supabase
+        .from('whatsapp_channels')
+        .select(`
+          id,
+          instance_id,
+          instance_token,
+          provider:whatsapp_providers(
+            id,
+            code,
+            base_url,
+            admin_token,
+            client_token,
+            is_configured,
+            name
+          )
+        `)
+        .eq('id', channelId)
+        .eq('is_deleted', false)
+        .single();
+
+      if (channelError || !channelData) {
+        console.error('[WhatsApp Instance] Channel not found:', channelError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+
+      const channelProvider = channelData.provider as any;
+      if (!channelProvider || !channelProvider.is_configured) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Provedor não configurado para este canal' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      if (!channelData.instance_id) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Canal sem instance_id configurado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      const channelConfig: ProviderConfig = {
+        baseUrl: channelProvider.base_url,
+        adminToken: channelProvider.admin_token,
+        clientToken: channelProvider.client_token,
+      };
+
+      const finalWebhookUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook?provider=${channelProvider.code}`;
+      console.log('[WhatsApp Instance] Reconfiguring webhook URL:', finalWebhookUrl);
+
+      let webhookResult;
+      switch (channelProvider.code) {
+        case 'zapi':
+          webhookResult = { success: false, error: 'Z-API não suporta reconfiguração de webhook via API' };
+          break;
+        case 'uazapi':
+          webhookResult = await setUAZAPIWebhook(channelConfig, channelData.instance_id, finalWebhookUrl, channelData.instance_token);
+          break;
+        case 'evolution':
+          webhookResult = await setEvolutionWebhook(channelConfig, channelData.instance_id, finalWebhookUrl);
+          break;
+        default:
+          webhookResult = { success: false, error: 'Provedor desconhecido' };
+      }
+
+      if (webhookResult.success) {
+        // Atualizar webhook_url no banco de dados
+        const { error: updateError } = await supabase
+          .from('whatsapp_channels')
+          .update({ 
+            webhook_url: finalWebhookUrl,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', channelId);
+
+        if (updateError) {
+          console.error('[WhatsApp Instance] Error updating webhook_url:', updateError);
+          // Não falhar, pois o webhook foi configurado com sucesso
+        } else {
+          console.log('[WhatsApp Instance] webhook_url updated in database');
+        }
+      }
+
+      result = {
+        success: webhookResult.success,
+        message: webhookResult.success 
+          ? 'Webhook reconfigurado com sucesso! O canal agora receberá eventos de conexão e mensagens.'
+          : webhookResult.error,
+        webhookUrl: finalWebhookUrl,
+        provider: channelProvider.code,
+        instanceId: channelData.instance_id
+      };
     } else {
       result = { success: false, error: 'Ação inválida' };
     }

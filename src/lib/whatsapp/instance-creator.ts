@@ -272,7 +272,7 @@ export async function getInstanceStatus(
 }
 
 // =====================================================
-// FUNÇÃO - RECONFIGURAR WEBHOOK DE INSTÂNCIA EXISTENTE
+// FUNÇÃO - RECONFIGURAR WEBHOOK DE INSTÂNCIA EXISTENTE (legacy)
 // =====================================================
 export async function setChannelWebhook(
   providerCode: 'zapi' | 'uazapi' | 'evolution',
@@ -299,6 +299,35 @@ export async function setChannelWebhook(
   } catch (error: any) {
     console.error('[Instance Creator] SetWebhook Error:', error);
     return { success: false, error: error.message || 'Erro ao configurar webhook' };
+  }
+}
+
+// =====================================================
+// FUNÇÃO - RECONFIGURAR WEBHOOK POR CHANNEL ID (nova versão)
+// =====================================================
+export async function reconfigureChannelWebhook(
+  channelId: string
+): Promise<{ success: boolean; message?: string; webhookUrl?: string; error?: string }> {
+  try {
+    console.log('[Instance Creator] Reconfiguring webhook for channel:', channelId);
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'reconfigureWebhook',
+        channelId,
+      },
+    });
+
+    console.log('[Instance Creator] ReconfigureWebhook Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao reconfigurar webhook' };
+    }
+
+    return data as { success: boolean; message?: string; webhookUrl?: string; error?: string };
+  } catch (error: any) {
+    console.error('[Instance Creator] ReconfigureWebhook Error:', error);
+    return { success: false, error: error.message || 'Erro ao reconfigurar webhook' };
   }
 }
 
