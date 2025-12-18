@@ -1685,7 +1685,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           created_at,
           referral_source,
           referral_data,
-          contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data),
+          contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data, segment_id, negotiated_value, assigned_to, lead_status, segment:segments(id, name, color)),
           assignee:profiles!conversations_assigned_to_fkey(id, full_name),
           channel:whatsapp_channels(id, name)
         `)
@@ -1701,7 +1701,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     },
     // ALWAYS enabled when we have a selectedConversationId - don't depend on paginated results
     enabled: !!selectedConversationId,
-    staleTime: 30000, // 30 seconds cache
+    staleTime: 10000, // 10 seconds cache - reduced for fresher validation data
   });
 
   // Fetch pinned conversations directly from database (with full data)
@@ -1733,7 +1733,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           created_at,
           referral_source,
           referral_data,
-          contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data),
+          contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data, segment_id, negotiated_value, assigned_to, lead_status, segment:segments(id, name, color)),
           assignee:profiles!conversations_assigned_to_fkey(id, full_name),
           channel:whatsapp_channels(id, name)
         `)
@@ -1748,7 +1748,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       return data as unknown as Conversation[];
     },
     enabled: pinnedConversationIds.length > 0,
-    staleTime: 30000, // 30 seconds cache
+    staleTime: 10000, // 10 seconds cache - reduced for fresher validation data
   });
 
   // Merge paginated conversations with directly fetched selected conversation, pinned conversations, AND shared conversations
