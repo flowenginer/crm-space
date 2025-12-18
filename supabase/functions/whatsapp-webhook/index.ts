@@ -3237,38 +3237,64 @@ function normalizeUAZAPIMessageNew(payload: any): NormalizedMessage | null {
   
   if (!message) return null;
   
-  console.log(`[Webhook UAZAPI] Processing NEW format message - instanceName: ${body.instanceName}`);
+  const isFromMe = message.fromMe || false;
+  
+  console.log(`[Webhook UAZAPI] Processing NEW format message - instanceName: ${body.instanceName}, fromMe: ${isFromMe}`);
   
   // =====================================================
-  // RESOLUÇÃO LID: UAZAPI fornece sender_pn separado!
+  // CORREÇÃO CRÍTICA: Lógica diferente para fromMe vs recebida
+  // - fromMe=true: usar telefone do DESTINATÁRIO (chat.phone ou chatid)
+  // - fromMe=false: usar telefone do REMETENTE (sender_pn)
   // =====================================================
   let from = "";
   
-  // Prioridade 1: sender_pn (número real)
-  if (message.sender_pn) {
-    from = message.sender_pn
-      .replace("@s.whatsapp.net", "")
-      .replace("@c.us", "")
-      .replace(/\D/g, "");
-    console.log(`[Webhook UAZAPI] Using sender_pn: ${from}`);
-  }
-  // Prioridade 2: chat.phone
-  else if (chat?.phone) {
-    from = chat.phone.replace(/\D/g, "");
-    console.log(`[Webhook UAZAPI] Using chat.phone: ${from}`);
-  }
-  // Prioridade 3: chatid
-  else if (message.chatid) {
-    from = message.chatid
-      .replace("@s.whatsapp.net", "")
-      .replace("@c.us", "")
-      .replace(/\D/g, "");
-    console.log(`[Webhook UAZAPI] Using chatid: ${from}`);
+  if (isFromMe) {
+    // Mensagem ENVIADA pelo canal → usar número do DESTINATÁRIO (cliente)
+    // Prioridade 1: chat.phone
+    if (chat?.phone) {
+      from = chat.phone.replace(/\D/g, "");
+      console.log(`[Webhook UAZAPI] fromMe=true → Using chat.phone (recipient): ${from}`);
+    }
+    // Prioridade 2: chatid
+    else if (message.chatid) {
+      from = message.chatid
+        .replace("@s.whatsapp.net", "")
+        .replace("@c.us", "")
+        .replace(/\D/g, "");
+      console.log(`[Webhook UAZAPI] fromMe=true → Using chatid (recipient): ${from}`);
+    }
+    // Fallback: sender_pn para fromMe NÃO deve ser usado (é o número do canal)
+    else {
+      console.log(`[Webhook UAZAPI] ⚠️ fromMe=true but no recipient phone found - chat.phone: ${chat?.phone}, chatid: ${message.chatid}`);
+    }
+  } else {
+    // Mensagem RECEBIDA do cliente → usar número do REMETENTE
+    // Prioridade 1: sender_pn (número real do cliente)
+    if (message.sender_pn) {
+      from = message.sender_pn
+        .replace("@s.whatsapp.net", "")
+        .replace("@c.us", "")
+        .replace(/\D/g, "");
+      console.log(`[Webhook UAZAPI] fromMe=false → Using sender_pn (sender): ${from}`);
+    }
+    // Prioridade 2: chat.phone
+    else if (chat?.phone) {
+      from = chat.phone.replace(/\D/g, "");
+      console.log(`[Webhook UAZAPI] fromMe=false → Using chat.phone: ${from}`);
+    }
+    // Prioridade 3: chatid
+    else if (message.chatid) {
+      from = message.chatid
+        .replace("@s.whatsapp.net", "")
+        .replace("@c.us", "")
+        .replace(/\D/g, "");
+      console.log(`[Webhook UAZAPI] fromMe=false → Using chatid: ${from}`);
+    }
   }
   
   // Validar telefone brasileiro
   if (!isValidBrazilianPhone(from)) {
-    console.log(`[Webhook UAZAPI] ⚠️ REJECTING message - Invalid phone (LID?): ${from}, sender_pn: ${message.sender_pn || 'N/A'}, chat.phone: ${chat?.phone || 'N/A'}`);
+    console.log(`[Webhook UAZAPI] ⚠️ REJECTING message - Invalid phone (LID?): ${from}, sender_pn: ${message.sender_pn || 'N/A'}, chat.phone: ${chat?.phone || 'N/A'}, chatid: ${message.chatid || 'N/A'}`);
     return null;
   }
   
