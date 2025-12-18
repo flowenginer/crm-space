@@ -863,7 +863,12 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
             'Content-Type': 'application/json',
             'token': instanceToken,
           },
-          body: JSON.stringify({ url: webhookUrl, webhook: webhookUrl }),
+          body: JSON.stringify({ 
+            url: webhookUrl, 
+            webhook: webhookUrl,
+            enabled: true,
+            events: ['messages', 'status', 'connection', 'message_ack', 'presence', 'calls']
+          }),
         });
         
         if (webhookResponse.ok) {
@@ -1454,7 +1459,11 @@ async function setUAZAPIWebhook(config: ProviderConfig, instanceName: string, we
         'Content-Type': 'application/json',
         'token': authToken,
       },
-      body: JSON.stringify({ url: webhookUrl }),
+      body: JSON.stringify({ 
+        url: webhookUrl,
+        enabled: true,
+        events: ['messages', 'status', 'connection', 'message_ack', 'presence', 'calls']
+      }),
     });
     
     const text = await response.text();
