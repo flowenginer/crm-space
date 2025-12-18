@@ -47,6 +47,29 @@ export interface WhatsAppChannelConfig {
   departmentId?: string;
 }
 
+// =====================================================
+// REFERRAL DATA (Meta Ads / Click-to-WhatsApp)
+// =====================================================
+export interface ReferralData {
+  ctwaClid?: string;
+  sourceId?: string;
+  sourceType?: string;
+  sourceUrl?: string;
+  headline?: string;
+  body?: string;
+  thumbnailUrl?: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  showAdAttribution?: boolean;
+  // Campos UAZAPI para Meta Ads
+  sourceApp?: string;           // "instagram" | "facebook"
+  conversionSource?: string;    // "FB_Ads"
+  ctwaPayload?: string;         // Payload completo base64
+  greetingMessageBody?: string; // Mensagem de saudação do anúncio
+  mediaUrl?: string;            // URL do media do anúncio
+  adTitle?: string;             // Título do anúncio
+}
+
 export interface NormalizedMessage {
   id: string;
   provider: WhatsAppProvider;
@@ -71,6 +94,9 @@ export interface NormalizedMessage {
   // Status e IDs
   status: MessageStatus;
   originalId: string;
+  
+  // Referral Data (Meta Ads)
+  referralData?: ReferralData;
 }
 
 export interface SendMessagePayload {
