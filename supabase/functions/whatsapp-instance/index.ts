@@ -1447,37 +1447,61 @@ async function setUAZAPIWebhook(config: ProviderConfig, instanceName: string, we
     return { success: false, error: 'Token não fornecido' };
   }
   
-  try {
-    // POST /webhooks/url com token da instância
-    // Docs: https://docs.uazapi.com
-    const url = `${baseUrl}/webhooks/url`;
-    console.log('[UAZAPI] SetWebhook URL:', url);
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'token': authToken,
-      },
-      body: JSON.stringify({ 
-        url: webhookUrl,
-        enabled: true,
-        events: ['messages', 'status', 'connection', 'message_ack', 'presence', 'calls']
-      }),
-    });
-    
-    const text = await response.text();
-    console.log('[UAZAPI SetWebhook] Response:', response.status, text);
-    
-    if (!response.ok) {
-      return { success: false, error: `HTTP ${response.status}: ${text.substring(0, 200)}` };
+  // Tentar múltiplos endpoints com método PUT (igual createUAZAPIInstance)
+  const webhookEndpoints = [
+    { path: '/webhook', method: 'PUT' },
+    { path: '/webhooks', method: 'PUT' },
+    { path: '/webhooks/url', method: 'PUT' },
+    { path: '/webhook', method: 'POST' },
+    { path: '/webhooks/url', method: 'POST' },
+  ];
+  
+  const webhookPayload = { 
+    url: webhookUrl,
+    enabled: true,
+    events: ['messages', 'status', 'connection', 'message_ack', 'presence', 'calls']
+  };
+  
+  let lastError = '';
+  
+  for (const endpoint of webhookEndpoints) {
+    try {
+      const url = `${baseUrl}${endpoint.path}`;
+      console.log(`[UAZAPI] Tentando ${endpoint.method} ${url}`);
+      
+      const response = await fetch(url, {
+        method: endpoint.method,
+        headers: {
+          'Content-Type': 'application/json',
+          'token': authToken,
+        },
+        body: JSON.stringify(webhookPayload),
+      });
+      
+      const text = await response.text();
+      console.log(`[UAZAPI SetWebhook] ${endpoint.method} ${endpoint.path} Response:`, response.status, text);
+      
+      if (response.ok) {
+        console.log(`[UAZAPI] Webhook configurado com sucesso via ${endpoint.method} ${endpoint.path}`);
+        return { success: true, message: 'Webhook configurado com sucesso!' };
+      }
+      
+      // Se for 404 ou 405, tentar próximo endpoint
+      if (response.status === 404 || response.status === 405) {
+        lastError = `${endpoint.method} ${endpoint.path}: HTTP ${response.status}`;
+        continue;
+      }
+      
+      // Outros erros, guardar e continuar tentando
+      lastError = `${endpoint.method} ${endpoint.path}: HTTP ${response.status}: ${text.substring(0, 100)}`;
+    } catch (err: any) {
+      console.error(`[UAZAPI SetWebhook] Error with ${endpoint.method} ${endpoint.path}:`, err);
+      lastError = `${endpoint.method} ${endpoint.path}: ${err.message}`;
     }
-    
-    return { success: true, message: 'Webhook configurado com sucesso!' };
-  } catch (err: any) {
-    console.error('[UAZAPI SetWebhook] Error:', err);
-    return { success: false, error: err.message };
   }
+  
+  console.error('[UAZAPI SetWebhook] Todos os endpoints falharam. Último erro:', lastError);
+  return { success: false, error: `Falha ao configurar webhook: ${lastError}` };
 }
 
 // =====================================================
