@@ -6533,6 +6533,10 @@ export type Database = {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
       }
+      delete_contact_permanently: {
+        Args: { p_contact_id: string }
+        Returns: undefined
+      }
       detect_origin_by_message_pattern: {
         Args: { p_message: string }
         Returns: {

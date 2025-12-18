@@ -39,7 +39,17 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useContactsCount, useCreateContact, useUpdateContact, useDeleteContact, type Contact } from '@/hooks/useContacts';
+import { useContactsCount, useCreateContact, useUpdateContact, useDeleteContact, useDeleteContactPermanently, type Contact } from '@/hooks/useContacts';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { usePaginatedContacts, useContactsFilterCounts, useFilteredContactsCount } from '@/hooks/usePaginatedContacts';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useTags, useCreateTag, useDeleteTag, useAddTagToContact, useRemoveTagFromContact } from '@/hooks/useTags';
@@ -163,6 +173,7 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
   const createContact = useCreateContact();
   const updateContact = useUpdateContact();
   const deleteContact = useDeleteContact();
+  const deleteContactPermanently = useDeleteContactPermanently();
   const createTag = useCreateTag();
   const deleteTag = useDeleteTag();
   const addTagToContact = useAddTagToContact();
@@ -170,6 +181,10 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
   
   const [isOpeningChat, setIsOpeningChat] = useState(false);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  
+  // Estados para exclusão permanente (admin only)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
   
   // Estado para seletor de canal WhatsApp
   const [showChannelSelector, setShowChannelSelector] = useState(false);
@@ -339,12 +354,24 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
     }
   };
 
-  const handleDeleteContact = async (contactId: string) => {
+  const handleDeleteContact = (contact: Contact) => {
+    if (isAdmin) {
+      setContactToDelete(contact);
+      setDeleteConfirmOpen(true);
+    } else {
+      toast.error('Apenas administradores podem excluir contatos');
+    }
+  };
+
+  const confirmDeleteContact = async () => {
+    if (!contactToDelete) return;
     try {
-      await deleteContact.mutateAsync(contactId);
-      toast.success('Contato excluído com sucesso!');
-    } catch (error) {
-      toast.error('Erro ao excluir contato');
+      await deleteContactPermanently.mutateAsync(contactToDelete.id);
+      toast.success('Contato excluído permanentemente!');
+      setDeleteConfirmOpen(false);
+      setContactToDelete(null);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao excluir contato');
     }
   };
 
@@ -1005,13 +1032,15 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
                           >
                             <Edit3 size={18} className="text-primary" />
                           </button>
-                          <button
-                            onClick={() => handleDeleteContact(contact.id)}
-                            className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
-                            title="Excluir"
-                          >
-                            <Trash2 size={18} className="text-destructive" />
-                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteContact(contact)}
+                              className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
+                              title="Excluir permanentemente"
+                            >
+                              <Trash2 size={18} className="text-destructive" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1724,6 +1753,51 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
         isOpen={!!previewConversationId}
         onClose={() => setPreviewConversationId(null)}
       />
+
+      {/* Delete Confirmation Dialog (Admin Only) */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Excluir Contato Permanentemente
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Você está prestes a excluir <strong>{contactToDelete?.full_name}</strong> permanentemente.
+                </p>
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm">
+                  <p className="font-medium text-destructive mb-2">Esta ação irá excluir:</p>
+                  <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                    <li>Todas as conversas e mensagens</li>
+                    <li>Todos os orçamentos</li>
+                    <li>Todos os pedidos</li>
+                    <li>Histórico financeiro</li>
+                    <li>Tags e notas</li>
+                  </ul>
+                </div>
+                <p className="font-semibold text-destructive">
+                  Esta ação NÃO pode ser desfeita!
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteContact}
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={deleteContactPermanently.isPending}
+            >
+              {deleteContactPermanently.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Excluir Permanentemente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Click outside to close tags dropdown */}
       {showTagsDropdown && (
