@@ -283,6 +283,175 @@ async function uploadMediaToStorage(
 }
 
 // =====================================================
+// FETCH MEDIA FROM UAZAPI
+// =====================================================
+
+/**
+ * Download media from UAZAPI using their /message/download endpoint
+ * UAZAPI doesn't provide media URLs directly - we need to download using messageid
+ */
+async function downloadUAZAPIMedia(
+  baseUrl: string,
+  instanceToken: string,
+  messageId: string
+): Promise<{ success: boolean; base64?: string; mimeType?: string; error?: string }> {
+  try {
+    console.log(`[Webhook UAZAPI] Downloading media for messageId: ${messageId}`);
+    
+    // Normalize base URL
+    let normalizedUrl = baseUrl.replace(/\/+$/, '');
+    
+    const response = await fetch(`${normalizedUrl}/message/download`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'token': instanceToken,
+      },
+      body: JSON.stringify({
+        id: messageId,
+        return_base64: true,  // Get base64 for storage upload
+        generate_mp3: true,   // Convert audio to mp3 for compatibility
+        return_link: false,
+        transcribe: false,
+        download_quoted: false,
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Webhook UAZAPI] Media download failed: ${response.status} - ${errorText}`);
+      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+    }
+    
+    const data = await response.json();
+    
+    // UAZAPI returns base64 directly or as a field
+    const base64Data = data.base64 || data.data || data.file;
+    const mimeType = data.mimeType || data.mimetype || data.contentType || 'application/octet-stream';
+    
+    if (base64Data) {
+      console.log(`[Webhook UAZAPI] ✅ Media downloaded - Base64 length: ${base64Data.length}, MimeType: ${mimeType}`);
+      return {
+        success: true,
+        base64: base64Data,
+        mimeType: mimeType,
+      };
+    }
+    
+    console.log(`[Webhook UAZAPI] ⚠️ Media download returned no data:`, JSON.stringify(data).substring(0, 200));
+    return { success: false, error: 'No media data returned' };
+  } catch (error) {
+    console.error('[Webhook UAZAPI] Error downloading media:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Get UAZAPI channel credentials for media download
+ */
+async function getUAZAPIChannelCredentials(
+  supabase: any,
+  instanceName: string
+): Promise<{ baseUrl: string; instanceToken: string } | null> {
+  try {
+    // Search by instance_id (instanceName from UAZAPI)
+    const { data, error } = await supabase
+      .from('whatsapp_channels')
+      .select('base_url, instance_token')
+      .eq('instance_id', instanceName)
+      .eq('is_deleted', false)
+      .single();
+    
+    if (error || !data) {
+      console.log(`[Webhook UAZAPI] Channel not found by instance_id: ${instanceName}`);
+      
+      // Fallback: search by name
+      const { data: dataByName } = await supabase
+        .from('whatsapp_channels')
+        .select('base_url, instance_token')
+        .eq('name', instanceName)
+        .eq('is_deleted', false)
+        .single();
+      
+      if (!dataByName) {
+        console.log(`[Webhook UAZAPI] Channel not found by name either: ${instanceName}`);
+        return null;
+      }
+      
+      return {
+        baseUrl: dataByName.base_url,
+        instanceToken: dataByName.instance_token,
+      };
+    }
+    
+    return {
+      baseUrl: data.base_url,
+      instanceToken: data.instance_token,
+    };
+  } catch (error) {
+    console.error('[Webhook UAZAPI] Error getting channel credentials:', error);
+    return null;
+  }
+}
+
+/**
+ * Process UAZAPI media: download from UAZAPI and upload to Supabase Storage
+ */
+async function processUAZAPIMedia(
+  supabase: any,
+  instanceName: string,
+  messageId: string,
+  messageType: MessageType,
+  conversationId: string
+): Promise<{ mediaUrl?: string; mimeType?: string }> {
+  // Only process media types
+  if (!['audio', 'image', 'video', 'document'].includes(messageType)) {
+    return {};
+  }
+  
+  console.log(`[Webhook UAZAPI] Processing ${messageType} media for message ${messageId}`);
+  
+  // Get channel credentials
+  const credentials = await getUAZAPIChannelCredentials(supabase, instanceName);
+  
+  if (!credentials) {
+    console.log(`[Webhook UAZAPI] ⚠️ Cannot process media - no channel credentials found`);
+    return {};
+  }
+  
+  // Download media from UAZAPI
+  const mediaResult = await downloadUAZAPIMedia(
+    credentials.baseUrl,
+    credentials.instanceToken,
+    messageId
+  );
+  
+  if (!mediaResult.success || !mediaResult.base64) {
+    console.log(`[Webhook UAZAPI] ⚠️ Media download failed: ${mediaResult.error}`);
+    return {};
+  }
+  
+  // Upload to Supabase Storage
+  const storageUrl = await uploadMediaToStorage(
+    supabase,
+    mediaResult.base64,
+    mediaResult.mimeType || 'application/octet-stream',
+    conversationId
+  );
+  
+  if (storageUrl) {
+    console.log(`[Webhook UAZAPI] ✅ Media uploaded to Storage: ${storageUrl}`);
+    return {
+      mediaUrl: storageUrl,
+      mimeType: mediaResult.mimeType,
+    };
+  }
+  
+  return {};
+}
+
+// =====================================================
 // FETCH MEDIA FROM EVOLUTION API
 // =====================================================
 
@@ -977,29 +1146,49 @@ serve(async (req) => {
             status: "sent",
           };
 
-          // Se for mídia e tivermos base64, fazer upload e atualizar URL
-          if (normalizedMessage.mediaUrl && !normalizedMessage.mediaBase64 && normalizedMessage.type !== 'text') {
-            console.log(`[Webhook] FromMe media without base64, fetching from Evolution API...`);
-            const provider = (channel as any).provider;
-            if (provider?.code === 'evolution' && provider?.base_url && provider?.admin_token) {
-              const mediaData = await fetchMediaBase64FromEvolution(
-                provider.base_url,
-                provider.admin_token,
-                channel.instance_id || '',
-                {
-                  id: normalizedMessage.originalId,
-                  remoteJid: normalizedMessage.from + '@s.whatsapp.net',
-                  fromMe: normalizedMessage.isFromMe
-                }
+          // Se for mídia, processar de acordo com o provider
+          const isFromMeMediaType = ['audio', 'image', 'video', 'document'].includes(normalizedMessage.type);
+          
+          if (isFromMeMediaType && !normalizedMessage.mediaBase64) {
+            // UAZAPI: Download media using /message/download endpoint
+            if (provider === 'uazapi') {
+              console.log(`[Webhook UAZAPI] FromMe media - downloading from UAZAPI...`);
+              const uazapiMedia = await processUAZAPIMedia(
+                supabase,
+                normalizedMessage.instanceId,
+                normalizedMessage.originalId.replace('uazapi_', ''),
+                normalizedMessage.type,
+                conversation.id
               );
-              if (mediaData.base64) {
-                normalizedMessage.mediaBase64 = mediaData.base64;
-                normalizedMessage.mediaMimeType = mediaData.mimetype || normalizedMessage.mediaMimeType;
+              if (uazapiMedia.mediaUrl) {
+                updateData.media_url = uazapiMedia.mediaUrl;
+                console.log(`[Webhook UAZAPI] FromMe media uploaded: ${uazapiMedia.mediaUrl}`);
+              }
+            }
+            // Evolution API: Fetch base64 from getBase64FromMediaMessage
+            else if (provider === 'evolution') {
+              console.log(`[Webhook] FromMe media without base64, fetching from Evolution API...`);
+              const channelProvider = (channel as any).provider;
+              if (channelProvider?.code === 'evolution' && channelProvider?.base_url && channelProvider?.admin_token) {
+                const mediaData = await fetchMediaBase64FromEvolution(
+                  channelProvider.base_url,
+                  channelProvider.admin_token,
+                  channel.instance_id || '',
+                  {
+                    id: normalizedMessage.originalId,
+                    remoteJid: normalizedMessage.from + '@s.whatsapp.net',
+                    fromMe: normalizedMessage.isFromMe
+                  }
+                );
+                if (mediaData.base64) {
+                  normalizedMessage.mediaBase64 = mediaData.base64;
+                  normalizedMessage.mediaMimeType = mediaData.mimetype || normalizedMessage.mediaMimeType;
+                }
               }
             }
           }
 
-          // Upload media if we have base64
+          // Upload media if we have base64 (Evolution or other providers)
           if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
             console.log(`[Webhook] Uploading media for fromMe message update...`);
             const uploadedUrl = await uploadMediaToStorage(
@@ -1046,27 +1235,49 @@ serve(async (req) => {
 
       // Upload media if needed for new insert
       let finalMediaUrl = normalizedMessage.mediaUrl;
-      if (normalizedMessage.mediaUrl && !normalizedMessage.mediaBase64 && normalizedMessage.type !== 'text') {
-        const provider = (channel as any).provider;
-        if (provider?.code === 'evolution' && provider?.base_url && provider?.admin_token) {
-          const mediaData = await fetchMediaBase64FromEvolution(
-            provider.base_url,
-            provider.admin_token,
-            channel.instance_id || '',
-            {
-              id: normalizedMessage.originalId,
-              remoteJid: normalizedMessage.from + '@s.whatsapp.net',
-              fromMe: normalizedMessage.isFromMe
-            }
+      const isFromMeInsertMediaType = ['audio', 'image', 'video', 'document'].includes(normalizedMessage.type);
+      
+      if (isFromMeInsertMediaType && !normalizedMessage.mediaBase64) {
+        // UAZAPI: Download media using /message/download endpoint
+        if (provider === 'uazapi') {
+          console.log(`[Webhook UAZAPI] FromMe insert - downloading media from UAZAPI...`);
+          const uazapiMedia = await processUAZAPIMedia(
+            supabase,
+            normalizedMessage.instanceId,
+            normalizedMessage.originalId.replace('uazapi_', ''),
+            normalizedMessage.type,
+            conversation.id
           );
-          if (mediaData.base64) {
-            normalizedMessage.mediaBase64 = mediaData.base64;
-            normalizedMessage.mediaMimeType = mediaData.mimetype || normalizedMessage.mediaMimeType;
+          if (uazapiMedia.mediaUrl) {
+            finalMediaUrl = uazapiMedia.mediaUrl;
+            normalizedMessage.mediaMimeType = uazapiMedia.mimeType || normalizedMessage.mediaMimeType;
+            console.log(`[Webhook UAZAPI] FromMe insert media uploaded: ${finalMediaUrl}`);
+          }
+        }
+        // Evolution API: Fetch base64 from getBase64FromMediaMessage
+        else if (provider === 'evolution') {
+          const channelProvider = (channel as any).provider;
+          if (channelProvider?.code === 'evolution' && channelProvider?.base_url && channelProvider?.admin_token) {
+            const mediaData = await fetchMediaBase64FromEvolution(
+              channelProvider.base_url,
+              channelProvider.admin_token,
+              channel.instance_id || '',
+              {
+                id: normalizedMessage.originalId,
+                remoteJid: normalizedMessage.from + '@s.whatsapp.net',
+                fromMe: normalizedMessage.isFromMe
+              }
+            );
+            if (mediaData.base64) {
+              normalizedMessage.mediaBase64 = mediaData.base64;
+              normalizedMessage.mediaMimeType = mediaData.mimetype || normalizedMessage.mediaMimeType;
+            }
           }
         }
       }
 
-      if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
+      // Upload base64 if available (Evolution or other providers)
+      if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType && !finalMediaUrl?.includes('supabase')) {
         const uploadedUrl = await uploadMediaToStorage(
           supabase,
           normalizedMessage.mediaBase64,
@@ -1814,14 +2025,43 @@ serve(async (req) => {
     // =====================================================
     let finalMediaUrl = normalizedMessage.mediaUrl;
     
-    // If media exists but no base64, fetch from Evolution API
-    if (normalizedMessage.mediaUrl && !normalizedMessage.mediaBase64 && normalizedMessage.type !== 'text') {
+    // Check if it's a media type that needs processing
+    const isMediaType = ['audio', 'image', 'video', 'document'].includes(normalizedMessage.type);
+    
+    // =====================================================
+    // UAZAPI: Download media using /message/download endpoint
+    // UAZAPI doesn't provide media URLs or base64 directly in webhook
+    // We need to download using the messageid
+    // =====================================================
+    if (isMediaType && !normalizedMessage.mediaBase64 && provider === 'uazapi') {
+      console.log(`[Webhook UAZAPI] Processing ${normalizedMessage.type} - downloading from UAZAPI...`);
+      
+      const uazapiMedia = await processUAZAPIMedia(
+        supabase,
+        normalizedMessage.instanceId,
+        normalizedMessage.originalId.replace('uazapi_', ''), // Remove prefix to get raw messageid
+        normalizedMessage.type,
+        conversation.id
+      );
+      
+      if (uazapiMedia.mediaUrl) {
+        finalMediaUrl = uazapiMedia.mediaUrl;
+        normalizedMessage.mediaMimeType = uazapiMedia.mimeType || normalizedMessage.mediaMimeType;
+        console.log(`[Webhook UAZAPI] ✅ Media processed and uploaded: ${finalMediaUrl}`);
+      } else {
+        console.log(`[Webhook UAZAPI] ⚠️ Could not process media, continuing without media URL`);
+      }
+    }
+    // =====================================================
+    // Evolution API: Fetch base64 from getBase64FromMediaMessage
+    // =====================================================
+    else if (isMediaType && !normalizedMessage.mediaBase64 && provider === 'evolution') {
       console.log(`[Webhook] Received media without base64, fetching from Evolution API...`);
-      const provider = (channel as any).provider;
-      if (provider?.code === 'evolution' && provider?.base_url && provider?.admin_token) {
+      const channelProvider = (channel as any).provider;
+      if (channelProvider?.code === 'evolution' && channelProvider?.base_url && channelProvider?.admin_token) {
         const mediaData = await fetchMediaBase64FromEvolution(
-          provider.base_url,
-          provider.admin_token,
+          channelProvider.base_url,
+          channelProvider.admin_token,
           channel.instance_id || '',
           {
             id: normalizedMessage.originalId,
@@ -1836,8 +2076,8 @@ serve(async (req) => {
       }
     }
     
-    // Now upload if we have base64
-    if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
+    // Now upload if we have base64 (Evolution API or other providers)
+    if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType && !finalMediaUrl?.includes('supabase')) {
       console.log(`[Webhook] Uploading media for received message...`);
       const uploadedUrl = await uploadMediaToStorage(
         supabase,
