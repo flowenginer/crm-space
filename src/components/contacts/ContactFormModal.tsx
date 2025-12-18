@@ -22,12 +22,15 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
 import { useLeadStatuses } from '@/hooks/useLeadKanban';
 import { useContactHistory } from '@/hooks/useContactHistory';
+import { useContactConversationHistory, type ContactConversation } from '@/hooks/useContactConversationHistory';
 import { useERPEnabled } from '@/hooks/useERPEnabled';
 import { fetchAddressByCEP } from '@/utils/cep';
-import { Loader2, Search, FileText, Package, ShoppingCart, DollarSign, CalendarIcon } from 'lucide-react';
+import { ConversationHistoryModal } from './ConversationHistoryModal';
+import { Loader2, Search, FileText, Package, DollarSign, CalendarIcon, MessageSquare, Bot, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+
 const brazilianStates = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
@@ -68,7 +71,16 @@ export function ContactFormModal({
     isLoading: isLoadingHistory 
   } = useContactHistory(mode === 'edit' && initialData ? initialData.id : null);
 
+  // Conversation history (for edit mode - always available)
+  const {
+    conversations,
+    conversationsCount,
+    isLoading: isLoadingConversations
+  } = useContactConversationHistory(mode === 'edit' && initialData ? initialData.id : null);
+
   const [isLoadingCEP, setIsLoadingCEP] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState<ContactConversation | null>(null);
+  const [showConversationModal, setShowConversationModal] = useState(false);
 
   const handleCEPSearch = async (cep: string) => {
     const cleanCEP = cep.replace(/\D/g, '');
@@ -314,11 +326,11 @@ export function ContactFormModal({
         </DialogHeader>
 
         <Tabs defaultValue="basic" className="w-full">
-          <TabsList className={`grid w-full ${mode === 'edit' && isERPEnabled ? 'grid-cols-4' : 'grid-cols-3'}`}>
+          <TabsList className={`grid w-full ${mode === 'edit' ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <TabsTrigger value="basic">Informações</TabsTrigger>
             <TabsTrigger value="address">Endereço</TabsTrigger>
             <TabsTrigger value="crm">CRM</TabsTrigger>
-            {mode === 'edit' && isERPEnabled && (
+            {mode === 'edit' && (
               <TabsTrigger value="history">Histórico</TabsTrigger>
             )}
           </TabsList>
@@ -654,82 +666,125 @@ export function ContactFormModal({
               </div>
             </TabsContent>
 
-            {/* History Tab - Only visible in edit mode with ERP enabled */}
-            {mode === 'edit' && isERPEnabled && (
+            {/* History Tab - Always visible in edit mode */}
+            {mode === 'edit' && (
               <TabsContent value="history" className="space-y-4">
-                {isLoadingHistory ? (
+                {(isLoadingHistory || isLoadingConversations) ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                   </div>
                 ) : (
                   <>
                     {/* Summary Cards */}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-4 gap-3">
                       <Card>
                         <CardContent className="p-4 text-center">
-                          <FileText className="w-5 h-5 mx-auto mb-1 text-amber-500" />
-                          <div className="text-2xl font-bold">{quotesCount}</div>
-                          <div className="text-xs text-muted-foreground">Orçamentos</div>
+                          <MessageSquare className="w-5 h-5 mx-auto mb-1 text-blue-500" />
+                          <div className="text-2xl font-bold">{conversationsCount}</div>
+                          <div className="text-xs text-muted-foreground">Conversas</div>
                         </CardContent>
                       </Card>
-                      <Card>
-                        <CardContent className="p-4 text-center">
-                          <Package className="w-5 h-5 mx-auto mb-1 text-green-500" />
-                          <div className="text-2xl font-bold">{ordersCount}</div>
-                          <div className="text-xs text-muted-foreground">Pedidos</div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="p-4 text-center">
-                          <DollarSign className="w-5 h-5 mx-auto mb-1 text-blue-500" />
-                          <div className="text-lg font-bold">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalOrdered)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">Total em Pedidos</div>
-                        </CardContent>
-                      </Card>
+                      {isERPEnabled && (
+                        <>
+                          <Card>
+                            <CardContent className="p-4 text-center">
+                              <FileText className="w-5 h-5 mx-auto mb-1 text-amber-500" />
+                              <div className="text-2xl font-bold">{quotesCount}</div>
+                              <div className="text-xs text-muted-foreground">Orçamentos</div>
+                            </CardContent>
+                          </Card>
+                          <Card>
+                            <CardContent className="p-4 text-center">
+                              <Package className="w-5 h-5 mx-auto mb-1 text-green-500" />
+                              <div className="text-2xl font-bold">{ordersCount}</div>
+                              <div className="text-xs text-muted-foreground">Pedidos</div>
+                            </CardContent>
+                          </Card>
+                          <Card>
+                            <CardContent className="p-4 text-center">
+                              <DollarSign className="w-5 h-5 mx-auto mb-1 text-emerald-500" />
+                              <div className="text-lg font-bold">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalOrdered)}
+                              </div>
+                              <div className="text-xs text-muted-foreground">Total</div>
+                            </CardContent>
+                          </Card>
+                        </>
+                      )}
                     </div>
 
-                    {/* Quotes and Orders Lists */}
-                    <Accordion type="multiple" defaultValue={['quotes', 'orders']} className="space-y-2">
-                      <AccordionItem value="quotes" className="border rounded-lg">
+                    {/* Conversations, Quotes and Orders Lists */}
+                    <Accordion type="multiple" defaultValue={['conversations', 'quotes', 'orders']} className="space-y-2">
+                      {/* Conversations Section */}
+                      <AccordionItem value="conversations" className="border rounded-lg">
                         <AccordionTrigger className="px-4 hover:no-underline">
                           <span className="flex items-center gap-2">
-                            <FileText className="w-4 h-4 text-amber-500" />
-                            Orçamentos ({quotesCount})
+                            <MessageSquare className="w-4 h-4 text-blue-500" />
+                            Conversas ({conversationsCount})
                           </span>
                         </AccordionTrigger>
                         <AccordionContent className="px-4 pb-4">
-                          {quotes.length === 0 ? (
+                          {conversations.length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-4">
-                              Nenhum orçamento encontrado
+                              Nenhuma conversa encontrada
                             </p>
                           ) : (
                             <div className="space-y-2">
-                              {quotes.map((quote) => (
-                                <div key={quote.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                                  <div>
-                                    <span className="font-medium text-sm">#{quote.quote_number}</span>
-                                    <span className="text-xs text-muted-foreground ml-2">
-                                      {format(new Date(quote.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                                    </span>
-                                    <Badge variant="outline" className="ml-2 text-xs">
-                                      {quote.status === 'pending' ? 'Pendente' :
-                                       quote.status === 'approved' ? 'Aprovado' :
-                                       quote.status === 'rejected' ? 'Rejeitado' :
-                                       quote.status === 'converted' ? 'Convertido' : quote.status}
-                                    </Badge>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="font-medium text-sm">
-                                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(quote.total)}
+                              {conversations.map((conv) => (
+                                <div key={conv.id} className="border rounded-lg p-3 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      {conv.channel_name && (
+                                        <Badge variant="outline" className="text-xs">
+                                          📱 {conv.channel_name}
+                                        </Badge>
+                                      )}
+                                      <Badge 
+                                        variant={conv.status === 'closed' ? 'secondary' : 'default'}
+                                        className="text-xs"
+                                      >
+                                        {conv.status === 'closed' ? 'Fechada' : 
+                                         conv.status === 'pending' ? 'Aguardando' : 'Aberta'}
+                                      </Badge>
                                     </div>
-                                    {quote.seller_profile?.full_name && (
-                                      <div className="text-xs text-muted-foreground">
-                                        por {quote.seller_profile.full_name}
-                                      </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSelectedConversation(conv);
+                                        setShowConversationModal(true);
+                                      }}
+                                    >
+                                      <Eye className="w-4 h-4 mr-1" />
+                                      Ver
+                                    </Button>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    <span>
+                                      {format(new Date(conv.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                                    </span>
+                                    {conv.closed_at && (
+                                      <span className="ml-2">
+                                        • Fechada em {format(new Date(conv.closed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                                      </span>
                                     )}
                                   </div>
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    {conv.assigned_to_name ? (
+                                      <span>Atendido por {conv.assigned_to_name}</span>
+                                    ) : (
+                                      <span className="flex items-center gap-1">
+                                        <Bot className="w-3 h-3" /> Atendido por IA
+                                      </span>
+                                    )}
+                                    <span>• {conv.message_count} mensagens</span>
+                                  </div>
+                                  {conv.close_reason && (
+                                    <div className="text-xs">
+                                      <span className="text-muted-foreground">Motivo: </span>
+                                      <span>{conv.close_reason}</span>
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -737,62 +792,113 @@ export function ContactFormModal({
                         </AccordionContent>
                       </AccordionItem>
 
-                      <AccordionItem value="orders" className="border rounded-lg">
-                        <AccordionTrigger className="px-4 hover:no-underline">
-                          <span className="flex items-center gap-2">
-                            <Package className="w-4 h-4 text-green-500" />
-                            Pedidos ({ordersCount})
-                          </span>
-                        </AccordionTrigger>
-                        <AccordionContent className="px-4 pb-4">
-                          {orders.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                              Nenhum pedido encontrado
-                            </p>
-                          ) : (
-                            <div className="space-y-2">
-                              {orders.map((order) => (
-                                <div key={order.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                                  <div>
-                                    <span className="font-medium text-sm">#{order.order_number}</span>
-                                    <span className="text-xs text-muted-foreground ml-2">
-                                      {format(new Date(order.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                                    </span>
-                                    <Badge 
-                                      variant="outline" 
-                                      className={`ml-2 text-xs ${
-                                        order.status === 'delivered' || order.status === 'completed' 
-                                          ? 'border-green-500 text-green-500' 
-                                          : order.status === 'cancelled' 
-                                          ? 'border-red-500 text-red-500' 
-                                          : ''
-                                      }`}
-                                    >
-                                      {order.status === 'pending' ? 'Pendente' :
-                                       order.status === 'confirmed' ? 'Confirmado' :
-                                       order.status === 'processing' ? 'Em Preparo' :
-                                       order.status === 'shipped' ? 'Enviado' :
-                                       order.status === 'delivered' ? 'Entregue' :
-                                       order.status === 'completed' ? 'Concluído' :
-                                       order.status === 'cancelled' ? 'Cancelado' : order.status}
-                                    </Badge>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="font-medium text-sm">
-                                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.total)}
+                      {/* Quotes Section - Only show if ERP enabled */}
+                      {isERPEnabled && (
+                        <AccordionItem value="quotes" className="border rounded-lg">
+                          <AccordionTrigger className="px-4 hover:no-underline">
+                            <span className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-amber-500" />
+                              Orçamentos ({quotesCount})
+                            </span>
+                          </AccordionTrigger>
+                          <AccordionContent className="px-4 pb-4">
+                            {quotes.length === 0 ? (
+                              <p className="text-sm text-muted-foreground text-center py-4">
+                                Nenhum orçamento encontrado
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {quotes.map((quote) => (
+                                  <div key={quote.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                                    <div>
+                                      <span className="font-medium text-sm">#{quote.quote_number}</span>
+                                      <span className="text-xs text-muted-foreground ml-2">
+                                        {format(new Date(quote.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                                      </span>
+                                      <Badge variant="outline" className="ml-2 text-xs">
+                                        {quote.status === 'pending' ? 'Pendente' :
+                                         quote.status === 'approved' ? 'Aprovado' :
+                                         quote.status === 'rejected' ? 'Rejeitado' :
+                                         quote.status === 'converted' ? 'Convertido' : quote.status}
+                                      </Badge>
                                     </div>
-                                    {order.seller_profile?.full_name && (
-                                      <div className="text-xs text-muted-foreground">
-                                        por {order.seller_profile.full_name}
+                                    <div className="text-right">
+                                      <div className="font-medium text-sm">
+                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(quote.total)}
                                       </div>
-                                    )}
+                                      {quote.seller_profile?.full_name && (
+                                        <div className="text-xs text-muted-foreground">
+                                          por {quote.seller_profile.full_name}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </AccordionContent>
-                      </AccordionItem>
+                                ))}
+                              </div>
+                            )}
+                          </AccordionContent>
+                        </AccordionItem>
+                      )}
+
+                      {/* Orders Section - Only show if ERP enabled */}
+                      {isERPEnabled && (
+                        <AccordionItem value="orders" className="border rounded-lg">
+                          <AccordionTrigger className="px-4 hover:no-underline">
+                            <span className="flex items-center gap-2">
+                              <Package className="w-4 h-4 text-green-500" />
+                              Pedidos ({ordersCount})
+                            </span>
+                          </AccordionTrigger>
+                          <AccordionContent className="px-4 pb-4">
+                            {orders.length === 0 ? (
+                              <p className="text-sm text-muted-foreground text-center py-4">
+                                Nenhum pedido encontrado
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {orders.map((order) => (
+                                  <div key={order.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                                    <div>
+                                      <span className="font-medium text-sm">#{order.order_number}</span>
+                                      <span className="text-xs text-muted-foreground ml-2">
+                                        {format(new Date(order.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                                      </span>
+                                      <Badge 
+                                        variant="outline" 
+                                        className={`ml-2 text-xs ${
+                                          order.status === 'delivered' || order.status === 'completed' 
+                                            ? 'border-green-500 text-green-500' 
+                                            : order.status === 'cancelled' 
+                                            ? 'border-red-500 text-red-500' 
+                                            : ''
+                                        }`}
+                                      >
+                                        {order.status === 'pending' ? 'Pendente' :
+                                         order.status === 'confirmed' ? 'Confirmado' :
+                                         order.status === 'processing' ? 'Em Preparo' :
+                                         order.status === 'shipped' ? 'Enviado' :
+                                         order.status === 'delivered' ? 'Entregue' :
+                                         order.status === 'completed' ? 'Concluído' :
+                                         order.status === 'cancelled' ? 'Cancelado' : order.status}
+                                      </Badge>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="font-medium text-sm">
+                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.total)}
+                                      </div>
+                                      {order.seller_profile?.full_name && (
+                                        <div className="text-xs text-muted-foreground">
+                                          por {order.seller_profile.full_name}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </AccordionContent>
+                        </AccordionItem>
+                      )}
                     </Accordion>
                   </>
                 )}
@@ -810,6 +916,14 @@ export function ContactFormModal({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Modal para visualizar histórico de conversa */}
+      <ConversationHistoryModal
+        open={showConversationModal}
+        onOpenChange={setShowConversationModal}
+        conversation={selectedConversation}
+        contactName={formData.full_name}
+      />
     </Dialog>
   );
 }
