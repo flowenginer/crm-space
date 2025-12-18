@@ -1369,28 +1369,33 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
         {/* Tags - REMOVED - Now in header */}
 
 
-        {/* Current Agent (Atendente Atual) - Read-only, use Transfer to change */}
+        {/* Current Agent (Atendente Atual) - Editable Select */}
         <div className="p-3 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
             Atendente Atual
-            <Lock className="h-3 w-3 text-muted-foreground/50" />
           </label>
-          <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/50">
-            {conversation.assigned_user ? (
-              <>
-                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-[10px] flex-shrink-0">
-                  {conversation.assigned_user.full_name?.charAt(0)?.toUpperCase() || '?'}
-                </div>
-                <span className="text-sm truncate">{conversation.assigned_user.full_name}</span>
-              </>
-            ) : (
-              <span className="text-sm text-muted-foreground">Não atribuído</span>
-            )}
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-            <ArrowRightLeft size={10} />
-            Use "Transferir" para alterar
-          </p>
+          <Select 
+            value={conversation.assigned_to || 'unassigned'}
+            onValueChange={(value) => updateAssignedUser.mutate(value === 'unassigned' ? null : value)}
+            disabled={updateAssignedUser.isPending}
+          >
+            <SelectTrigger className="w-full h-9 text-sm">
+              <SelectValue placeholder="Selecionar atendente" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unassigned">Não atribuído</SelectItem>
+              {teamMembers.map((member) => (
+                <SelectItem key={member.id} value={member.id}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-[10px]">
+                      {member.full_name?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                    <span className="truncate">{member.full_name}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Owner Agent (Atendente Responsável - do contato) */}
@@ -1446,28 +1451,34 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
           })()}
         </div>
 
-        {/* Department - Read-only, use Transfer to change */}
+        {/* Department - Editable Select */}
         <div className="p-3 border-b border-border">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
             Departamento
-            <Lock className="h-3 w-3 text-muted-foreground/50" />
           </label>
-          <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/50">
-            {conversation.department ? (
-              <>
-                <div 
-                  className="w-2 h-2 rounded-full flex-shrink-0 bg-primary" 
-                />
-                <span className="text-sm truncate">{conversation.department.name}</span>
-              </>
-            ) : (
-              <span className="text-sm text-muted-foreground">Nenhum</span>
-            )}
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-            <ArrowRightLeft size={10} />
-            Use "Transferir" para alterar
-          </p>
+          <Select 
+            value={conversation.department_id || 'none'}
+            onValueChange={(value) => updateDepartment.mutate(value === 'none' ? null : value)}
+            disabled={updateDepartment.isPending}
+          >
+            <SelectTrigger className="w-full h-9 text-sm">
+              <SelectValue placeholder="Selecionar departamento" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Nenhum</SelectItem>
+              {departments.map((dept) => (
+                <SelectItem key={dept.id} value={dept.id}>
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className="w-2 h-2 rounded-full" 
+                      style={{ backgroundColor: dept.color || '#6366F1' }}
+                    />
+                    <span className="truncate">{dept.name}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Additional Info */}
