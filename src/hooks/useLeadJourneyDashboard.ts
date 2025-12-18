@@ -493,6 +493,61 @@ export function useConversionTimeline(filters: DashboardFilters) {
 }
 
 // =====================================================
+// 2.8 - useReturningLeadsMetrics (usando RPC)
+// =====================================================
+
+export interface ReturningLeadsMetrics {
+  totalConversations: number;
+  newContacts: number;
+  returningContacts: number;
+  newContactRate: number;
+}
+
+export function useReturningLeadsMetrics(filters: DashboardFilters) {
+  return useQuery({
+    queryKey: ['returning_leads_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, filters.channelId],
+    queryFn: async (): Promise<ReturningLeadsMetrics> => {
+      const dateFrom = startOfDay(filters.dateFrom).toISOString();
+      const dateTo = endOfDay(filters.dateTo).toISOString();
+
+      const { data, error } = await supabase.rpc('get_returning_leads_metrics', {
+        p_date_from: dateFrom,
+        p_date_to: dateTo,
+        p_agent_id: filters.agentId || null,
+        p_department_id: filters.departmentId || null,
+        p_channel_id: filters.channelId || null,
+      });
+
+      if (error) {
+        console.error('Error fetching returning leads metrics:', error);
+        return {
+          totalConversations: 0,
+          newContacts: 0,
+          returningContacts: 0,
+          newContactRate: 0,
+        };
+      }
+
+      const row = data?.[0] as {
+        total_conversations?: number;
+        new_contacts?: number;
+        returning_contacts?: number;
+        new_contact_rate?: number;
+      } | undefined;
+
+      return {
+        totalConversations: Number(row?.total_conversations) || 0,
+        newContacts: Number(row?.new_contacts) || 0,
+        returningContacts: Number(row?.returning_contacts) || 0,
+        newContactRate: Number(row?.new_contact_rate) || 0,
+      };
+    },
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
+  });
+}
+
+// =====================================================
 // Helper: Format time duration
 // =====================================================
 

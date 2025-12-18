@@ -8,6 +8,7 @@ import {
   useLeadJourneyMetrics,
   useAgentDistributionAdvanced,
   useStatusFunnel,
+  useReturningLeadsMetrics,
   type DashboardFilters as JourneyFilters
 } from '@/hooks/useLeadJourneyDashboard';
 import { useAgentsForFilter, useDepartmentsForFilter, useInteractionTimeline } from '@/hooks/useDashboardAdvanced';
@@ -52,6 +53,7 @@ export default function Dashboard() {
   const { data: journeyMetrics, isLoading: loadingMetrics } = useLeadJourneyMetrics(filters, selectedOrigin || undefined);
   const { data: agentPerformance = [], isLoading: loadingAgents } = useAgentDistributionAdvanced(filters);
   const { data: statusFunnelData = [], isLoading: loadingFunnel } = useStatusFunnel(filters);
+  const { data: returningMetrics, isLoading: loadingReturning } = useReturningLeadsMetrics(filters);
   
   const { data: interactionData = [], isLoading: loadingInteraction } = useInteractionTimeline(filters);
   
@@ -71,7 +73,7 @@ export default function Dashboard() {
     {
       id: 'kpi-cards',
       fullWidth: true,
-      component: <JourneyKPICards metrics={journeyMetrics} isLoading={loadingMetrics} />,
+      component: <JourneyKPICards metrics={journeyMetrics} returningMetrics={returningMetrics} isLoading={loadingMetrics || loadingReturning} />,
     },
     {
       id: 'origin-breakdown',
@@ -118,6 +120,7 @@ export default function Dashboard() {
     },
   ], [
     journeyMetrics, loadingMetrics,
+    returningMetrics, loadingReturning,
     originData, loadingOrigin, selectedOrigin, filters.dateFrom, filters.dateTo,
     statusFunnelData, loadingFunnel,
     interactionData, loadingInteraction, selectedAgentName,

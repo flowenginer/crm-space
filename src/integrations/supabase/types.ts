@@ -6759,27 +6759,16 @@ export type Database = {
         }
         Returns: Json
       }
-      get_date_filter_counts:
-        | {
-            Args: {
-              p_agent_id?: string
-              p_channel_id?: string
-              p_department_id?: string
-              p_origin?: string
-              p_timezone?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_agent_id?: string
-              p_channel_id?: string
-              p_department_id?: string
-              p_origin?: string
-              p_timezone?: string
-            }
-            Returns: Json
-          }
+      get_date_filter_counts: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_department_id?: string
+          p_origin?: string
+          p_timezone?: string
+        }
+        Returns: Json
+      }
       get_department_counts: {
         Args: {
           p_agent_id?: string
@@ -6977,6 +6966,21 @@ export type Database = {
           meta_ads_count: number
           organic_count: number
           other_count: number
+        }[]
+      }
+      get_returning_leads_metrics: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          new_contact_rate: number
+          new_contacts: number
+          returning_contacts: number
+          total_conversations: number
         }[]
       }
       get_shared_conversation_count: {
