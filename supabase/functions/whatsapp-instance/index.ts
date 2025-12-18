@@ -963,9 +963,9 @@ async function fetchUAZAPIInstances(config: ProviderConfig) {
   console.log('[UAZAPI] Fetching all instances from:', baseUrl);
   
   try {
-    // GET /admin/instances com admintoken
-    // Docs: https://docs.uazapi.com (admin endpoints)
-    const url = `${baseUrl}/admin/instances`;
+    // GET /admin/list com admintoken
+    // Docs: https://docs.uazapi.com/endpoint/get/admin~list
+    const url = `${baseUrl}/admin/list`;
     console.log('[UAZAPI] Fetching instances:', url);
     
     const response = await fetch(url, {
@@ -992,8 +992,8 @@ async function testUAZAPIConnection(config: ProviderConfig) {
   console.log('[UAZAPI] Testing connection to:', baseUrl);
   
   try {
-    // Testar conexão com /admin/instances (requer admintoken válido)
-    const url = `${baseUrl}/admin/instances`;
+    // Testar conexão com /admin/list (requer admintoken válido)
+    const url = `${baseUrl}/admin/list`;
     console.log('[UAZAPI] Test URL:', url);
     
     const response = await fetch(url, {
