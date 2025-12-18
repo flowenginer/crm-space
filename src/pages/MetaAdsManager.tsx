@@ -11,9 +11,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { 
   RefreshCw, Calendar as CalendarIcon, TrendingUp, DollarSign, 
   MousePointer, Eye, Users, Target, Loader2, Unplug, Facebook,
-  ChevronUp, ChevronDown
+  ChevronUp, ChevronDown, MessageCircle
 } from 'lucide-react';
-import { format, subDays } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
@@ -31,6 +31,19 @@ import {
   PieChart, Pie, Cell, Tooltip
 } from 'recharts';
 import { DashboardGrid, DashboardCardConfig } from '@/components/dashboard/DashboardGrid';
+
+// Preset date ranges
+const getPresetRanges = () => {
+  const today = new Date();
+  return [
+    { label: 'Hoje', range: { from: startOfDay(today), to: endOfDay(today) } },
+    { label: 'Ontem', range: { from: startOfDay(subDays(today, 1)), to: endOfDay(subDays(today, 1)) } },
+    { label: 'Esta Semana', range: { from: startOfWeek(today, { weekStartsOn: 1 }), to: endOfDay(today) } },
+    { label: 'Este Mês', range: { from: startOfMonth(today), to: endOfMonth(today) } },
+    { label: 'Últimos 7 dias', range: { from: startOfDay(subDays(today, 6)), to: endOfDay(today) } },
+    { label: 'Últimos 30 dias', range: { from: startOfDay(subDays(today, 29)), to: endOfDay(today) } },
+  ];
+};
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
@@ -97,8 +110,11 @@ export default function MetaAdsManager() {
   const { mutate: syncAccount, isPending: isSyncing } = useSyncMetaAccount();
   const { mutate: deleteAccount } = useDeleteMetaAccount();
 
-  const dateFrom = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined;
-  const dateTo = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined;
+  // Use startOfDay to ensure correct local timezone interpretation
+  const dateFrom = dateRange?.from ? format(startOfDay(dateRange.from), 'yyyy-MM-dd') : undefined;
+  const dateTo = dateRange?.to ? format(startOfDay(dateRange.to), 'yyyy-MM-dd') : undefined;
+
+  const presetRanges = getPresetRanges();
 
   const { data: insights, isLoading: insightsLoading } = useMetaAccountInsights(
     selectedAccountId, dateFrom, dateTo
@@ -159,12 +175,11 @@ export default function MetaAdsManager() {
         switch (sortConfig.key) {
           case 'name': aValue = a.name || ''; bValue = b.name || ''; break;
           case 'status': aValue = a.status || ''; bValue = b.status || ''; break;
-          case 'objective': aValue = a.objective || ''; bValue = b.objective || ''; break;
           case 'impressions': aValue = a.insights?.impressions || 0; bValue = b.insights?.impressions || 0; break;
           case 'clicks': aValue = a.insights?.clicks || 0; bValue = b.insights?.clicks || 0; break;
           case 'ctr': aValue = a.insights?.ctr || 0; bValue = b.insights?.ctr || 0; break;
           case 'spend': aValue = a.insights?.spend || 0; bValue = b.insights?.spend || 0; break;
-          case 'cpc': aValue = a.insights?.cpc || 0; bValue = b.insights?.cpc || 0; break;
+          case 'conversations': aValue = a.conversationsStarted || 0; bValue = b.conversationsStarted || 0; break;
           case 'ctwLeads': aValue = a.ctwLeads || 0; bValue = b.ctwLeads || 0; break;
           case 'realCpl': aValue = a.realCpl || 0; bValue = b.realCpl || 0; break;
           default: return 0;
@@ -265,10 +280,10 @@ export default function MetaAdsManager() {
               </SelectContent>
             </Select>
 
-            {/* Date Range Picker */}
+            {/* Date Range Picker with Presets */}
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="justify-start text-left font-normal">
+                <Button variant="outline" className="justify-start text-left font-normal min-w-[200px]">
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {dateRange?.from ? (
                     dateRange.to ? (
@@ -284,15 +299,33 @@ export default function MetaAdsManager() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="end">
-                <Calendar
-                  initialFocus
-                  mode="range"
-                  defaultMonth={dateRange?.from}
-                  selected={dateRange}
-                  onSelect={setDateRange}
-                  numberOfMonths={2}
-                  locale={ptBR}
-                />
+                <div className="flex">
+                  {/* Preset shortcuts */}
+                  <div className="border-r p-2 space-y-1">
+                    {presetRanges.map((preset) => (
+                      <Button
+                        key={preset.label}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-left"
+                        onClick={() => setDateRange(preset.range)}
+                      >
+                        {preset.label}
+                      </Button>
+                    ))}
+                  </div>
+                  {/* Calendar */}
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange?.from}
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    numberOfMonths={2}
+                    locale={ptBR}
+                    className="pointer-events-auto"
+                  />
+                </div>
               </PopoverContent>
             </Popover>
 
@@ -376,10 +409,10 @@ export default function MetaAdsManager() {
                           icon={MousePointer}
                         />
                         <StatCard
-                          title="CTR"
-                          value={formatPercent(insights.avgCtr)}
-                          icon={TrendingUp}
-                          description="Taxa de cliques"
+                          title="Conversas Iniciadas"
+                          value={formatNumber(insights.conversationsStarted)}
+                          icon={MessageCircle}
+                          description="Via Meta Ads"
                         />
                         <StatCard
                           title="Leads CTWA"
@@ -508,12 +541,11 @@ export default function MetaAdsManager() {
                               <TableRow>
                                 <SortableHeader sortKey="name">Campanha</SortableHeader>
                                 <SortableHeader sortKey="status">Status</SortableHeader>
-                                <SortableHeader sortKey="objective">Objetivo</SortableHeader>
                                 <SortableHeader sortKey="impressions" className="text-right">Impressões</SortableHeader>
                                 <SortableHeader sortKey="clicks" className="text-right">Cliques</SortableHeader>
                                 <SortableHeader sortKey="ctr" className="text-right">CTR</SortableHeader>
                                 <SortableHeader sortKey="spend" className="text-right">Gasto</SortableHeader>
-                                <SortableHeader sortKey="cpc" className="text-right">CPC</SortableHeader>
+                                <SortableHeader sortKey="conversations" className="text-right">Conversas</SortableHeader>
                                 <SortableHeader sortKey="ctwLeads" className="text-right">Leads CTWA</SortableHeader>
                                 <SortableHeader sortKey="realCpl" className="text-right">CPL Real</SortableHeader>
                               </TableRow>
@@ -530,9 +562,6 @@ export default function MetaAdsManager() {
                                        campaign.status === 'PAUSED' ? 'Pausada' : campaign.status}
                                     </Badge>
                                   </TableCell>
-                                  <TableCell className="text-muted-foreground text-sm">
-                                    {campaign.objective?.replace(/_/g, ' ') || '-'}
-                                  </TableCell>
                                   <TableCell className="text-right">
                                     {formatNumber(campaign.insights?.impressions || 0)}
                                   </TableCell>
@@ -546,7 +575,7 @@ export default function MetaAdsManager() {
                                     {formatCurrency(campaign.insights?.spend || 0)}
                                   </TableCell>
                                   <TableCell className="text-right">
-                                    {campaign.insights?.cpc ? formatCurrency(campaign.insights.cpc) : '-'}
+                                    {campaign.conversationsStarted || 0}
                                   </TableCell>
                                   <TableCell className="text-right">
                                     {campaign.ctwLeads || 0}
