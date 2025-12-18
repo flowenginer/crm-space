@@ -18,6 +18,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { 
   Plus, 
   Trash2, 
@@ -40,6 +46,7 @@ import {
   File,
   MessageSquareReply,
   Timer,
+  Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -691,6 +698,21 @@ export function RescueTemplateModal({
                     <Label className="text-base font-semibold text-green-700 dark:text-green-400">
                       Se o cliente RESPONDER
                     </Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info size={14} className="text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs text-sm">
+                          <p className="font-semibold mb-1">Quando o cliente responder:</p>
+                          <ul className="list-disc list-inside space-y-1 text-xs">
+                            <li>A ação selecionada será executada automaticamente</li>
+                            <li>Todas as próximas mensagens pendentes serão <strong>canceladas</strong></li>
+                            <li>O resgate será marcado como "respondido"</li>
+                          </ul>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Ação executada automaticamente quando o cliente enviar uma mensagem durante o resgate
@@ -735,6 +757,23 @@ export function RescueTemplateModal({
                     <Label className="text-base font-semibold text-amber-700 dark:text-amber-400">
                       Se o cliente NÃO responder
                     </Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info size={14} className="text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs text-sm">
+                          <p className="font-semibold mb-1">Durante o resgate:</p>
+                          <ul className="list-disc list-inside space-y-1 text-xs mb-2">
+                            <li>Se "Nenhuma ação" estiver selecionada, o sistema <strong>segue automaticamente para a próxima mensagem</strong></li>
+                          </ul>
+                          <p className="font-semibold mb-1">Após a última mensagem:</p>
+                          <ul className="list-disc list-inside space-y-1 text-xs">
+                            <li>A ação configurada aqui será executada apenas quando <strong>todas as mensagens</strong> forem enviadas sem resposta</li>
+                          </ul>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Ação executada após todas as mensagens serem enviadas sem resposta do cliente
