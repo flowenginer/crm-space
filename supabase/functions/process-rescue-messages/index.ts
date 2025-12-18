@@ -5,6 +5,92 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Helper function to execute an action
+async function executeAction(
+  supabase: any,
+  action: string | null | undefined,
+  config: any,
+  conversationId: string,
+  contactId: string
+): Promise<boolean> {
+  if (!action || action === 'none' || action === 'continue') {
+    return false // No action executed
+  }
+
+  console.log(`[process-rescue-messages] Executing action: ${action}`, config)
+
+  if (action === 'close') {
+    await supabase
+      .from('conversations')
+      .update({
+        status: 'closed',
+        close_reason: config?.close_reason_id || 'rescue_completed',
+        closed_at: new Date().toISOString(),
+      })
+      .eq('id', conversationId)
+    console.log('[process-rescue-messages] Conversation closed')
+    return true
+  }
+  
+  if ((action === 'transfer' || action === 'transfer_department') && config?.department_id) {
+    await supabase
+      .from('conversations')
+      .update({
+        department_id: config.department_id,
+        assigned_to: null,
+      })
+      .eq('id', conversationId)
+    console.log('[process-rescue-messages] Conversation transferred to department:', config.department_id)
+    return true
+  }
+  
+  if (action === 'transfer_agent' && config?.agent_id) {
+    await supabase
+      .from('conversations')
+      .update({
+        assigned_to: config.agent_id,
+      })
+      .eq('id', conversationId)
+    console.log('[process-rescue-messages] Conversation transferred to agent:', config.agent_id)
+    return true
+  }
+  
+  if (action === 'add_tag' && config?.tag_id) {
+    await supabase
+      .from('contact_tags')
+      .upsert({
+        contact_id: contactId,
+        tag_id: config.tag_id,
+      }, { onConflict: 'contact_id,tag_id' })
+    console.log('[process-rescue-messages] Tag added to contact:', config.tag_id)
+    return true
+  }
+  
+  if (action === 'change_lead_status' && config?.lead_status) {
+    await supabase
+      .from('contacts')
+      .update({
+        lead_status: config.lead_status,
+      })
+      .eq('id', contactId)
+    console.log('[process-rescue-messages] Lead status changed to:', config.lead_status)
+    return true
+  }
+  
+  if (action === 'add_segment' && config?.segment_id) {
+    await supabase
+      .from('contacts')
+      .update({
+        segment_id: config.segment_id,
+      })
+      .eq('id', contactId)
+    console.log('[process-rescue-messages] Segment added to contact:', config.segment_id)
+    return true
+  }
+
+  return false
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -184,78 +270,32 @@ Deno.serve(async (req) => {
           .update({ status: 'sent', sent_at: new Date().toISOString() })
           .eq('id', msg.id)
 
-        // Update rescue current_step
+        // Get current step data from template
         const steps = msg.rescue.template?.steps || []
-        const nextStep = msg.step_number + 1
+        const currentStepIndex = msg.step_number
+        const currentStepData = steps[currentStepIndex] as any
+        const nextStep = currentStepIndex + 1
+        const isLastMessage = nextStep >= steps.length
 
-        if (nextStep >= steps.length) {
-          // Last message - execute final action
-          console.log('[process-rescue-messages] Last message sent, executing final action')
-          const finalAction = msg.rescue.template?.final_action
-          const finalConfig = msg.rescue.template?.final_action_config || {}
+        // Execute on_no_reply_action for this message (if configured)
+        const onNoReplyAction = currentStepData?.on_no_reply_action
+        const onNoReplyConfig = currentStepData?.on_no_reply_config || {}
 
-          if (finalAction === 'close') {
-            await supabase
-              .from('conversations')
-              .update({
-                status: 'closed',
-                close_reason: finalConfig.close_reason_id || 'rescue_completed',
-                closed_at: new Date().toISOString(),
-              })
-              .eq('id', msg.rescue.conversation_id)
-            console.log('[process-rescue-messages] Conversation closed')
-          } else if (finalAction === 'transfer' && finalConfig.department_id) {
-            // Legacy support for 'transfer' action
-            await supabase
-              .from('conversations')
-              .update({
-                department_id: finalConfig.department_id,
-                assigned_to: null,
-              })
-              .eq('id', msg.rescue.conversation_id)
-            console.log('[process-rescue-messages] Conversation transferred to department:', finalConfig.department_id)
-          } else if (finalAction === 'transfer_department' && finalConfig.department_id) {
-            await supabase
-              .from('conversations')
-              .update({
-                department_id: finalConfig.department_id,
-                assigned_to: null,
-              })
-              .eq('id', msg.rescue.conversation_id)
-            console.log('[process-rescue-messages] Conversation transferred to department:', finalConfig.department_id)
-          } else if (finalAction === 'transfer_agent' && finalConfig.agent_id) {
-            await supabase
-              .from('conversations')
-              .update({
-                assigned_to: finalConfig.agent_id,
-              })
-              .eq('id', msg.rescue.conversation_id)
-            console.log('[process-rescue-messages] Conversation transferred to agent:', finalConfig.agent_id)
-          } else if (finalAction === 'add_tag' && finalConfig.tag_id) {
-            await supabase
-              .from('contact_tags')
-              .upsert({
-                contact_id: msg.rescue.contact_id,
-                tag_id: finalConfig.tag_id,
-              }, { onConflict: 'contact_id,tag_id' })
-            console.log('[process-rescue-messages] Tag added to contact:', finalConfig.tag_id)
-          } else if (finalAction === 'change_lead_status' && finalConfig.lead_status) {
-            await supabase
-              .from('contacts')
-              .update({
-                lead_status: finalConfig.lead_status,
-              })
-              .eq('id', msg.rescue.contact_id)
-            console.log('[process-rescue-messages] Lead status changed to:', finalConfig.lead_status)
-          } else if (finalAction === 'add_segment' && finalConfig.segment_id) {
-            await supabase
-              .from('contacts')
-              .update({
-                segment_id: finalConfig.segment_id,
-              })
-              .eq('id', msg.rescue.contact_id)
-            console.log('[process-rescue-messages] Segment added to contact:', finalConfig.segment_id)
-          }
+        if (isLastMessage) {
+          // Last message - execute the on_no_reply_action as final action
+          console.log('[process-rescue-messages] Last message sent, executing final action from step')
+          
+          // If step has specific action, use it; otherwise fall back to template's final_action
+          const finalAction = onNoReplyAction || msg.rescue.template?.final_action
+          const finalConfig = onNoReplyAction ? onNoReplyConfig : (msg.rescue.template?.final_action_config || {})
+
+          await executeAction(
+            supabase,
+            finalAction,
+            finalConfig,
+            msg.rescue.conversation_id,
+            msg.rescue.contact_id
+          )
 
           // Mark rescue as completed
           await supabase
@@ -263,8 +303,32 @@ Deno.serve(async (req) => {
             .update({ status: 'completed', completed_at: new Date().toISOString() })
             .eq('id', msg.rescue.id)
         } else {
-          // Update to next step
-          const nextTimer = (steps[nextStep] as any)?.timer_minutes || 60
+          // Not the last message - execute intermediate on_no_reply_action if configured
+          if (onNoReplyAction && onNoReplyAction !== 'none' && onNoReplyAction !== 'continue') {
+            console.log(`[process-rescue-messages] Executing intermediate action: ${onNoReplyAction}`)
+            
+            const shouldStop = await executeAction(
+              supabase,
+              onNoReplyAction,
+              onNoReplyConfig,
+              msg.rescue.conversation_id,
+              msg.rescue.contact_id
+            )
+
+            // If action is 'close', stop the rescue
+            if (onNoReplyAction === 'close') {
+              await supabase
+                .from('active_rescues')
+                .update({ status: 'completed', completed_at: new Date().toISOString() })
+                .eq('id', msg.rescue.id)
+              processed++
+              continue // Skip scheduling next message
+            }
+          }
+
+          // Schedule next message
+          const nextStepData = steps[nextStep] as any
+          const nextTimer = nextStepData?.timer_minutes || 60
           const nextSendAt = new Date(Date.now() + nextTimer * 60 * 1000)
 
           await supabase
