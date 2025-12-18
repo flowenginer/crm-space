@@ -21,6 +21,7 @@ import {
   Download,
   AlertTriangle,
   Info,
+  Cloud,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -82,6 +83,7 @@ import { whatsappService } from '@/lib/whatsapp';
 import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, setChannelWebhook, configureChannelFull, fetchChannelWebhook, ProviderInstance } from '@/lib/whatsapp/instance-creator';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import ImportInstancesModal from '@/components/whatsapp/ImportInstancesModal';
 
 export default function WhatsAppChannels() {
   const { data: channels = [], isLoading, refetch: refetchChannels } = useChannels();
@@ -108,6 +110,7 @@ export default function WhatsAppChannels() {
   
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   
   // Form state
   const [newChannelName, setNewChannelName] = useState('');
@@ -713,18 +716,29 @@ export default function WhatsAppChannels() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Botão de Importar Instâncias - Destaque */}
+          {configuredProviders.some(p => p.code === 'uazapi' || p.code === 'evolution') && (
+            <Button
+              onClick={() => setShowImportModal(true)}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              <Cloud size={18} />
+              Importar Instâncias
+            </Button>
+          )}
+
           <Button
             variant="outline"
             onClick={handleSyncInstances}
             disabled={isSyncing || configuredProviders.length === 0}
-            title="Sincronizar instâncias dos provedores"
+            title="Sincronizar status das instâncias"
           >
             {isSyncing ? (
               <Loader2 size={18} className="animate-spin" />
             ) : (
-              <Download size={18} />
+              <RefreshCw size={18} />
             )}
-            Sincronizar
+            Atualizar Status
           </Button>
 
           <Button
@@ -755,10 +769,10 @@ export default function WhatsAppChannels() {
           <h3 className="text-xl font-semibold text-foreground mb-2">Nenhum canal configurado</h3>
           <p className="text-muted-foreground mb-6">Adicione seu primeiro canal WhatsApp para começar</p>
           <div className="flex items-center justify-center gap-3">
-            {configuredProviders.length > 0 && (
-              <Button onClick={handleSyncInstances} variant="outline" disabled={isSyncing}>
-                {isSyncing ? <Loader2 size={18} className="animate-spin mr-2" /> : <Download size={18} className="mr-2" />}
-                Importar do Provedor
+            {configuredProviders.some(p => p.code === 'uazapi' || p.code === 'evolution') && (
+              <Button onClick={() => setShowImportModal(true)} className="bg-green-600 hover:bg-green-700 text-white">
+                <Cloud size={18} className="mr-2" />
+                Importar Instâncias
               </Button>
             )}
             <Button onClick={handleAddChannel} className="btn-gradient">
@@ -1286,6 +1300,20 @@ export default function WhatsAppChannels() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Import Instances Modal */}
+      <ImportInstancesModal
+        open={showImportModal}
+        onOpenChange={setShowImportModal}
+        providers={configuredProviders}
+        existingChannels={channels.map(c => ({
+          id: c.id,
+          name: c.name,
+          instance_id: c.instance_id,
+          provider_id: c.provider_id,
+        }))}
+        onSuccess={() => refetchChannels()}
+      />
     </div>
   );
 }
