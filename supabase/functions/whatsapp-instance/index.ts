@@ -378,45 +378,36 @@ async function deleteEvolutionMessage(
 async function deleteUAZAPIMessage(
   baseUrl: string,
   instanceName: string,
-  adminToken: string,
+  instanceToken: string,
   messageId: string,
   remoteJid: string
 ) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
+  const phone = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
   
-  console.log('[UAZAPI] Deleting message:', { instanceName, messageId, remoteJid });
+  console.log('[UAZAPI V2] Deleting message:', { instanceName, messageId, phone, remoteJid });
   
-  const endpoint = `${normalizedUrl}/chat/deleteMessageForEveryone/${instanceName}`;
+  // UAZAPI V2: /message/delete com método POST e header token
+  const endpoint = `${normalizedUrl}/message/delete`;
   const body = {
     id: messageId,
-    remoteJid: remoteJid,
-    fromMe: true,
+    chatid: remoteJid,
+    everyone: true,
   };
   
-  console.log('[UAZAPI] Delete Request:', { endpoint, body });
+  console.log('[UAZAPI V2] Delete Request:', { endpoint, body });
   
-  let response = await fetch(endpoint, {
-    method: 'DELETE',
+  const response = await fetch(endpoint, {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'admintoken': adminToken,
+      'Accept': 'application/json',
+      'token': instanceToken,
     },
     body: JSON.stringify(body),
   });
   
-  if (response.status === 401) {
-    console.log('[UAZAPI] 401 with admintoken, trying apikey...');
-    response = await fetch(endpoint, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': adminToken,
-      },
-      body: JSON.stringify(body),
-    });
-  }
-  
-  const data = await safeJsonParse(response, 'UAZAPI Delete');
+  const data = await safeJsonParse(response, 'UAZAPI V2 Delete');
   
   return {
     success: true,
@@ -511,50 +502,37 @@ async function editEvolutionMessage(
 async function editUAZAPIMessage(
   baseUrl: string,
   instanceName: string,
-  adminToken: string,
+  instanceToken: string,
   messageId: string,
   remoteJid: string,
   newText: string
 ) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
+  const phone = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
   
-  console.log('[UAZAPI] Editing message:', { instanceName, messageId, remoteJid, newText });
+  console.log('[UAZAPI V2] Editing message:', { instanceName, messageId, phone, newText });
   
-  const endpoint = `${normalizedUrl}/chat/updateMessage/${instanceName}`;
+  // UAZAPI V2: /message/edit com método POST e header token
+  const endpoint = `${normalizedUrl}/message/edit`;
   const body = {
-    number: remoteJid.replace('@s.whatsapp.net', ''),
+    id: messageId,
+    chatid: remoteJid,
     text: newText,
-    key: {
-      remoteJid: remoteJid,
-      fromMe: true,
-      id: messageId,
-    },
   };
   
-  console.log('[UAZAPI] Edit Request:', { endpoint, body });
+  console.log('[UAZAPI V2] Edit Request:', { endpoint, body });
   
-  let response = await fetch(endpoint, {
-    method: 'PUT',
+  const response = await fetch(endpoint, {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'admintoken': adminToken,
+      'Accept': 'application/json',
+      'token': instanceToken,
     },
     body: JSON.stringify(body),
   });
   
-  if (response.status === 401) {
-    console.log('[UAZAPI] 401 with admintoken, trying apikey...');
-    response = await fetch(endpoint, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': adminToken,
-      },
-      body: JSON.stringify(body),
-    });
-  }
-  
-  const data = await safeJsonParse(response, 'UAZAPI Edit');
+  const data = await safeJsonParse(response, 'UAZAPI V2 Edit');
   
   return {
     success: true,
@@ -1796,10 +1774,11 @@ serve(async (req) => {
             if (!remoteJid) {
               result = { success: false, error: 'remoteJid é obrigatório para UAZAPI' };
             } else {
+              // UAZAPI V2 usa instance_token no header, não admin_token
               result = await deleteUAZAPIMessage(
                 channelProvider.base_url,
                 channel.instance_id!,
-                channelProvider.admin_token,
+                channel.instance_token || channelProvider.admin_token,
                 whatsappMessageId,
                 remoteJid
               );
@@ -1891,10 +1870,11 @@ serve(async (req) => {
               result = { success: false, error: 'remoteJid ou phone é obrigatório para UAZAPI' };
             } else {
               const jid = remoteJid || (phone?.replace(/\D/g, '') + '@s.whatsapp.net');
+              // UAZAPI V2 usa instance_token no header, não admin_token
               result = await editUAZAPIMessage(
                 channelProvider.base_url,
                 channel.instance_id!,
-                channelProvider.admin_token,
+                channel.instance_token || channelProvider.admin_token,
                 whatsappMessageId,
                 jid,
                 newText
