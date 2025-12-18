@@ -157,6 +157,7 @@ export function useUpdateContactSegment() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-direct'] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['segment-counts'] });
