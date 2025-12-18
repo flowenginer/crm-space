@@ -34,6 +34,10 @@ export interface ScheduledRescueMessage {
   status: 'pending' | 'sent' | 'cancelled';
   sent_at: string | null;
   cancelled_at: string | null;
+  audio_url?: string | null;
+  attachment_url?: string | null;
+  attachment_type?: string | null;
+  attachment_name?: string | null;
 }
 
 export function useActiveRescue(conversationId: string | null) {
@@ -176,19 +180,33 @@ export function useActivateRescue() {
       if (rescueError) throw rescueError;
 
       // SEND FIRST MESSAGE IMMEDIATELY via WhatsApp
-      const firstMessage = steps[0]?.message;
-      if (firstMessage) {
+      const firstStep = steps[0];
+      const firstMessage = firstStep?.message;
+      if (firstMessage || firstStep?.audio_url || firstStep?.attachment_url) {
         console.log('[useActivateRescue] Sending first message immediately...');
         
         try {
+          // Determine message type and media URL
+          let messageType = 'text';
+          let mediaUrl: string | null = null;
+          
+          if (firstStep.audio_url) {
+            messageType = 'audio';
+            mediaUrl = firstStep.audio_url;
+          } else if (firstStep.attachment_url) {
+            messageType = firstStep.attachment_type || 'document';
+            mediaUrl = firstStep.attachment_url;
+          }
+          
           // Send via WhatsApp API
           const { data: sendResult, error: sendError } = await supabase.functions.invoke('whatsapp-instance', {
             body: {
               action: 'send',
               channelId: conversation.channel_id,
               phone: contact.phone,
-              content: firstMessage,
-              type: 'text',
+              content: firstMessage || '',
+              type: messageType,
+              mediaUrl: mediaUrl,
             },
           });
           
@@ -205,9 +223,10 @@ export function useActivateRescue() {
             .insert({
               conversation_id: conversationId,
               contact_id: contactId,
-              content: firstMessage,
+              content: firstMessage || '',
               is_from_me: true,
-              message_type: 'text',
+              message_type: messageType,
+              media_url: mediaUrl,
               status: 'sent',
               whatsapp_message_id: sendResult?.messageId,
             });
@@ -233,6 +252,10 @@ export function useActivateRescue() {
         scheduled_for: now.toISOString(),
         status: 'sent' as const,
         sent_at: now.toISOString(),
+        audio_url: steps[0]?.audio_url || null,
+        attachment_url: steps[0]?.attachment_url || null,
+        attachment_type: steps[0]?.attachment_type || null,
+        attachment_name: steps[0]?.attachment_name || null,
       });
       
       // Schedule remaining messages
@@ -244,6 +267,10 @@ export function useActivateRescue() {
           content: steps[i].message,
           scheduled_for: scheduledTime.toISOString(),
           status: 'pending' as const,
+          audio_url: steps[i].audio_url || null,
+          attachment_url: steps[i].attachment_url || null,
+          attachment_type: steps[i].attachment_type || null,
+          attachment_name: steps[i].attachment_name || null,
         });
         accumulatedMinutes += steps[i].timer_minutes;
       }

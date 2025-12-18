@@ -5400,6 +5400,10 @@ export type Database = {
       }
       rescue_scheduled_messages: {
         Row: {
+          attachment_name: string | null
+          attachment_type: string | null
+          attachment_url: string | null
+          audio_url: string | null
           cancelled_at: string | null
           content: string
           created_at: string | null
@@ -5411,6 +5415,10 @@ export type Database = {
           step_number: number
         }
         Insert: {
+          attachment_name?: string | null
+          attachment_type?: string | null
+          attachment_url?: string | null
+          audio_url?: string | null
           cancelled_at?: string | null
           content: string
           created_at?: string | null
@@ -5422,6 +5430,10 @@ export type Database = {
           step_number: number
         }
         Update: {
+          attachment_name?: string | null
+          attachment_type?: string | null
+          attachment_url?: string | null
+          audio_url?: string | null
           cancelled_at?: string | null
           content?: string
           created_at?: string | null

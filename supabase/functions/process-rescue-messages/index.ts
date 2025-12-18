@@ -86,7 +86,19 @@ Deno.serve(async (req) => {
           continue
         }
 
-        console.log(`[process-rescue-messages] Sending message to ${contact.phone}: ${msg.content.substring(0, 50)}...`)
+        // Determine message type and media URL
+        let messageType = 'text'
+        let mediaUrl: string | null = null
+        
+        if (msg.audio_url) {
+          messageType = 'audio'
+          mediaUrl = msg.audio_url
+        } else if (msg.attachment_url) {
+          messageType = msg.attachment_type || 'document'
+          mediaUrl = msg.attachment_url
+        }
+        
+        console.log(`[process-rescue-messages] Sending ${messageType} message to ${contact.phone}: ${msg.content?.substring(0, 50) || '(media)'}...`)
         
         // SEND MESSAGE VIA WHATSAPP API
         const sendResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
@@ -99,8 +111,9 @@ Deno.serve(async (req) => {
             action: 'send',
             channelId: conversation.channel_id,
             phone: contact.phone,
-            content: msg.content,
-            type: 'text',
+            content: msg.content || '',
+            type: messageType,
+            mediaUrl: mediaUrl,
           }),
         })
 
@@ -120,9 +133,10 @@ Deno.serve(async (req) => {
           .insert({
             conversation_id: msg.rescue.conversation_id,
             contact_id: msg.rescue.contact_id,
-            content: msg.content,
+            content: msg.content || '',
             is_from_me: true,
-            message_type: 'text',
+            message_type: messageType,
+            media_url: mediaUrl,
             status: 'sent',
             whatsapp_message_id: sendResult?.messageId,
           })
