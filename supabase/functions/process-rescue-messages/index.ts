@@ -205,6 +205,7 @@ Deno.serve(async (req) => {
               .eq('id', msg.rescue.conversation_id)
             console.log('[process-rescue-messages] Conversation closed')
           } else if (finalAction === 'transfer' && finalConfig.department_id) {
+            // Legacy support for 'transfer' action
             await supabase
               .from('conversations')
               .update({
@@ -213,6 +214,47 @@ Deno.serve(async (req) => {
               })
               .eq('id', msg.rescue.conversation_id)
             console.log('[process-rescue-messages] Conversation transferred to department:', finalConfig.department_id)
+          } else if (finalAction === 'transfer_department' && finalConfig.department_id) {
+            await supabase
+              .from('conversations')
+              .update({
+                department_id: finalConfig.department_id,
+                assigned_to: null,
+              })
+              .eq('id', msg.rescue.conversation_id)
+            console.log('[process-rescue-messages] Conversation transferred to department:', finalConfig.department_id)
+          } else if (finalAction === 'transfer_agent' && finalConfig.agent_id) {
+            await supabase
+              .from('conversations')
+              .update({
+                assigned_to: finalConfig.agent_id,
+              })
+              .eq('id', msg.rescue.conversation_id)
+            console.log('[process-rescue-messages] Conversation transferred to agent:', finalConfig.agent_id)
+          } else if (finalAction === 'add_tag' && finalConfig.tag_id) {
+            await supabase
+              .from('contact_tags')
+              .upsert({
+                contact_id: msg.rescue.contact_id,
+                tag_id: finalConfig.tag_id,
+              }, { onConflict: 'contact_id,tag_id' })
+            console.log('[process-rescue-messages] Tag added to contact:', finalConfig.tag_id)
+          } else if (finalAction === 'change_lead_status' && finalConfig.lead_status) {
+            await supabase
+              .from('contacts')
+              .update({
+                lead_status: finalConfig.lead_status,
+              })
+              .eq('id', msg.rescue.contact_id)
+            console.log('[process-rescue-messages] Lead status changed to:', finalConfig.lead_status)
+          } else if (finalAction === 'add_segment' && finalConfig.segment_id) {
+            await supabase
+              .from('contacts')
+              .update({
+                segment_id: finalConfig.segment_id,
+              })
+              .eq('id', msg.rescue.contact_id)
+            console.log('[process-rescue-messages] Segment added to contact:', finalConfig.segment_id)
           }
 
           // Mark rescue as completed
