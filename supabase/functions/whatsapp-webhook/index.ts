@@ -52,6 +52,7 @@ interface NormalizedMessage {
   status: string;
   originalId: string;
   referralData?: ReferralData;
+  isEdited?: boolean;  // Flag para mensagens editadas pelo cliente
 }
 
 // =====================================================
@@ -2135,12 +2136,37 @@ serve(async (req) => {
       }
     }
 
-    // Check if message already exists (deduplicate webhooks)
+    // Check if message already exists (deduplicate webhooks OR update edited message)
     const { data: existingReceivedMsg } = await supabase
       .from("messages")
       .select("id")
       .eq("whatsapp_message_id", normalizedMessage.originalId)
       .maybeSingle();
+
+    // =====================================================
+    // CORREÇÃO: Mensagem editada pelo cliente - fazer UPDATE
+    // =====================================================
+    if (existingReceivedMsg && normalizedMessage.isEdited) {
+      console.log(`[Webhook] ✏️ Updating edited message from client (id: ${existingReceivedMsg.id})`);
+      
+      const { error: updateError } = await supabase
+        .from("messages")
+        .update({
+          content: normalizedMessage.content,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingReceivedMsg.id);
+      
+      if (updateError) {
+        console.error(`[Webhook] Error updating edited message:`, updateError);
+      } else {
+        console.log(`[Webhook] ✅ Message updated successfully`);
+      }
+      
+      return new Response(JSON.stringify({ success: true, message: "Edited message updated" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (existingReceivedMsg) {
       console.log(`[Webhook] Received message already exists (id: ${existingReceivedMsg.id}), skipping duplicate`);
@@ -3318,7 +3344,23 @@ function normalizeUAZAPIMessageNew(payload: any): NormalizedMessage | null {
   
   const isFromMe = message.fromMe || false;
   
-  console.log(`[Webhook UAZAPI] Processing NEW format message - instanceName: ${body.instanceName}, fromMe: ${isFromMe}`);
+  // =====================================================
+  // CORREÇÃO: Ignorar mensagens editadas via API (fromMe)
+  // Quando editamos pelo CRM, a UAZAPI envia webhook de volta
+  // como se fosse nova mensagem. O campo "edited" contém timestamp
+  // =====================================================
+  const isEdited = message.edited && message.edited !== "";
+  
+  if (isEdited && isFromMe) {
+    console.log(`[Webhook UAZAPI] ⏭️ Ignoring edited fromMe message (already updated locally) - messageid: ${message.messageid}, edited: ${message.edited}`);
+    return null;  // Retornar null para não processar
+  }
+  
+  if (isEdited && !isFromMe) {
+    console.log(`[Webhook UAZAPI] ✏️ Detected edited message from contact - messageid: ${message.messageid}, edited: ${message.edited}`);
+  }
+  
+  console.log(`[Webhook UAZAPI] Processing NEW format message - instanceName: ${body.instanceName}, fromMe: ${isFromMe}, isEdited: ${isEdited}`);
   
   // =====================================================
   // CORREÇÃO CRÍTICA: Lógica diferente para fromMe vs recebida
@@ -3396,7 +3438,7 @@ function normalizeUAZAPIMessageNew(payload: any): NormalizedMessage | null {
     ? new Date(message.messageTimestamp)
     : new Date();
   
-  console.log(`[Webhook UAZAPI] ✅ Normalized - Type: ${messageType}, From: ${from}, FromMe: ${message.fromMe}, HasReferral: ${!!referralData}`);
+  console.log(`[Webhook UAZAPI] ✅ Normalized - Type: ${messageType}, From: ${from}, FromMe: ${message.fromMe}, HasReferral: ${!!referralData}, isEdited: ${isEdited}`);
   
   return {
     id: `uazapi_${message.messageid}`,
@@ -3415,6 +3457,7 @@ function normalizeUAZAPIMessageNew(payload: any): NormalizedMessage | null {
     status: "delivered",
     originalId: message.messageid,
     referralData: referralData || undefined,
+    isEdited: isEdited,  // Flag para atualização em vez de inserção
   };
 }
 
