@@ -2651,7 +2651,28 @@ function isMessageStatusEvent(provider: WhatsAppProvider, payload: any): boolean
       return payload.type === "MessageStatusCallback" || payload.event === "message_status" || 
              payload.status !== undefined && payload.messageId;
     case "uazapi":
-      return payload.event === "messages.update" || payload.event === "message.ack";
+      // Formato antigo: payload.event (minúsculo)
+      // Formato UAZAPI V2: payload.EventType (com E maiúsculo)
+      const uazapiEvent = (payload.event || "").toLowerCase();
+      const uazapiEventType = (payload.EventType || payload.body?.EventType || "").toLowerCase();
+      
+      // Verificar também se há ack no payload (evento de status inline)
+      const hasAckInMessage = payload.body?.message?.ack !== undefined || 
+                              payload.message?.ack !== undefined;
+      
+      const isStatusEvent = uazapiEvent === "messages.update" || 
+             uazapiEvent === "message.ack" ||
+             uazapiEventType === "message_ack" ||
+             uazapiEventType === "ack" ||
+             uazapiEventType === "messages_ack" ||
+             uazapiEventType === "message-ack" ||
+             hasAckInMessage;
+      
+      if (isStatusEvent) {
+        console.log(`[Webhook UAZAPI] 📊 Status event detected - event: ${uazapiEvent}, EventType: ${uazapiEventType}, hasAck: ${hasAckInMessage}`);
+      }
+      
+      return isStatusEvent;
     case "evolution":
       const evolutionStatusEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
       return evolutionStatusEvent === "messages.update";
@@ -2716,16 +2737,35 @@ function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusU
       }];
     
     case "uazapi":
+      // =====================================================
+      // UAZAPI V2: O ack pode estar em body.message.ack
+      // ack: 0=PENDING, 1=SENT, 2=DELIVERED, 3=READ, 4=PLAYED
+      // =====================================================
+      const uazapiBody = payload.body || payload;
+      const uazapiMessage = uazapiBody.message || payload.message;
+      
+      // Formato UAZAPI V2: ack diretamente na mensagem
+      if (uazapiMessage && uazapiMessage.ack !== undefined) {
+        const messageId = uazapiMessage.messageid || uazapiMessage.key?.id || uazapiMessage.id || "";
+        const ackValue = String(uazapiMessage.ack);
+        console.log(`[Webhook UAZAPI] 📊 Extracted ACK from message - messageId: ${messageId}, ack: ${ackValue}`);
+        return [{
+          messageId: messageId,
+          status: ackValue
+        }];
+      }
+      
+      // Formato antigo (fallback)
       const uazapiData = payload.data || payload;
       if (Array.isArray(uazapiData)) {
         return uazapiData.map((item: any) => ({
           messageId: item.key?.id || item.id || "",
-          status: item.status || item.update?.status || ""
+          status: item.status || item.update?.status || String(item.ack || "")
         }));
       }
       return [{
-        messageId: uazapiData.key?.id || uazapiData.id || "",
-        status: uazapiData.status || uazapiData.update?.status || ""
+        messageId: uazapiData.key?.id || uazapiData.id || uazapiData.messageid || "",
+        status: uazapiData.status || uazapiData.update?.status || String(uazapiData.ack || "")
       }];
     
     case "evolution":
