@@ -140,29 +140,24 @@ export function useActivateRescue() {
       const { data: { user } } = await supabase.auth.getUser();
       const now = new Date();
       
-      // Get conversation and channel info for sending message
-      const { data: conversation, error: convError } = await supabase
-        .from('conversations')
-        .select('channel_id')
-        .eq('id', conversationId)
-        .single();
+      // Get conversation and contact info IN PARALLEL for faster execution
+      const [conversationResult, contactResult] = await Promise.all([
+        supabase.from('conversations').select('channel_id').eq('id', conversationId).single(),
+        supabase.from('contacts').select('phone').eq('id', contactId).single(),
+      ]);
       
-      if (convError || !conversation?.channel_id) {
+      if (conversationResult.error || !conversationResult.data?.channel_id) {
         throw new Error('Conversa não encontrada ou sem canal associado');
       }
       
-      // Get contact phone
-      const { data: contact, error: contactError } = await supabase
-        .from('contacts')
-        .select('phone')
-        .eq('id', contactId)
-        .single();
-      
-      if (contactError || !contact?.phone) {
+      if (contactResult.error || !contactResult.data?.phone) {
         throw new Error('Contato não encontrado ou sem telefone');
       }
       
-      // Create active rescue
+      const channelId = conversationResult.data.channel_id;
+      const phone = contactResult.data.phone;
+      
+      // Create active rescue FIRST (fast operation)
       const { data: rescue, error: rescueError } = await supabase
         .from('active_rescues')
         .insert({
@@ -180,56 +175,107 @@ export function useActivateRescue() {
       if (rescueError) throw rescueError;
 
       // SEND FIRST MESSAGE IMMEDIATELY via WhatsApp
+      // Send each media type SEPARATELY: text, audio, attachment
       const firstStep = steps[0];
-      const firstMessage = firstStep?.message;
-      if (firstMessage || firstStep?.audio_url || firstStep?.attachment_url) {
+      const hasContent = firstStep?.message || firstStep?.audio_url || firstStep?.attachment_url;
+      
+      if (hasContent) {
         console.log('[useActivateRescue] Sending first message immediately...');
         
         try {
-          // Determine message type and media URL
-          let messageType = 'text';
-          let mediaUrl: string | null = null;
+          const sendPromises: Promise<any>[] = [];
+          const insertPromises: Promise<any>[] = [];
           
+          // 1. Send TEXT message first (if exists)
+          if (firstStep.message?.trim()) {
+            console.log('[useActivateRescue] Sending text message...');
+            sendPromises.push(
+              supabase.functions.invoke('whatsapp-instance', {
+                body: {
+                  action: 'send',
+                  channelId,
+                  phone,
+                  content: firstStep.message,
+                  type: 'text',
+                },
+              }).then(({ data, error }) => {
+                if (error) throw error;
+                // Insert text message record
+                return supabase.from('messages').insert({
+                  conversation_id: conversationId,
+                  contact_id: contactId,
+                  content: firstStep.message,
+                  is_from_me: true,
+                  message_type: 'text',
+                  status: 'sent',
+                  whatsapp_message_id: data?.messageId,
+                });
+              })
+            );
+          }
+          
+          // 2. Send AUDIO (if exists)
           if (firstStep.audio_url) {
-            messageType = 'audio';
-            mediaUrl = firstStep.audio_url;
-          } else if (firstStep.attachment_url) {
-            messageType = firstStep.attachment_type || 'document';
-            mediaUrl = firstStep.attachment_url;
+            console.log('[useActivateRescue] Sending audio message...');
+            sendPromises.push(
+              supabase.functions.invoke('whatsapp-instance', {
+                body: {
+                  action: 'send',
+                  channelId,
+                  phone,
+                  content: '',
+                  type: 'audio',
+                  mediaUrl: firstStep.audio_url,
+                },
+              }).then(({ data, error }) => {
+                if (error) throw error;
+                return supabase.from('messages').insert({
+                  conversation_id: conversationId,
+                  contact_id: contactId,
+                  content: '',
+                  is_from_me: true,
+                  message_type: 'audio',
+                  media_url: firstStep.audio_url,
+                  status: 'sent',
+                  whatsapp_message_id: data?.messageId,
+                });
+              })
+            );
           }
           
-          // Send via WhatsApp API
-          const { data: sendResult, error: sendError } = await supabase.functions.invoke('whatsapp-instance', {
-            body: {
-              action: 'send',
-              channelId: conversation.channel_id,
-              phone: contact.phone,
-              content: firstMessage || '',
-              type: messageType,
-              mediaUrl: mediaUrl,
-            },
-          });
-          
-          if (sendError) {
-            console.error('[useActivateRescue] Error sending first message:', sendError);
-            throw new Error('Falha ao enviar primeira mensagem');
+          // 3. Send ATTACHMENT (if exists)
+          if (firstStep.attachment_url) {
+            console.log('[useActivateRescue] Sending attachment message...');
+            const attachmentType = firstStep.attachment_type || 'document';
+            sendPromises.push(
+              supabase.functions.invoke('whatsapp-instance', {
+                body: {
+                  action: 'send',
+                  channelId,
+                  phone,
+                  content: '',
+                  type: attachmentType,
+                  mediaUrl: firstStep.attachment_url,
+                },
+              }).then(({ data, error }) => {
+                if (error) throw error;
+                return supabase.from('messages').insert({
+                  conversation_id: conversationId,
+                  contact_id: contactId,
+                  content: '',
+                  is_from_me: true,
+                  message_type: attachmentType,
+                  media_url: firstStep.attachment_url,
+                  status: 'sent',
+                  whatsapp_message_id: data?.messageId,
+                });
+              })
+            );
           }
           
-          console.log('[useActivateRescue] First message sent successfully:', sendResult);
-          
-          // Insert message into messages table
-          await supabase
-            .from('messages')
-            .insert({
-              conversation_id: conversationId,
-              contact_id: contactId,
-              content: firstMessage || '',
-              is_from_me: true,
-              message_type: messageType,
-              media_url: mediaUrl,
-              status: 'sent',
-              whatsapp_message_id: sendResult?.messageId,
-            });
+          // Execute all sends in parallel for speed
+          await Promise.all(sendPromises);
+          console.log('[useActivateRescue] All messages sent successfully');
             
         } catch (err) {
           console.error('[useActivateRescue] Error in first message flow:', err);
