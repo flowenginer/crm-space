@@ -6975,6 +6975,16 @@ export type Database = {
               total_conversations: number
             }[]
           }
+        | {
+            Args: {
+              p_agent_id?: string
+              p_channel_id?: string
+              p_department_id?: string
+              p_end_date: string
+              p_start_date: string
+            }
+            Returns: Json
+          }
       get_lead_status_counts: {
         Args: {
           p_agent_id?: string
