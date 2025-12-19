@@ -90,6 +90,16 @@ function KPICard({ title, value, subtitle, icon, color, isLoading }: KPICardProp
   );
 }
 
+// Helper function to format currency
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export function JourneyKPICards({ 
   metrics, 
   returningMetrics,
@@ -99,10 +109,10 @@ export function JourneyKPICards({
   const newContacts = returningMetrics?.newContacts || 0;
   const returningContacts = returningMetrics?.returningContacts || 0;
   const conversions = metrics?.conversions || 0;
-  const conversionRate = metrics?.conversionRate || 0;
+  const totalConvertedValue = metrics?.totalConvertedValue || 0;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
       <KPICard
         title="Conversas Iniciadas"
         value={totalConversations}
@@ -151,18 +161,9 @@ export function JourneyKPICards({
       <KPICard
         title="Conversões"
         value={conversions}
-        subtitle={`${conversionRate.toFixed(1)}% taxa`}
+        subtitle={formatCurrency(totalConvertedValue)}
         icon={<Target className="h-5 w-5" />}
         color="green"
-        isLoading={isLoading}
-      />
-      
-      <KPICard
-        title="Taxa Resposta Lead"
-        value={`${metrics?.leadResponseRate.toFixed(0) || 0}%`}
-        subtitle="Leads responderam"
-        icon={<TrendingUp className="h-5 w-5" />}
-        color="primary"
         isLoading={isLoading}
       />
     </div>
