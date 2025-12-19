@@ -47,6 +47,8 @@ import {
   SquareCheck,
   Link2,
   Eye,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -1289,6 +1291,7 @@ export default function Conversations() {
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned' | 'pending' | 'shared'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
+  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showCallLogModal, setShowCallLogModal] = useState(false);
   const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
@@ -3120,88 +3123,109 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
       {/* Column 1: Conversations List */}
       <div className={cn(
-        'w-full md:w-[500px] md:min-w-[500px] md:max-w-[500px] bg-card border-r border-border flex flex-col flex-shrink-0',
-        isMobile && showMobileChat ? 'hidden' : 'flex'
+        'bg-card border-r border-border flex flex-col flex-shrink-0 transition-all duration-300',
+        isMobile && showMobileChat ? 'hidden' : 'flex',
+        isLeftPanelCollapsed 
+          ? 'w-[60px] min-w-[60px] max-w-[60px]' 
+          : 'w-full md:w-[360px] md:min-w-[320px] md:max-w-[360px] xl:w-[420px] xl:min-w-[380px] xl:max-w-[420px] 2xl:w-[500px] 2xl:min-w-[440px] 2xl:max-w-[500px]'
       )}>
         {/* Header */}
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-foreground">Conversas</h2>
-            <div className="flex items-center gap-1">
-              {/* Bulk Select Button */}
-              <button 
-                onClick={() => setIsConversationSelectionMode(!isConversationSelectionMode)}
-                className={cn(
-                  "p-2 rounded-lg transition-colors",
-                  isConversationSelectionMode 
-                    ? "bg-primary text-primary-foreground" 
-                    : "hover:bg-muted text-muted-foreground"
-                )}
-                title={isConversationSelectionMode ? "Cancelar seleção" : "Selecionar múltiplas"}
-              >
-                <CheckSquare size={18} />
-              </button>
-              <button className="p-2 hover:bg-muted rounded-lg transition-colors">
-                <Edit3 size={18} className="text-muted-foreground" />
-              </button>
-            </div>
-          </div>
-
-          {/* Card Aguardando Resposta */}
-          <WaitingCard />
-
-          {/* Search + Date Filter - lado a lado */}
-          <div className="flex items-center gap-2 mt-3">
-            {/* Campo de Busca */}
-            <div className="relative flex-1">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Buscar conversas..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-11 rounded-xl bg-muted/50 border-border/50"
-              />
-            </div>
-            
-            {/* Filtro de Datas */}
-            <Select 
-              value={dateFilter} 
-              onValueChange={(value) => {
-                setDateFilter(value);
-                if (value === 'custom') {
-                  setShowCustomDatePicker(true);
-                }
-              }}
+        <div className={cn("border-b border-border", isLeftPanelCollapsed ? "p-2" : "p-3 xl:p-4")}>
+          <div className={cn("flex items-center", isLeftPanelCollapsed ? "justify-center" : "justify-between mb-3")}>
+            {/* Collapse Button */}
+            <button
+              onClick={() => setIsLeftPanelCollapsed(!isLeftPanelCollapsed)}
+              className="p-1.5 hover:bg-muted rounded-lg transition-colors hidden md:flex"
+              title={isLeftPanelCollapsed ? "Expandir painel" : "Minimizar painel"}
             >
-              <SelectTrigger className="flex-1 h-11 rounded-xl bg-muted/50 border-border/50">
-                <Calendar size={14} className="mr-2 text-muted-foreground" />
-                <SelectValue placeholder="Todas as datas">
-                  {dateFilter === 'custom' && customDateRange.from 
-                    ? `${format(customDateRange.from, 'dd/MM/yy')}${customDateRange.to ? ` - ${format(customDateRange.to, 'dd/MM/yy')}` : ''}`
-                    : undefined
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as datas</SelectItem>
-                <SelectItem value="today">Hoje ({dateFilterCounts.today})</SelectItem>
-                <SelectItem value="yesterday">Ontem ({dateFilterCounts.yesterday})</SelectItem>
-                <SelectItem value="this_week">Esta semana ({dateFilterCounts.this_week})</SelectItem>
-                <SelectItem value="last_week">Semana passada ({dateFilterCounts.last_week})</SelectItem>
-                <SelectItem value="this_month">Este mês ({dateFilterCounts.this_month})</SelectItem>
-                <SelectItem value="last_month">Mês passado ({dateFilterCounts.last_month})</SelectItem>
-                <SelectItem value="custom">Período personalizado...</SelectItem>
-              </SelectContent>
-            </Select>
+              {isLeftPanelCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            </button>
+            {!isLeftPanelCollapsed && (
+              <>
+                <h2 className="text-lg xl:text-xl font-bold text-foreground ml-2">Conversas</h2>
+                <div className="flex items-center gap-1">
+                  {/* Bulk Select Button */}
+                  <button 
+                    onClick={() => setIsConversationSelectionMode(!isConversationSelectionMode)}
+                    className={cn(
+                      "p-2 rounded-lg transition-colors",
+                      isConversationSelectionMode 
+                        ? "bg-primary text-primary-foreground" 
+                        : "hover:bg-muted text-muted-foreground"
+                    )}
+                    title={isConversationSelectionMode ? "Cancelar seleção" : "Selecionar múltiplas"}
+                  >
+                    <CheckSquare size={18} />
+                  </button>
+                  <button className="p-2 hover:bg-muted rounded-lg transition-colors">
+                    <Edit3 size={18} className="text-muted-foreground" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
+
+          {/* Content only when expanded */}
+          {!isLeftPanelCollapsed && (
+            <>
+              {/* Card Aguardando Resposta */}
+              <WaitingCard />
+
+              {/* Search + Date Filter - lado a lado */}
+              <div className="flex items-center gap-1.5 mt-3">
+                {/* Campo de Busca */}
+                <div className="relative flex-1">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Buscar conversas..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 h-9 rounded-xl bg-muted/50 border-border/50 text-sm"
+                  />
+                </div>
+                
+                {/* Filtro de Datas */}
+                <Select 
+                  value={dateFilter} 
+                  onValueChange={(value) => {
+                    setDateFilter(value);
+                    if (value === 'custom') {
+                      setShowCustomDatePicker(true);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="flex-1 h-9 rounded-xl bg-muted/50 border-border/50 text-sm">
+                    <Calendar size={14} className="mr-2 text-muted-foreground" />
+                    <SelectValue placeholder="Todas as datas">
+                      {dateFilter === 'custom' && customDateRange.from 
+                        ? `${format(customDateRange.from, 'dd/MM/yy')}${customDateRange.to ? ` - ${format(customDateRange.to, 'dd/MM/yy')}` : ''}`
+                        : undefined
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as datas</SelectItem>
+                    <SelectItem value="today">Hoje ({dateFilterCounts.today})</SelectItem>
+                    <SelectItem value="yesterday">Ontem ({dateFilterCounts.yesterday})</SelectItem>
+                    <SelectItem value="this_week">Esta semana ({dateFilterCounts.this_week})</SelectItem>
+                    <SelectItem value="last_week">Semana passada ({dateFilterCounts.last_week})</SelectItem>
+                    <SelectItem value="this_month">Este mês ({dateFilterCounts.this_month})</SelectItem>
+                    <SelectItem value="last_month">Mês passado ({dateFilterCounts.last_month})</SelectItem>
+                    <SelectItem value="custom">Período personalizado...</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Filters */}
-        <div className="px-4 py-3 border-b border-border space-y-3">
+        {/* Filters - only when expanded */}
+        {!isLeftPanelCollapsed && (
+        <div className="px-3 py-2 border-b border-border space-y-2">
           {/* Lead Status Filter */}
           <Select value={leadStatusFilter} onValueChange={setLeadStatusFilter}>
-            <SelectTrigger className="w-full h-10 rounded-lg">
+            <SelectTrigger className="w-full h-9 rounded-lg text-sm">
               <Tag size={14} className="mr-2 text-muted-foreground" />
               <SelectValue placeholder="Status do Lead" />
             </SelectTrigger>
@@ -3299,10 +3323,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {/* Status Filter */}
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-              <SelectTrigger className="flex-1 h-10 rounded-lg">
+              <SelectTrigger className="flex-1 h-9 rounded-lg text-sm">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -3315,7 +3339,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </Select>
 
             <Select value={channelFilter} onValueChange={setChannelFilter}>
-              <SelectTrigger className="flex-1 h-10 rounded-lg">
+              <SelectTrigger className="flex-1 h-9 rounded-lg text-sm">
                 <SelectValue placeholder="Todos os canais" />
               </SelectTrigger>
               <SelectContent>
@@ -3330,7 +3354,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </Select>
 
             <Select value={sortFilter} onValueChange={(v) => setSortFilter(v as SortFilter)}>
-              <SelectTrigger className="flex-1 h-10 rounded-lg">
+              <SelectTrigger className="flex-1 h-9 rounded-lg text-sm">
                 <SelectValue placeholder="Mais novas" />
               </SelectTrigger>
               <SelectContent>
@@ -3344,9 +3368,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
             <button
               onClick={() => setShowFilters(true)}
-              className="p-2.5 hover:bg-muted rounded-lg transition-colors"
+              className="p-2 hover:bg-muted rounded-lg transition-colors"
             >
-              <SlidersHorizontal size={18} className="text-muted-foreground" />
+              <SlidersHorizontal size={16} className="text-muted-foreground" />
             </button>
           </div>
 
@@ -3486,9 +3510,52 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             ))}
           </div>
         </div>
+        )}
 
-        {/* Conversations List */}
-        <div 
+        {/* Conversations List - Collapsed View (Avatars Only) */}
+        {isLeftPanelCollapsed ? (
+          <div className="flex-1 overflow-y-auto py-2">
+            <div className="flex flex-col items-center space-y-1">
+              {conversationsLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mt-4" />
+              ) : (
+                filteredConversations.map((conv) => (
+                  <button
+                    key={conv.id}
+                    onClick={() => handleSelectConversation(conv)}
+                    className={cn(
+                      "relative p-1.5 rounded-lg transition-colors",
+                      selectedConversationId === conv.id ? "bg-primary/10 ring-2 ring-primary" : "hover:bg-muted"
+                    )}
+                    title={conv.contact?.full_name || 'Contato'}
+                  >
+                    {conv.contact?.avatar_url ? (
+                      <img 
+                        src={conv.contact.avatar_url} 
+                        alt={conv.contact.full_name || ''} 
+                        className="w-9 h-9 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold text-sm">
+                        {(conv.contact?.full_name || 'C').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    {conv.is_unread && (
+                      <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-destructive rounded-full border-2 border-card" />
+                    )}
+                    {isPinned(conv.id) && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-amber-500 rounded-full border-2 border-card flex items-center justify-center">
+                        <Pin size={6} className="text-white" />
+                      </span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        ) : (
+        /* Conversations List - Expanded View */
+        <div
           ref={conversationListRef}
           className="flex-1 overflow-y-auto"
           onScroll={handleConversationListScroll}
@@ -3532,6 +3599,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </>
           )}
         </div>
+        )}
         
         {/* Bulk Actions Floating Toolbar */}
         {isConversationSelectionMode && (
