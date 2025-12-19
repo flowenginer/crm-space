@@ -777,7 +777,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   // Loading state
   if (loadingConversation) {
     return (
-      <div className="w-[320px] bg-card border-l border-border flex items-center justify-center">
+      <div className="w-[280px] xl:w-[300px] 2xl:w-[320px] bg-card border-l border-border flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -785,7 +785,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
 
   if (!conversation || !conversation.contact) {
     return (
-      <div className="w-[320px] bg-card border-l border-border flex items-center justify-center">
+      <div className="w-[280px] xl:w-[300px] 2xl:w-[320px] bg-card border-l border-border flex items-center justify-center">
         <p className="text-muted-foreground">Conversa não encontrada</p>
       </div>
     );
@@ -834,7 +834,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   };
 
   return (
-    <div className="w-[320px] bg-card border-l border-border flex flex-col h-full overflow-hidden">
+    <div className="w-[280px] xl:w-[300px] 2xl:w-[320px] bg-card border-l border-border flex flex-col h-full overflow-hidden">
       {/* Header: Contact Info - Horizontal Layout */}
       <div className="p-3 border-b border-border">
         <div className="flex items-center gap-3">
