@@ -6929,27 +6929,6 @@ export type Database = {
             Args: {
               p_agent_id?: string
               p_channel_id?: string
-              p_conversion_status_names?: string[]
-              p_date_from: string
-              p_date_to: string
-              p_department_id?: string
-              p_origin?: string
-            }
-            Returns: {
-              assignment_rate: number
-              avg_time_to_assignment: number
-              avg_time_to_first_response: number
-              conversion_rate: number
-              conversions: number
-              lead_response_rate: number
-              total_assigned: number
-              total_unassigned: number
-            }[]
-          }
-        | {
-            Args: {
-              p_agent_id?: string
-              p_channel_id?: string
               p_date_from: string
               p_date_to: string
               p_department_id?: string
