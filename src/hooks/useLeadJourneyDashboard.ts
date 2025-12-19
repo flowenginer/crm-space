@@ -19,12 +19,14 @@ export interface DashboardFilters {
 // Realtime Hook Helper
 // =====================================================
 
-function useDashboardRealtime(queryKey: unknown[], deps: unknown[] = []) {
+function useDashboardRealtime(queryKeyString: string) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    const channelName = `dashboard-realtime-${queryKeyString.slice(0, 50)}`;
+    
     const channel = supabase
-      .channel(`dashboard-realtime-${JSON.stringify(queryKey).slice(0, 50)}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -33,7 +35,9 @@ function useDashboardRealtime(queryKey: unknown[], deps: unknown[] = []) {
           table: 'contacts',
         },
         () => {
-          queryClient.invalidateQueries({ queryKey });
+          queryClient.invalidateQueries({ predicate: (query) => 
+            JSON.stringify(query.queryKey).includes(queryKeyString.split('-')[0])
+          });
         }
       )
       .on(
@@ -44,7 +48,9 @@ function useDashboardRealtime(queryKey: unknown[], deps: unknown[] = []) {
           table: 'conversations',
         },
         () => {
-          queryClient.invalidateQueries({ queryKey });
+          queryClient.invalidateQueries({ predicate: (query) => 
+            JSON.stringify(query.queryKey).includes(queryKeyString.split('-')[0])
+          });
         }
       )
       .subscribe();
@@ -52,7 +58,7 @@ function useDashboardRealtime(queryKey: unknown[], deps: unknown[] = []) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient, ...deps]);
+  }, [queryClient, queryKeyString]);
 }
 
 // =====================================================
@@ -85,7 +91,7 @@ export function useLeadsByOrigin(filters: DashboardFilters) {
   const queryKey = ['leads_by_origin_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames];
 
   // Realtime subscription
-  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId]);
+  useDashboardRealtime('leads_by_origin_rpc');
 
   return useQuery({
     queryKey,
@@ -146,7 +152,7 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
   const queryKey = ['lead_journey_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames, origin];
 
   // Realtime subscription
-  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId, origin]);
+  useDashboardRealtime('lead_journey_metrics_rpc');
 
   return useQuery({
     queryKey,
@@ -230,7 +236,7 @@ export function useAgentDistributionAdvanced(filters: DashboardFilters) {
   const queryKey = ['agent_distribution_advanced_rpc', filters.dateFrom, filters.dateTo, filters.departmentId, conversionStatusNames];
 
   // Realtime subscription
-  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.departmentId]);
+  useDashboardRealtime('agent_distribution_advanced_rpc');
 
   return useQuery({
     queryKey,
@@ -286,7 +292,7 @@ export function useStatusFunnel(filters: DashboardFilters) {
   const queryKey = ['status_funnel_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId];
 
   // Realtime subscription
-  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId]);
+  useDashboardRealtime('status_funnel_rpc');
 
   return useQuery({
     queryKey,
@@ -411,7 +417,7 @@ export function useLeadAlerts(filters: DashboardFilters) {
   const queryKey = ['lead_alerts_rpc', filters.agentId, filters.departmentId];
 
   // Realtime subscription
-  useDashboardRealtime(queryKey, [filters.agentId, filters.departmentId]);
+  useDashboardRealtime('lead_alerts_rpc');
 
   return useQuery({
     queryKey,
@@ -478,7 +484,7 @@ export function useOriginTimeline(filters: DashboardFilters) {
   const queryKey = ['origin_timeline_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId];
 
   // Realtime subscription
-  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId]);
+  useDashboardRealtime('origin_timeline_rpc');
 
   return useQuery({
     queryKey,
@@ -524,7 +530,7 @@ export function useConversionTimeline(filters: DashboardFilters) {
   const queryKey = ['conversion_timeline_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames];
 
   // Realtime subscription
-  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId]);
+  useDashboardRealtime('conversion_timeline_rpc');
 
   return useQuery({
     queryKey,
@@ -570,7 +576,7 @@ export function useReturningLeadsMetrics(filters: DashboardFilters, origin?: str
   const queryKey = ['returning_leads_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, filters.channelId, origin];
 
   // Realtime subscription
-  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId, origin]);
+  useDashboardRealtime('returning_leads_metrics_rpc');
 
   return useQuery({
     queryKey,
