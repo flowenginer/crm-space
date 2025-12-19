@@ -29,11 +29,11 @@ export interface PaymentLink {
   created_by?: string | null;
 }
 
-interface CreatePaymentLinkParams {
+export interface CreatePaymentLinkParams {
   orderId?: string;
   quoteId?: string;
-  conversationId: string;
-  contactId: string;
+  conversationId?: string;
+  contactId?: string;
   amount: number;
   description?: string;
   paymentMethods: string[];
