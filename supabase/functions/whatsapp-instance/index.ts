@@ -1635,73 +1635,106 @@ serve(async (req) => {
       }
       
       const channelProvider = channel.provider as any;
-      if (!channelProvider || channelProvider.code !== 'evolution') {
+      if (!channelProvider) {
         return new Response(
-          JSON.stringify({ success: false, error: 'Recurso disponível apenas para Evolution API' }),
+          JSON.stringify({ success: false, error: 'Provedor do canal não encontrado' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
         );
       }
       
       const normalizedUrl = normalizeBaseUrl(channelProvider.base_url);
       const formattedPhone = phone.replace(/\D/g, '');
+      const providerCode = channelProvider.code;
       
-      console.log('[FetchProfile] Fetching profile for:', formattedPhone);
+      console.log('[FetchProfile] Fetching profile for:', formattedPhone, 'Provider:', providerCode);
       
       try {
-        const profileRes = await fetch(`${normalizedUrl}/chat/fetchProfile/${channel.instance_id}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': channelProvider.admin_token,
-          },
-          body: JSON.stringify({ number: formattedPhone }),
-        });
+        let profilePictureUrl: string | null = null;
+        let name: string | null = null;
+        let numberExists = true;
         
-        const rawText = await profileRes.text();
-        console.log(`[Evolution FetchProfile] Raw response (${profileRes.status}):`, rawText);
-        
-        // Handle case where number doesn't exist on WhatsApp
-        if (profileRes.status === 400) {
-          try {
-            const errorData = JSON.parse(rawText);
-            // Check if this is a "number doesn't exist" error
-            if (errorData.response?.message?.[0]?.exists === false) {
-              console.log('[FetchProfile] Number does not exist on WhatsApp');
-              return new Response(
-                JSON.stringify({
-                  success: true,
-                  profilePictureUrl: null,
-                  name: null,
-                  numberExists: false,
-                }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-              );
+        if (providerCode === 'evolution') {
+          // Evolution API
+          const profileRes = await fetch(`${normalizedUrl}/chat/fetchProfile/${channel.instance_id}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': channelProvider.admin_token,
+            },
+            body: JSON.stringify({ number: formattedPhone }),
+          });
+          
+          const rawText = await profileRes.text();
+          console.log(`[Evolution FetchProfile] Raw response (${profileRes.status}):`, rawText);
+          
+          // Handle case where number doesn't exist on WhatsApp
+          if (profileRes.status === 400) {
+            try {
+              const errorData = JSON.parse(rawText);
+              if (errorData.response?.message?.[0]?.exists === false) {
+                console.log('[FetchProfile] Number does not exist on WhatsApp');
+                numberExists = false;
+              }
+            } catch (e) {
+              // Fall through
             }
-          } catch (e) {
-            // If we can't parse the error, fall through to generic error handling
           }
+          
+          if (profileRes.ok) {
+            const profileData = JSON.parse(rawText);
+            profilePictureUrl = profileData.profilePictureUrl || profileData.picture || null;
+            name = profileData.name || profileData.pushName || null;
+            numberExists = profileData.numberExists !== false;
+          }
+        } else if (providerCode === 'uazapi') {
+          // UAZAPI V2 - Usar endpoint /contact/profile
+          const profileRes = await fetch(`${normalizedUrl}/contact/profile`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'token': channel.instance_token || channelProvider.admin_token,
+            },
+            body: JSON.stringify({ number: formattedPhone }),
+          });
+          
+          const rawText = await profileRes.text();
+          console.log(`[UAZAPI FetchProfile] Raw response (${profileRes.status}):`, rawText);
+          
+          if (profileRes.ok) {
+            try {
+              const profileData = JSON.parse(rawText);
+              // UAZAPI pode retornar campos como ProfilePicURL, Picture, Name, PushName
+              profilePictureUrl = profileData.ProfilePicURL || profileData.profilePicURL || 
+                                  profileData.picture || profileData.Picture || 
+                                  profileData.imgUrl || null;
+              name = profileData.Name || profileData.name || 
+                     profileData.PushName || profileData.pushName || null;
+              numberExists = profileData.exists !== false && profileData.Exists !== false;
+            } catch (e) {
+              console.log('[UAZAPI FetchProfile] Parse error:', e);
+            }
+          } else if (profileRes.status === 404 || profileRes.status === 400) {
+            numberExists = false;
+          }
+        } else if (providerCode === 'zapi') {
+          // Z-API - Não suporta fetchProfile, retornar vazio sem erro
+          console.log('[Z-API FetchProfile] Not supported, returning empty');
         }
         
-        if (!profileRes.ok) {
-          throw new Error(`HTTP ${profileRes.status}: ${rawText}`);
-        }
-        
-        const profileData = JSON.parse(rawText);
-        console.log('[FetchProfile] Response:', profileData);
+        console.log('[FetchProfile] Result:', { profilePictureUrl, name, numberExists });
         
         return new Response(
           JSON.stringify({
             success: true,
-            profilePictureUrl: profileData.profilePictureUrl || profileData.picture || null,
-            name: profileData.name || profileData.pushName || null,
-            numberExists: profileData.numberExists !== false,
+            profilePictureUrl,
+            name,
+            numberExists,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       } catch (profileError: any) {
         console.error('[FetchProfile] Error:', profileError);
-        // Return 200 with success: false to allow graceful client-side handling
-        // "Connection Closed" means the WhatsApp instance is disconnected
         return new Response(
           JSON.stringify({ 
             success: false, 
