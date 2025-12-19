@@ -3808,6 +3808,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                               if (error) throw error;
                               queryClient.invalidateQueries({ queryKey: ['conversations'] });
                               queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
+                              queryClient.invalidateQueries({ queryKey: ['conversation-direct', selectedConversationId] });
                               toast.success(`Canal alterado para ${channel.name}`);
                             } catch (error) {
                               toast.error('Erro ao alterar canal');
