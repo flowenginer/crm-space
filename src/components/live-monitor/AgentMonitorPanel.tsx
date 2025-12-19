@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Users, Clock, MessageSquare, ChevronDown, ChevronUp, 
-  Settings, BarChart3, Power, PowerOff, Loader2, AlertTriangle, Timer
+  Settings, BarChart3, Power, PowerOff, Loader2, AlertTriangle, Timer, Lock
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,9 +43,11 @@ import {
   AgentStatus 
 } from '@/hooks/useAgentMonitor';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useAuth } from '@/hooks/useAuth';
 import { ResponseTimeChart } from './ResponseTimeChart';
 import { WaitingConversationsModal } from './WaitingConversationsModal';
 import { AvailabilityTimerModal } from './AvailabilityTimerModal';
+import { ReleaseRequestsPanel } from './ReleaseRequestsPanel';
 
 interface AgentMonitorPanelProps {
   hiddenAgentIds?: Set<string>;
@@ -58,6 +60,7 @@ export function AgentMonitorPanel({ hiddenAgentIds = new Set() }: AgentMonitorPa
   const [timerModalAgent, setTimerModalAgent] = useState<AgentStatus | null>(null);
   
   const { data: allAgents = [], isLoading } = useAgentMonitorStatus();
+  const { user } = useAuth();
   
   // Filter out hidden agents
   const agents = allAgents.filter(agent => !hiddenAgentIds.has(agent.agent_id));
@@ -75,10 +78,10 @@ export function AgentMonitorPanel({ hiddenAgentIds = new Set() }: AgentMonitorPa
     }
 
     if (agent.is_available) {
-      // Se está ativo, abre modal para escolher tempo
+      // Se está ativo, abre modal para escolher tempo (com bloqueio por admin)
       setTimerModalAgent(agent);
     } else {
-      // Se está pausado, reativa imediatamente
+      // Se está pausado, reativa imediatamente e remove bloqueio
       handleReactivate(agent);
     }
   };
@@ -88,6 +91,7 @@ export function AgentMonitorPanel({ hiddenAgentIds = new Set() }: AgentMonitorPa
       await toggleAvailability.mutateAsync({
         agentId: agent.agent_id,
         isAvailable: true,
+        lockedBy: null, // Clear the lock when admin reactivates
       });
       toast.success(`${agent.agent_name} agora está disponível para receber leads`);
     } catch (error) {
@@ -104,6 +108,7 @@ export function AgentMonitorPanel({ hiddenAgentIds = new Set() }: AgentMonitorPa
         isAvailable: false,
         unavailableUntil: untilTime,
         unavailabilityReason: reason,
+        lockedBy: user?.id || null, // Lock with admin's ID
       });
       toast.success(`${timerModalAgent.agent_name} pausado: ${reason}`);
     } catch (error) {
@@ -243,6 +248,9 @@ export function AgentMonitorPanel({ hiddenAgentIds = new Set() }: AgentMonitorPa
 
         <CollapsibleContent>
           <CardContent>
+            {/* Release Requests Panel */}
+            <ReleaseRequestsPanel />
+            
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />

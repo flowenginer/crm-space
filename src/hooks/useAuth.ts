@@ -53,7 +53,19 @@ export function useAuth() {
 
         // Defer Supabase calls with setTimeout to prevent deadlock
         if (session?.user) {
-          setTimeout(() => {
+          setTimeout(async () => {
+            // Auto-activate on login: set available, online, and clear locks
+            await supabase
+              .from('profiles')
+              .update({
+                is_available: true,
+                is_online: true,
+                availability_locked_by: null,
+                unavailable_until: null,
+                unavailability_reason: null,
+              })
+              .eq('id', session.user.id);
+            
             fetchProfile(session.user.id);
             fetchRoles(session.user.id);
           }, 0);

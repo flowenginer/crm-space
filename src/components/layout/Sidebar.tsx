@@ -28,6 +28,7 @@ import { useMenuHierarchy, MenuItem } from '@/hooks/useMenuConfig';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AvailabilityToggle } from './AvailabilityToggle';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -443,7 +444,10 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       </nav>
 
       {/* User Section */}
-      <div className="p-4">
+      <div className="p-4 space-y-3">
+        {/* Availability Toggle */}
+        <AvailabilityToggle isCollapsed={isCollapsed} />
+        
         <div
           className={cn(
             'rounded-xl p-3 transition-all',
