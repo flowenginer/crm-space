@@ -524,6 +524,9 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
               </h3>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+              <span className="text-xs text-muted-foreground">
+                {formatTime(conversation.last_message_at)}
+              </span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -538,9 +541,6 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
                   <Pin size={14} className="text-muted-foreground" />
                 )}
               </button>
-              <span className="text-xs text-muted-foreground">
-                {formatTime(conversation.last_message_at)}
-              </span>
             </div>
           </div>
 
