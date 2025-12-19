@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfDay, endOfDay } from 'date-fns';
-import { useConversionStatusNames } from './useConversionStatusNames';
 import { useEffect } from 'react';
+import { useConversionStatusNames } from './useConversionStatusNames';
 
 const STALE_TIME = 30000; // 30 seconds
 const REALTIME_REFETCH_INTERVAL = 30000; // 30 seconds for realtime
@@ -149,8 +149,7 @@ export interface LeadJourneyMetrics {
 }
 
 export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string) {
-  const { data: conversionStatusNames = [] } = useConversionStatusNames();
-  const queryKey = ['lead_journey_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames, origin];
+  const queryKey = ['lead_journey_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, filters.channelId, origin];
 
   // Realtime subscription
   useDashboardRealtime('lead_journey_metrics_rpc');
@@ -166,7 +165,7 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
         p_date_to: dateTo,
         p_agent_id: filters.agentId || null,
         p_department_id: filters.departmentId || null,
-        p_conversion_status_names: conversionStatusNames,
+        p_channel_id: filters.channelId || null,
         p_origin: origin || null,
       });
 
@@ -186,29 +185,42 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
         };
       }
 
-      const row = data?.[0] as {
-        avg_time_to_assignment?: number;
-        avg_time_to_first_response?: number;
-        total_assigned?: number;
-        total_unassigned?: number;
-        assignment_rate?: number;
-        lead_response_rate?: number;
-        conversions?: number;
-        conversion_rate?: number;
+      // A função retorna JSON diretamente, não array
+      const result = data as {
+        total_leads?: number;
+        new_leads?: number;
+        assigned_leads?: number;
+        converted_leads?: number;
         total_converted_value?: number;
-      } | undefined;
+        avg_first_response_seconds?: number;
+        avg_resolution_seconds?: number;
+        returning_rate?: number;
+      } | null;
+
+      const totalLeads = Number(result?.total_leads) || 0;
+      const newLeads = Number(result?.new_leads) || 0;
+      const assignedLeads = Number(result?.assigned_leads) || 0;
+      const convertedLeads = Number(result?.converted_leads) || 0;
+      const totalConvertedValue = Number(result?.total_converted_value) || 0;
+      const avgFirstResponseSeconds = Number(result?.avg_first_response_seconds) || 0;
+
+      // Calcular taxa de atribuição
+      const assignmentRate = newLeads > 0 ? (assignedLeads / newLeads) * 100 : 0;
       
+      // Calcular taxa de conversão
+      const conversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
+
       return {
-        avgTimeToAssignment: Number(row?.avg_time_to_assignment) || 0,
-        avgTimeToFirstResponse: Number(row?.avg_time_to_first_response) || 0,
+        avgTimeToAssignment: 0,
+        avgTimeToFirstResponse: avgFirstResponseSeconds,
         avgTimeToConversion: 0,
-        totalAssigned: Number(row?.total_assigned) || 0,
-        totalUnassigned: Number(row?.total_unassigned) || 0,
-        assignmentRate: Number(row?.assignment_rate) || 0,
-        leadResponseRate: Number(row?.lead_response_rate) || 0,
-        conversions: Number(row?.conversions) || 0,
-        conversionRate: Number(row?.conversion_rate) || 0,
-        totalConvertedValue: Number(row?.total_converted_value) || 0,
+        totalAssigned: assignedLeads,
+        totalUnassigned: newLeads - assignedLeads,
+        assignmentRate: Math.round(assignmentRate * 10) / 10,
+        leadResponseRate: 0,
+        conversions: convertedLeads,
+        conversionRate: Math.round(conversionRate * 10) / 10,
+        totalConvertedValue,
       };
     },
     staleTime: STALE_TIME,
