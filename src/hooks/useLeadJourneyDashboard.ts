@@ -149,7 +149,17 @@ export interface LeadJourneyMetrics {
 }
 
 export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string) {
-  const queryKey = ['lead_journey_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, filters.channelId, origin];
+  const { data: conversionStatusNames = [] } = useConversionStatusNames();
+  const queryKey = [
+    'lead_journey_metrics_rpc',
+    filters.dateFrom,
+    filters.dateTo,
+    filters.agentId,
+    filters.departmentId,
+    filters.channelId,
+    origin,
+    conversionStatusNames,
+  ];
 
   // Realtime subscription
   useDashboardRealtime('lead_journey_metrics_rpc');
@@ -160,7 +170,8 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
 
-      const { data, error } = await supabase.rpc('get_lead_journey_metrics', {
+      // 1) KPI base (assignment rate + assigned conversations)
+      const { data: kpiData, error: kpiError } = await supabase.rpc('get_lead_journey_metrics', {
         p_date_from: dateFrom,
         p_date_to: dateTo,
         p_agent_id: filters.agentId || null,
@@ -169,56 +180,134 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
         p_origin: origin || null,
       });
 
-      if (error) {
-        console.error('Error fetching lead journey metrics:', error);
-        return {
-          avgTimeToAssignment: 0,
-          avgTimeToFirstResponse: 0,
-          avgTimeToConversion: 0,
-          totalAssigned: 0,
-          totalUnassigned: 0,
-          assignmentRate: 0,
-          leadResponseRate: 0,
-          conversions: 0,
-          conversionRate: 0,
-          totalConvertedValue: 0,
-        };
+      if (kpiError) {
+        console.error('Error fetching lead journey metrics:', kpiError);
       }
 
-      // A função retorna JSON diretamente, não array
-      const result = data as {
-        total_leads?: number;
-        new_leads?: number;
-        assigned_leads?: number;
-        converted_leads?: number;
-        total_converted_value?: number;
-        avg_first_response_seconds?: number;
-        avg_resolution_seconds?: number;
-        returning_rate?: number;
-      } | null;
+      const kpi = (kpiData || null) as
+        | {
+            total_conversations?: number;
+            assigned_conversations?: number;
+            assignment_rate?: number;
+          }
+        | null;
 
-      const totalLeads = Number(result?.total_leads) || 0;
-      const newLeads = Number(result?.new_leads) || 0;
-      const assignedLeads = Number(result?.assigned_leads) || 0;
-      const convertedLeads = Number(result?.converted_leads) || 0;
-      const totalConvertedValue = Number(result?.total_converted_value) || 0;
-      const avgFirstResponseSeconds = Number(result?.avg_first_response_seconds) || 0;
+      const totalConversations = Number(kpi?.total_conversations) || 0;
+      const assignedConversations = Number(kpi?.assigned_conversations) || 0;
+      const assignmentRate = Number(kpi?.assignment_rate) || 0;
 
-      // Calcular taxa de atribuição
-      const assignmentRate = newLeads > 0 ? (assignedLeads / newLeads) * 100 : 0;
-      
-      // Calcular taxa de conversão
-      const conversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
+      // 2) Avg time to assignment (seconds)
+      // NOTE: we filter assignments by assigned_at (when assignment happened)
+      // and additionally by conversation fields (department/channel/origin) when available.
+      let assignmentHistoryQuery = supabase
+        .from('lead_assignment_history')
+        .select(
+          `time_to_assign_seconds,
+           conversations!inner(id, department_id, channel_id, referral_source)`
+        )
+        .gte('assigned_at', dateFrom)
+        .lte('assigned_at', dateTo)
+        .not('time_to_assign_seconds', 'is', null);
+
+      if (filters.agentId) {
+        assignmentHistoryQuery = assignmentHistoryQuery.eq('assigned_to', filters.agentId);
+      }
+      if (filters.departmentId) {
+        assignmentHistoryQuery = assignmentHistoryQuery.eq('conversations.department_id', filters.departmentId);
+      }
+      if (filters.channelId) {
+        assignmentHistoryQuery = assignmentHistoryQuery.eq('conversations.channel_id', filters.channelId);
+      }
+      if (origin) {
+        assignmentHistoryQuery = assignmentHistoryQuery.eq('conversations.referral_source', origin);
+      }
+
+      const { data: assignmentHistory, error: assignmentHistoryError } = await assignmentHistoryQuery;
+      if (assignmentHistoryError) {
+        console.warn('Error fetching assignment history:', assignmentHistoryError);
+      }
+
+      const assignmentTimes = (assignmentHistory || [])
+        .map((r: any) => Number(r.time_to_assign_seconds))
+        .filter((n: number) => Number.isFinite(n) && n >= 0);
+
+      const avgTimeToAssignment =
+        assignmentTimes.length > 0
+          ? Math.round(assignmentTimes.reduce((a, b) => a + b, 0) / assignmentTimes.length)
+          : 0;
+
+      // 3) Conversions (count distinct contacts that reached a conversion status in the period)
+      let convertedContacts: string[] = [];
+      if (conversionStatusNames.length > 0) {
+        // Pull only IDs (typically not huge). If your volume is very large, consider moving this to an RPC.
+        let convQuery = supabase
+          .from('lead_status_history')
+          .select('contact_id')
+          .gte('changed_at', dateFrom)
+          .lte('changed_at', dateTo)
+          .in('new_status', conversionStatusNames)
+          .limit(5000);
+
+        if (filters.agentId || filters.departmentId || origin) {
+          // Filter by contact attributes via join
+          convQuery = supabase
+            .from('lead_status_history')
+            .select(
+              `contact_id,
+               contacts!inner(id, assigned_to, department_id, origin)`
+            )
+            .gte('changed_at', dateFrom)
+            .lte('changed_at', dateTo)
+            .in('new_status', conversionStatusNames)
+            .limit(5000);
+
+          if (filters.agentId) convQuery = convQuery.eq('contacts.assigned_to', filters.agentId);
+          if (filters.departmentId) convQuery = convQuery.eq('contacts.department_id', filters.departmentId);
+          if (origin) convQuery = convQuery.eq('contacts.origin', origin);
+        }
+
+        const { data: conversionRows, error: conversionError } = await convQuery;
+        if (conversionError) {
+          console.warn('Error fetching conversion rows:', conversionError);
+        } else {
+          const ids = (conversionRows || []).map((r: any) => String(r.contact_id));
+          convertedContacts = Array.from(new Set(ids));
+        }
+      }
+
+      const conversions = convertedContacts.length;
+
+      // 4) Converted value (proxy: sum of won deals in the period)
+      let dealsQuery = supabase
+        .from('deals')
+        .select('value')
+        .gte('created_at', dateFrom)
+        .lte('created_at', dateTo)
+        .eq('status', 'won');
+
+      if (filters.agentId) {
+        dealsQuery = dealsQuery.eq('assigned_to', filters.agentId);
+      }
+
+      const { data: deals, error: dealsError } = await dealsQuery;
+      if (dealsError) {
+        console.warn('Error fetching deals for converted value:', dealsError);
+      }
+
+      const totalConvertedValue = (deals || []).reduce((sum: number, d: any) => sum + (Number(d.value) || 0), 0);
+
+      // 5) Rates
+      const conversionRate = totalConversations > 0 ? (conversions / totalConversations) * 100 : 0;
 
       return {
-        avgTimeToAssignment: 0,
-        avgTimeToFirstResponse: avgFirstResponseSeconds,
+        avgTimeToAssignment,
+        avgTimeToFirstResponse: 0,
         avgTimeToConversion: 0,
-        totalAssigned: assignedLeads,
-        totalUnassigned: newLeads - assignedLeads,
+        totalAssigned: assignedConversations,
+        totalUnassigned: Math.max(0, totalConversations - assignedConversations),
         assignmentRate: Math.round(assignmentRate * 10) / 10,
         leadResponseRate: 0,
-        conversions: convertedLeads,
+        conversions,
         conversionRate: Math.round(conversionRate * 10) / 10,
         totalConvertedValue,
       };
