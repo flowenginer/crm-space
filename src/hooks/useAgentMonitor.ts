@@ -102,18 +102,28 @@ export function useToggleAgentAvailability() {
       agentId, 
       isAvailable,
       unavailableUntil,
-      unavailabilityReason
+      unavailabilityReason,
+      lockedBy
     }: { 
       agentId: string; 
       isAvailable: boolean;
       unavailableUntil?: string | null;
       unavailabilityReason?: string | null;
+      lockedBy?: string | null; // ID of admin who locked (null to unlock)
     }) => {
       const updateData: Record<string, unknown> = { 
         is_available: isAvailable,
         unavailable_until: isAvailable ? null : (unavailableUntil || null),
         unavailability_reason: isAvailable ? null : (unavailabilityReason || null),
       };
+
+      // Handle admin lock/unlock
+      if (lockedBy !== undefined) {
+        updateData.availability_locked_by = lockedBy;
+      } else if (isAvailable) {
+        // When reactivating, always clear the lock
+        updateData.availability_locked_by = null;
+      }
 
       const { error } = await supabase
         .from('profiles')
@@ -124,6 +134,7 @@ export function useToggleAgentAvailability() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent-monitor-status'] });
+      queryClient.invalidateQueries({ queryKey: ['agent-availability-status'] });
       queryClient.invalidateQueries({ queryKey: ['team'] });
     },
   });

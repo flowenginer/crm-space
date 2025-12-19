@@ -257,6 +257,64 @@ export type Database = {
         }
         Relationships: []
       }
+      availability_release_requests: {
+        Row: {
+          agent_id: string
+          created_at: string | null
+          id: string
+          locked_by: string | null
+          reason: string | null
+          responded_at: string | null
+          responded_by: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string | null
+          id?: string
+          locked_by?: string | null
+          reason?: string | null
+          responded_at?: string | null
+          responded_by?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string | null
+          id?: string
+          locked_by?: string | null
+          reason?: string | null
+          responded_at?: string | null
+          responded_by?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "availability_release_requests_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_release_requests_locked_by_fkey"
+            columns: ["locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_release_requests_responded_by_fkey"
+            columns: ["responded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_logs: {
         Row: {
           call_date: string
@@ -4763,6 +4821,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          availability_locked_by: string | null
           avatar_url: string | null
           bonus_target_1: number | null
           bonus_target_2: number | null
@@ -4798,6 +4857,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          availability_locked_by?: string | null
           avatar_url?: string | null
           bonus_target_1?: number | null
           bonus_target_2?: number | null
@@ -4833,6 +4893,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          availability_locked_by?: string | null
           avatar_url?: string | null
           bonus_target_1?: number | null
           bonus_target_2?: number | null
@@ -4868,6 +4929,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_availability_locked_by_fkey"
+            columns: ["availability_locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "profiles_department_id_fkey"
             columns: ["department_id"]
