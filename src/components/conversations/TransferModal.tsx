@@ -173,9 +173,9 @@ export function TransferModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
         {/* Header com gradiente */}
-        <DialogHeader className="p-6 pb-4 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/5 border-b border-border/50">
+        <DialogHeader className="p-6 pb-4 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/5 border-b border-border/50 flex-shrink-0">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg shadow-primary/25">
               <ArrowRightLeft className="h-6 w-6 text-white" />
@@ -204,7 +204,8 @@ export function TransferModal({
             </div>
           </div>
         ) : (
-          <div className="p-6 space-y-5">
+          <ScrollArea className="flex-1 max-h-[60vh]">
+            <div className="p-6 space-y-5">
             {/* Tipo de Transferência */}
             <div className="space-y-3">
               <Label className="text-sm font-semibold text-foreground">Tipo de transferência</Label>
@@ -453,9 +454,10 @@ export function TransferModal({
               />
             </div>
           </div>
+          </ScrollArea>
         )}
 
-        <DialogFooter className="p-4 bg-muted/30 border-t border-border/50 gap-2 sm:gap-2">
+        <DialogFooter className="p-4 bg-muted/30 border-t border-border/50 gap-2 sm:gap-2 flex-shrink-0">
           <Button variant="outline" onClick={handleClose} className="flex-1 sm:flex-none">
             {userCanTransfer ? 'Cancelar' : 'Fechar'}
           </Button>
