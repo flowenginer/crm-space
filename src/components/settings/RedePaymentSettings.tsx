@@ -16,9 +16,10 @@ import {
   TestTube2,
   ExternalLink,
   Wallet,
-  ChevronDown
+  ChevronDown,
+  Link2
 } from 'lucide-react';
-import { usePaymentGatewayConfig, useUpdatePaymentGatewayConfig } from '@/hooks/usePaymentLinks';
+import { usePaymentGatewayConfig, useUpdatePaymentGatewayConfig, useCreatePaymentLink } from '@/hooks/usePaymentLinks';
 
 // Rede Logo SVG inline
 const RedeLogo = ({ className }: { className?: string }) => (
@@ -39,6 +40,7 @@ const PAYMENT_METHODS = [
 export function RedePaymentSettings() {
   const { data: config, isLoading } = usePaymentGatewayConfig();
   const updateConfig = useUpdatePaymentGatewayConfig();
+  const createPaymentLink = useCreatePaymentLink();
   
   const [isOpen, setIsOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -51,6 +53,8 @@ export function RedePaymentSettings() {
   });
   
   const [testing, setTesting] = useState(false);
+  const [generatingTestLink, setGeneratingTestLink] = useState(false);
+  const [testLinkUrl, setTestLinkUrl] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'success' | 'error'>('unknown');
 
   // Load config when data arrives
@@ -113,6 +117,41 @@ export function RedePaymentSettings() {
       toast.success('Credenciais configuradas!');
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleGenerateTestLink = async () => {
+    if (!config?.is_configured) {
+      toast.error('Salve as configurações primeiro');
+      return;
+    }
+
+    setGeneratingTestLink(true);
+    setTestLinkUrl(null);
+
+    try {
+      const result = await createPaymentLink.mutateAsync({
+        amount: 100, // R$ 1,00 em centavos
+        description: 'Teste de integração Rede',
+        paymentMethods: formData.enabledMethods,
+        maxInstallments: formData.maxInstallments,
+        expirationDays: 1,
+        customerName: 'Cliente Teste',
+        customerEmail: 'teste@exemplo.com',
+        customerDocument: '00000000000',
+      });
+
+      if (result?.paymentLink?.url) {
+        setTestLinkUrl(result.paymentLink.url);
+        toast.success('Link de teste gerado com sucesso!');
+      } else {
+        toast.error('Erro ao gerar link de teste');
+      }
+    } catch (error: any) {
+      console.error('Erro ao gerar link de teste:', error);
+      toast.error(error?.message || 'Erro ao gerar link de teste');
+    } finally {
+      setGeneratingTestLink(false);
     }
   };
 
@@ -353,6 +392,42 @@ export function RedePaymentSettings() {
               )}
               Salvar Configuração
             </Button>
+
+            {/* Test Payment Link Generation */}
+            {isConfigured && (
+              <div className="pt-2 border-t border-border/50 space-y-2">
+                <Label className="text-xs text-muted-foreground">Testar Integração</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateTestLink}
+                  disabled={generatingTestLink}
+                  className="w-full h-8 border-[#FF6600]/30 hover:bg-[#FF6600]/5"
+                >
+                  {generatingTestLink ? (
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin text-[#FF6600]" />
+                  ) : (
+                    <Link2 className="mr-2 h-3 w-3 text-[#FF6600]" />
+                  )}
+                  Gerar Link de Teste (R$ 1,00)
+                </Button>
+                
+                {testLinkUrl && (
+                  <div className="p-2 bg-muted/50 rounded-md space-y-1.5">
+                    <p className="text-xs text-muted-foreground">Link gerado:</p>
+                    <a 
+                      href={testLinkUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-[#FF6600] hover:underline break-all flex items-center gap-1"
+                    >
+                      {testLinkUrl}
+                      <ExternalLink size={10} />
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </CollapsibleContent>
       </Card>
