@@ -145,6 +145,7 @@ export interface LeadJourneyMetrics {
   leadResponseRate: number;
   conversions: number;
   conversionRate: number;
+  totalConvertedValue: number;
 }
 
 export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string) {
@@ -181,6 +182,7 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
           leadResponseRate: 0,
           conversions: 0,
           conversionRate: 0,
+          totalConvertedValue: 0,
         };
       }
 
@@ -193,18 +195,20 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
         lead_response_rate?: number;
         conversions?: number;
         conversion_rate?: number;
+        total_converted_value?: number;
       } | undefined;
       
       return {
         avgTimeToAssignment: Number(row?.avg_time_to_assignment) || 0,
         avgTimeToFirstResponse: Number(row?.avg_time_to_first_response) || 0,
-        avgTimeToConversion: 0, // Would require more complex calculation
+        avgTimeToConversion: 0,
         totalAssigned: Number(row?.total_assigned) || 0,
         totalUnassigned: Number(row?.total_unassigned) || 0,
         assignmentRate: Number(row?.assignment_rate) || 0,
         leadResponseRate: Number(row?.lead_response_rate) || 0,
         conversions: Number(row?.conversions) || 0,
         conversionRate: Number(row?.conversion_rate) || 0,
+        totalConvertedValue: Number(row?.total_converted_value) || 0,
       };
     },
     staleTime: STALE_TIME,
