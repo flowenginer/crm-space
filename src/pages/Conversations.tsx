@@ -49,6 +49,11 @@ import {
   Eye,
   PanelLeftClose,
   PanelLeftOpen,
+  List,
+  User,
+  Clock,
+  UserX,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -84,6 +89,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  TooltipProvider,
 } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -1401,6 +1407,21 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     
     return filters;
   }, [canViewPending, canViewUnassigned]);
+
+  // Configuração dos filtros para exibição responsiva
+  const filterConfig: Record<string, { 
+    full: string; 
+    short: string; 
+    icon: React.ReactNode;
+    tooltip: string;
+  }> = {
+    all: { full: 'Todas', short: 'Todas', icon: <List size={16} />, tooltip: 'Todas as conversas' },
+    pinned: { full: 'Fixadas', short: 'Fixadas', icon: <Pin size={16} />, tooltip: 'Conversas fixadas' },
+    shared: { full: 'Compartilhadas', short: 'Compart.', icon: <Users size={16} />, tooltip: 'Compartilhadas' },
+    mine: { full: 'Minhas', short: 'Minhas', icon: <User size={16} />, tooltip: 'Minhas conversas' },
+    pending: { full: 'Pendentes', short: 'Pend.', icon: <Clock size={16} />, tooltip: 'Pendentes' },
+    unassigned: { full: 'Não atribuídas', short: 'S/ agente', icon: <UserX size={16} />, tooltip: 'Sem atribuição' },
+  };
 
   // Modal de solicitação de acesso
   const [showContactRequestModal, setShowContactRequestModal] = useState(false);
@@ -3479,36 +3500,61 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </div>
           )}
 
-          {/* Quick Filters */}
-          <div className="flex gap-2">
-            {availableQuickFilters.map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setQuickFilter(filter)}
-                className={cn(
-                  'flex-1 py-2 px-2 text-sm font-medium rounded-lg transition-colors relative flex flex-col items-center justify-center min-h-[52px]',
-                  quickFilter === filter
-                    ? 'text-primary bg-accent'
-                    : 'text-muted-foreground hover:bg-muted'
-                )}
-              >
-                <span className="text-xs whitespace-nowrap">{filter === 'all' ? 'Todas' : filter === 'pinned' ? 'Fixadas' : filter === 'shared' ? 'Compartilhadas' : filter === 'mine' ? 'Minhas' : filter === 'pending' ? 'Pendentes' : 'Não atribuídas'}</span>
-                <AnimatedCounter value={filterCounts[filter]} className="text-xs opacity-70" />
-                {/* Red notification badge for pinned conversations with unread messages */}
-                {filter === 'pinned' && quickFilter !== 'pinned' && pinnedUnreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-                    {pinnedUnreadCount > 9 ? '9+' : pinnedUnreadCount}
-                  </span>
-                )}
-                {/* Red notification badge for shared conversations with unread messages */}
-                {filter === 'shared' && quickFilter !== 'shared' && sharedUnreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-                    {sharedUnreadCount > 9 ? '9+' : sharedUnreadCount}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+          {/* Quick Filters - Responsive Hybrid */}
+          <TooltipProvider delayDuration={300}>
+            <div className="flex gap-1 xl:gap-1.5 2xl:gap-2">
+              {availableQuickFilters.map((filter) => {
+                const config = filterConfig[filter];
+                return (
+                  <Tooltip key={filter}>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => setQuickFilter(filter)}
+                        className={cn(
+                          'flex-1 py-2 px-1 xl:px-1.5 2xl:px-2 text-sm font-medium rounded-lg transition-colors relative flex flex-col items-center justify-center min-h-[52px]',
+                          quickFilter === filter
+                            ? 'text-primary bg-accent'
+                            : 'text-muted-foreground hover:bg-muted'
+                        )}
+                      >
+                        {/* Ícone - visível em telas menores que xl */}
+                        <span className="xl:hidden">{config.icon}</span>
+                        
+                        {/* Texto abreviado - visível em xl, escondido em 2xl */}
+                        <span className="hidden xl:inline 2xl:hidden text-xs whitespace-nowrap">
+                          {config.short}
+                        </span>
+                        
+                        {/* Texto completo - visível apenas em 2xl+ */}
+                        <span className="hidden 2xl:inline text-xs whitespace-nowrap">
+                          {config.full}
+                        </span>
+                        
+                        {/* Contador - sempre visível */}
+                        <AnimatedCounter value={filterCounts[filter]} className="text-xs opacity-70" />
+                        
+                        {/* Badge de notificação para fixadas */}
+                        {filter === 'pinned' && quickFilter !== 'pinned' && pinnedUnreadCount > 0 && (
+                          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                            {pinnedUnreadCount > 9 ? '9+' : pinnedUnreadCount}
+                          </span>
+                        )}
+                        {/* Badge de notificação para compartilhadas */}
+                        {filter === 'shared' && quickFilter !== 'shared' && sharedUnreadCount > 0 && (
+                          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                            {sharedUnreadCount > 9 ? '9+' : sharedUnreadCount}
+                          </span>
+                        )}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>{config.tooltip}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </TooltipProvider>
         </div>
         )}
 
