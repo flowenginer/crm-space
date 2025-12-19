@@ -6881,6 +6881,26 @@ export type Database = {
         | {
             Args: {
               p_agent_id?: string
+              p_channel_id?: string
+              p_date_from: string
+              p_date_to: string
+              p_department_id?: string
+              p_origin?: string
+            }
+            Returns: {
+              assigned_conversations: number
+              assigned_unique_contacts: number
+              assignment_rate: number
+              conversion_rate: number
+              converted_conversations: number
+              converted_unique_contacts: number
+              total_conversations: number
+              unique_contacts: number
+            }[]
+          }
+        | {
+            Args: {
+              p_agent_id?: string
               p_date_from: string
               p_date_to: string
               p_department_id?: string
