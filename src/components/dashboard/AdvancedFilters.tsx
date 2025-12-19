@@ -4,6 +4,7 @@ import { ptBR } from 'date-fns/locale';
 import { CalendarIcon, Filter, X, ChevronDown, History, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useMenuItems } from '@/hooks/useMenuConfig';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -46,6 +47,12 @@ export function AdvancedFilters({
 }: AdvancedFiltersProps) {
   const [isDateOpen, setIsDateOpen] = useState(false);
   const [isFixingHistorical, setIsFixingHistorical] = useState(false);
+  
+  // Check if origin patterns menu is enabled
+  const { data: menuItems } = useMenuItems();
+  const isOriginPatternsEnabled = menuItems?.find(
+    item => item.href === '/settings?tab=origin-patterns'
+  )?.is_active ?? false;
   
   const { dateFrom, dateTo, agentId, departmentId } = filters;
 
@@ -198,20 +205,22 @@ export function AdvancedFilters({
         </div>
       )}
 
-      {/* Fix Historical Button - Far Right */}
-      <Button
-        variant="outline"
-        className="ml-auto"
-        onClick={handleFixHistorical}
-        disabled={isFixingHistorical}
-      >
-        {isFixingHistorical ? (
-          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-        ) : (
-          <History className="h-4 w-4 mr-2" />
-        )}
-        Corrigir Histórico
-      </Button>
+      {/* Fix Historical Button - Far Right (only if menu is enabled) */}
+      {isOriginPatternsEnabled && (
+        <Button
+          variant="outline"
+          className="ml-auto"
+          onClick={handleFixHistorical}
+          disabled={isFixingHistorical}
+        >
+          {isFixingHistorical ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <History className="h-4 w-4 mr-2" />
+          )}
+          Corrigir Histórico
+        </Button>
+      )}
     </div>
   );
 }
