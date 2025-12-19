@@ -5,7 +5,6 @@ import { useConversionStatusNames } from './useConversionStatusNames';
 import { useEffect } from 'react';
 
 const STALE_TIME = 30000; // 30 seconds
-const REFETCH_INTERVAL = 60000; // 1 minute
 const REALTIME_REFETCH_INTERVAL = 30000; // 30 seconds for realtime
 
 export interface DashboardFilters {
@@ -14,6 +13,46 @@ export interface DashboardFilters {
   agentId?: string;
   departmentId?: string;
   channelId?: string;
+}
+
+// =====================================================
+// Realtime Hook Helper
+// =====================================================
+
+function useDashboardRealtime(queryKey: unknown[], deps: unknown[] = []) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`dashboard-realtime-${JSON.stringify(queryKey).slice(0, 50)}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'contacts',
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient, ...deps]);
 }
 
 // =====================================================
@@ -43,9 +82,13 @@ export { ORIGIN_CONFIG };
 
 export function useLeadsByOrigin(filters: DashboardFilters) {
   const { data: conversionStatusNames = [] } = useConversionStatusNames();
+  const queryKey = ['leads_by_origin_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames];
+
+  // Realtime subscription
+  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId]);
 
   return useQuery({
-    queryKey: ['leads_by_origin_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames],
+    queryKey,
     queryFn: async (): Promise<LeadOriginData[]> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
@@ -79,7 +122,6 @@ export function useLeadsByOrigin(filters: DashboardFilters) {
         .sort((a: LeadOriginData, b: LeadOriginData) => b.total - a.total);
     },
     staleTime: STALE_TIME,
-    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -101,9 +143,13 @@ export interface LeadJourneyMetrics {
 
 export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string) {
   const { data: conversionStatusNames = [] } = useConversionStatusNames();
+  const queryKey = ['lead_journey_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames, origin];
+
+  // Realtime subscription
+  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId, origin]);
 
   return useQuery({
-    queryKey: ['lead_journey_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames, origin],
+    queryKey,
     queryFn: async (): Promise<LeadJourneyMetrics> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
@@ -156,7 +202,6 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
       };
     },
     staleTime: STALE_TIME,
-    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -182,9 +227,13 @@ export interface AgentDistribution {
 
 export function useAgentDistributionAdvanced(filters: DashboardFilters) {
   const { data: conversionStatusNames = [] } = useConversionStatusNames();
+  const queryKey = ['agent_distribution_advanced_rpc', filters.dateFrom, filters.dateTo, filters.departmentId, conversionStatusNames];
+
+  // Realtime subscription
+  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.departmentId]);
 
   return useQuery({
-    queryKey: ['agent_distribution_advanced_rpc', filters.dateFrom, filters.dateTo, filters.departmentId, conversionStatusNames],
+    queryKey,
     queryFn: async (): Promise<AgentDistribution[]> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
@@ -218,7 +267,6 @@ export function useAgentDistributionAdvanced(filters: DashboardFilters) {
       }));
     },
     staleTime: STALE_TIME,
-    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -235,8 +283,13 @@ export interface StatusFunnelData {
 }
 
 export function useStatusFunnel(filters: DashboardFilters) {
+  const queryKey = ['status_funnel_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId];
+
+  // Realtime subscription
+  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId]);
+
   return useQuery({
-    queryKey: ['status_funnel_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId],
+    queryKey,
     queryFn: async (): Promise<StatusFunnelData[]> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
@@ -263,7 +316,6 @@ export function useStatusFunnel(filters: DashboardFilters) {
       }));
     },
     staleTime: STALE_TIME,
-    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -356,8 +408,13 @@ export interface LeadAlert {
 }
 
 export function useLeadAlerts(filters: DashboardFilters) {
+  const queryKey = ['lead_alerts_rpc', filters.agentId, filters.departmentId];
+
+  // Realtime subscription
+  useDashboardRealtime(queryKey, [filters.agentId, filters.departmentId]);
+
   return useQuery({
-    queryKey: ['lead_alerts_rpc', filters.agentId, filters.departmentId],
+    queryKey,
     queryFn: async (): Promise<LeadAlert[]> => {
       const { data, error } = await supabase.rpc('get_lead_alerts', {
         p_agent_id: filters.agentId || null,
@@ -403,7 +460,6 @@ export function useLeadAlerts(filters: DashboardFilters) {
       });
     },
     staleTime: 30000,
-    refetchInterval: 30000,
   });
 }
 
@@ -419,8 +475,13 @@ export interface OriginTimelineData {
 }
 
 export function useOriginTimeline(filters: DashboardFilters) {
+  const queryKey = ['origin_timeline_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId];
+
+  // Realtime subscription
+  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId]);
+
   return useQuery({
-    queryKey: ['origin_timeline_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId],
+    queryKey,
     queryFn: async (): Promise<OriginTimelineData[]> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
@@ -445,7 +506,6 @@ export function useOriginTimeline(filters: DashboardFilters) {
       }));
     },
     staleTime: STALE_TIME,
-    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -461,9 +521,13 @@ export interface ConversionTimelineData {
 
 export function useConversionTimeline(filters: DashboardFilters) {
   const { data: conversionStatusNames = [] } = useConversionStatusNames();
+  const queryKey = ['conversion_timeline_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames];
+
+  // Realtime subscription
+  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId]);
 
   return useQuery({
-    queryKey: ['conversion_timeline_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, conversionStatusNames],
+    queryKey,
     queryFn: async (): Promise<ConversionTimelineData[]> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
@@ -488,7 +552,6 @@ export function useConversionTimeline(filters: DashboardFilters) {
       }));
     },
     staleTime: STALE_TIME,
-    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
@@ -504,8 +567,13 @@ export interface ReturningLeadsMetrics {
 }
 
 export function useReturningLeadsMetrics(filters: DashboardFilters, origin?: string) {
+  const queryKey = ['returning_leads_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, filters.channelId, origin];
+
+  // Realtime subscription
+  useDashboardRealtime(queryKey, [filters.dateFrom?.toISOString(), filters.dateTo?.toISOString(), filters.agentId, filters.departmentId, origin]);
+
   return useQuery({
-    queryKey: ['returning_leads_metrics_rpc', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId, filters.channelId, origin],
+    queryKey,
     queryFn: async (): Promise<ReturningLeadsMetrics> => {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
@@ -544,7 +612,6 @@ export function useReturningLeadsMetrics(filters: DashboardFilters, origin?: str
       };
     },
     staleTime: STALE_TIME,
-    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
