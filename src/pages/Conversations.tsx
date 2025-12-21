@@ -3155,15 +3155,15 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           : 'w-full md:w-[360px] md:min-w-[320px] md:max-w-[360px] xl:w-[420px] xl:min-w-[380px] xl:max-w-[420px] 2xl:w-[500px] 2xl:min-w-[440px] 2xl:max-w-[500px]'
       )}>
         {/* Header */}
-        <div className={cn("border-b border-border", isLeftPanelCollapsed ? "p-2" : "p-3 xl:p-4")}>
-          <div className={cn("flex items-center", isLeftPanelCollapsed ? "justify-center" : "justify-between mb-3")}>
+        <div className={cn("border-b border-border", isLeftPanelCollapsed ? "hidden" : "p-3 xl:p-4")}>
+          <div className="flex items-center justify-between mb-3">
             {/* Collapse Button */}
             <button
               onClick={() => setIsLeftPanelCollapsed(!isLeftPanelCollapsed)}
               className="p-1.5 hover:bg-muted rounded-lg transition-colors hidden md:flex"
-              title={isLeftPanelCollapsed ? "Expandir painel" : "Minimizar painel"}
+              title="Minimizar painel"
             >
-              {isLeftPanelCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+              <PanelLeftClose size={18} />
             </button>
             {!isLeftPanelCollapsed && (
               <>
@@ -3564,43 +3564,55 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
         {/* Conversations List - Collapsed View (Avatars Only) */}
         {isLeftPanelCollapsed ? (
-          <div className="flex-1 overflow-y-auto py-2">
-            <div className="flex flex-col items-center space-y-1">
-              {conversationsLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mt-4" />
-              ) : (
-                filteredConversations.map((conv) => (
-                  <button
-                    key={conv.id}
-                    onClick={() => handleSelectConversation(conv)}
-                    className={cn(
-                      "relative p-1.5 rounded-lg transition-colors",
-                      selectedConversationId === conv.id ? "bg-primary/10 ring-2 ring-primary" : "hover:bg-muted"
-                    )}
-                    title={conv.contact?.full_name || 'Contato'}
-                  >
-                    {conv.contact?.avatar_url ? (
-                      <img 
-                        src={conv.contact.avatar_url} 
-                        alt={conv.contact.full_name || ''} 
-                        className="w-9 h-9 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold text-sm">
-                        {(conv.contact?.full_name || 'C').charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    {conv.is_unread && (
-                      <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-destructive rounded-full border-2 border-card" />
-                    )}
-                    {isPinned(conv.id) && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-amber-500 rounded-full border-2 border-card flex items-center justify-center">
-                        <Pin size={6} className="text-white" />
-                      </span>
-                    )}
-                  </button>
-                ))
-              )}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto py-2">
+              <div className="flex flex-col items-center space-y-1">
+                {conversationsLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mt-4" />
+                ) : (
+                  filteredConversations.map((conv) => (
+                    <button
+                      key={conv.id}
+                      onClick={() => handleSelectConversation(conv)}
+                      className={cn(
+                        "relative p-1.5 rounded-lg transition-colors",
+                        selectedConversationId === conv.id ? "bg-primary/10 ring-2 ring-primary" : "hover:bg-muted"
+                      )}
+                      title={conv.contact?.full_name || 'Contato'}
+                    >
+                      {conv.contact?.avatar_url ? (
+                        <img 
+                          src={conv.contact.avatar_url} 
+                          alt={conv.contact.full_name || ''} 
+                          className="w-9 h-9 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold text-sm">
+                          {(conv.contact?.full_name || 'C').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      {conv.is_unread && (
+                        <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-destructive rounded-full border-2 border-card" />
+                      )}
+                      {isPinned(conv.id) && (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-amber-500 rounded-full border-2 border-card flex items-center justify-center">
+                          <Pin size={6} className="text-white" />
+                        </span>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+            {/* Expand Button at Bottom */}
+            <div className="p-2 border-t border-border flex justify-center">
+              <button
+                onClick={() => setIsLeftPanelCollapsed(false)}
+                className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex"
+                title="Expandir painel"
+              >
+                <PanelLeftOpen size={18} />
+              </button>
             </div>
           </div>
         ) : (
