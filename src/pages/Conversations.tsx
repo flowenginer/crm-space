@@ -1298,6 +1298,10 @@ export default function Conversations() {
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(() => {
+    const saved = localStorage.getItem('conversations-right-panel-collapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showCallLogModal, setShowCallLogModal] = useState(false);
   const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
@@ -4852,6 +4856,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             onNavigateAway={() => {
               // Clear selection and URL when conversation is closed
               navigate('/conversations', { replace: true });
+            }}
+            isCollapsed={isRightPanelCollapsed}
+            onToggleCollapse={() => {
+              const newValue = !isRightPanelCollapsed;
+              setIsRightPanelCollapsed(newValue);
+              localStorage.setItem('conversations-right-panel-collapsed', JSON.stringify(newValue));
             }}
           />
         </div>
