@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { 
-  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2, FileText, Package, Play, Pause, Layers, ChevronsUpDown
+  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2, FileText, Package, Play, Pause, Layers, ChevronsUpDown, ChevronLeft, ChevronRight, UserCircle, Settings
 } from 'lucide-react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { toast } from 'sonner';
@@ -44,9 +44,11 @@ interface ConversationSidebarProps {
   conversationId: string;
   onClose?: () => void;
   onNavigateAway?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export function ConversationSidebar({ conversationId, onClose, onNavigateAway }: ConversationSidebarProps) {
+export function ConversationSidebar({ conversationId, onClose, onNavigateAway, isCollapsed = false, onToggleCollapse }: ConversationSidebarProps) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -777,7 +779,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   // Loading state
   if (loadingConversation) {
     return (
-      <div className="w-[280px] xl:w-[300px] 2xl:w-[320px] bg-card border-l border-border flex items-center justify-center">
+      <div className={`${isCollapsed ? 'w-14' : 'w-[280px] xl:w-[300px] 2xl:w-[320px]'} bg-card border-l border-border flex items-center justify-center transition-all duration-300`}>
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -785,7 +787,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
 
   if (!conversation || !conversation.contact) {
     return (
-      <div className="w-[280px] xl:w-[300px] 2xl:w-[320px] bg-card border-l border-border flex items-center justify-center">
+      <div className={`${isCollapsed ? 'w-14' : 'w-[280px] xl:w-[300px] 2xl:w-[320px]'} bg-card border-l border-border flex items-center justify-center transition-all duration-300`}>
         <p className="text-muted-foreground">Conversa não encontrada</p>
       </div>
     );
@@ -834,139 +836,353 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
   };
 
   return (
-    <div className="w-[280px] xl:w-[300px] 2xl:w-[320px] bg-card border-l border-border flex flex-col h-full overflow-hidden">
-      {/* Header: Contact Info - Horizontal Layout */}
-      <div className="p-3 border-b border-border">
-        <div className="flex items-center gap-3">
-          {/* Avatar - Left side */}
-          {contact.avatar_url ? (
-            <div 
-              className="w-14 h-14 rounded-full flex-shrink-0 cursor-pointer overflow-hidden hover:ring-2 hover:ring-primary transition-all"
-              onClick={() => setShowPhotoModal(true)}
-            >
-              <img 
-                src={contact.avatar_url} 
-                alt={contact.full_name || 'Avatar'} 
-                className="w-full h-full object-cover"
-              />
-            </div>
-          ) : (
-            <div className="w-14 h-14 rounded-full flex-shrink-0 bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-lg font-bold relative">
-              {contact.full_name?.charAt(0)?.toUpperCase() || '?'}
-              {isFetchingPhoto && (
-                <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center">
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+    <div className={`${isCollapsed ? 'w-14' : 'w-[280px] xl:w-[300px] 2xl:w-[320px]'} bg-card border-l border-border flex flex-col h-full overflow-hidden transition-all duration-300`}>
+      {/* Collapsed View */}
+      {isCollapsed ? (
+        <div className="flex flex-col items-center py-3 gap-3 h-full">
+          {/* Expand Button */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={onToggleCollapse}
+                >
+                  <ChevronLeft size={16} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">Expandir painel</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          {/* Avatar */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div 
+                  className="cursor-pointer"
+                  onClick={onToggleCollapse}
+                >
+                  {contact.avatar_url ? (
+                    <div className="w-10 h-10 rounded-full overflow-hidden hover:ring-2 hover:ring-primary transition-all">
+                      <img 
+                        src={contact.avatar_url} 
+                        alt={contact.full_name || 'Avatar'} 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-sm font-bold">
+                      {contact.full_name?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <div className="text-left">
+                  <p className="font-medium">{contact.full_name || 'Sem nome'}</p>
+                  <p className="text-xs text-muted-foreground">{formatPhone(contact.phone)}</p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          {/* Divider */}
+          <div className="w-6 h-px bg-border" />
+          
+          {/* Quick Actions */}
+          <div className="flex flex-col gap-2">
+            {/* Share */}
+            {conversation?.assigned_to === currentUser?.id && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-blue-600 dark:text-blue-400"
+                      onClick={() => setShowShareModal(true)}
+                    >
+                      <Share2 size={16} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">Compartilhar</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            
+            {/* Transfer */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setShowTransferModal(true)}
+                  >
+                    <ArrowRightLeft size={16} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">Transferir</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            {/* Close */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive"
+                    onClick={() => setShowCloseModal(true)}
+                  >
+                    <X size={16} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">Fechar conversa</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          
+          {/* ERP Actions when collapsed */}
+          {isERPEnabled && (
+            <>
+              <div className="w-6 h-px bg-border" />
+              <div className="flex flex-col gap-2">
+                {/* Quote */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-amber-600 dark:text-amber-400 relative"
+                        onClick={() => {
+                          if (contactQuotes.length > 0) {
+                            setShowQuoteSelectionModal(true);
+                          } else {
+                            setShowQuoteModal(true);
+                          }
+                        }}
+                      >
+                        <FileText size={16} />
+                        {contactQuotes.length > 0 && (
+                          <span className="absolute -top-1 -right-1 w-4 h-4 text-[9px] rounded-full bg-amber-500 text-white flex items-center justify-center">
+                            {contactQuotes.length}
+                          </span>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">Orçamento</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                
+                {/* Order */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-green-600 dark:text-green-400 relative"
+                        onClick={() => {
+                          if (contactOrders.length > 0) {
+                            setShowOrderSelectionModal(true);
+                          } else {
+                            setShowOrderModal(true);
+                          }
+                        }}
+                      >
+                        <Package size={16} />
+                        {contactOrders.length > 0 && (
+                          <span className="absolute -top-1 -right-1 w-4 h-4 text-[9px] rounded-full bg-green-500 text-white flex items-center justify-center">
+                            {contactOrders.length}
+                          </span>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">Pedido</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            </>
           )}
           
-          {/* Info - Centered in remaining space */}
-          <div className="flex-1 flex flex-col items-center justify-center text-center">
-            <h3 className="text-sm font-bold text-foreground line-clamp-2 leading-tight">
-              {contact.full_name || 'Sem nome'}
-            </h3>
-            
-            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-              <Phone size={10} className="flex-shrink-0" />
-              <span>{formatPhone(contact.phone)}</span>
-            </p>
-            
-            <button 
-              onClick={() => setShowEditModal(true)}
-              className="text-primary hover:text-primary/80 text-xs font-medium mt-1"
-            >
-              Editar contato
-            </button>
+          {/* Edit Contact at bottom */}
+          <div className="mt-auto">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setShowEditModal(true)}
+                  >
+                    <Settings size={16} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">Editar contato</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
-      </div>
+      ) : (
+        /* Expanded View */
+        <>
+          {/* Header: Contact Info - Horizontal Layout */}
+          <div className="p-3 border-b border-border">
+            <div className="flex items-center gap-3">
+              {/* Collapse Button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 flex-shrink-0"
+                      onClick={onToggleCollapse}
+                    >
+                      <ChevronRight size={16} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">Colapsar painel</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              {/* Avatar */}
+              {contact.avatar_url ? (
+                <div 
+                  className="w-12 h-12 rounded-full flex-shrink-0 cursor-pointer overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+                  onClick={() => setShowPhotoModal(true)}
+                >
+                  <img 
+                    src={contact.avatar_url} 
+                    alt={contact.full_name || 'Avatar'} 
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-12 h-12 rounded-full flex-shrink-0 bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-lg font-bold relative">
+                  {contact.full_name?.charAt(0)?.toUpperCase() || '?'}
+                  {isFetchingPhoto && (
+                    <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center">
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Info - Centered in remaining space */}
+              <div className="flex-1 flex flex-col justify-center">
+                <h3 className="text-sm font-bold text-foreground line-clamp-1 leading-tight">
+                  {contact.full_name || 'Sem nome'}
+                </h3>
+                
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                  <Phone size={10} className="flex-shrink-0" />
+                  <span className="truncate">{formatPhone(contact.phone)}</span>
+                </p>
+                
+                <button 
+                  onClick={() => setShowEditModal(true)}
+                  className="text-primary hover:text-primary/80 text-xs font-medium mt-0.5 text-left"
+                >
+                  Editar contato
+                </button>
+              </div>
+            </div>
+          </div>
 
-      {/* Photo Modal */}
-      <Dialog open={showPhotoModal} onOpenChange={setShowPhotoModal}>
-        <DialogContent className="max-w-md p-2 bg-transparent border-none shadow-none">
-          {contact.avatar_url && (
-            <img 
-              src={contact.avatar_url} 
-              alt={contact.full_name || 'Avatar'} 
-              className="w-full h-auto rounded-lg"
-            />
+          {/* Photo Modal */}
+          <Dialog open={showPhotoModal} onOpenChange={setShowPhotoModal}>
+            <DialogContent className="max-w-md p-2 bg-transparent border-none shadow-none">
+              {contact.avatar_url && (
+                <img 
+                  src={contact.avatar_url} 
+                  alt={contact.full_name || 'Avatar'} 
+                  className="w-full h-auto rounded-lg"
+                />
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Shared with me indicator */}
+          {isSharedWithMe && (
+            <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-border">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                  <Share2 size={12} />
+                  Conversa compartilhada com você
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground hover:text-destructive h-7 px-2"
+                  onClick={() => {
+                    unshareConversation.mutate(
+                      { conversationId },
+                      {
+                        onSuccess: () => {
+                          toast.success('Você deixou de seguir esta conversa');
+                        },
+                        onError: () => {
+                          toast.error('Erro ao deixar de seguir');
+                        }
+                      }
+                    );
+                  }}
+                  disabled={unshareConversation.isPending}
+                >
+                  {unshareConversation.isPending ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    'Deixar de seguir'
+                  )}
+                </Button>
+              </div>
+            </div>
           )}
-        </DialogContent>
-      </Dialog>
 
-      {/* Shared with me indicator */}
-      {isSharedWithMe && (
-        <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-border">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
-              <Share2 size={12} />
-              Conversa compartilhada com você
-            </span>
+          {/* Action Buttons - Top */}
+          <div className="flex gap-1.5 p-3 border-b border-border">
+            {/* Only show share button if user is the conversation owner */}
+            {conversation?.assigned_to === currentUser?.id && (
+              <Button
+                onClick={() => setShowShareModal(true)}
+                variant="outline"
+                size="sm"
+                className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2 text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-900/20"
+              >
+                <Share2 size={14} className="shrink-0" />
+                <span className="truncate">Compartilhar</span>
+              </Button>
+            )}
+            
             <Button
+              onClick={() => setShowTransferModal(true)}
+              variant="outline"
+              size="sm"
+              className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2"
+            >
+              <ArrowRightLeft size={14} className="shrink-0" />
+              <span className="truncate">Transferir</span>
+            </Button>
+            
+            <Button
+              onClick={() => setShowCloseModal(true)}
               variant="ghost"
               size="sm"
-              className="text-xs text-muted-foreground hover:text-destructive h-7 px-2"
-              onClick={() => {
-                unshareConversation.mutate(
-                  { conversationId },
-                  {
-                    onSuccess: () => {
-                      toast.success('Você deixou de seguir esta conversa');
-                    },
-                    onError: () => {
-                      toast.error('Erro ao deixar de seguir');
-                    }
-                  }
-                );
-              }}
-              disabled={unshareConversation.isPending}
+              className="flex-1 min-w-0 text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5 h-9 text-xs px-2"
             >
-              {unshareConversation.isPending ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                'Deixar de seguir'
-              )}
+              <X size={14} className="shrink-0" />
+              <span className="truncate">Fechar</span>
             </Button>
           </div>
-        </div>
-      )}
-
-      {/* Action Buttons - Top */}
-      <div className="flex gap-1.5 p-3 border-b border-border">
-        {/* Only show share button if user is the conversation owner */}
-        {conversation?.assigned_to === currentUser?.id && (
-          <Button
-            onClick={() => setShowShareModal(true)}
-            variant="outline"
-            size="sm"
-            className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2 text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-900/20"
-          >
-            <Share2 size={14} className="shrink-0" />
-            <span className="truncate">Compartilhar</span>
-          </Button>
-        )}
-        
-        <Button
-          onClick={() => setShowTransferModal(true)}
-          variant="outline"
-          size="sm"
-          className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2"
-        >
-          <ArrowRightLeft size={14} className="shrink-0" />
-          <span className="truncate">Transferir</span>
-        </Button>
-        
-        <Button
-          onClick={() => setShowCloseModal(true)}
-          variant="ghost"
-          size="sm"
-          className="flex-1 min-w-0 text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5 h-9 text-xs px-2"
-        >
-          <X size={14} className="shrink-0" />
-          <span className="truncate">Fechar</span>
-        </Button>
-      </div>
 
       {/* ERP Actions - Only visible when ERP module is active */}
       {isERPEnabled && (
@@ -1789,6 +2005,8 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway }:
           </div>
         </DialogContent>
       </Dialog>
+        </>
+      )}
     </div>
   );
 }
