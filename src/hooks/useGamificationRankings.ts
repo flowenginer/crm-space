@@ -19,14 +19,14 @@ export function useGamificationRankings(period: PeriodFilter = 'monthly') {
   const { data: rankings = [], isLoading } = useQuery({
     queryKey: ['gamification-rankings', period],
     queryFn: async (): Promise<RacerRanking[]> => {
-      // First, get profiles with their points
+      // Buscar perfis de gamificação
       const { data: profiles, error: profilesError } = await supabase
         .from('gamification_profiles')
         .select('*');
 
       if (profilesError) throw profilesError;
 
-      // Calculate date range based on period
+      // Calcular range de datas baseado no período
       const now = new Date();
       let startDate: Date;
 
@@ -45,7 +45,7 @@ export function useGamificationRankings(period: PeriodFilter = 'monthly') {
           break;
       }
 
-      // Get points for the period
+      // Buscar pontos do período
       const { data: points, error: pointsError } = await supabase
         .from('gamification_points')
         .select('user_id, points, reference_value')
@@ -53,7 +53,7 @@ export function useGamificationRankings(period: PeriodFilter = 'monthly') {
 
       if (pointsError) throw pointsError;
 
-      // Aggregate points by user
+      // Agregar pontos por usuário
       const pointsByUser = new Map<string, { totalPoints: number; totalSales: number; totalDeals: number }>();
 
       points?.forEach((p) => {
@@ -66,8 +66,8 @@ export function useGamificationRankings(period: PeriodFilter = 'monthly') {
         pointsByUser.set(p.user_id, current);
       });
 
-      // Build rankings
-      const rankings: RacerRanking[] = (profiles || []).map((profile) => {
+      // Construir rankings combinando perfis e pontos do período
+      const rankings: RacerRanking[] = (profiles || []).map((profile: any) => {
         const userPoints = pointsByUser.get(profile.user_id) || { totalPoints: 0, totalSales: 0, totalDeals: 0 };
         return {
           user_id: profile.user_id,
@@ -82,7 +82,7 @@ export function useGamificationRankings(period: PeriodFilter = 'monthly') {
         };
       });
 
-      // Sort by points and assign positions
+      // Ordenar por pontos e atribuir posições
       rankings.sort((a, b) => b.total_points - a.total_points);
       rankings.forEach((r, index) => {
         r.position = index + 1;

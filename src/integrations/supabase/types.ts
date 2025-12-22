@@ -2277,7 +2277,10 @@ export type Database = {
           id: string
           last_sale_date: string | null
           sounds_enabled: boolean | null
+          total_deals: number | null
+          total_points: number | null
           total_points_alltime: number | null
+          total_sales: number | null
           updated_at: string | null
           user_id: string
         }
@@ -2292,7 +2295,10 @@ export type Database = {
           id?: string
           last_sale_date?: string | null
           sounds_enabled?: boolean | null
+          total_deals?: number | null
+          total_points?: number | null
           total_points_alltime?: number | null
+          total_sales?: number | null
           updated_at?: string | null
           user_id: string
         }
@@ -2307,7 +2313,10 @@ export type Database = {
           id?: string
           last_sale_date?: string | null
           sounds_enabled?: boolean | null
+          total_deals?: number | null
+          total_points?: number | null
           total_points_alltime?: number | null
+          total_sales?: number | null
           updated_at?: string | null
           user_id?: string
         }
@@ -6896,6 +6905,10 @@ export type Database = {
           source_breakdown: Json
           updated_count: number
         }[]
+      }
+      gamification_check_badges: {
+        Args: { p_user_id: string }
+        Returns: undefined
       }
       generate_order_number: { Args: { p_tenant_id: string }; Returns: string }
       generate_quote_number: { Args: { p_tenant_id: string }; Returns: string }
