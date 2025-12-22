@@ -183,12 +183,20 @@ export default function BulkDispatch() {
                   <Label>Canal de Envio *</Label>
                   <Select value={channelId} onValueChange={setChannelId}>
                     <SelectTrigger><SelectValue placeholder="Selecione um canal" /></SelectTrigger>
-                    <SelectContent>{connectedChannels.map(c => <SelectItem key={c.id} value={c.id}><div className="flex items-center gap-2"><Radio className="h-4 w-4 text-green-500" />{c.name}</div></SelectItem>)}</SelectContent>
+                    <SelectContent>
+                      <SelectItem value="__existing__">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-blue-500" />
+                          Canal da conversa existente
+                        </div>
+                      </SelectItem>
+                      {connectedChannels.map(c => <SelectItem key={c.id} value={c.id}><div className="flex items-center gap-2"><Radio className="h-4 w-4 text-green-500" />{c.name}</div></SelectItem>)}
+                    </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Intervalo: {intervalSeconds}s</Label>
-                  <Slider value={[intervalSeconds]} onValueChange={([v]) => setIntervalSeconds(v)} min={5} max={60} step={5} />
+                  <Label>Intervalo: {intervalSeconds >= 60 ? `${Math.floor(intervalSeconds / 60)}min ${intervalSeconds % 60}s` : `${intervalSeconds}s`}</Label>
+                  <Slider value={[intervalSeconds]} onValueChange={([v]) => setIntervalSeconds(v)} min={5} max={600} step={15} />
                 </div>
               </CardContent>
             </Card>
