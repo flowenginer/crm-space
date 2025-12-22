@@ -218,9 +218,9 @@ export default function BulkDispatch() {
                 </div>
                 <div className="space-y-2">
                   <Label>Segmento</Label>
-                  <Select value={filters.segmentId || ''} onValueChange={(v) => setFilters(f => ({ ...f, segmentId: v || undefined }))}>
+                  <Select value={filters.segmentId || '__all__'} onValueChange={(v) => setFilters(f => ({ ...f, segmentId: v === '__all__' ? undefined : v }))}>
                     <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
-                    <SelectContent><SelectItem value="">Todos</SelectItem>{segments.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                    <SelectContent><SelectItem value="__all__">Todos</SelectItem>{segments.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
