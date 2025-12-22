@@ -2128,6 +2128,254 @@ export type Database = {
           },
         ]
       }
+      gamification_badge_definitions: {
+        Row: {
+          category: string | null
+          code: string
+          created_at: string | null
+          criteria_type: string | null
+          criteria_value: number | null
+          description: string | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          category?: string | null
+          code: string
+          created_at?: string | null
+          criteria_type?: string | null
+          criteria_value?: number | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          category?: string | null
+          code?: string
+          created_at?: string | null
+          criteria_type?: string | null
+          criteria_value?: number | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
+      gamification_badges: {
+        Row: {
+          badge_code: string
+          earned_at: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          badge_code: string
+          earned_at?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          badge_code?: string
+          earned_at?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gamification_badges_badge_code_fkey"
+            columns: ["badge_code"]
+            isOneToOne: false
+            referencedRelation: "gamification_badge_definitions"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      gamification_events: {
+        Row: {
+          created_at: string | null
+          data: Json | null
+          event_type: string
+          id: string
+          is_read: boolean | null
+          message: string | null
+          related_user_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          data?: Json | null
+          event_type: string
+          id?: string
+          is_read?: boolean | null
+          message?: string | null
+          related_user_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          data?: Json | null
+          event_type?: string
+          id?: string
+          is_read?: boolean | null
+          message?: string | null
+          related_user_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      gamification_points: {
+        Row: {
+          action_type: string
+          created_at: string | null
+          description: string | null
+          id: string
+          points: number
+          reference_id: string | null
+          reference_type: string | null
+          reference_value: number | null
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          points: number
+          reference_id?: string | null
+          reference_type?: string | null
+          reference_value?: number | null
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          points?: number
+          reference_id?: string | null
+          reference_type?: string | null
+          reference_value?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      gamification_profiles: {
+        Row: {
+          avatar_url: string | null
+          best_streak: number | null
+          car_color: string | null
+          created_at: string | null
+          current_level: string | null
+          current_streak: number | null
+          display_name: string | null
+          id: string
+          last_sale_date: string | null
+          sounds_enabled: boolean | null
+          total_points_alltime: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          best_streak?: number | null
+          car_color?: string | null
+          created_at?: string | null
+          current_level?: string | null
+          current_streak?: number | null
+          display_name?: string | null
+          id?: string
+          last_sale_date?: string | null
+          sounds_enabled?: boolean | null
+          total_points_alltime?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          best_streak?: number | null
+          car_color?: string | null
+          created_at?: string | null
+          current_level?: string | null
+          current_streak?: number | null
+          display_name?: string | null
+          id?: string
+          last_sale_date?: string | null
+          sounds_enabled?: boolean | null
+          total_points_alltime?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      gamification_rankings: {
+        Row: {
+          avg_close_time_seconds: number | null
+          conversion_rate: number | null
+          created_at: string | null
+          id: string
+          period_date: string
+          period_type: string
+          position: number | null
+          total_deals: number | null
+          total_points: number | null
+          total_sales: number | null
+          user_id: string
+        }
+        Insert: {
+          avg_close_time_seconds?: number | null
+          conversion_rate?: number | null
+          created_at?: string | null
+          id?: string
+          period_date: string
+          period_type: string
+          position?: number | null
+          total_deals?: number | null
+          total_points?: number | null
+          total_sales?: number | null
+          user_id: string
+        }
+        Update: {
+          avg_close_time_seconds?: number | null
+          conversion_rate?: number | null
+          created_at?: string | null
+          id?: string
+          period_date?: string
+          period_type?: string
+          position?: number | null
+          total_deals?: number | null
+          total_points?: number | null
+          total_sales?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      gamification_settings: {
+        Row: {
+          id: string
+          setting_key: string
+          setting_value: Json
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          setting_key: string
+          setting_value?: Json
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          setting_key?: string
+          setting_value?: Json
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       import_history: {
         Row: {
           created: number | null
