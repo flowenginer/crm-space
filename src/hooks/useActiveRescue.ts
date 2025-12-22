@@ -367,17 +367,24 @@ export function useCancelRescue() {
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Cancel the active rescue
-      const { error: rescueError } = await supabase
+      // Cancel the active rescue - use .select() to verify if update happened
+      const { data: updatedRescue, error: rescueError } = await supabase
         .from('active_rescues')
         .update({
           status: 'cancelled',
           cancelled_by: user?.id,
           cancelled_at: new Date().toISOString(),
         })
-        .eq('id', rescueId);
+        .eq('id', rescueId)
+        .select('id')
+        .maybeSingle();
 
       if (rescueError) throw rescueError;
+      
+      // If no rows were updated, it means RLS blocked the operation
+      if (!updatedRescue) {
+        throw new Error('Você não tem permissão para cancelar este resgate. Apenas o criador do resgate, o atendente da conversa ou administradores podem cancelá-lo.');
+      }
 
       // Cancel all pending messages
       const { error: messagesError } = await supabase
@@ -396,6 +403,10 @@ export function useCancelRescue() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['active-rescue', result.conversationId] });
       toast.success('Resgate cancelado');
+    },
+    onError: (error: any) => {
+      console.error('[useCancelRescue] Error:', error);
+      toast.error(error?.message || 'Erro ao cancelar resgate');
     },
   });
 }
