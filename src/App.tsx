@@ -13,6 +13,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 // Auth pages
 import Auth from "@/pages/Auth";
 import Register from "@/pages/Register";
+import TenantOnboarding from "@/pages/TenantOnboarding";
 
 // Main pages
 import Dashboard from "@/pages/Dashboard";
@@ -64,9 +65,10 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <Routes>
-              {/* Auth routes */}
-              <Route path="/auth" element={<Auth />} />
+            {/* Auth routes */}
+            <Route path="/auth" element={<Auth />} />
             <Route path="/auth/register" element={<Register />} />
+            <Route path="/onboarding" element={<TenantOnboarding />} />
 
             {/* Protected routes with MainLayout */}
             <Route element={<MainLayout />}>
