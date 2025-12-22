@@ -979,6 +979,7 @@ export type Database = {
           segment_id: string | null
           state: string | null
           street: string | null
+          tenant_id: string
           updated_at: string
           zip_code: string | null
         }
@@ -1018,6 +1019,7 @@ export type Database = {
           segment_id?: string | null
           state?: string | null
           street?: string | null
+          tenant_id?: string
           updated_at?: string
           zip_code?: string | null
         }
@@ -1057,6 +1059,7 @@ export type Database = {
           segment_id?: string | null
           state?: string | null
           street?: string | null
+          tenant_id?: string
           updated_at?: string
           zip_code?: string | null
         }
@@ -1080,6 +1083,13 @@ export type Database = {
             columns: ["segment_id"]
             isOneToOne: false
             referencedRelation: "segments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1189,6 +1199,7 @@ export type Database = {
           reopened_at: string | null
           sla_status: string | null
           status: string | null
+          tenant_id: string
           total_active_time_seconds: number | null
           transfer_note: string | null
           transferred_at: string | null
@@ -1225,6 +1236,7 @@ export type Database = {
           reopened_at?: string | null
           sla_status?: string | null
           status?: string | null
+          tenant_id?: string
           total_active_time_seconds?: number | null
           transfer_note?: string | null
           transferred_at?: string | null
@@ -1261,6 +1273,7 @@ export type Database = {
           reopened_at?: string | null
           sla_status?: string | null
           status?: string | null
+          tenant_id?: string
           total_active_time_seconds?: number | null
           transfer_note?: string | null
           transferred_at?: string | null
@@ -1316,6 +1329,13 @@ export type Database = {
             columns: ["queue_id"]
             isOneToOne: false
             referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1592,6 +1612,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
+          tenant_id: string
         }
         Insert: {
           can_transfer_freely?: boolean | null
@@ -1603,6 +1624,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
+          tenant_id?: string
         }
         Update: {
           can_transfer_freely?: boolean | null
@@ -1614,8 +1636,17 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
+          tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "departments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       email_activity_log: {
         Row: {
@@ -3289,6 +3320,7 @@ export type Database = {
           is_active: boolean | null
           name: string
           order_position: number
+          tenant_id: string
         }
         Insert: {
           color?: string | null
@@ -3297,6 +3329,7 @@ export type Database = {
           is_active?: boolean | null
           name: string
           order_position: number
+          tenant_id?: string
         }
         Update: {
           color?: string | null
@@ -3305,8 +3338,17 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           order_position?: number
+          tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "lead_statuses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       menu_items: {
         Row: {
@@ -3463,6 +3505,7 @@ export type Database = {
           reply_to_message_id: string | null
           sender_id: string | null
           status: string | null
+          tenant_id: string
           whatsapp_message_id: string | null
         }
         Insert: {
@@ -3481,6 +3524,7 @@ export type Database = {
           reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string | null
+          tenant_id?: string
           whatsapp_message_id?: string | null
         }
         Update: {
@@ -3499,6 +3543,7 @@ export type Database = {
           reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string | null
+          tenant_id?: string
           whatsapp_message_id?: string | null
         }
         Relationships: [
@@ -3528,6 +3573,13 @@ export type Database = {
             columns: ["sender_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -6132,6 +6184,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
+          tenant_id: string
           updated_at: string | null
         }
         Insert: {
@@ -6142,6 +6195,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
+          tenant_id?: string
           updated_at?: string | null
         }
         Update: {
@@ -6152,9 +6206,18 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
+          tenant_id?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "segments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       shared_conversations: {
         Row: {
@@ -6286,6 +6349,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
+          tenant_id: string
           usage_count: number | null
           visibility: string | null
         }
@@ -6297,6 +6361,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
+          tenant_id?: string
           usage_count?: number | null
           visibility?: string | null
         }
@@ -6308,6 +6373,7 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          tenant_id?: string
           usage_count?: number | null
           visibility?: string | null
         }
@@ -6324,6 +6390,13 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tags_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -6897,6 +6970,7 @@ export type Database = {
           qr_expires_at: string | null
           session_data: Json | null
           status: string | null
+          tenant_id: string
           type: string | null
           updated_at: string
           webhook_url: string | null
@@ -6923,6 +6997,7 @@ export type Database = {
           qr_expires_at?: string | null
           session_data?: Json | null
           status?: string | null
+          tenant_id?: string
           type?: string | null
           updated_at?: string
           webhook_url?: string | null
@@ -6949,6 +7024,7 @@ export type Database = {
           qr_expires_at?: string | null
           session_data?: Json | null
           status?: string | null
+          tenant_id?: string
           type?: string | null
           updated_at?: string
           webhook_url?: string | null
@@ -6966,6 +7042,13 @@ export type Database = {
             columns: ["provider_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_providers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_channels_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
