@@ -19,7 +19,7 @@ export function SuperAdminGuard({ children }: SuperAdminGuardProps) {
   }
 
   if (!isSuperAdmin) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
