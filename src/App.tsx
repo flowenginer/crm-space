@@ -45,6 +45,10 @@ import Quotes from "@/pages/Quotes";
 import Financial from "@/pages/Financial";
 import SellerDashboard from "@/pages/SellerDashboard";
 import RescueTemplates from "@/pages/RescueTemplates";
+import Gamification from "@/pages/Gamification";
+import GamificationRankings from "@/pages/gamification/Rankings";
+import GamificationAchievements from "@/pages/gamification/Achievements";
+import GamificationSettings from "@/pages/gamification/Settings";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -226,6 +230,26 @@ const App = () => (
               <Route path="/seller-dashboard" element={
                 <ProtectedRoute permission="seller.view">
                   <SellerDashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/gamification" element={
+                <ProtectedRoute permission="dashboard.view">
+                  <Gamification />
+                </ProtectedRoute>
+              } />
+              <Route path="/gamification/rankings" element={
+                <ProtectedRoute permission="dashboard.view">
+                  <GamificationRankings />
+                </ProtectedRoute>
+              } />
+              <Route path="/gamification/achievements" element={
+                <ProtectedRoute permission="dashboard.view">
+                  <GamificationAchievements />
+                </ProtectedRoute>
+              } />
+              <Route path="/gamification/settings" element={
+                <ProtectedRoute permission="settings.view">
+                  <GamificationSettings />
                 </ProtectedRoute>
               } />
             </Route>
