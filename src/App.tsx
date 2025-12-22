@@ -54,6 +54,8 @@ import GamificationAchievements from "@/pages/gamification/Achievements";
 import GamificationSettings from "@/pages/gamification/Settings";
 import TenantSettings from "@/pages/TenantSettings";
 import AcceptInvite from "@/pages/AcceptInvite";
+import SuperAdminPanel from "@/pages/SuperAdminPanel";
+import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -269,6 +271,11 @@ const App = () => (
                 <ProtectedRoute permission="settings.view">
                   <GamificationSettings />
                 </ProtectedRoute>
+              } />
+              <Route path="/super-admin" element={
+                <SuperAdminGuard>
+                  <SuperAdminPanel />
+                </SuperAdminGuard>
               } />
             </Route>
 

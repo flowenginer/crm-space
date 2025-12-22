@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { Search, Bell, Calendar, Menu, MessageCircle, Clock, UserPlus, AlertTriangle, ArrowRightLeft, CheckCheck, X } from 'lucide-react';
+import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
+import { Search, Bell, Calendar, Menu, MessageCircle, Clock, UserPlus, AlertTriangle, ArrowRightLeft, CheckCheck, X, Crown } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
 
 interface HeaderProps {
   title: string;
@@ -160,6 +161,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
 
   // OTIMIZAÇÃO: Usa hook centralizado
   const { data: currentUser } = useCurrentUser();
+  const { data: isSuperAdmin } = useCurrentUserIsSuperAdmin();
 
   // Fetch useful notifications: assignments, transfers, SLA alerts
   const { data: notifications = [] } = useQuery({
@@ -538,6 +540,20 @@ export function Header({ title, onMenuClick }: HeaderProps) {
             />
           </PopoverContent>
         </Popover>
+
+        {/* Super Admin Link */}
+        {isSuperAdmin && (
+          <Link to="/super-admin">
+            <Button 
+              variant="outline" 
+              size="icon" 
+              className="hidden md:flex h-11 w-11 rounded-xl border-yellow-500/50 bg-yellow-500/10 hover:bg-yellow-500/20 hover:border-yellow-500 transition-all"
+              title="Super Admin Panel"
+            >
+              <Crown className="h-5 w-5 text-yellow-500" />
+            </Button>
+          </Link>
+        )}
 
         {/* Theme Toggle */}
         <ThemeToggle />
