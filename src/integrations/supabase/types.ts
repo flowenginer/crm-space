@@ -239,6 +239,7 @@ export type Database = {
           pattern: string
           priority: number
           source: string
+          tenant_id: string
           updated_at: string
         }
         Insert: {
@@ -251,6 +252,7 @@ export type Database = {
           pattern: string
           priority?: number
           source?: string
+          tenant_id?: string
           updated_at?: string
         }
         Update: {
@@ -263,9 +265,18 @@ export type Database = {
           pattern?: string
           priority?: number
           source?: string
+          tenant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ad_message_patterns_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       availability_release_requests: {
         Row: {
@@ -501,6 +512,7 @@ export type Database = {
           notes: string | null
           result_id: string | null
           schedule_followup: boolean | null
+          tenant_id: string
           updated_at: string | null
           user_id: string
         }
@@ -516,6 +528,7 @@ export type Database = {
           notes?: string | null
           result_id?: string | null
           schedule_followup?: boolean | null
+          tenant_id?: string
           updated_at?: string | null
           user_id: string
         }
@@ -531,6 +544,7 @@ export type Database = {
           notes?: string | null
           result_id?: string | null
           schedule_followup?: boolean | null
+          tenant_id?: string
           updated_at?: string | null
           user_id?: string
         }
@@ -557,6 +571,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "call_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "call_logs_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -574,6 +595,7 @@ export type Database = {
           is_active: boolean | null
           name: string
           order_position: number | null
+          tenant_id: string
         }
         Insert: {
           color?: string | null
@@ -583,6 +605,7 @@ export type Database = {
           is_active?: boolean | null
           name: string
           order_position?: number | null
+          tenant_id?: string
         }
         Update: {
           color?: string | null
@@ -592,8 +615,17 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           order_position?: number | null
+          tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "call_results_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chatbot_flows: {
         Row: {
@@ -675,6 +707,7 @@ export type Database = {
           is_active: boolean | null
           name: string
           order_position: number | null
+          tenant_id: string
           value: string
         }
         Insert: {
@@ -684,6 +717,7 @@ export type Database = {
           is_active?: boolean | null
           name: string
           order_position?: number | null
+          tenant_id?: string
           value: string
         }
         Update: {
@@ -693,9 +727,18 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           order_position?: number | null
+          tenant_id?: string
           value?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "close_reasons_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       company_settings: {
         Row: {
@@ -728,6 +771,7 @@ export type Database = {
           sla_first_response_minutes: number | null
           sla_resolution_minutes: number | null
           state: string | null
+          tenant_id: string
           timezone: string | null
           updated_at: string | null
           website: string | null
@@ -763,6 +807,7 @@ export type Database = {
           sla_first_response_minutes?: number | null
           sla_resolution_minutes?: number | null
           state?: string | null
+          tenant_id?: string
           timezone?: string | null
           updated_at?: string | null
           website?: string | null
@@ -798,6 +843,7 @@ export type Database = {
           sla_first_response_minutes?: number | null
           sla_resolution_minutes?: number | null
           state?: string | null
+          tenant_id?: string
           timezone?: string | null
           updated_at?: string | null
           website?: string | null
@@ -809,6 +855,13 @@ export type Database = {
             columns: ["lead_distribution_department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1383,6 +1436,7 @@ export type Database = {
           name: string
           options: Json | null
           order_position: number | null
+          tenant_id: string
         }
         Insert: {
           created_at?: string
@@ -1396,6 +1450,7 @@ export type Database = {
           name: string
           options?: Json | null
           order_position?: number | null
+          tenant_id?: string
         }
         Update: {
           created_at?: string
@@ -1409,8 +1464,17 @@ export type Database = {
           name?: string
           options?: Json | null
           order_position?: number | null
+          tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "custom_field_definitions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       daily_metrics: {
         Row: {
@@ -5545,6 +5609,7 @@ export type Database = {
           max_per_agent: number | null
           name: string
           priority: string | null
+          tenant_id: string
         }
         Insert: {
           auto_assign?: boolean | null
@@ -5559,6 +5624,7 @@ export type Database = {
           max_per_agent?: number | null
           name: string
           priority?: string | null
+          tenant_id?: string
         }
         Update: {
           auto_assign?: boolean | null
@@ -5573,6 +5639,7 @@ export type Database = {
           max_per_agent?: number | null
           name?: string
           priority?: string | null
+          tenant_id?: string
         }
         Relationships: [
           {
@@ -5580,6 +5647,13 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "queues_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -6891,6 +6965,7 @@ export type Database = {
           last_error: string | null
           last_sent_at: string | null
           name: string
+          tenant_id: string
           total_failed: number | null
           total_sent: number | null
           total_success: number | null
@@ -6911,6 +6986,7 @@ export type Database = {
           last_error?: string | null
           last_sent_at?: string | null
           name: string
+          tenant_id?: string
           total_failed?: number | null
           total_sent?: number | null
           total_success?: number | null
@@ -6931,13 +7007,22 @@ export type Database = {
           last_error?: string | null
           last_sent_at?: string | null
           name?: string
+          tenant_id?: string
           total_failed?: number | null
           total_sent?: number | null
           total_success?: number | null
           updated_at?: string | null
           url?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "webhook_configs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       webhook_deliveries: {
         Row: {
