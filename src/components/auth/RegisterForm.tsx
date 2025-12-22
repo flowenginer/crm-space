@@ -66,15 +66,15 @@ export function RegisterForm() {
         title: 'Erro',
         description: message,
       });
+      setIsLoading(false);
     } else {
       toast({
         title: 'Conta criada!',
         description: 'Verifique seu email para confirmar o cadastro',
       });
+      // After email confirmation, user will be redirected to onboarding by Register.tsx
       navigate('/auth');
     }
-    
-    setIsLoading(false);
   }
 
   return (

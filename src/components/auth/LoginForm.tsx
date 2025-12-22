@@ -57,6 +57,7 @@ export function LoginForm() {
         title: 'Erro',
         description: message,
       });
+      setIsLoading(false);
     } else {
       // Register the session after successful login
       registerSession().catch(err => {
@@ -67,10 +68,8 @@ export function LoginForm() {
         title: 'Bem-vindo!',
         description: 'Login realizado com sucesso',
       });
-      navigate('/conversations');
+      // Navigation is handled by Auth.tsx useEffect based on tenant status
     }
-    
-    setIsLoading(false);
   }
 
   return (
