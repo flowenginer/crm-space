@@ -60,9 +60,17 @@ Deno.serve(async (req) => {
   }
 });
 
+// Function to generate randomized interval (±30% variation)
+function getRandomizedInterval(baseMs: number): number {
+  const variationPercent = 0.3;
+  const minMs = Math.floor(baseMs * (1 - variationPercent));
+  const maxMs = Math.floor(baseMs * (1 + variationPercent));
+  return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+}
+
 // @ts-ignore - Using any types for edge function flexibility
 async function processDispatch(supabase: any, dispatch: any) {
-  const intervalMs = dispatch.interval_seconds * 1000;
+  const baseIntervalMs = dispatch.interval_seconds * 1000;
   const template = dispatch.template;
   const channel = dispatch.channel;
 
@@ -148,9 +156,11 @@ async function processDispatch(supabase: any, dispatch: any) {
             })
             .eq('id', dispatch.id);
 
-          dispatch.processed_count++;
-          await new Promise(resolve => setTimeout(resolve, intervalMs));
-          continue;
+      dispatch.processed_count++;
+      const skipInterval = getRandomizedInterval(baseIntervalMs);
+      console.log(`[BulkDispatch] Waiting ${skipInterval}ms before next contact`);
+      await new Promise(resolve => setTimeout(resolve, skipInterval));
+      continue;
         }
       }
 
@@ -276,8 +286,10 @@ async function processDispatch(supabase: any, dispatch: any) {
       dispatch.error_count++;
     }
 
-    // Wait interval before next contact
-    await new Promise(resolve => setTimeout(resolve, intervalMs));
+    // Wait randomized interval before next contact
+    const randomInterval = getRandomizedInterval(baseIntervalMs);
+    console.log(`[BulkDispatch] Waiting ${randomInterval}ms before next contact`);
+    await new Promise(resolve => setTimeout(resolve, randomInterval));
   }
 
   console.log(`[BulkDispatch] Finished processing dispatch ${dispatch.id}`);
