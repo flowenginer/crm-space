@@ -149,6 +149,16 @@ export function usePreviewContacts(filters: BulkDispatchFilters, enabled: boolea
     queryKey: ['bulk-dispatch-preview', filters],
     enabled,
     queryFn: async () => {
+      // Se há filtro de leadStatusIds, primeiro buscar os nomes dos status
+      let leadStatusNames: string[] = [];
+      if (filters.leadStatusIds && filters.leadStatusIds.length > 0) {
+        const { data: statusData } = await supabase
+          .from('lead_statuses')
+          .select('name')
+          .in('id', filters.leadStatusIds);
+        leadStatusNames = statusData?.map(s => s.name) || [];
+      }
+
       let query = supabase
         .from('contacts')
         .select('id, full_name, phone, avatar_url, lead_status, last_interaction_at')
@@ -161,8 +171,9 @@ export function usePreviewContacts(filters: BulkDispatchFilters, enabled: boolea
       if (filters.firstContactEnd) {
         query = query.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
       }
-      if (filters.leadStatusIds && filters.leadStatusIds.length > 0) {
-        query = query.in('lead_status', filters.leadStatusIds);
+      // Filtrar por NOMES dos status (não IDs)
+      if (leadStatusNames.length > 0) {
+        query = query.in('lead_status', leadStatusNames);
       }
       if (filters.segmentId) {
         query = query.eq('segment_id', filters.segmentId);

@@ -65,8 +65,9 @@ async function processDispatch(supabase: any, dispatch: any) {
   const intervalMs = dispatch.interval_seconds * 1000;
   const template = dispatch.template;
   const channel = dispatch.channel;
+  const useExistingChannel = dispatch.channel_id === '__existing__';
 
-  console.log(`[BulkDispatch] Processing dispatch ${dispatch.id} with ${dispatch.total_contacts} contacts`);
+  console.log(`[BulkDispatch] Processing dispatch ${dispatch.id} with ${dispatch.total_contacts} contacts. UseExistingChannel: ${useExistingChannel}`);
 
   while (true) {
     // Check if dispatch is still running
@@ -111,6 +112,48 @@ async function processDispatch(supabase: any, dispatch: any) {
         .update({ status: 'sending' })
         .eq('id', dispatchContact.id);
 
+      // Determine which channel to use
+      let effectiveChannelId = channel?.id;
+
+      if (useExistingChannel) {
+        // Find existing conversation for this contact
+        const { data: existingConv } = await supabase
+          .from('conversations')
+          .select('id, channel_id')
+          .eq('contact_id', contact.id)
+          .not('channel_id', 'is', null)
+          .order('last_message_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (existingConv?.channel_id) {
+          effectiveChannelId = existingConv.channel_id;
+          console.log(`[BulkDispatch] Using existing channel ${effectiveChannelId} for contact ${contact.id}`);
+        } else {
+          // No existing conversation with channel - skip this contact
+          console.log(`[BulkDispatch] Contact ${contact.id} has no existing conversation with channel, skipping`);
+          await supabase
+            .from('bulk_dispatch_contacts')
+            .update({ status: 'skipped', error_message: 'Contato sem conversa existente com canal' })
+            .eq('id', dispatchContact.id);
+
+          await supabase
+            .from('bulk_dispatches')
+            .update({
+              processed_count: dispatch.processed_count + 1,
+            })
+            .eq('id', dispatch.id);
+
+          dispatch.processed_count++;
+          await new Promise(resolve => setTimeout(resolve, intervalMs));
+          continue;
+        }
+      }
+
+      if (!effectiveChannelId) {
+        throw new Error('No channel available for sending');
+      }
+
       // Get or create conversation
       let conversationId = dispatchContact.conversation_id;
 
@@ -119,7 +162,7 @@ async function processDispatch(supabase: any, dispatch: any) {
           .from('conversations')
           .select('id')
           .eq('contact_id', contact.id)
-          .eq('channel_id', channel.id)
+          .eq('channel_id', effectiveChannelId)
           .order('created_at', { ascending: false })
           .limit(1)
           .single();
@@ -129,7 +172,7 @@ async function processDispatch(supabase: any, dispatch: any) {
         } else {
           const { data: newConv } = await supabase
             .from('conversations')
-            .insert({ contact_id: contact.id, channel_id: channel.id, status: 'open' })
+            .insert({ contact_id: contact.id, channel_id: effectiveChannelId, status: 'open' })
             .select()
             .single();
           conversationId = newConv?.id;
@@ -163,19 +206,25 @@ async function processDispatch(supabase: any, dispatch: any) {
         .single();
 
       if (activeRescue) {
-        // Schedule first message
-        await supabase
+        // Schedule first message - USING CORRECT COLUMN NAMES
+        const { error: scheduleError } = await supabase
           .from('rescue_scheduled_messages')
           .insert({
-            active_rescue_id: activeRescue.id,
-            step_index: 0,
+            rescue_id: activeRescue.id,
+            step_number: 0,
             scheduled_for: new Date().toISOString(),
             status: 'pending',
-            message_text: firstStep.message,
+            content: firstStep.message,
             audio_url: firstStep.audio_url || null,
             attachment_url: firstStep.attachment_url || null,
             attachment_type: firstStep.attachment_type || null,
           });
+
+        if (scheduleError) {
+          console.error(`[BulkDispatch] Error scheduling message:`, scheduleError);
+        } else {
+          console.log(`[BulkDispatch] Scheduled message for rescue ${activeRescue.id}`);
+        }
       }
 
       // Update contact as sent
