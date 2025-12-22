@@ -2164,6 +2164,7 @@ export type Database = {
           source_handle: string | null
           source_node_id: string | null
           target_node_id: string | null
+          tenant_id: string
         }
         Insert: {
           created_at?: string | null
@@ -2172,6 +2173,7 @@ export type Database = {
           source_handle?: string | null
           source_node_id?: string | null
           target_node_id?: string | null
+          tenant_id?: string
         }
         Update: {
           created_at?: string | null
@@ -2180,6 +2182,7 @@ export type Database = {
           source_handle?: string | null
           source_node_id?: string | null
           target_node_id?: string | null
+          tenant_id?: string
         }
         Relationships: [
           {
@@ -2203,6 +2206,13 @@ export type Database = {
             referencedRelation: "flow_nodes"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "flow_connections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       flow_execution_logs: {
@@ -2214,6 +2224,7 @@ export type Database = {
           log_type: string
           message: string
           node_id: string | null
+          tenant_id: string
         }
         Insert: {
           created_at?: string | null
@@ -2223,6 +2234,7 @@ export type Database = {
           log_type: string
           message: string
           node_id?: string | null
+          tenant_id?: string
         }
         Update: {
           created_at?: string | null
@@ -2232,6 +2244,7 @@ export type Database = {
           log_type?: string
           message?: string
           node_id?: string | null
+          tenant_id?: string
         }
         Relationships: [
           {
@@ -2239,6 +2252,13 @@ export type Database = {
             columns: ["execution_id"]
             isOneToOne: false
             referencedRelation: "flow_executions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_execution_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -2256,6 +2276,7 @@ export type Database = {
           last_activity_at: string | null
           started_at: string | null
           status: string | null
+          tenant_id: string
           variables: Json | null
           waiting_for: string | null
           waiting_until: string | null
@@ -2272,6 +2293,7 @@ export type Database = {
           last_activity_at?: string | null
           started_at?: string | null
           status?: string | null
+          tenant_id?: string
           variables?: Json | null
           waiting_for?: string | null
           waiting_until?: string | null
@@ -2288,6 +2310,7 @@ export type Database = {
           last_activity_at?: string | null
           started_at?: string | null
           status?: string | null
+          tenant_id?: string
           variables?: Json | null
           waiting_for?: string | null
           waiting_until?: string | null
@@ -2328,6 +2351,13 @@ export type Database = {
             referencedRelation: "chatbot_flows"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "flow_executions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       flow_node_templates: {
@@ -2343,6 +2373,7 @@ export type Database = {
           name: string
           node_subtype: string
           node_type: string
+          tenant_id: string
         }
         Insert: {
           category: string
@@ -2356,6 +2387,7 @@ export type Database = {
           name: string
           node_subtype: string
           node_type: string
+          tenant_id?: string
         }
         Update: {
           category?: string
@@ -2369,8 +2401,17 @@ export type Database = {
           name?: string
           node_subtype?: string
           node_type?: string
+          tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "flow_node_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       flow_nodes: {
         Row: {
@@ -2622,6 +2663,7 @@ export type Database = {
           period_date: string
           period_type: string
           position: number | null
+          tenant_id: string
           total_deals: number | null
           total_points: number | null
           total_sales: number | null
@@ -2635,6 +2677,7 @@ export type Database = {
           period_date: string
           period_type: string
           position?: number | null
+          tenant_id?: string
           total_deals?: number | null
           total_points?: number | null
           total_sales?: number | null
@@ -2648,33 +2691,53 @@ export type Database = {
           period_date?: string
           period_type?: string
           position?: number | null
+          tenant_id?: string
           total_deals?: number | null
           total_points?: number | null
           total_sales?: number | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "gamification_rankings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       gamification_settings: {
         Row: {
           id: string
           setting_key: string
           setting_value: Json
+          tenant_id: string
           updated_at: string | null
         }
         Insert: {
           id?: string
           setting_key: string
           setting_value?: Json
+          tenant_id?: string
           updated_at?: string | null
         }
         Update: {
           id?: string
           setting_key?: string
           setting_value?: Json
+          tenant_id?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "gamification_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       import_history: {
         Row: {
@@ -4645,18 +4708,21 @@ export type Database = {
           conversation_id: string
           id: string
           pinned_at: string
+          tenant_id: string
           user_id: string
         }
         Insert: {
           conversation_id: string
           id?: string
           pinned_at?: string
+          tenant_id?: string
           user_id: string
         }
         Update: {
           conversation_id?: string
           id?: string
           pinned_at?: string
+          tenant_id?: string
           user_id?: string
         }
         Relationships: [
@@ -4665,6 +4731,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pinned_conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -6384,6 +6457,7 @@ export type Database = {
           shared_at: string
           shared_by: string
           shared_with: string | null
+          tenant_id: string
         }
         Insert: {
           conversation_id: string
@@ -6394,6 +6468,7 @@ export type Database = {
           shared_at?: string
           shared_by: string
           shared_with?: string | null
+          tenant_id?: string
         }
         Update: {
           conversation_id?: string
@@ -6404,6 +6479,7 @@ export type Database = {
           shared_at?: string
           shared_by?: string
           shared_with?: string | null
+          tenant_id?: string
         }
         Relationships: [
           {
@@ -6432,6 +6508,13 @@ export type Database = {
             columns: ["shared_with"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shared_conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
