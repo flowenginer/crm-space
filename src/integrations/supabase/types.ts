@@ -96,6 +96,7 @@ export type Database = {
           responded_at: string | null
           status: string | null
           template_id: string
+          tenant_id: string
           updated_at: string | null
         }
         Insert: {
@@ -112,6 +113,7 @@ export type Database = {
           responded_at?: string | null
           status?: string | null
           template_id: string
+          tenant_id?: string
           updated_at?: string | null
         }
         Update: {
@@ -128,6 +130,7 @@ export type Database = {
           responded_at?: string | null
           status?: string | null
           template_id?: string
+          tenant_id?: string
           updated_at?: string | null
         }
         Relationships: [
@@ -164,6 +167,13 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "rescue_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_rescues_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -401,6 +411,7 @@ export type Database = {
           started_at: string | null
           status: string
           template_id: string
+          tenant_id: string
           total_contacts: number
           updated_at: string
         }
@@ -421,6 +432,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           template_id: string
+          tenant_id?: string
           total_contacts?: number
           updated_at?: string
         }
@@ -441,6 +453,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           template_id?: string
+          tenant_id?: string
           total_contacts?: number
           updated_at?: string
         }
@@ -464,6 +477,13 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "rescue_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bulk_dispatches_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -588,6 +608,7 @@ export type Database = {
           priority: number | null
           published_at: string | null
           run_once_per_contact: boolean | null
+          tenant_id: string
           total_completions: number | null
           total_errors: number | null
           total_executions: number | null
@@ -605,6 +626,7 @@ export type Database = {
           priority?: number | null
           published_at?: string | null
           run_once_per_contact?: boolean | null
+          tenant_id?: string
           total_completions?: number | null
           total_errors?: number | null
           total_executions?: number | null
@@ -622,6 +644,7 @@ export type Database = {
           priority?: number | null
           published_at?: string | null
           run_once_per_contact?: boolean | null
+          tenant_id?: string
           total_completions?: number | null
           total_errors?: number | null
           total_executions?: number | null
@@ -633,6 +656,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chatbot_flows_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1517,6 +1547,7 @@ export type Database = {
           stage_entered_at: string | null
           stage_id: string
           status: string | null
+          tenant_id: string
           title: string
           updated_at: string
           value: number | null
@@ -1538,6 +1569,7 @@ export type Database = {
           stage_entered_at?: string | null
           stage_id: string
           status?: string | null
+          tenant_id?: string
           title: string
           updated_at?: string
           value?: number | null
@@ -1559,6 +1591,7 @@ export type Database = {
           stage_entered_at?: string | null
           stage_id?: string
           status?: string | null
+          tenant_id?: string
           title?: string
           updated_at?: string
           value?: number | null
@@ -1597,6 +1630,13 @@ export type Database = {
             columns: ["stage_id"]
             isOneToOne: false
             referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -3419,6 +3459,7 @@ export type Database = {
           media_type: string | null
           media_url: string | null
           shortcut: string | null
+          tenant_id: string
           title: string
           updated_at: string
           usage_count: number | null
@@ -3439,6 +3480,7 @@ export type Database = {
           media_type?: string | null
           media_url?: string | null
           shortcut?: string | null
+          tenant_id?: string
           title: string
           updated_at?: string
           usage_count?: number | null
@@ -3459,6 +3501,7 @@ export type Database = {
           media_type?: string | null
           media_url?: string | null
           shortcut?: string | null
+          tenant_id?: string
           title?: string
           updated_at?: string
           usage_count?: number | null
@@ -3484,6 +3527,13 @@ export type Database = {
             columns: ["folder_id"]
             isOneToOne: false
             referencedRelation: "template_folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -4563,6 +4613,7 @@ export type Database = {
           name: string
           order_position: number
           pipeline_id: string
+          tenant_id: string
         }
         Insert: {
           color?: string | null
@@ -4571,6 +4622,7 @@ export type Database = {
           name: string
           order_position: number
           pipeline_id: string
+          tenant_id?: string
         }
         Update: {
           color?: string | null
@@ -4579,6 +4631,7 @@ export type Database = {
           name?: string
           order_position?: number
           pipeline_id?: string
+          tenant_id?: string
         }
         Relationships: [
           {
@@ -4586,6 +4639,13 @@ export type Database = {
             columns: ["pipeline_id"]
             isOneToOne: false
             referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_stages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -4597,6 +4657,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
+          tenant_id: string
         }
         Insert: {
           created_at?: string
@@ -4604,6 +4665,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
+          tenant_id?: string
         }
         Update: {
           created_at?: string
@@ -4611,8 +4673,17 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
+          tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pipelines_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       product_attribute_price_rules: {
         Row: {
@@ -5999,6 +6070,7 @@ export type Database = {
           on_reply_action: string | null
           on_reply_config: Json | null
           steps: Json
+          tenant_id: string
           title: string
           updated_at: string | null
         }
@@ -6013,6 +6085,7 @@ export type Database = {
           on_reply_action?: string | null
           on_reply_config?: Json | null
           steps?: Json
+          tenant_id?: string
           title: string
           updated_at?: string | null
         }
@@ -6027,6 +6100,7 @@ export type Database = {
           on_reply_action?: string | null
           on_reply_config?: Json | null
           steps?: Json
+          tenant_id?: string
           title?: string
           updated_at?: string | null
         }
@@ -6036,6 +6110,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rescue_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
