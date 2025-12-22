@@ -59,33 +59,33 @@ export function RacingPodium({ topThree, isLoading }: RacingPodiumProps) {
 
     return (
       <div 
-        className={`relative flex flex-col items-center ${height}`}
+        className="relative flex flex-col items-center"
         style={{ order: position === 1 ? 2 : position === 2 ? 1 : 3 }}
       >
         {/* Trophy for 1st place */}
         {position === 1 && (
-          <div className="absolute -top-12 animate-bounce">
-            <Trophy className="w-10 h-10 text-yellow-500" />
+          <div className="absolute -top-16 animate-bounce z-10">
+            <Trophy className="w-12 h-12 text-yellow-500" />
           </div>
         )}
 
-        {/* Podium card */}
+        {/* Podium card - DOBRO DA LARGURA */}
         <div 
           className={`
-            relative w-28 md:w-36 rounded-t-xl border-2 ${style.border} ${style.glow}
+            relative w-40 md:w-52 lg:w-60 rounded-xl border-2 ${style.border} ${style.glow}
             bg-gradient-to-b ${style.bg} backdrop-blur-sm
-            flex flex-col items-center justify-start pt-4 px-3
+            flex flex-col items-center justify-center p-4 md:p-6
             transition-all duration-300 hover:scale-105
             ${height}
           `}
         >
-          {/* Position badge */}
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-3xl">
+          {/* Position badge - medalha no canto superior */}
+          <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-4xl">
             {style.badge}
           </div>
 
           {/* Avatar */}
-          <Avatar className={`h-16 w-16 md:h-20 md:w-20 border-4 ${style.border} mt-4`}>
+          <Avatar className={`h-16 w-16 md:h-20 md:w-20 border-4 ${style.border} mt-2`}>
             <AvatarImage src={racer?.avatar_url || ''} />
             <AvatarFallback 
               className="bg-racing-primary text-white text-xl font-bold"
@@ -96,38 +96,38 @@ export function RacingPodium({ topThree, isLoading }: RacingPodiumProps) {
           </Avatar>
 
           {/* Name */}
-          <div className="mt-3 text-center">
-            <div className="font-bold text-white text-sm md:text-base truncate max-w-full">
-              {position === 1 && '⭐ '}
-              {racer?.display_name || 'Vazio'}
-              {position === 1 && ' ⭐'}
-            </div>
-            <div className="text-racing-accent font-semibold text-lg mt-1">
-              R$ {racer?.total_sales?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '0,00'}
-            </div>
-            <div className="text-muted-foreground text-xs mt-1">
-              {racer?.total_deals || 0} vendas
-            </div>
+          <div className="mt-3 font-bold text-white text-base md:text-lg text-center truncate max-w-full px-2">
+            {racer?.display_name || 'Vazio'}
           </div>
 
-          {/* Position number at bottom */}
-          <div className={`
-            absolute bottom-2 text-4xl font-black
-            ${position === 1 ? 'text-yellow-500' : position === 2 ? 'text-gray-400' : 'text-amber-600'}
-          `}>
-            {position}º
+          {/* Value */}
+          <div className="mt-2 text-racing-accent font-bold text-lg md:text-xl">
+            R$ {racer?.total_sales?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '0,00'}
           </div>
+
+          {/* Sales count */}
+          <div className="mt-1 text-muted-foreground text-sm">
+            {racer?.total_deals || 0} vendas
+          </div>
+        </div>
+
+        {/* Position number - FORA DO CONTAINER, NA PARTE INFERIOR */}
+        <div className={`
+          mt-3 text-4xl md:text-5xl font-black
+          ${position === 1 ? 'text-yellow-500' : position === 2 ? 'text-gray-400' : 'text-amber-600'}
+        `}>
+          {position}º
         </div>
       </div>
     );
   };
 
   return (
-    <div className="py-8">
-      <div className="flex items-end justify-center gap-2 md:gap-4">
-        <PodiumPlace racer={second} position={2} height="h-48" />
-        <PodiumPlace racer={first} position={1} height="h-56" />
-        <PodiumPlace racer={third} position={3} height="h-44" />
+    <div className="py-12">
+      <div className="flex items-end justify-center gap-4 md:gap-6">
+        <PodiumPlace racer={second} position={2} height="min-h-[220px]" />
+        <PodiumPlace racer={first} position={1} height="min-h-[260px]" />
+        <PodiumPlace racer={third} position={3} height="min-h-[200px]" />
       </div>
     </div>
   );
