@@ -8000,6 +8000,7 @@ export type Database = {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
       }
+      current_user_is_super_admin: { Args: never; Returns: boolean }
       delete_contact_permanently: {
         Args: { p_contact_id: string }
         Returns: undefined
@@ -8130,6 +8131,22 @@ export type Database = {
           p_user_id: string
         }
         Returns: Json
+      }
+      get_all_tenants_with_stats: {
+        Args: never
+        Returns: {
+          contact_count: number
+          created_at: string
+          id: string
+          is_active: boolean
+          max_contacts: number
+          max_users: number
+          name: string
+          plan_type: string
+          slug: string
+          trial_ends_at: string
+          user_count: number
+        }[]
       }
       get_channel_by_instance: {
         Args: { p_instance_id: string }
@@ -8817,6 +8834,18 @@ export type Database = {
           p_whatsapp_message_id: string
         }
         Returns: Json
+      }
+      update_tenant_by_super_admin: {
+        Args: {
+          p_is_active?: boolean
+          p_max_contacts?: number
+          p_max_users?: number
+          p_name?: string
+          p_plan_type?: string
+          p_tenant_id: string
+          p_trial_ends_at?: string
+        }
+        Returns: boolean
       }
       user_belongs_to_tenant: {
         Args: { p_tenant_id: string }
