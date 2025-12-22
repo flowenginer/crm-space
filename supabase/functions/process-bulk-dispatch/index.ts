@@ -65,7 +65,8 @@ async function processDispatch(supabase: any, dispatch: any) {
   const intervalMs = dispatch.interval_seconds * 1000;
   const template = dispatch.template;
   const channel = dispatch.channel;
-  const useExistingChannel = dispatch.channel_id === '__existing__';
+  // channel_id === null indica que deve usar o canal da conversa existente
+  const useExistingChannel = dispatch.channel_id === null;
 
   console.log(`[BulkDispatch] Processing dispatch ${dispatch.id} with ${dispatch.total_contacts} contacts. UseExistingChannel: ${useExistingChannel}`);
 
