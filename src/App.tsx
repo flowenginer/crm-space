@@ -52,6 +52,7 @@ import Gamification from "@/pages/Gamification";
 import GamificationRankings from "@/pages/gamification/Rankings";
 import GamificationAchievements from "@/pages/gamification/Achievements";
 import GamificationSettings from "@/pages/gamification/Settings";
+import TenantSettings from "@/pages/TenantSettings";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -140,6 +141,11 @@ const App = () => (
               <Route path="/settings" element={
                 <ProtectedRoute permission="settings.view">
                   <Settings />
+                </ProtectedRoute>
+              } />
+              <Route path="/tenant-settings" element={
+                <ProtectedRoute permission="settings.view">
+                  <TenantSettings />
                 </ProtectedRoute>
               } />
               <Route path="/agendamentos" element={
