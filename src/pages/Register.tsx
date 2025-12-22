@@ -5,13 +5,18 @@ import { useUserStore } from '@/store/userStore';
 
 export default function Register() {
   const navigate = useNavigate();
-  const { session } = useUserStore();
+  const { session, profile, tenantId } = useUserStore();
 
   useEffect(() => {
-    if (session) {
-      navigate('/', { replace: true });
+    if (session && profile) {
+      // New users always go to onboarding
+      if (tenantId) {
+        navigate('/', { replace: true });
+      } else {
+        navigate('/onboarding', { replace: true });
+      }
     }
-  }, [session, navigate]);
+  }, [session, profile, tenantId, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
