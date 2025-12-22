@@ -46,6 +46,7 @@ import Quotes from "@/pages/Quotes";
 import Financial from "@/pages/Financial";
 import SellerDashboard from "@/pages/SellerDashboard";
 import RescueTemplates from "@/pages/RescueTemplates";
+import BulkDispatch from "@/pages/BulkDispatch";
 import Gamification from "@/pages/Gamification";
 import GamificationRankings from "@/pages/gamification/Rankings";
 import GamificationAchievements from "@/pages/gamification/Achievements";
