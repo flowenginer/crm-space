@@ -21,6 +21,7 @@ export interface CompanySettings {
   owner_agent_inactivity_days: number | null;
   owner_agent_on_reopen: boolean | null;
   owner_agent_reopen_reasons: string[] | null;
+  gamification_source: 'crm' | 'erp' | null;
 }
 
 export function useCompanySettings() {
@@ -48,15 +49,17 @@ export function useCompanySettings() {
             owner_agent_inactivity_days: 7,
             owner_agent_on_reopen: true,
             owner_agent_reopen_reasons: ['sold', 'no_interest', 'future_contact'],
+            gamification_source: 'crm',
           } as CompanySettings;
         }
         throw error;
       }
 
-      // Handle conversion_status_ids which might be null
+      // Handle conversion_status_ids and gamification_source which might be null
       return {
         ...data,
         conversion_status_ids: data.conversion_status_ids || ['78f16fc9-39f5-47ff-9774-00a0af9fa7da'],
+        gamification_source: data.gamification_source || 'crm',
       } as CompanySettings;
     },
     staleTime: 60000, // 1 minute

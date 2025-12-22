@@ -1,20 +1,34 @@
 import { useState } from "react";
-import { Settings as SettingsIcon, Trophy, Sliders, Target, Palette, Users, Save } from "lucide-react";
+import { Settings as SettingsIcon, Trophy, Sliders, Target, Palette, Users, Save, Database, ShoppingCart } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useGamificationSettings } from "@/hooks/useGamificationSettings";
+import { useCompanySettings, useUpdateCompanySettings } from "@/hooks/useCompanySettings";
+import { useERPEnabled } from "@/hooks/useERPEnabled";
 import { toast } from "sonner";
 
 export default function GamificationSettings() {
   const { settings, updateSetting, isLoading } = useGamificationSettings();
-  const [activeTab, setActiveTab] = useState('points');
+  const { data: companySettings } = useCompanySettings();
+  const updateCompanySettings = useUpdateCompanySettings();
+  const erpEnabled = useERPEnabled();
+  const [activeTab, setActiveTab] = useState('source');
+  const [gamificationSource, setGamificationSource] = useState<'crm' | 'erp'>(
+    (companySettings?.gamification_source as 'crm' | 'erp') || 'crm'
+  );
 
   const handleSave = async () => {
-    toast.success("Configurações salvas com sucesso!");
+    try {
+      await updateCompanySettings.mutateAsync({ gamification_source: gamificationSource });
+      toast.success("Configurações salvas com sucesso!");
+    } catch (error) {
+      toast.error("Erro ao salvar configurações");
+    }
   };
 
   return (
@@ -35,7 +49,11 @@ export default function GamificationSettings() {
 
       <div className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="bg-racing-card border border-racing-border grid grid-cols-5 w-full mb-6">
+          <TabsList className="bg-racing-card border border-racing-border grid grid-cols-6 w-full mb-6">
+            <TabsTrigger value="source" className="data-[state=active]:bg-racing-primary data-[state=active]:text-white">
+              <Database className="w-4 h-4 mr-2" />
+              Fonte
+            </TabsTrigger>
             <TabsTrigger value="points" className="data-[state=active]:bg-racing-primary data-[state=active]:text-white">
               <Sliders className="w-4 h-4 mr-2" />
               Pontuação
@@ -57,6 +75,66 @@ export default function GamificationSettings() {
               Participantes
             </TabsTrigger>
           </TabsList>
+
+          {/* Aba Fonte de Dados */}
+          <TabsContent value="source">
+            <Card className="bg-racing-card border-racing-border">
+              <CardHeader>
+                <CardTitle className="text-white">Fonte de Faturamento</CardTitle>
+                <CardDescription>
+                  Defina de onde os dados de vendas serão extraídos para o ranking
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <RadioGroup 
+                  value={gamificationSource} 
+                  onValueChange={(value) => setGamificationSource(value as 'crm' | 'erp')}
+                  className="space-y-4"
+                >
+                  <div className={`flex items-start space-x-4 p-4 rounded-lg border ${gamificationSource === 'crm' ? 'border-racing-accent bg-racing-accent/10' : 'border-racing-border bg-racing-bg'}`}>
+                    <RadioGroupItem value="crm" id="crm" className="mt-1" />
+                    <div className="flex-1">
+                      <Label htmlFor="crm" className="text-white font-semibold cursor-pointer flex items-center gap-2">
+                        <Database className="w-5 h-5 text-blue-400" />
+                        CRM (Contatos)
+                      </Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        O faturamento é calculado pelo <strong>valor negociado</strong> dos contatos que atingiram os <strong>status de conversão</strong> definidos em Configurações &gt; Métricas.
+                      </p>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        ✓ Status considerados: Pedido Fechado, Em Andamento, Cobrança, Aguardando Envio, Enviado, Entregue
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`flex items-start space-x-4 p-4 rounded-lg border ${gamificationSource === 'erp' ? 'border-racing-accent bg-racing-accent/10' : 'border-racing-border bg-racing-bg'} ${!erpEnabled ? 'opacity-50' : ''}`}>
+                    <RadioGroupItem value="erp" id="erp" className="mt-1" disabled={!erpEnabled} />
+                    <div className="flex-1">
+                      <Label htmlFor="erp" className={`text-white font-semibold cursor-pointer flex items-center gap-2 ${!erpEnabled ? 'cursor-not-allowed' : ''}`}>
+                        <ShoppingCart className="w-5 h-5 text-green-400" />
+                        ERP (Pedidos)
+                        {!erpEnabled && <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">Módulo desativado</span>}
+                      </Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        O faturamento é calculado pelo <strong>valor total dos pedidos</strong> criados no módulo ERP. Orçamentos não são contabilizados.
+                      </p>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        ✓ Apenas pedidos de venda são considerados (não orçamentos)
+                      </div>
+                    </div>
+                  </div>
+                </RadioGroup>
+
+                <div className="bg-racing-bg p-4 rounded-lg border border-racing-border">
+                  <h4 className="font-semibold text-white mb-2">⚡ Atualização em Tempo Real</h4>
+                  <p className="text-sm text-muted-foreground">
+                    O ranking é atualizado automaticamente sempre que houver mudanças nos dados. 
+                    Não é necessário recarregar a página.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Aba Pontuação */}
           <TabsContent value="points">

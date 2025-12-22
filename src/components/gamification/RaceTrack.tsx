@@ -23,7 +23,7 @@ export function RaceTrack({ racers, isLoading }: RaceTrackProps) {
     );
   }
 
-  const maxPoints = Math.max(...racers.map(r => r.total_points), 1);
+  const maxSales = Math.max(...racers.map(r => r.total_sales), 1);
 
   return (
     <div className="p-4 md:p-6 bg-racing-card rounded-xl border border-racing-border">
@@ -39,7 +39,7 @@ export function RaceTrack({ racers, isLoading }: RaceTrackProps) {
       {/* Track lines */}
       <div className="space-y-3">
         {racers.map((racer, index) => {
-          const progress = (racer.total_points / maxPoints) * 100;
+          const progress = (racer.total_sales / maxSales) * 100;
           
           return (
             <div key={racer.user_id} className="relative">
@@ -97,7 +97,7 @@ export function RaceTrack({ racers, isLoading }: RaceTrackProps) {
               <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center gap-2 text-right">
                 <div>
                   <span className="text-white font-medium text-sm">{racer.display_name}</span>
-                  <span className="text-racing-accent font-bold ml-2">{racer.total_points.toLocaleString()} pts</span>
+                  <span className="text-racing-accent font-bold ml-2">R$ {racer.total_sales.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
 

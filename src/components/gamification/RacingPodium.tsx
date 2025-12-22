@@ -103,10 +103,10 @@ export function RacingPodium({ topThree, isLoading }: RacingPodiumProps) {
               {position === 1 && ' ⭐'}
             </div>
             <div className="text-racing-accent font-semibold text-lg mt-1">
-              {racer?.total_points?.toLocaleString() || 0} pts
+              R$ {racer?.total_sales?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '0,00'}
             </div>
             <div className="text-muted-foreground text-xs mt-1">
-              R$ {racer?.total_sales?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '0,00'}
+              {racer?.total_deals || 0} vendas
             </div>
           </div>
 
