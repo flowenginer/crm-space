@@ -54,6 +54,7 @@ import { SalesGoalsManagement } from '@/components/settings/SalesGoalsManagement
 import { MenuConfiguration } from '@/components/settings/MenuConfiguration';
 import { CompanySettings } from '@/components/settings/CompanySettings';
 import { SharedBoxManagement } from '@/components/settings/SharedBoxManagement';
+import { InvitationManagement } from '@/components/settings/InvitationManagement';
 import { Facebook, UserCheck, Unlock, Store, Package, Layers } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -572,6 +573,7 @@ export default function Settings() {
         {isTabAvailable('team') && (
           <TabsContent value="team" className="space-y-6">
             <UserManagement />
+            <InvitationManagement />
           </TabsContent>
         )}
 

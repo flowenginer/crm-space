@@ -53,6 +53,7 @@ import GamificationRankings from "@/pages/gamification/Rankings";
 import GamificationAchievements from "@/pages/gamification/Achievements";
 import GamificationSettings from "@/pages/gamification/Settings";
 import TenantSettings from "@/pages/TenantSettings";
+import AcceptInvite from "@/pages/AcceptInvite";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -70,6 +71,7 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/auth/register" element={<Register />} />
             <Route path="/onboarding" element={<TenantOnboarding />} />
+            <Route path="/accept-invite" element={<AcceptInvite />} />
 
             {/* Protected routes with MainLayout */}
             <Route element={<MainLayout />}>
