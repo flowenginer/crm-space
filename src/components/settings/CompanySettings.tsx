@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
-import { Building2, Upload, Loader2, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Building2, Upload, Loader2, Trash2, Crown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanySettings, useUpdateCompanySettings } from '@/hooks/useCompanySettings';
+import { useCurrentTenant } from '@/hooks/useTenant';
+import { usePermissions } from '@/hooks/usePermissions';
 
 const BRAZILIAN_STATES = [
   { value: 'AC', label: 'Acre' },
@@ -70,6 +73,8 @@ const formatCEP = (value: string) => {
 
 export function CompanySettings() {
   const { data: settings, isLoading } = useCompanySettings();
+  const { data: tenant } = useCurrentTenant();
+  const { isAdmin } = usePermissions();
   const updateSettings = useUpdateCompanySettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -202,6 +207,33 @@ export function CompanySettings() {
 
   return (
     <div className="space-y-6">
+      {/* Link to Tenant Settings for Admins */}
+      {isAdmin && tenant && (
+        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Crown className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium">Gestão do Tenant</p>
+                  <p className="text-sm text-muted-foreground">
+                    Gerencie plano, limites de usuários e contatos
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/tenant-settings">
+                  Ver detalhes
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
