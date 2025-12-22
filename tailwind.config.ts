@@ -75,6 +75,14 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // Racing/Gamification Theme
+        racing: {
+          primary: "hsl(var(--racing-primary))",
+          accent: "hsl(var(--racing-accent))",
+          bg: "hsl(var(--racing-bg))",
+          card: "hsl(var(--racing-card))",
+          border: "hsl(var(--racing-border))",
+        },
         // Explicit color tokens for direct use
         purple: {
           50: "#FAF5FF",
