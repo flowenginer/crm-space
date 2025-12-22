@@ -6360,6 +6360,41 @@ export type Database = {
           },
         ]
       }
+      tenant_admins: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_owner: boolean | null
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_owner?: boolean | null
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_owner?: boolean | null
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_admins_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_notification_config: {
         Row: {
           created_at: string | null
@@ -7009,6 +7044,10 @@ export type Database = {
         Args: { p_contact_id: string; p_user_id: string }
         Returns: boolean
       }
+      can_manage_tenant: {
+        Args: { _tenant_id: string; _user_id?: string }
+        Returns: boolean
+      }
       can_transfer_freely: { Args: { _user_id: string }; Returns: boolean }
       can_view_all_data: { Args: { _user_id: string }; Returns: boolean }
       can_view_email_attachment: {
@@ -7646,6 +7685,8 @@ export type Database = {
         Returns: boolean
       }
       is_lid_contact: { Args: { phone: string }; Returns: boolean }
+      is_super_admin: { Args: { _user_id?: string }; Returns: boolean }
+      is_tenant_owner: { Args: { _user_id?: string }; Returns: boolean }
       merge_duplicate_contacts: {
         Args: {
           p_duplicate_contact_id: string
