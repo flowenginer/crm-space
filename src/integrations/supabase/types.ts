@@ -6707,6 +6707,7 @@ export type Database = {
           permissions: Json | null
           role_key: string
           role_name: string
+          tenant_id: string
         }
         Insert: {
           color?: string | null
@@ -6719,6 +6720,7 @@ export type Database = {
           permissions?: Json | null
           role_key: string
           role_name: string
+          tenant_id?: string
         }
         Update: {
           color?: string | null
@@ -6731,8 +6733,17 @@ export type Database = {
           permissions?: Json | null
           role_key?: string
           role_name?: string
+          tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "role_definitions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scheduled_messages: {
         Row: {
@@ -6961,18 +6972,29 @@ export type Database = {
           id: number
           message: Json
           session_id: string
+          tenant_id: string
         }
         Insert: {
           id?: number
           message: Json
           session_id: string
+          tenant_id?: string
         }
         Update: {
           id?: number
           message?: Json
           session_id?: string
+          tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "space_memory_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stores: {
         Row: {
@@ -7276,6 +7298,7 @@ export type Database = {
           department_id: string
           id: string
           is_primary: boolean | null
+          tenant_id: string
           user_id: string
         }
         Insert: {
@@ -7283,6 +7306,7 @@ export type Database = {
           department_id: string
           id?: string
           is_primary?: boolean | null
+          tenant_id?: string
           user_id: string
         }
         Update: {
@@ -7290,6 +7314,7 @@ export type Database = {
           department_id?: string
           id?: string
           is_primary?: boolean | null
+          tenant_id?: string
           user_id?: string
         }
         Relationships: [
@@ -7298,6 +7323,13 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_departments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
           {
@@ -7459,6 +7491,7 @@ export type Database = {
           os: string | null
           region: string | null
           session_token: string
+          tenant_id: string
           user_agent: string | null
           user_id: string
         }
@@ -7477,6 +7510,7 @@ export type Database = {
           os?: string | null
           region?: string | null
           session_token: string
+          tenant_id?: string
           user_agent?: string | null
           user_id: string
         }
@@ -7495,10 +7529,19 @@ export type Database = {
           os?: string | null
           region?: string | null
           session_token?: string
+          tenant_id?: string
           user_agent?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       webhook_configs: {
         Row: {
@@ -7588,6 +7631,7 @@ export type Database = {
           response_time_ms: number | null
           status: string | null
           status_code: number | null
+          tenant_id: string
           webhook_id: string | null
         }
         Insert: {
@@ -7603,6 +7647,7 @@ export type Database = {
           response_time_ms?: number | null
           status?: string | null
           status_code?: number | null
+          tenant_id?: string
           webhook_id?: string | null
         }
         Update: {
@@ -7618,9 +7663,17 @@ export type Database = {
           response_time_ms?: number | null
           status?: string | null
           status_code?: number | null
+          tenant_id?: string
           webhook_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "webhook_deliveries_webhook_id_fkey"
             columns: ["webhook_id"]
@@ -7640,6 +7693,7 @@ export type Database = {
           payload: Json
           processed: boolean | null
           provider: string
+          tenant_id: string
         }
         Insert: {
           created_at?: string | null
@@ -7650,6 +7704,7 @@ export type Database = {
           payload: Json
           processed?: boolean | null
           provider: string
+          tenant_id?: string
         }
         Update: {
           created_at?: string | null
@@ -7660,8 +7715,17 @@ export type Database = {
           payload?: Json
           processed?: boolean | null
           provider?: string
+          tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "webhook_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_channels: {
         Row: {
