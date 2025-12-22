@@ -14,9 +14,15 @@ export interface RacerRanking {
   total_sales: number;
   total_deals: number;
   position: number;
+  // Novas métricas
+  avg_response_time_seconds: number;
+  avg_ticket: number;
+  conversion_rate: number;
+  total_leads: number;
 }
 
 type PeriodFilter = 'daily' | 'weekly' | 'monthly';
+export type RankingType = 'general' | 'sales' | 'speed' | 'ticket' | 'conversion' | 'attendance';
 
 // Cores para vendedores sem perfil de gamificação
 const DEFAULT_COLORS = [
@@ -24,7 +30,10 @@ const DEFAULT_COLORS = [
   '#F596C8', '#006F62', '#1E41FF', '#C92D4B', '#2D826D'
 ];
 
-export function useGamificationRankings(period: PeriodFilter = 'monthly') {
+export function useGamificationRankings(
+  period: PeriodFilter = 'monthly',
+  rankingType: RankingType = 'general'
+) {
   const queryClient = useQueryClient();
   const { data: companySettings } = useCompanySettings();
   const erpEnabled = useERPEnabled();
@@ -55,14 +64,27 @@ export function useGamificationRankings(period: PeriodFilter = 'monthly') {
       })
       .subscribe();
 
+    // Subscribe to conversations changes (para velocidade)
+    const conversationsChannel = supabase
+      .channel('gamification-conversations')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'conversations'
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['gamification-rankings'] });
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(contactsChannel);
       supabase.removeChannel(ordersChannel);
+      supabase.removeChannel(conversationsChannel);
     };
   }, [queryClient]);
 
   const { data: rankings = [], isLoading } = useQuery({
-    queryKey: ['gamification-rankings', period, companySettings?.conversion_status_ids],
+    queryKey: ['gamification-rankings', period, rankingType, companySettings?.conversion_status_ids],
     queryFn: async (): Promise<RacerRanking[]> => {
       // Calcular range de datas baseado no período
       const now = new Date();
@@ -186,9 +208,43 @@ export function useGamificationRankings(period: PeriodFilter = 'monthly') {
         }
       }
 
+      // Buscar tempo médio de resposta (Velocidade)
+      const { data: conversationsData } = await supabase
+        .from('conversations')
+        .select('assigned_to, first_response_at, created_at')
+        .in('assigned_to', sellerIds)
+        .not('first_response_at', 'is', null)
+        .gte('created_at', startDate.toISOString());
+
+      const responseTimeByUser = new Map<string, { totalTime: number; count: number }>();
+      conversationsData?.forEach((conv) => {
+        if (!conv.assigned_to || !conv.first_response_at || !conv.created_at) return;
+        const responseTime = (new Date(conv.first_response_at).getTime() - new Date(conv.created_at).getTime()) / 1000;
+        if (responseTime < 0) return; // Ignorar valores negativos
+        const current = responseTimeByUser.get(conv.assigned_to) || { totalTime: 0, count: 0 };
+        current.totalTime += responseTime;
+        current.count += 1;
+        responseTimeByUser.set(conv.assigned_to, current);
+      });
+
+      // Buscar total de leads por vendedor (para taxa de conversão)
+      const { data: totalLeadsData } = await supabase
+        .from('contacts')
+        .select('assigned_to')
+        .in('assigned_to', sellerIds)
+        .gte('created_at', startDate.toISOString());
+
+      const totalLeadsByUser = new Map<string, number>();
+      totalLeadsData?.forEach((contact) => {
+        if (!contact.assigned_to) return;
+        totalLeadsByUser.set(contact.assigned_to, (totalLeadsByUser.get(contact.assigned_to) || 0) + 1);
+      });
+
       // Construir rankings combinando vendedores e vendas
       const rankings: RacerRanking[] = sellers.map((seller, index) => {
         const userSales = salesByUser.get(seller.id) || { totalSales: 0, totalDeals: 0 };
+        const responseTimeData = responseTimeByUser.get(seller.id);
+        const totalLeads = totalLeadsByUser.get(seller.id) || 0;
         
         // Calcular pontos baseado em faturamento (1 ponto por R$10)
         const basePoints = Math.floor(userSales.totalSales / 10);
@@ -197,6 +253,17 @@ export function useGamificationRankings(period: PeriodFilter = 'monthly') {
         let level = 'bronze';
         if (userSales.totalSales >= 20000) level = 'gold';
         else if (userSales.totalSales >= 10000) level = 'silver';
+
+        // Calcular métricas adicionais
+        const avgResponseTime = responseTimeData 
+          ? responseTimeData.totalTime / responseTimeData.count 
+          : 0;
+        const avgTicket = userSales.totalDeals > 0 
+          ? userSales.totalSales / userSales.totalDeals 
+          : 0;
+        const conversionRate = totalLeads > 0 
+          ? (userSales.totalDeals / totalLeads) * 100 
+          : 0;
 
         return {
           user_id: seller.id,
@@ -208,11 +275,35 @@ export function useGamificationRankings(period: PeriodFilter = 'monthly') {
           total_sales: userSales.totalSales,
           total_deals: userSales.totalDeals,
           position: 0,
+          avg_response_time_seconds: avgResponseTime,
+          avg_ticket: avgTicket,
+          conversion_rate: conversionRate,
+          total_leads: totalLeads,
         };
       });
 
-      // Ordenar por FATURAMENTO (total_sales) - não por pontos
-      rankings.sort((a, b) => b.total_sales - a.total_sales);
+      // Ordenar conforme o tipo de ranking
+      switch (rankingType) {
+        case 'speed':
+          // Menor tempo = melhor (quem não tem resposta vai pro fim)
+          rankings.sort((a, b) => {
+            if (a.avg_response_time_seconds === 0 && b.avg_response_time_seconds === 0) return 0;
+            if (a.avg_response_time_seconds === 0) return 1;
+            if (b.avg_response_time_seconds === 0) return -1;
+            return a.avg_response_time_seconds - b.avg_response_time_seconds;
+          });
+          break;
+        case 'ticket':
+          rankings.sort((a, b) => b.avg_ticket - a.avg_ticket);
+          break;
+        case 'conversion':
+          rankings.sort((a, b) => b.conversion_rate - a.conversion_rate);
+          break;
+        default: // general, sales, attendance
+          rankings.sort((a, b) => b.total_sales - a.total_sales);
+      }
+
+      // Atribuir posições
       rankings.forEach((r, index) => {
         r.position = index + 1;
       });
