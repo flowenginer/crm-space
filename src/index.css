@@ -126,6 +126,13 @@
     --sidebar-accent-foreground: 0 0% 95%;
     --sidebar-border: 220 13% 20%;
     --sidebar-ring: 262 83% 65%;
+
+    /* Racing/Gamification Theme */
+    --racing-primary: 0 84% 45%;
+    --racing-accent: 45 93% 58%;
+    --racing-bg: 220 13% 6%;
+    --racing-card: 230 15% 12%;
+    --racing-border: 220 13% 18%;
   }
 }
 
