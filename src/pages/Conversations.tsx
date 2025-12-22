@@ -3154,17 +3154,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           ? 'w-[60px] min-w-[60px] max-w-[60px]' 
           : 'w-full md:w-[360px] md:min-w-[320px] md:max-w-[360px] xl:w-[420px] xl:min-w-[380px] xl:max-w-[420px] 2xl:w-[500px] 2xl:min-w-[440px] 2xl:max-w-[500px]'
       )}>
-        {/* Header */}
-        <div className={cn("border-b border-border", isLeftPanelCollapsed ? "hidden" : "p-3 xl:p-4")}>
-          <div className="flex items-center justify-between mb-3">
-            {/* Collapse Button */}
-            <button
-              onClick={() => setIsLeftPanelCollapsed(!isLeftPanelCollapsed)}
-              className="p-1.5 hover:bg-muted rounded-lg transition-colors hidden md:flex"
-              title="Minimizar painel"
-            >
-              <PanelLeftClose size={18} />
-            </button>
+        {/* Header - Only when expanded */}
+        {!isLeftPanelCollapsed && (
+          <div className="border-b border-border p-3 xl:p-4">
+            <div className="flex items-center justify-between mb-3">
+              {/* Collapse Button */}
+              <button
+                onClick={() => setIsLeftPanelCollapsed(true)}
+                className="p-1.5 hover:bg-muted rounded-lg transition-colors hidden md:flex"
+                title="Minimizar painel"
+              >
+                <PanelLeftClose size={18} />
+              </button>
             {!isLeftPanelCollapsed && (
               <>
                 <h2 className="text-lg xl:text-xl font-bold text-foreground ml-2">Conversas</h2>
@@ -3243,7 +3244,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               </div>
             </>
           )}
-        </div>
+          </div>
+        )}
 
         {/* Filters - only when expanded */}
         {!isLeftPanelCollapsed && (
@@ -3608,7 +3610,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             <div className="p-2 border-t border-border flex justify-center">
               <button
                 onClick={() => setIsLeftPanelCollapsed(false)}
-                className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex"
+                className="p-2 hover:bg-muted rounded-lg transition-colors"
                 title="Expandir painel"
               >
                 <PanelLeftOpen size={18} />
