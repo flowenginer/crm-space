@@ -105,6 +105,11 @@ const App = () => (
                   <RescueTemplates />
                 </ProtectedRoute>
               } />
+              <Route path="/bulk-dispatch" element={
+                <ProtectedRoute permission="templates.view">
+                  <BulkDispatch />
+                </ProtectedRoute>
+              } />
               <Route path="/crm" element={
                 <ProtectedRoute permission="deals.view">
                   <CRM />

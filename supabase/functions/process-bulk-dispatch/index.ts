@@ -20,6 +20,7 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  // @ts-ignore - Ignore type checking for Supabase client in edge functions
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
@@ -45,21 +46,22 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ message: 'Dispatch is not running', status: dispatch.status }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Process in background
+    // Process in background using async IIFE
     (async () => {
       await processDispatch(supabase, dispatch);
     })();
 
     return new Response(JSON.stringify({ message: 'Processing started', dispatchId }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-  } catch (err: unknown) {
+  } catch (err) {
     const error = err as Error;
     console.error('[BulkDispatch] Error:', error);
     return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
 
-async function processDispatch(supabase: ReturnType<typeof createClient>, dispatch: any) {
+// @ts-ignore - Using any types for edge function flexibility
+async function processDispatch(supabase: any, dispatch: any) {
   const intervalMs = dispatch.interval_seconds * 1000;
   const template = dispatch.template;
   const channel = dispatch.channel;
@@ -67,12 +69,19 @@ async function processDispatch(supabase: ReturnType<typeof createClient>, dispat
   console.log(`[BulkDispatch] Processing dispatch ${dispatch.id} with ${dispatch.total_contacts} contacts`);
 
   while (true) {
-    const { data: currentDispatch } = await supabase.from('bulk_dispatches').select('status').eq('id', dispatch.id).single();
+    // Check if dispatch is still running
+    const { data: currentDispatch } = await supabase
+      .from('bulk_dispatches')
+      .select('status')
+      .eq('id', dispatch.id)
+      .single();
+
     if (!currentDispatch || currentDispatch.status !== 'running') {
-      console.log(`[BulkDispatch] Dispatch ${dispatch.id} stopped`);
+      console.log(`[BulkDispatch] Dispatch ${dispatch.id} stopped (status: ${currentDispatch?.status})`);
       break;
     }
 
+    // Get next pending contact
     const { data: pendingContacts } = await supabase
       .from('bulk_dispatch_contacts')
       .select('*, contact:contacts(*)')
@@ -82,66 +91,139 @@ async function processDispatch(supabase: ReturnType<typeof createClient>, dispat
       .limit(1);
 
     if (!pendingContacts || pendingContacts.length === 0) {
-      console.log(`[BulkDispatch] No more pending contacts`);
-      await supabase.from('bulk_dispatches').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', dispatch.id);
+      console.log(`[BulkDispatch] No more pending contacts for dispatch ${dispatch.id}`);
+      await supabase
+        .from('bulk_dispatches')
+        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .eq('id', dispatch.id);
       break;
     }
 
     const dispatchContact = pendingContacts[0];
     const contact = dispatchContact.contact;
 
-    try {
-      await supabase.from('bulk_dispatch_contacts').update({ status: 'sending' }).eq('id', dispatchContact.id);
+    console.log(`[BulkDispatch] Processing contact: ${contact.full_name} (${contact.phone})`);
 
+    try {
+      // Mark as sending
+      await supabase
+        .from('bulk_dispatch_contacts')
+        .update({ status: 'sending' })
+        .eq('id', dispatchContact.id);
+
+      // Get or create conversation
       let conversationId = dispatchContact.conversation_id;
+
       if (!conversationId) {
-        const { data: existingConv } = await supabase.from('conversations').select('id').eq('contact_id', contact.id).eq('channel_id', channel.id).order('created_at', { ascending: false }).limit(1).single();
+        const { data: existingConv } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_id', contact.id)
+          .eq('channel_id', channel.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
         if (existingConv) {
           conversationId = existingConv.id;
         } else {
-          const { data: newConv } = await supabase.from('conversations').insert({ contact_id: contact.id, channel_id: channel.id, status: 'open' }).select().single();
+          const { data: newConv } = await supabase
+            .from('conversations')
+            .insert({ contact_id: contact.id, channel_id: channel.id, status: 'open' })
+            .select()
+            .single();
           conversationId = newConv?.id;
         }
-        await supabase.from('bulk_dispatch_contacts').update({ conversation_id: conversationId }).eq('id', dispatchContact.id);
+
+        await supabase
+          .from('bulk_dispatch_contacts')
+          .update({ conversation_id: conversationId })
+          .eq('id', dispatchContact.id);
       }
 
+      // Create active rescue
       const steps = (template.steps as RescueStep[]) || [];
       const firstStep = steps[0];
-      if (!firstStep) throw new Error('Template has no steps');
+
+      if (!firstStep) {
+        throw new Error('Template has no steps');
+      }
 
       const { data: activeRescue } = await supabase
         .from('active_rescues')
-        .insert({ conversation_id: conversationId, contact_id: contact.id, template_id: template.id, status: 'active', current_step: 0, next_send_at: new Date().toISOString() })
+        .insert({
+          conversation_id: conversationId,
+          contact_id: contact.id,
+          template_id: template.id,
+          status: 'active',
+          current_step: 0,
+          next_send_at: new Date().toISOString(),
+        })
         .select()
         .single();
 
       if (activeRescue) {
-        await supabase.from('rescue_scheduled_messages').insert({
-          active_rescue_id: activeRescue.id,
-          step_index: 0,
-          scheduled_for: new Date().toISOString(),
-          status: 'pending',
-          message_text: firstStep.message,
-          audio_url: firstStep.audio_url,
-          attachment_url: firstStep.attachment_url,
-          attachment_type: firstStep.attachment_type,
-        });
+        // Schedule first message
+        await supabase
+          .from('rescue_scheduled_messages')
+          .insert({
+            active_rescue_id: activeRescue.id,
+            step_index: 0,
+            scheduled_for: new Date().toISOString(),
+            status: 'pending',
+            message_text: firstStep.message,
+            audio_url: firstStep.audio_url || null,
+            attachment_url: firstStep.attachment_url || null,
+            attachment_type: firstStep.attachment_type || null,
+          });
       }
 
-      await supabase.from('bulk_dispatch_contacts').update({ status: 'sent', sent_at: new Date().toISOString(), active_rescue_id: activeRescue?.id }).eq('id', dispatchContact.id);
-      await supabase.from('bulk_dispatches').update({ processed_count: dispatch.processed_count + 1, sent_count: dispatch.sent_count + 1 }).eq('id', dispatch.id);
+      // Update contact as sent
+      await supabase
+        .from('bulk_dispatch_contacts')
+        .update({
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          active_rescue_id: activeRescue?.id,
+        })
+        .eq('id', dispatchContact.id);
+
+      // Update metrics
+      await supabase
+        .from('bulk_dispatches')
+        .update({
+          processed_count: dispatch.processed_count + 1,
+          sent_count: dispatch.sent_count + 1,
+        })
+        .eq('id', dispatch.id);
+
       dispatch.processed_count++;
       dispatch.sent_count++;
 
-    } catch (err: unknown) {
+      console.log(`[BulkDispatch] Successfully processed contact: ${contact.full_name}`);
+
+    } catch (err) {
       const error = err as Error;
-      console.error(`[BulkDispatch] Error processing contact:`, error);
-      await supabase.from('bulk_dispatch_contacts').update({ status: 'error', error_message: error.message }).eq('id', dispatchContact.id);
-      await supabase.from('bulk_dispatches').update({ processed_count: dispatch.processed_count + 1, error_count: dispatch.error_count + 1 }).eq('id', dispatch.id);
+      console.error(`[BulkDispatch] Error processing contact ${contact.id}:`, error);
+
+      await supabase
+        .from('bulk_dispatch_contacts')
+        .update({ status: 'error', error_message: error.message })
+        .eq('id', dispatchContact.id);
+
+      await supabase
+        .from('bulk_dispatches')
+        .update({
+          processed_count: dispatch.processed_count + 1,
+          error_count: dispatch.error_count + 1,
+        })
+        .eq('id', dispatch.id);
+
       dispatch.processed_count++;
       dispatch.error_count++;
     }
 
+    // Wait interval before next contact
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
 
