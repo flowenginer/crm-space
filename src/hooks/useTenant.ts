@@ -1,37 +1,30 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import type { Json } from '@/integrations/supabase/types';
-
-export interface Tenant {
-  id: string;
-  name: string;
-  slug: string;
-  logo_url: string | null;
-  settings: Json;
-  plan_type: string;
-  max_users: number;
-  max_contacts: number;
-  is_active: boolean;
-  trial_ends_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
+import { useUserStore } from '@/store/userStore';
+import type { Tenant } from '@/types';
 
 /**
  * Hook para obter o tenant_id do usuário atual
  * Usa a função get_user_tenant_id() do banco
  */
 export function useCurrentTenantId() {
+  const { tenantId: storeTenantId } = useUserStore();
+  
   return useQuery({
     queryKey: ['current-tenant-id'],
     queryFn: async () => {
+      // First try to get from RPC
       const { data, error } = await supabase.rpc('get_user_tenant_id');
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching tenant id:', error);
+        return storeTenantId;
+      }
       return data as string | null;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes
+    initialData: storeTenantId,
   });
 }
 
@@ -40,6 +33,7 @@ export function useCurrentTenantId() {
  */
 export function useCurrentTenant() {
   const { data: tenantId } = useCurrentTenantId();
+  const { tenant: storeTenant, setTenant } = useUserStore();
 
   return useQuery({
     queryKey: ['current-tenant', tenantId],
@@ -52,12 +46,22 @@ export function useCurrentTenant() {
         .eq('id', tenantId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching tenant:', error);
+        return storeTenant;
+      }
+      
+      // Update store with fresh tenant data
+      if (data) {
+        setTenant(data as Tenant);
+      }
+      
       return data as Tenant;
     },
     enabled: !!tenantId,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
+    initialData: storeTenant,
   });
 }
 
@@ -66,6 +70,7 @@ export function useCurrentTenant() {
  */
 export function useCreateTenant() {
   const queryClient = useQueryClient();
+  const { setTenant, setTenantId } = useUserStore();
 
   return useMutation({
     mutationFn: async (data: {
@@ -88,7 +93,9 @@ export function useCreateTenant() {
       if (error) throw error;
       return result as Tenant;
     },
-    onSuccess: () => {
+    onSuccess: (newTenant) => {
+      setTenant(newTenant);
+      setTenantId(newTenant.id);
       queryClient.invalidateQueries({ queryKey: ['current-tenant'] });
       queryClient.invalidateQueries({ queryKey: ['current-tenant-id'] });
       toast.success('Empresa criada com sucesso');
@@ -109,20 +116,25 @@ export function useCreateTenant() {
  */
 export function useUpdateTenant() {
   const queryClient = useQueryClient();
+  const { setTenant } = useUserStore();
 
   return useMutation({
     mutationFn: async ({
       id,
       ...data
-    }: Partial<Tenant> & { id: string }) => {
-      const { error } = await supabase
+    }: { id: string; name?: string; slug?: string; logo_url?: string; plan_type?: string }) => {
+      const { data: updated, error } = await supabase
         .from('tenants')
         .update(data)
-        .eq('id', id);
+        .eq('id', id)
+        .select()
+        .single();
 
       if (error) throw error;
+      return updated as Tenant;
     },
-    onSuccess: () => {
+    onSuccess: (updatedTenant) => {
+      setTenant(updatedTenant);
       queryClient.invalidateQueries({ queryKey: ['current-tenant'] });
       toast.success('Empresa atualizada com sucesso');
     },
@@ -138,6 +150,7 @@ export function useUpdateTenant() {
  */
 export function useAssignUserToTenant() {
   const queryClient = useQueryClient();
+  const { setTenantId } = useUserStore();
 
   return useMutation({
     mutationFn: async ({
@@ -153,8 +166,10 @@ export function useAssignUserToTenant() {
         .eq('id', userId);
 
       if (error) throw error;
+      return tenantId;
     },
-    onSuccess: () => {
+    onSuccess: (tenantId) => {
+      setTenantId(tenantId);
       queryClient.invalidateQueries({ queryKey: ['current-tenant'] });
       queryClient.invalidateQueries({ queryKey: ['current-tenant-id'] });
       queryClient.invalidateQueries({ queryKey: ['user_profile_cached'] });
@@ -173,3 +188,6 @@ export function generateTenantSlug(name: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)+/g, '');
 }
+
+// Re-export Tenant type for convenience
+export type { Tenant };
