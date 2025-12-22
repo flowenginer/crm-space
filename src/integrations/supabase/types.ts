@@ -385,7 +385,7 @@ export type Database = {
       }
       bulk_dispatches: {
         Row: {
-          channel_id: string
+          channel_id: string | null
           completed_at: string | null
           created_at: string
           created_by: string | null
@@ -405,7 +405,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          channel_id: string
+          channel_id?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -425,7 +425,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          channel_id?: string
+          channel_id?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null

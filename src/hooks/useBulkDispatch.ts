@@ -20,7 +20,7 @@ export interface BulkDispatch {
   id: string;
   name: string;
   template_id: string;
-  channel_id: string;
+  channel_id: string | null;
   filters: BulkDispatchFilters;
   interval_seconds: number;
   status: 'draft' | 'running' | 'paused' | 'completed' | 'cancelled';
@@ -251,12 +251,15 @@ export function useCreateBulkDispatch() {
       const { data: { user } } = await supabase.auth.getUser();
       
       // Criar a campanha
+      // Se channel_id for '__existing__', enviar null para indicar uso do canal existente
+      const channelIdValue = data.channel_id === '__existing__' ? null : data.channel_id;
+      
       const { data: dispatch, error: dispatchError } = await supabase
         .from('bulk_dispatches')
         .insert({
           name: data.name,
           template_id: data.template_id,
-          channel_id: data.channel_id,
+          channel_id: channelIdValue,
           filters: data.filters as any,
           interval_seconds: data.interval_seconds,
           total_contacts: data.contacts.length,
