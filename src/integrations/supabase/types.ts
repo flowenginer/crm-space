@@ -524,6 +524,7 @@ export type Database = {
           conversion_status_ids: string[] | null
           created_at: string | null
           email: string | null
+          gamification_source: string | null
           id: string
           lead_distribution_agents: Json | null
           lead_distribution_department_id: string | null
@@ -558,6 +559,7 @@ export type Database = {
           conversion_status_ids?: string[] | null
           created_at?: string | null
           email?: string | null
+          gamification_source?: string | null
           id?: string
           lead_distribution_agents?: Json | null
           lead_distribution_department_id?: string | null
@@ -592,6 +594,7 @@ export type Database = {
           conversion_status_ids?: string[] | null
           created_at?: string | null
           email?: string | null
+          gamification_source?: string | null
           id?: string
           lead_distribution_agents?: Json | null
           lead_distribution_department_id?: string | null
