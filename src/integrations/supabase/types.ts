@@ -315,6 +315,159 @@ export type Database = {
           },
         ]
       }
+      bulk_dispatch_contacts: {
+        Row: {
+          active_rescue_id: string | null
+          contact_id: string
+          conversation_id: string | null
+          created_at: string
+          dispatch_id: string
+          error_message: string | null
+          id: string
+          responded_at: string | null
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          active_rescue_id?: string | null
+          contact_id: string
+          conversation_id?: string | null
+          created_at?: string
+          dispatch_id: string
+          error_message?: string | null
+          id?: string
+          responded_at?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          active_rescue_id?: string | null
+          contact_id?: string
+          conversation_id?: string | null
+          created_at?: string
+          dispatch_id?: string
+          error_message?: string | null
+          id?: string
+          responded_at?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bulk_dispatch_contacts_active_rescue_id_fkey"
+            columns: ["active_rescue_id"]
+            isOneToOne: false
+            referencedRelation: "active_rescues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bulk_dispatch_contacts_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bulk_dispatch_contacts_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bulk_dispatch_contacts_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: false
+            referencedRelation: "bulk_dispatches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bulk_dispatches: {
+        Row: {
+          channel_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          error_count: number
+          filters: Json
+          id: string
+          interval_seconds: number
+          name: string
+          paused_at: string | null
+          processed_count: number
+          responded_count: number
+          sent_count: number
+          started_at: string | null
+          status: string
+          template_id: string
+          total_contacts: number
+          updated_at: string
+        }
+        Insert: {
+          channel_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_count?: number
+          filters?: Json
+          id?: string
+          interval_seconds?: number
+          name: string
+          paused_at?: string | null
+          processed_count?: number
+          responded_count?: number
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          template_id: string
+          total_contacts?: number
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_count?: number
+          filters?: Json
+          id?: string
+          interval_seconds?: number
+          name?: string
+          paused_at?: string | null
+          processed_count?: number
+          responded_count?: number
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          template_id?: string
+          total_contacts?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bulk_dispatches_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bulk_dispatches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bulk_dispatches_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "rescue_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_logs: {
         Row: {
           call_date: string
