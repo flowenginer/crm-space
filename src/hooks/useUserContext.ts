@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserStore } from '@/store/userStore';
 
 const CACHE_TIME = 10 * 60 * 1000; // 10 minutes
 const STALE_TIME = 5 * 60 * 1000; // 5 minutes
@@ -9,6 +10,7 @@ export interface UserProfile {
   full_name: string;
   role: string;
   department_id: string | null;
+  tenant_id: string;
   is_active: boolean;
   avatar_url: string | null;
   can_transfer_freely: boolean;
@@ -33,7 +35,7 @@ export function useUserProfile() {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, role, department_id, is_active, avatar_url, can_transfer_freely, can_view_all_conversations')
+        .select('id, full_name, role, department_id, tenant_id, is_active, avatar_url, can_transfer_freely, can_view_all_conversations')
         .eq('id', user.id)
         .single();
 
@@ -82,6 +84,7 @@ export function useUserDepartmentsCached() {
 export function useUserContext() {
   const { data: profile, isLoading: profileLoading } = useUserProfile();
   const { data: departmentIds = [], isLoading: deptLoading } = useUserDepartmentsCached();
+  const { tenantId } = useUserStore();
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'supervisor';
   const canViewAll = isAdmin || profile?.can_view_all_conversations;
@@ -89,8 +92,20 @@ export function useUserContext() {
   return {
     profile,
     departmentIds,
+    tenantId: profile?.tenant_id || tenantId,
     isAdmin,
     canViewAll,
     isLoading: profileLoading || deptLoading,
   };
+}
+
+/**
+ * Hook para obter apenas o tenant_id do usuário atual
+ * Útil para queries que precisam filtrar por tenant
+ */
+export function useTenantId() {
+  const { tenantId } = useUserStore();
+  const { data: profile } = useUserProfile();
+  
+  return profile?.tenant_id || tenantId;
 }

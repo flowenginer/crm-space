@@ -2,7 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserStore } from '@/store/userStore';
-import type { Profile, AppRole } from '@/types';
+import type { Profile, AppRole, Tenant } from '@/types';
 
 export function useAuth() {
   const navigate = useNavigate();
@@ -10,11 +10,15 @@ export function useAuth() {
     user, 
     session, 
     profile, 
+    tenant,
+    tenantId,
     roles, 
     isLoading,
     setUser, 
     setSession, 
     setProfile, 
+    setTenant,
+    setTenantId,
     setRoles,
     setIsLoading,
     reset 
@@ -29,8 +33,24 @@ export function useAuth() {
 
     if (!error && data) {
       setProfile(data as Profile);
+      // Also set tenantId from profile
+      if (data.tenant_id) {
+        setTenantId(data.tenant_id);
+      }
     }
-  }, [setProfile]);
+  }, [setProfile, setTenantId]);
+
+  const fetchTenant = useCallback(async (tenantId: string) => {
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('id', tenantId)
+      .single();
+
+    if (!error && data) {
+      setTenant(data as Tenant);
+    }
+  }, [setTenant]);
 
   const fetchRoles = useCallback(async (userId: string) => {
     const { data, error } = await supabase
@@ -66,30 +86,59 @@ export function useAuth() {
               })
               .eq('id', session.user.id);
             
-            fetchProfile(session.user.id);
+            // Fetch profile first, then tenant and roles
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+            
+            if (profileData) {
+              setProfile(profileData as Profile);
+              if (profileData.tenant_id) {
+                setTenantId(profileData.tenant_id);
+                fetchTenant(profileData.tenant_id);
+              }
+            }
+            
             fetchRoles(session.user.id);
           }, 0);
         } else {
           setProfile(null);
+          setTenant(null);
+          setTenantId(null);
           setRoles([]);
         }
       }
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session as any);
       setUser(session?.user as any ?? null);
       setIsLoading(false);
 
       if (session?.user) {
-        fetchProfile(session.user.id);
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profileData) {
+          setProfile(profileData as Profile);
+          if (profileData.tenant_id) {
+            setTenantId(profileData.tenant_id);
+            fetchTenant(profileData.tenant_id);
+          }
+        }
+        
         fetchRoles(session.user.id);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [setSession, setUser, setIsLoading, setProfile, setRoles, fetchProfile, fetchRoles]);
+  }, [setSession, setUser, setIsLoading, setProfile, setTenant, setTenantId, setRoles, fetchProfile, fetchTenant, fetchRoles]);
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
@@ -130,6 +179,8 @@ export function useAuth() {
     user,
     session,
     profile,
+    tenant,
+    tenantId,
     roles,
     isLoading,
     signIn,

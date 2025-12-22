@@ -7,6 +7,7 @@ export interface Profile {
   signature_enabled: boolean | null;
   role: string | null;
   department_id: string | null;
+  tenant_id: string;
   is_active: boolean | null;
   is_available: boolean | null;
   is_online: boolean | null;
@@ -15,6 +16,22 @@ export interface Profile {
   current_conversations: number | null;
   can_view_all_conversations: boolean | null;
   can_transfer_freely: boolean | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Tenant types
+export interface Tenant {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  settings: unknown;
+  plan_type: string;
+  max_users: number;
+  max_contacts: number;
+  is_active: boolean;
+  trial_ends_at: string | null;
   created_at: string;
   updated_at: string;
 }
