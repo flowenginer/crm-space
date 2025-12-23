@@ -348,6 +348,7 @@ export function TenantDetailsModal({ tenant, open, onOpenChange }: TenantDetails
               <TenantModulesTree
                 modules={selectedModules}
                 onChange={setSelectedModules}
+                tenantId={tenant?.id}
               />
             )}
           </TabsContent>

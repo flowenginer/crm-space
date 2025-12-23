@@ -8597,6 +8597,30 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_base_menu_items: {
+        Args: { p_base_tenant_id?: string }
+        Returns: {
+          created_at: string | null
+          href: string | null
+          icon: string
+          id: string
+          is_active: boolean | null
+          parent_id: string | null
+          permission: string | null
+          position: number
+          roles: string[] | null
+          show_badge: string | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "menu_items"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_channel_by_instance: {
         Args: { p_instance_id: string }
         Returns: {
@@ -9269,6 +9293,14 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      sync_menu_items_to_tenant: {
+        Args: { p_source_tenant_id?: string; p_target_tenant_id: string }
+        Returns: {
+          items_copied: number
+          items_skipped: number
+          total_in_target: number
+        }[]
+      }
       transfer_conversation: {
         Args: {
           p_conversation_id: string

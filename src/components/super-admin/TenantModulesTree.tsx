@@ -1,29 +1,27 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { useMenuHierarchy, MenuItem } from '@/hooks/useMenuConfig';
+import { Button } from '@/components/ui/button';
+import { useBaseMenuHierarchy, useSyncTenantMenu } from '@/hooks/useBaseMenuConfig';
+import { MenuItem } from '@/hooks/useMenuConfig';
 import * as LucideIcons from 'lucide-react';
 import { normalizeModuleKeyFromHref, normalizeModuleKey } from '@/lib/moduleKeys';
 
 interface TenantModulesTreeProps {
   modules: string[];
   onChange: (modules: string[]) => void;
+  tenantId?: string; // ID do tenant sendo editado
 }
 
 // Mapeamento de href para module_key (chaves normalizadas com underscore)
-// IMPORTANTE: Itens sem href (menus cascata) NÃO geram module_key próprio
-// Apenas seus filhos com href são salvos no banco
 function getModuleKey(item: MenuItem): string | null {
   if (!item.href) {
-    // Menus cascata (sem href) não geram chave própria
     return null;
   }
-  // Usa a função de normalização padrão
   return normalizeModuleKeyFromHref(item.href);
 }
 
-// Obter todos os module keys VÁLIDOS de um item e seus filhos (deduplicados)
-// Ignora itens que retornam null (menus cascata)
+// Obter todos os module keys VÁLIDOS de um item e seus filhos
 function getAllChildModules(item: MenuItem): string[] {
   const keysSet = new Set<string>();
   
@@ -61,16 +59,13 @@ function MenuItemRow({
   const isExpanded = expandedItems.has(item.id);
   const moduleKey = getModuleKey(item);
   
-  // Para itens sem href mas com filhos, verificar se TODOS os filhos estão habilitados
   const allChildKeys = useMemo(() => getAllChildModules(item), [item]);
   
   const isEnabled = useMemo(() => {
     if (moduleKey) {
-      // Item tem href próprio - verificar se está habilitado
       return enabledModules.has(moduleKey);
     }
     if (hasChildren && allChildKeys.length > 0) {
-      // Menu cascata - está "habilitado" se todos os filhos válidos estão habilitados
       return allChildKeys.every(k => enabledModules.has(k));
     }
     return false;
@@ -78,7 +73,6 @@ function MenuItemRow({
   
   const isClickable = !!item.href || hasChildren;
   
-  // Contar filhos habilitados (usando chaves únicas e válidas)
   const childModuleKeys = useMemo(() => {
     if (!hasChildren) return [];
     return [...new Set(
@@ -91,19 +85,15 @@ function MenuItemRow({
   const enabledChildCount = childModuleKeys.filter(k => enabledModules.has(k)).length;
   const totalChildren = childModuleKeys.length;
   
-  // Buscar ícone do Lucide
   const IconComponent = (LucideIcons as any)[item.icon] || LucideIcons.Circle;
   
   const handleSwitchChange = useCallback((checked: boolean) => {
-    // Coletar todas as chaves que devem ser alteradas
     const keysToChange: string[] = [];
     
-    // Se o item tem key própria, incluir
     if (moduleKey) {
       keysToChange.push(moduleKey);
     }
     
-    // Se tem filhos, incluir todas as chaves dos filhos
     if (hasChildren) {
       allChildKeys.forEach(k => {
         if (!keysToChange.includes(k)) {
@@ -112,7 +102,6 @@ function MenuItemRow({
       });
     }
     
-    // Chamar toggle em lote (uma única chamada)
     if (keysToChange.length > 0) {
       onToggleBatch(keysToChange, checked);
     }
@@ -209,17 +198,18 @@ function MenuItemRow({
   );
 }
 
-export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps) {
-  const { data: menuHierarchy = [], isLoading } = useMenuHierarchy();
+export function TenantModulesTree({ modules, onChange, tenantId }: TenantModulesTreeProps) {
+  // Usa o menu BASE (tenant padrão) como catálogo de módulos
+  const { data: menuHierarchy = [], isLoading } = useBaseMenuHierarchy();
+  const syncMenu = useSyncTenantMenu();
+  
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const hasInitializedExpand = useRef(false);
   
-  // Normalizar os módulos recebidos para o padrão com underscores
   const enabledModules = useMemo(() => {
     return new Set(modules.map(m => normalizeModuleKey(m)));
   }, [modules]);
 
-  // Expandir itens pai por padrão - APENAS UMA VEZ quando o menu carregar
   useEffect(() => {
     if (menuHierarchy.length > 0 && !hasInitializedExpand.current) {
       hasInitializedExpand.current = true;
@@ -233,17 +223,14 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
     }
   }, [menuHierarchy]);
 
-  // Toggle em lote - recebe array de keys e aplica add/remove de uma só vez
   const handleToggleBatch = useCallback((keys: string[], value: boolean) => {
     const normalizedKeys = keys.map(k => normalizeModuleKey(k));
     
     if (value) {
-      // Adicionar todas as chaves (usando Set para evitar duplicatas)
       const currentSet = new Set(modules.map(m => normalizeModuleKey(m)));
       normalizedKeys.forEach(k => currentSet.add(k));
       onChange(Array.from(currentSet));
     } else {
-      // Remover todas as chaves
       const keysToRemove = new Set(normalizedKeys);
       const newModules = modules
         .map(m => normalizeModuleKey(m))
@@ -274,7 +261,12 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
     onChange(enable ? Array.from(allKeysSet) : []);
   }, [menuHierarchy, onChange]);
 
-  // Contar total de módulos ÚNICOS
+  const handleSyncMenu = useCallback(() => {
+    if (tenantId) {
+      syncMenu.mutate(tenantId);
+    }
+  }, [tenantId, syncMenu]);
+
   const { enabledCount, totalCount, allEnabled } = useMemo(() => {
     const allKeysSet = new Set<string>();
     menuHierarchy.forEach(item => {
@@ -302,11 +294,33 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
     );
   }
 
-  // Filtrar apenas itens ativos
   const activeItems = menuHierarchy.filter(item => item.is_active);
 
   return (
     <div className="space-y-3">
+      {/* Alerta sobre sincronização de menu */}
+      {tenantId && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm">
+          <AlertCircle size={16} className="text-amber-500 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="text-amber-700 dark:text-amber-400">
+              Para que os módulos apareçam no menu do tenant, clique em <strong>Sincronizar Menu</strong> abaixo.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSyncMenu}
+            disabled={syncMenu.isPending}
+            className="shrink-0"
+          >
+            <RefreshCw size={14} className={syncMenu.isPending ? 'animate-spin' : ''} />
+            Sincronizar Menu
+          </Button>
+        </div>
+      )}
+      
       {/* Header com ações globais */}
       <div className="flex items-center justify-between pb-2 border-b border-border">
         <div className="text-sm text-muted-foreground">
