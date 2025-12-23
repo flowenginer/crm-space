@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserStore } from '@/store/userStore';
+import { resetQueryCache } from '@/lib/queryClient';
 import type { Profile, AppRole, Tenant } from '@/types';
 
 export function useAuth() {
@@ -69,8 +70,17 @@ export function useAuth() {
       (event, session) => {
         console.log('[useAuth] onAuthStateChange:', event, session?.user?.id);
         
+        // CRITICAL: Clear React Query cache on auth changes to prevent cross-tenant data leakage
+        if (event === 'SIGNED_OUT') {
+          console.log('[useAuth] SIGNED_OUT - Clearing all query cache');
+          resetQueryCache();
+        }
+        
         // CRITICAL: Clear old state BEFORE setting new session to prevent ghost data
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          console.log('[useAuth] SIGNED_IN/TOKEN_REFRESHED - Resetting query cache and state');
+          // Reset React Query cache to prevent stale data from previous tenant
+          resetQueryCache();
           // Reset state immediately to prevent stale data from previous session
           setProfile(null);
           setTenant(null);
@@ -186,6 +196,8 @@ export function useAuth() {
   };
 
   const signOut = async () => {
+    // Clear query cache BEFORE signing out to prevent any stale data
+    resetQueryCache();
     const { error } = await supabase.auth.signOut();
     if (!error) {
       reset();

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
-import { Search, Bell, Calendar, Menu, MessageCircle, Clock, UserPlus, AlertTriangle, ArrowRightLeft, CheckCheck, X, Crown } from 'lucide-react';
+import { Search, Bell, Calendar, Menu, MessageCircle, Clock, UserPlus, AlertTriangle, ArrowRightLeft, CheckCheck, X, Crown, Building2 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
+import { useUserStore } from '@/store/userStore';
 
 interface HeaderProps {
   title: string;
@@ -162,6 +163,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
   // OTIMIZAÇÃO: Usa hook centralizado
   const { data: currentUser } = useCurrentUser();
   const { data: isSuperAdmin } = useCurrentUserIsSuperAdmin();
+  const tenant = useUserStore((state) => state.tenant);
 
   // Fetch useful notifications: assignments, transfers, SLA alerts
   const { data: notifications = [] } = useQuery({
@@ -423,10 +425,17 @@ export function Header({ title, onMenuClick }: HeaderProps) {
             <Menu className="h-5 w-5" />
           </Button>
         )}
-        <div>
+        <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-foreground md:text-3xl">
             {title}
           </h1>
+          {/* Tenant Badge - Always visible to prevent cross-tenant confusion */}
+          {tenant?.name && (
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium border border-primary/20">
+              <Building2 className="h-3.5 w-3.5" />
+              <span className="max-w-[120px] truncate">{tenant.name}</span>
+            </div>
+          )}
         </div>
 
         {/* CRM Search - Next to title */}
