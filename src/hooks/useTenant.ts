@@ -9,22 +9,40 @@ import type { Tenant } from '@/types';
  * Usa a função get_user_tenant_id() do banco
  */
 export function useCurrentTenantId() {
-  const { tenantId: storeTenantId } = useUserStore();
+  const { tenantId: storeTenantId, setTenantId } = useUserStore();
   
   return useQuery({
     queryKey: ['current-tenant-id'],
     queryFn: async () => {
       // First try to get from RPC
       const { data, error } = await supabase.rpc('get_user_tenant_id');
-      if (error) {
-        console.error('Error fetching tenant id:', error);
-        return storeTenantId;
+      if (!error && data) {
+        setTenantId(data);
+        return data as string;
       }
-      return data as string | null;
+      
+      console.error('Error fetching tenant id via RPC:', error);
+      
+      // Fallback: get directly from profile
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single();
+        
+        if (profile?.tenant_id) {
+          setTenantId(profile.tenant_id);
+          return profile.tenant_id;
+        }
+      }
+      
+      return storeTenantId;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes
-    initialData: storeTenantId,
+    refetchOnWindowFocus: false,
   });
 }
 
