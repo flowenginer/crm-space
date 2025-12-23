@@ -16,6 +16,18 @@ export interface TenantWithStats {
   contact_count: number;
 }
 
+export interface TenantModule {
+  module_key: string;
+  is_enabled: boolean;
+}
+
+export interface TenantAdmin {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+}
+
 export function useSuperAdminTenants() {
   return useQuery({
     queryKey: ['super_admin_tenants'],
@@ -91,5 +103,66 @@ export function useCurrentUserIsSuperAdmin() {
       return data === true;
     },
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useTenantModules(tenantId: string | undefined) {
+  return useQuery({
+    queryKey: ['tenant_modules', tenantId],
+    queryFn: async (): Promise<TenantModule[]> => {
+      const { data, error } = await supabase.rpc('get_tenant_modules', {
+        p_tenant_id: tenantId!
+      });
+      
+      if (error) {
+        console.error('Error fetching tenant modules:', error);
+        throw error;
+      }
+      
+      return (data || []) as TenantModule[];
+    },
+    enabled: !!tenantId,
+  });
+}
+
+export function useUpdateTenantModules() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ tenantId, modules }: { tenantId: string; modules: string[] }) => {
+      const { error } = await supabase.rpc('update_tenant_modules', {
+        p_tenant_id: tenantId,
+        p_modules: modules
+      });
+      
+      if (error) throw error;
+    },
+    onSuccess: (_, { tenantId }) => {
+      queryClient.invalidateQueries({ queryKey: ['tenant_modules', tenantId] });
+      toast.success('Módulos atualizados com sucesso');
+    },
+    onError: (error: Error) => {
+      console.error('Error updating tenant modules:', error);
+      toast.error('Erro ao atualizar módulos');
+    },
+  });
+}
+
+export function useTenantAdmin(tenantId: string | undefined) {
+  return useQuery({
+    queryKey: ['tenant_admin', tenantId],
+    queryFn: async (): Promise<TenantAdmin | null> => {
+      const { data, error } = await supabase.rpc('get_tenant_admin', {
+        p_tenant_id: tenantId!
+      });
+      
+      if (error) {
+        console.error('Error fetching tenant admin:', error);
+        throw error;
+      }
+      
+      return (data as TenantAdmin[])?.[0] || null;
+    },
+    enabled: !!tenantId,
   });
 }

@@ -8616,6 +8616,22 @@ export type Database = {
           status_order: number
         }[]
       }
+      get_tenant_admin: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          email: string
+          full_name: string
+          id: string
+          role: string
+        }[]
+      }
+      get_tenant_modules: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          is_enabled: boolean
+          module_key: string
+        }[]
+      }
       get_timeline_data_batch: {
         Args: {
           p_agent_id?: string
@@ -8914,6 +8930,10 @@ export type Database = {
           p_trial_ends_at?: string
         }
         Returns: boolean
+      }
+      update_tenant_modules: {
+        Args: { p_modules: string[]; p_tenant_id: string }
+        Returns: undefined
       }
       user_belongs_to_tenant: {
         Args: { p_tenant_id: string }
