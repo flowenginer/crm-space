@@ -359,49 +359,51 @@ export function TransferModal({
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {teamInDepartment.map((member) => {
-                      const isSelected = selectedUserId === member.id;
-                      return (
-                        <button
-                          key={member.id}
-                          onClick={() => setSelectedUserId(member.id)}
-                          className={cn(
-                            'relative flex items-center justify-between p-2.5 rounded-lg border-2 transition-all duration-200',
-                            isSelected
-                              ? 'border-primary bg-gradient-to-r from-primary/10 to-purple-500/10 shadow-md ring-2 ring-primary/20'
-                              : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                          )}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Avatar className="h-7 w-7 border border-background flex-shrink-0">
-                              <AvatarImage src={member.avatar_url || undefined} />
-                              <AvatarFallback className={cn(
-                                'text-xs font-medium',
-                                isSelected 
-                                  ? 'bg-gradient-to-br from-primary to-purple-600 text-white' 
-                                  : 'bg-muted'
+                  <ScrollArea className="max-h-40">
+                    <div className="grid grid-cols-2 gap-2 pr-2">
+                      {teamInDepartment.map((member) => {
+                        const isSelected = selectedUserId === member.id;
+                        return (
+                          <button
+                            key={member.id}
+                            onClick={() => setSelectedUserId(member.id)}
+                            className={cn(
+                              'relative flex items-center justify-between p-2.5 rounded-lg border-2 transition-all duration-200',
+                              isSelected
+                                ? 'border-primary bg-gradient-to-r from-primary/10 to-purple-500/10 shadow-md ring-2 ring-primary/20'
+                                : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                            )}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar className="h-7 w-7 border border-background flex-shrink-0">
+                                <AvatarImage src={member.avatar_url || undefined} />
+                                <AvatarFallback className={cn(
+                                  'text-xs font-medium',
+                                  isSelected 
+                                    ? 'bg-gradient-to-br from-primary to-purple-600 text-white' 
+                                    : 'bg-muted'
+                                )}>
+                                  {member.full_name?.charAt(0) || 'U'}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className={cn(
+                                'text-sm font-medium truncate',
+                                isSelected ? 'text-primary' : 'text-foreground'
                               )}>
-                                {member.full_name?.charAt(0) || 'U'}
-                              </AvatarFallback>
-                            </Avatar>
+                                {member.full_name || 'Usuário'}
+                              </span>
+                            </div>
                             <span className={cn(
-                              'text-sm font-medium truncate',
-                              isSelected ? 'text-primary' : 'text-foreground'
+                              'text-xs flex-shrink-0 ml-2',
+                              member.is_online ? 'text-green-500' : 'text-muted-foreground'
                             )}>
-                              {member.full_name || 'Usuário'}
+                              {member.is_online ? 'Online' : 'Offline'}
                             </span>
-                          </div>
-                          <span className={cn(
-                            'text-xs flex-shrink-0 ml-2',
-                            member.is_online ? 'text-green-500' : 'text-muted-foreground'
-                          )}>
-                            {member.is_online ? 'Online' : 'Offline'}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
                 )}
               </div>
             )}
