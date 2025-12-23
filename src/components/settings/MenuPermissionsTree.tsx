@@ -142,12 +142,21 @@ function MenuItemRow({
             <Switch
               checked={isEnabled}
               onCheckedChange={(checked) => {
-                if (hasChildren) {
-                  // Se tem filhos, toggle todos junto
-                  const childKeys = getAllChildPermissions(item);
-                  childKeys.forEach(k => onToggle(k, checked));
-                } else {
-                  onToggle(permKey, checked);
+                // Sempre toggle o próprio item primeiro
+                onToggle(permKey, checked);
+                
+                // Se tem filhos, toggle apenas os filhos diretos (não irmãos)
+                if (hasChildren && item.children) {
+                  item.children.forEach(child => {
+                    const childKey = getPermissionKey(child);
+                    onToggle(childKey, checked);
+                    // Recursivamente toggle os netos
+                    if (child.children) {
+                      child.children.forEach(grandChild => {
+                        onToggle(getPermissionKey(grandChild), checked);
+                      });
+                    }
+                  });
                 }
               }}
               className="data-[state=checked]:bg-primary"
