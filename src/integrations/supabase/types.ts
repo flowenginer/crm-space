@@ -8043,6 +8043,10 @@ export type Database = {
         Args: { p_contact_id: string }
         Returns: undefined
       }
+      delete_tenant_by_super_admin: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
       detect_origin_by_message_pattern: {
         Args: { p_message: string }
         Returns: {

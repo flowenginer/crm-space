@@ -172,3 +172,26 @@ export function useTenantAdmin(tenantId: string | undefined) {
     enabled: !!tenantId,
   });
 }
+
+export function useDeleteTenant() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (tenantId: string) => {
+      const { data, error } = await supabase.rpc('delete_tenant_by_super_admin', {
+        p_tenant_id: tenantId
+      });
+
+      if (error) throw error;
+      return data as { success: boolean; tenant_name: string; message: string };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['super_admin_tenants'] });
+      toast.success(data?.message || 'Tenant deletado com sucesso');
+    },
+    onError: (error: Error) => {
+      console.error('Error deleting tenant:', error);
+      toast.error(error.message || 'Erro ao deletar tenant');
+    },
+  });
+}

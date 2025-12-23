@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useSuperAdminTenants, useUpdateTenant, TenantWithStats } from '@/hooks/useSuperAdminTenants';
+import { useSuperAdminTenants, useUpdateTenant, useDeleteTenant, TenantWithStats } from '@/hooks/useSuperAdminTenants';
 import { TenantStatsCards } from '@/components/super-admin/TenantStatsCards';
 import { TenantsTable } from '@/components/super-admin/TenantsTable';
 import { TenantDetailsModal } from '@/components/super-admin/TenantDetailsModal';
 import { AdminManagementSection } from '@/components/super-admin/AdminManagementSection';
 import { CreateTenantModal } from '@/components/super-admin/CreateTenantModal';
+import { DeleteTenantModal } from '@/components/super-admin/DeleteTenantModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Crown, Building, Shield, Loader2, Plus } from 'lucide-react';
@@ -12,9 +13,12 @@ import { Crown, Building, Shield, Loader2, Plus } from 'lucide-react';
 export default function SuperAdminPanel() {
   const { data: tenants = [], isLoading } = useSuperAdminTenants();
   const updateTenant = useUpdateTenant();
+  const deleteTenant = useDeleteTenant();
   const [selectedTenant, setSelectedTenant] = useState<TenantWithStats | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [tenantToDelete, setTenantToDelete] = useState<TenantWithStats | null>(null);
 
   const handleEdit = (tenant: TenantWithStats) => {
     setSelectedTenant(tenant);
@@ -26,6 +30,17 @@ export default function SuperAdminPanel() {
       tenantId: tenant.id,
       isActive: !tenant.is_active,
     });
+  };
+
+  const handleDeleteClick = (tenant: TenantWithStats) => {
+    setTenantToDelete(tenant);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDeleteConfirm = async (tenantId: string) => {
+    await deleteTenant.mutateAsync(tenantId);
+    setDeleteModalOpen(false);
+    setTenantToDelete(null);
   };
 
   if (isLoading) {
@@ -75,6 +90,7 @@ export default function SuperAdminPanel() {
               tenants={tenants}
               onEdit={handleEdit}
               onToggleStatus={handleToggleStatus}
+              onDelete={handleDeleteClick}
             />
           </div>
         </TabsContent>
@@ -93,6 +109,14 @@ export default function SuperAdminPanel() {
       <CreateTenantModal
         open={createModalOpen}
         onOpenChange={setCreateModalOpen}
+      />
+
+      <DeleteTenantModal
+        tenant={tenantToDelete}
+        open={deleteModalOpen}
+        onOpenChange={setDeleteModalOpen}
+        onConfirm={handleDeleteConfirm}
+        isDeleting={deleteTenant.isPending}
       />
     </div>
   );
