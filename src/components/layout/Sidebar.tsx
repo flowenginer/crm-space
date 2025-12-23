@@ -30,6 +30,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AvailabilityToggle } from './AvailabilityToggle';
 import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
+import { LogoutConfirmDialog } from './LogoutConfirmDialog';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -47,8 +48,9 @@ function DynamicIcon({ name, className }: { name: string; className?: string }) 
 
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const location = useLocation();
-  const { profile, signOut } = useAuth();
+  const { profile } = useAuth();
   const isMobile = useIsMobile();
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
   const { hasPermission, isAdmin, role: userRole, isFullyLoaded } = usePermissions();
@@ -513,13 +515,14 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => signOut()}
+                  onClick={() => setLogoutDialogOpen(true)}
                   className={cn(
                     "h-9 w-9 transition-colors",
                     isDark 
                       ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10" 
                       : "text-white hover:bg-red-500/30"
                   )}
+                  title="Sair do sistema"
                 >
                   <LogOut className="h-4 w-4" />
                 </Button>
@@ -547,13 +550,14 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => signOut()}
+                onClick={() => setLogoutDialogOpen(true)}
                 className={cn(
                   "h-9 w-9 transition-colors",
                   isDark 
                     ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10" 
                     : "text-white hover:bg-red-500/30"
                 )}
+                title="Sair do sistema"
               >
                 <LogOut className="h-4 w-4" />
               </Button>
@@ -561,6 +565,12 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           )}
         </div>
       </div>
+
+      {/* Logout Confirmation Dialog */}
+      <LogoutConfirmDialog 
+        open={logoutDialogOpen} 
+        onOpenChange={setLogoutDialogOpen} 
+      />
     </aside>
   );
 }
