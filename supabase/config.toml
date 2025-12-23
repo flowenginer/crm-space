@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.create-tenant-admin]
 verify_jwt = true
+
+[functions.reset-user-password]
+verify_jwt = true

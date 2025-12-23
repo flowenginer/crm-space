@@ -27,8 +27,9 @@ import {
   useUpdateTenantModules,
   useTenantAdmin,
 } from '@/hooks/useSuperAdminTenants';
-import { Loader2, Building2, User, Settings, Mail, Shield } from 'lucide-react';
+import { Loader2, Building2, User, Settings, Mail, Shield, Key, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface TenantDetailsModalProps {
   tenant: TenantWithStats | null;
@@ -65,6 +66,11 @@ export function TenantDetailsModal({ tenant, open, onOpenChange }: TenantDetails
   const [trialEndsAt, setTrialEndsAt] = useState('');
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('empresa');
+  
+  // Password reset state
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   const updateTenant = useUpdateTenant();
   const updateModules = useUpdateTenantModules();
@@ -136,12 +142,34 @@ export function TenantDetailsModal({ tenant, open, onOpenChange }: TenantDetails
     setSelectedModules([]);
   };
 
-  const handleSendPasswordReset = async () => {
-    if (!admin?.email) {
-      toast.error('Email do administrador não encontrado');
+  const handleResetPassword = async () => {
+    if (!admin?.id) {
+      toast.error('ID do administrador não encontrado');
       return;
     }
-    toast.info('Funcionalidade de reset de senha será implementada em breve');
+    
+    if (!newPassword || newPassword.length < 6) {
+      toast.error('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
+    setIsResettingPassword(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('reset-user-password', {
+        body: { user_id: admin.id, new_password: newPassword }
+      });
+
+      if (error) throw error;
+
+      toast.success('Senha redefinida com sucesso!');
+      setNewPassword('');
+      setShowPassword(false);
+    } catch (error: any) {
+      console.error('Error resetting password:', error);
+      toast.error(error.message || 'Erro ao redefinir senha');
+    } finally {
+      setIsResettingPassword(false);
+    }
   };
 
   const isSaving = updateTenant.isPending || updateModules.isPending;
@@ -289,18 +317,50 @@ export function TenantDetailsModal({ tenant, open, onOpenChange }: TenantDetails
                 </div>
 
                 <div className="rounded-lg border p-4 space-y-3">
-                  <h4 className="font-medium">Ações de Segurança</h4>
-                  <Button 
-                    variant="outline" 
-                    onClick={handleSendPasswordReset}
-                    className="w-full"
-                  >
-                    <Mail className="h-4 w-4 mr-2" />
-                    Enviar E-mail de Reset de Senha
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Um e-mail será enviado para {admin.email} com instruções para redefinir a senha.
-                  </p>
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Key className="h-4 w-4" />
+                    Redefinir Senha
+                  </h4>
+                  <div className="space-y-2">
+                    <Label>Nova Senha</Label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Input
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="Digite a nova senha"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="pr-10"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-0 top-0 h-full px-3"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <Eye className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </Button>
+                      </div>
+                      <Button 
+                        onClick={handleResetPassword}
+                        disabled={isResettingPassword || !newPassword}
+                      >
+                        {isResettingPassword ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Redefinir'
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      A senha será atualizada imediatamente. Mínimo de 6 caracteres.
+                    </p>
+                  </div>
                 </div>
               </>
             ) : (
