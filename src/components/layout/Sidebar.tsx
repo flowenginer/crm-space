@@ -128,25 +128,21 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const filteredMenuItems = useMemo(() => {
     if (!isFullyLoaded) return [];
     
-    // Obter permissões de menu do role_definition
+    // Obter permissões de menu do role_definition (funciona como ALLOWLIST)
     const menuPermissions = (roleDefinition?.permissions as any)?.menu || {};
+    const hasMenuPermissions = Object.keys(menuPermissions).length > 0;
     
     const filterItem = (item: MenuItem): MenuItem | null => {
       // Verificar se está ativo
       if (!item.is_active) return null;
       
-      // Filtrar item Super Admin para não-super-admins
-      if (item.href === '/super-admin' && !isSuperAdmin) return null;
-      
-      // Filtrar item Gamificação - verificar permissão de menu
-      if (item.href?.includes('/gamification') || item.href?.includes('gamification')) {
-        const permKey = getMenuPermissionKey(item);
-        if (!isAdmin && menuPermissions[permKey] !== true) return null;
+      // Super Admin SEMPRE requer flag isSuperAdmin, independente de qualquer outra permissão
+      if (item.href === '/super-admin' || item.title?.toLowerCase().includes('super admin')) {
+        if (!isSuperAdmin) return null;
       }
       
-      // Admin vê tudo
+      // Admin vê tudo (exceto Super Admin que já foi verificado acima)
       if (isAdmin) {
-        // Filtrar children também
         if (item.children) {
           const filteredChildren = item.children
             .map(filterItem)
@@ -156,36 +152,45 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         return item;
       }
       
-      // NOVA VERIFICAÇÃO: Checar permissões de menu salvas no perfil
+      // Para não-admins, usar ALLOWLIST: item só aparece se menuPermissions[permKey] === true
       const permKey = getMenuPermissionKey(item);
-      if (menuPermissions[permKey] === false) return null;
       
-      // Para items sem permission definida no banco, verificar se foi explicitamente habilitado
-      if (!item.permission && !item.roles?.length) {
-        // Se existe uma configuração de menu para este item e está false, ocultar
-        if (permKey in menuPermissions && menuPermissions[permKey] !== true) {
-          return null;
+      // Se existem permissões de menu configuradas, usar como ALLOWLIST
+      if (hasMenuPermissions) {
+        // Se a permissão está explicitamente como false, ocultar
+        if (menuPermissions[permKey] === false) return null;
+        
+        // Se a permissão não está definida como true, também ocultar (ALLOWLIST)
+        // Exceto se o item tem uma permissão tradicional que o usuário possui
+        if (menuPermissions[permKey] !== true) {
+          // Verificar se tem permissão tradicional
+          if (item.permission) {
+            const [category, action] = item.permission.split('.');
+            if (!hasPermission(category, action)) return null;
+          } else {
+            // Sem permissão tradicional e não está no allowlist = ocultar
+            return null;
+          }
+        }
+      } else {
+        // Fallback para verificação tradicional quando não há menuPermissions configuradas
+        if (item.permission) {
+          const [category, action] = item.permission.split('.');
+          if (!hasPermission(category, action)) return null;
+        }
+        
+        if (item.roles && item.roles.length > 0) {
+          if (!userRole || !item.roles.includes(userRole)) return null;
         }
       }
       
-      // Verificar permissão tradicional (category.action)
-      if (item.permission) {
-        const [category, action] = item.permission.split('.');
-        if (!hasPermission(category, action)) return null;
-      }
-      
-      // Verificar roles
-      if (item.roles && item.roles.length > 0) {
-        if (!userRole || !item.roles.includes(userRole)) return null;
-      }
-      
-      // Filtrar children
+      // Filtrar children recursivamente
       if (item.children) {
         const filteredChildren = item.children
           .map(filterItem)
           .filter((child): child is MenuItem => child !== null);
         
-        // Se é um menu cascata (sem href) e não sobrou nenhum filho, não exibir
+        // Se é um menu cascata (sem href) e não sobrou nenhum filho, não exibir o pai
         if (!item.href && filteredChildren.length === 0) return null;
         
         return { ...item, children: filteredChildren };
