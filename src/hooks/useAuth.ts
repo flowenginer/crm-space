@@ -67,6 +67,17 @@ export function useAuth() {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('[useAuth] onAuthStateChange:', event, session?.user?.id);
+        
+        // CRITICAL: Clear old state BEFORE setting new session to prevent ghost data
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          // Reset state immediately to prevent stale data from previous session
+          setProfile(null);
+          setTenant(null);
+          setTenantId(null);
+          setRoles([]);
+        }
+        
         setSession(session as any);
         setUser(session?.user as any ?? null);
         setIsLoading(false);
@@ -74,34 +85,44 @@ export function useAuth() {
         // Defer Supabase calls with setTimeout to prevent deadlock
         if (session?.user) {
           setTimeout(async () => {
-            // Auto-activate on login: set available, online, and clear locks
-            await supabase
-              .from('profiles')
-              .update({
-                is_available: true,
-                is_online: true,
-                availability_locked_by: null,
-                unavailable_until: null,
-                unavailability_reason: null,
-              })
-              .eq('id', session.user.id);
-            
-            // Fetch profile first, then tenant and roles
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .single();
-            
-            if (profileData) {
-              setProfile(profileData as Profile);
-              if (profileData.tenant_id) {
-                setTenantId(profileData.tenant_id);
-                fetchTenant(profileData.tenant_id);
+            try {
+              // Auto-activate on login: set available, online, and clear locks
+              await supabase
+                .from('profiles')
+                .update({
+                  is_available: true,
+                  is_online: true,
+                  availability_locked_by: null,
+                  unavailable_until: null,
+                  unavailability_reason: null,
+                })
+                .eq('id', session.user.id);
+              
+              // Fetch profile first, then tenant and roles
+              const { data: profileData, error: profileError } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .single();
+              
+              if (profileError) {
+                console.error('[useAuth] Error fetching profile:', profileError);
+                return;
               }
+              
+              if (profileData) {
+                console.log('[useAuth] Profile loaded:', profileData.id, 'tenant:', profileData.tenant_id);
+                setProfile(profileData as Profile);
+                if (profileData.tenant_id) {
+                  setTenantId(profileData.tenant_id);
+                  fetchTenant(profileData.tenant_id);
+                }
+              }
+              
+              fetchRoles(session.user.id);
+            } catch (err) {
+              console.error('[useAuth] Error in auth state handler:', err);
             }
-            
-            fetchRoles(session.user.id);
           }, 0);
         } else {
           setProfile(null);

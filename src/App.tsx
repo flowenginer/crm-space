@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { GamificationProvider } from "@/contexts/GamificationContext";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Layout
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -61,13 +62,14 @@ import NotFound from "@/pages/NotFound";
 const queryClient = new QueryClient();
 
 const App = () => (
-  <ThemeProvider>
-    <QueryClientProvider client={queryClient}>
-      <GamificationProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
+  <ErrorBoundary>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <GamificationProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
             <Routes>
             {/* Auth routes */}
             <Route path="/auth" element={<Auth />} />
@@ -281,12 +283,13 @@ const App = () => (
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-      </GamificationProvider>
-    </QueryClientProvider>
-  </ThemeProvider>
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+        </GamificationProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
+  </ErrorBoundary>
 );
 
 export default App;
