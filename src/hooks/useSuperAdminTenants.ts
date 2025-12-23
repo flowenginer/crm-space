@@ -93,6 +93,10 @@ export function useCurrentUserIsSuperAdmin() {
   return useQuery({
     queryKey: ['current_user_is_super_admin'],
     queryFn: async (): Promise<boolean> => {
+      // Get current user to include in cache key validation
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+      
       const { data, error } = await supabase.rpc('current_user_is_super_admin');
       
       if (error) {
@@ -103,6 +107,8 @@ export function useCurrentUserIsSuperAdmin() {
       return data === true;
     },
     staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 
