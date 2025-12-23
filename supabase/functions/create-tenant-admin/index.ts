@@ -201,7 +201,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4. Atribuir role de admin ao usuário dentro do tenant
+    // 4. Primeiro remover o role 'user' criado automaticamente pelo trigger on_auth_user_created
+    const { error: roleDeleteError } = await supabaseAdmin
+      .from('user_roles')
+      .delete()
+      .eq('user_id', authUser.user.id)
+      .eq('role', 'user');
+
+    if (roleDeleteError) {
+      console.log('Note: Could not delete default user role (may not exist):', roleDeleteError.message);
+    }
+
+    // 4.1 Atribuir role de admin ao usuário dentro do tenant
     const { error: roleInsertError } = await supabaseAdmin
       .from('user_roles')
       .insert({
@@ -210,8 +221,10 @@ Deno.serve(async (req) => {
       });
 
     if (roleInsertError) {
-      console.error('Error assigning role:', roleInsertError);
+      console.error('Error assigning admin role:', roleInsertError);
       // Não fazer rollback completo, apenas logar
+    } else {
+      console.log('Admin role assigned successfully');
     }
 
     // 5. Definir o owner do tenant
@@ -265,6 +278,25 @@ Deno.serve(async (req) => {
 
     if (deptError) {
       console.error('Error creating department:', deptError);
+    }
+
+    // 9. Criar role_definitions padrão para o novo tenant
+    const defaultRoles = [
+      { tenant_id: tenant.id, role_key: 'admin', role_name: 'Administrador', description: 'Acesso total ao sistema', color: '#EF4444', icon: 'Shield', order_position: 1 },
+      { tenant_id: tenant.id, role_key: 'supervisor', role_name: 'Supervisor', description: 'Gerencia equipe de vendas', color: '#F59E0B', icon: 'UserCog', order_position: 2 },
+      { tenant_id: tenant.id, role_key: 'vendedor', role_name: 'Vendedor', description: 'Atendimento e vendas', color: '#22C55E', icon: 'ShoppingCart', order_position: 3 },
+      { tenant_id: tenant.id, role_key: 'designer', role_name: 'Designer', description: 'Criação de artes e templates', color: '#8B5CF6', icon: 'Palette', order_position: 4 },
+      { tenant_id: tenant.id, role_key: 'sac', role_name: 'SAC', description: 'Suporte ao cliente', color: '#3B82F6', icon: 'Headphones', order_position: 5 }
+    ];
+
+    const { error: rolesDefError } = await supabaseAdmin
+      .from('role_definitions')
+      .insert(defaultRoles);
+
+    if (rolesDefError) {
+      console.error('Error creating default role definitions:', rolesDefError);
+    } else {
+      console.log('Default role definitions created');
     }
 
     console.log('Tenant setup complete:', tenant.id);
