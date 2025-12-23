@@ -179,6 +179,7 @@ Deno.serve(async (req) => {
     console.log('User created:', authUser.user.id);
 
     // 3. Criar/atualizar o perfil do usuário (upsert para lidar com trigger existente)
+    // IMPORTANTE: Incluir role='admin' para que o usuário tenha acesso ao sistema
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .upsert({
@@ -186,6 +187,7 @@ Deno.serve(async (req) => {
         full_name: adminName,
         email: adminEmail,
         tenant_id: tenant.id,
+        role: 'admin', // Definir role como admin no profile
         is_active: true,
         is_available: true
       }, { onConflict: 'id' });
@@ -280,13 +282,81 @@ Deno.serve(async (req) => {
       console.error('Error creating department:', deptError);
     }
 
-    // 9. Criar role_definitions padrão para o novo tenant
+    // 9. Criar role_definitions padrão para o novo tenant COM PERMISSÕES COMPLETAS
+    const adminPermissions = {
+      dashboard: { view: true },
+      conversations: { view: true, create: true, update: true, delete: true, view_all: true, transfer: true, close: true },
+      contacts: { view: true, create: true, update: true, delete: true, import: true, export: true },
+      crm: { view: true, create: true, update: true, delete: true },
+      orders: { view: true, create: true, update: true, delete: true },
+      quotes: { view: true, create: true, update: true, delete: true },
+      products: { view: true, create: true, update: true, delete: true },
+      financial: { view: true, create: true, update: true, delete: true },
+      reports: { view: true },
+      settings: { view: true, update: true },
+      users: { view: true, create: true, update: true, delete: true },
+      channels: { view: true, create: true, update: true, delete: true },
+      templates: { view: true, create: true, update: true, delete: true },
+      automations: { view: true, create: true, update: true, delete: true },
+      webhooks: { view: true, create: true, update: true, delete: true },
+      gamification: { view: true, update: true },
+      bulk_dispatch: { view: true, create: true },
+      rescue_templates: { view: true, create: true, update: true, delete: true },
+      live_monitor: { view: true },
+      internal_chat: { view: true },
+      internal_email: { view: true, create: true }
+    };
+
+    const supervisorPermissions = {
+      dashboard: { view: true },
+      conversations: { view: true, create: true, update: true, view_all: true, transfer: true, close: true },
+      contacts: { view: true, create: true, update: true },
+      crm: { view: true, create: true, update: true },
+      orders: { view: true, create: true, update: true },
+      quotes: { view: true, create: true, update: true },
+      products: { view: true },
+      reports: { view: true },
+      settings: { view: true },
+      users: { view: true },
+      channels: { view: true },
+      templates: { view: true, create: true, update: true },
+      live_monitor: { view: true },
+      internal_chat: { view: true },
+      internal_email: { view: true }
+    };
+
+    const vendedorPermissions = {
+      dashboard: { view: true },
+      conversations: { view: true, create: true, update: true },
+      contacts: { view: true, create: true, update: true },
+      crm: { view: true, create: true, update: true },
+      orders: { view: true, create: true },
+      quotes: { view: true, create: true },
+      products: { view: true },
+      internal_chat: { view: true }
+    };
+
+    const designerPermissions = {
+      dashboard: { view: true },
+      templates: { view: true, create: true, update: true },
+      products: { view: true, create: true, update: true },
+      internal_chat: { view: true },
+      internal_email: { view: true }
+    };
+
+    const sacPermissions = {
+      dashboard: { view: true },
+      conversations: { view: true, create: true, update: true, close: true },
+      contacts: { view: true, create: true, update: true },
+      internal_chat: { view: true }
+    };
+
     const defaultRoles = [
-      { tenant_id: tenant.id, role_key: 'admin', role_name: 'Administrador', description: 'Acesso total ao sistema', color: '#EF4444', icon: 'Shield', order_position: 1 },
-      { tenant_id: tenant.id, role_key: 'supervisor', role_name: 'Supervisor', description: 'Gerencia equipe de vendas', color: '#F59E0B', icon: 'UserCog', order_position: 2 },
-      { tenant_id: tenant.id, role_key: 'vendedor', role_name: 'Vendedor', description: 'Atendimento e vendas', color: '#22C55E', icon: 'ShoppingCart', order_position: 3 },
-      { tenant_id: tenant.id, role_key: 'designer', role_name: 'Designer', description: 'Criação de artes e templates', color: '#8B5CF6', icon: 'Palette', order_position: 4 },
-      { tenant_id: tenant.id, role_key: 'sac', role_name: 'SAC', description: 'Suporte ao cliente', color: '#3B82F6', icon: 'Headphones', order_position: 5 }
+      { tenant_id: tenant.id, role_key: 'admin', role_name: 'Administrador', description: 'Acesso total ao sistema', color: '#EF4444', icon: 'Shield', order_position: 1, permissions: adminPermissions },
+      { tenant_id: tenant.id, role_key: 'supervisor', role_name: 'Supervisor', description: 'Gerencia equipe de vendas', color: '#F59E0B', icon: 'UserCog', order_position: 2, permissions: supervisorPermissions },
+      { tenant_id: tenant.id, role_key: 'vendedor', role_name: 'Vendedor', description: 'Atendimento e vendas', color: '#22C55E', icon: 'ShoppingCart', order_position: 3, permissions: vendedorPermissions },
+      { tenant_id: tenant.id, role_key: 'designer', role_name: 'Designer', description: 'Criação de artes e templates', color: '#8B5CF6', icon: 'Palette', order_position: 4, permissions: designerPermissions },
+      { tenant_id: tenant.id, role_key: 'sac', role_name: 'SAC', description: 'Suporte ao cliente', color: '#3B82F6', icon: 'Headphones', order_position: 5, permissions: sacPermissions }
     ];
 
     const { error: rolesDefError } = await supabaseAdmin
@@ -296,7 +366,7 @@ Deno.serve(async (req) => {
     if (rolesDefError) {
       console.error('Error creating default role definitions:', rolesDefError);
     } else {
-      console.log('Default role definitions created');
+      console.log('Default role definitions created with permissions');
     }
 
     // 10. Criar menu_items padrão para o novo tenant
