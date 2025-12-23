@@ -7238,6 +7238,41 @@ export type Database = {
           },
         ]
       }
+      tenant_modules: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_enabled: boolean
+          module_key: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_enabled?: boolean
+          module_key: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_enabled?: boolean
+          module_key?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_modules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_notification_config: {
         Row: {
           created_at: string | null
@@ -8667,6 +8702,7 @@ export type Database = {
       }
       is_lid_contact: { Args: { phone: string }; Returns: boolean }
       is_master: { Args: { _user_id: string }; Returns: boolean }
+      is_module_enabled: { Args: { p_module_key: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id?: string }; Returns: boolean }
       is_tenant_owner: { Args: { _user_id?: string }; Returns: boolean }
       merge_duplicate_contacts: {
