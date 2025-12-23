@@ -9,18 +9,15 @@ interface TenantModulesTreeProps {
   onChange: (modules: string[]) => void;
 }
 
-// Mapeamento de href para module_key
+// Mapeamento de href para module_key (chaves simples igual ao banco)
 function getModuleKey(item: MenuItem): string {
-  if (item.permission) {
-    return item.permission;
+  if (!item.href) {
+    // Para menus cascata sem href, usar o id
+    return item.id;
   }
-  
-  if (item.href) {
-    const path = item.href.replace(/^\//, '').replace(/\//g, '_');
-    return `menu_${path}`;
-  }
-  
-  return `menu_${item.id}`;
+  // Extrai chave simples do href: /conversations -> conversations, /products/catalogs -> products
+  const path = item.href.replace(/^\//, '').split('/')[0].split('?')[0];
+  return path || item.id;
 }
 
 // Obter todos os module keys de um item e seus filhos

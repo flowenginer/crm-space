@@ -31,6 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AvailabilityToggle } from './AvailabilityToggle';
 import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
 import { LogoutConfirmDialog } from './LogoutConfirmDialog';
+import { useTenantEnabledModules } from '@/hooks/useTenantEnabledModules';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -59,6 +60,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { data: internalEmailUnreadCount = 0 } = useInternalEmailUnreadCount();
   const { data: callbacksCount } = usePendingCallbacksCount();
   const { data: isSuperAdmin = false } = useCurrentUserIsSuperAdmin();
+  const { data: tenantEnabledModules, isLoading: modulesLoading } = useTenantEnabledModules();
   
   // Carregar menu do banco de dados
   const { data: menuHierarchy = [], isLoading: menuLoading } = useMenuHierarchy();
@@ -124,7 +126,15 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     return `menu_${item.id}`;
   };
 
-  // Filtrar itens de menu baseado em permissões
+  // Helper para obter module_key do menu (chave simples para tenant_modules)
+  const getModuleKey = (item: MenuItem): string | null => {
+    if (!item.href) return null;
+    // Extrai chave simples do href: /conversations -> conversations
+    const path = item.href.replace(/^\//, '').split('/')[0].split('?')[0];
+    return path || null;
+  };
+
+  // Filtrar itens de menu baseado em permissões E módulos do tenant
   const filteredMenuItems = useMemo(() => {
     if (!isFullyLoaded) return [];
     
@@ -132,23 +142,47 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     const menuPermissions = (roleDefinition?.permissions as any)?.menu || {};
     const hasMenuPermissions = Object.keys(menuPermissions).length > 0;
     
-    // Debug: log para verificar permissões (remover depois)
+    // Verificar se os módulos do tenant estão carregados
+    const hasTenantModules = tenantEnabledModules && tenantEnabledModules.size > 0;
+    
+    // Debug: log para verificar permissões
     console.log('[Sidebar] Role:', userRole, 'isAdmin:', isAdmin, 'isSuperAdmin:', isSuperAdmin);
     console.log('[Sidebar] menuPermissions:', menuPermissions);
-    console.log('[Sidebar] hasMenuPermissions:', hasMenuPermissions);
+    console.log('[Sidebar] tenantEnabledModules:', tenantEnabledModules ? Array.from(tenantEnabledModules) : 'not loaded');
     
     const filterItem = (item: MenuItem): MenuItem | null => {
       // Verificar se está ativo
       if (!item.is_active) return null;
       
       // Super Admin SEMPRE requer flag isSuperAdmin, independente de qualquer outra permissão
-      // Esta verificação vem PRIMEIRO e é absoluta
       if (item.href === '/super-admin' || item.title?.toLowerCase().includes('super admin')) {
         console.log('[Sidebar] Super Admin check:', item.title, 'isSuperAdmin:', isSuperAdmin);
         if (!isSuperAdmin) return null;
       }
       
-      // Admin vê tudo (exceto Super Admin que já foi verificado acima)
+      // FILTRO DE MÓDULOS DO TENANT (aplica para todos, inclusive admins)
+      // Exceto Super Admin que já passou a verificação acima
+      if (hasTenantModules && item.href && item.href !== '/super-admin') {
+        const moduleKey = getModuleKey(item);
+        if (moduleKey) {
+          const isModuleEnabled = tenantEnabledModules.has(moduleKey);
+          console.log('[Sidebar] Module check:', item.title, 'moduleKey:', moduleKey, 'enabled:', isModuleEnabled);
+          if (!isModuleEnabled) {
+            // Se é um item com filhos (cascata), ainda verificar se algum filho passa
+            if (item.children && item.children.length > 0) {
+              const filteredChildren = item.children
+                .map(filterItem)
+                .filter((child): child is MenuItem => child !== null);
+              if (filteredChildren.length > 0) {
+                return { ...item, children: filteredChildren };
+              }
+            }
+            return null;
+          }
+        }
+      }
+      
+      // Admin vê tudo (exceto módulos desabilitados do tenant que já foram verificados)
       if (isAdmin) {
         if (item.children) {
           const filteredChildren = item.children
@@ -216,7 +250,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     
     console.log('[Sidebar] Filtered items:', result.map(i => i.title));
     return result;
-  }, [menuHierarchy, isFullyLoaded, isAdmin, hasPermission, userRole, isSuperAdmin, roleDefinition]);
+  }, [menuHierarchy, isFullyLoaded, isAdmin, hasPermission, userRole, isSuperAdmin, roleDefinition, tenantEnabledModules]);
 
   const toggleExpanded = (id: string) => {
     setExpandedMenus(prev => {
@@ -489,7 +523,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-6 px-3">
         <div className="space-y-1.5">
-          {menuLoading ? (
+          {(menuLoading || modulesLoading) ? (
             // Skeleton loading
             Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-12 w-full rounded-xl" />

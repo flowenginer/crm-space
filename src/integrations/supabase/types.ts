@@ -8681,6 +8681,12 @@ export type Database = {
           new_leads: number
         }[]
       }
+      get_current_tenant_modules: {
+        Args: never
+        Returns: {
+          module_key: string
+        }[]
+      }
       get_dashboard_metrics_aggregated: {
         Args: {
           p_agent_id?: string
