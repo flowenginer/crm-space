@@ -132,12 +132,19 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     const menuPermissions = (roleDefinition?.permissions as any)?.menu || {};
     const hasMenuPermissions = Object.keys(menuPermissions).length > 0;
     
+    // Debug: log para verificar permissões (remover depois)
+    console.log('[Sidebar] Role:', userRole, 'isAdmin:', isAdmin, 'isSuperAdmin:', isSuperAdmin);
+    console.log('[Sidebar] menuPermissions:', menuPermissions);
+    console.log('[Sidebar] hasMenuPermissions:', hasMenuPermissions);
+    
     const filterItem = (item: MenuItem): MenuItem | null => {
       // Verificar se está ativo
       if (!item.is_active) return null;
       
       // Super Admin SEMPRE requer flag isSuperAdmin, independente de qualquer outra permissão
+      // Esta verificação vem PRIMEIRO e é absoluta
       if (item.href === '/super-admin' || item.title?.toLowerCase().includes('super admin')) {
+        console.log('[Sidebar] Super Admin check:', item.title, 'isSuperAdmin:', isSuperAdmin);
         if (!isSuperAdmin) return null;
       }
       
@@ -153,12 +160,27 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       }
       
       // Para não-admins: menuPermissions é STRICT ALLOWLIST
-      // Item só aparece se menuPermissions[permKey] === true (sem fallbacks!)
       const permKey = getMenuPermissionKey(item);
       
+      // Se tem permissões de menu configuradas, usar STRICT ALLOWLIST
       if (hasMenuPermissions) {
-        // STRICT ALLOWLIST: só mostra se explicitamente true
-        if (menuPermissions[permKey] !== true) {
+        const hasAccess = menuPermissions[permKey] === true;
+        console.log('[Sidebar] Checking:', item.title, 'permKey:', permKey, 'hasAccess:', hasAccess);
+        
+        // Se o item NÃO está no allowlist, verificar se é um menu cascata com filhos permitidos
+        if (!hasAccess) {
+          // Se é um menu cascata (sem href, com children), verificar se algum filho tem permissão
+          if (!item.href && item.children && item.children.length > 0) {
+            const filteredChildren = item.children
+              .map(filterItem)
+              .filter((child): child is MenuItem => child !== null);
+            
+            // Se algum filho passou, exibir o pai com os filhos filtrados
+            if (filteredChildren.length > 0) {
+              return { ...item, children: filteredChildren };
+            }
+          }
+          // Sem filhos permitidos ou não é cascata = ocultar
           return null;
         }
       } else {
@@ -173,7 +195,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         }
       }
       
-      // Filtrar children recursivamente
+      // Filtrar children recursivamente (para itens que passaram a verificação)
       if (item.children) {
         const filteredChildren = item.children
           .map(filterItem)
@@ -188,9 +210,12 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       return item;
     };
     
-    return menuHierarchy
+    const result = menuHierarchy
       .map(filterItem)
       .filter((item): item is MenuItem => item !== null);
+    
+    console.log('[Sidebar] Filtered items:', result.map(i => i.title));
+    return result;
   }, [menuHierarchy, isFullyLoaded, isAdmin, hasPermission, userRole, isSuperAdmin, roleDefinition]);
 
   const toggleExpanded = (id: string) => {
