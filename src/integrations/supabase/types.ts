@@ -8421,6 +8421,24 @@ export type Database = {
           source: string
         }[]
       }
+      diagnose_user_tenant: {
+        Args: { p_user_id?: string }
+        Returns: {
+          contact_count: number
+          conversation_count: number
+          email: string
+          full_name: string
+          has_issues: boolean
+          is_default_tenant: boolean
+          is_super_admin: boolean
+          issues: string[]
+          tenant_id: string
+          tenant_is_active: boolean
+          tenant_name: string
+          user_id: string
+          user_role: string
+        }[]
+      }
       find_contact_by_phone_suffix: {
         Args: { phone_suffix: string }
         Returns: {
@@ -9022,6 +9040,18 @@ export type Database = {
       }
       get_user_department_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_tenant_id: { Args: never; Returns: string }
+      get_users_with_tenant_issues: {
+        Args: never
+        Returns: {
+          email: string
+          full_name: string
+          issue_description: string
+          issue_type: string
+          tenant_id: string
+          tenant_name: string
+          user_id: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
