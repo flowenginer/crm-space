@@ -6,9 +6,10 @@ import { TenantDetailsModal } from '@/components/super-admin/TenantDetailsModal'
 import { AdminManagementSection } from '@/components/super-admin/AdminManagementSection';
 import { CreateTenantModal } from '@/components/super-admin/CreateTenantModal';
 import { DeleteTenantModal } from '@/components/super-admin/DeleteTenantModal';
+import { TenantDiagnosticsPanel } from '@/components/super-admin/TenantDiagnosticsPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Crown, Building, Shield, Loader2, Plus } from 'lucide-react';
+import { Crown, Building, Shield, Loader2, Plus, Stethoscope } from 'lucide-react';
 
 export default function SuperAdminPanel() {
   const { data: tenants = [], isLoading } = useSuperAdminTenants();
@@ -81,6 +82,10 @@ export default function SuperAdminPanel() {
             <Shield className="h-4 w-4" />
             Administradores
           </TabsTrigger>
+          <TabsTrigger value="diagnostics" className="gap-2">
+            <Stethoscope className="h-4 w-4" />
+            Diagnóstico
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="tenants">
@@ -97,6 +102,16 @@ export default function SuperAdminPanel() {
 
         <TabsContent value="admins">
           <AdminManagementSection />
+        </TabsContent>
+
+        <TabsContent value="diagnostics">
+          <div className="bg-card rounded-lg border p-6">
+            <h2 className="text-lg font-semibold mb-4">Diagnóstico de Isolamento de Tenant</h2>
+            <p className="text-muted-foreground mb-6">
+              Identifique usuários com problemas de configuração de tenant e verifique o isolamento de dados.
+            </p>
+            <TenantDiagnosticsPanel />
+          </div>
         </TabsContent>
       </Tabs>
 

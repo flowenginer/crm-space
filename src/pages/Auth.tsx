@@ -14,6 +14,8 @@ export default function Auth() {
     const error = searchParams.get('error');
     if (error === 'tenant_inactive') {
       toast.error('Sua empresa está temporariamente desativada. Entre em contato com o suporte.');
+    } else if (error === 'invalid_tenant') {
+      toast.error('Sua conta não está associada a uma empresa válida. Entre em contato com o suporte.');
     }
   }, [searchParams]);
 
