@@ -4,14 +4,17 @@ import { QueryClient } from '@tanstack/react-query';
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60, // 1 minute default
-      refetchOnWindowFocus: false,
+      staleTime: 1000 * 60 * 5, // 5 minutes - prevents excessive refetching
+      refetchOnWindowFocus: false, // Disable refetch on tab focus
+      refetchOnReconnect: false, // Disable refetch on network reconnect
+      refetchOnMount: false, // Disable refetch when component mounts if data exists
+      retry: 1, // Reduce retry attempts
     },
   },
 });
 
 /**
- * Reset all query cache - call on SIGNED_OUT and before fetching new tenant data on SIGNED_IN
+ * Reset all query cache - call on SIGNED_OUT and user change
  * This prevents stale data from previous tenant/user leaking into new session
  */
 export function resetQueryCache() {
