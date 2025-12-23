@@ -144,7 +144,10 @@ export function useUpdateTenantModules() {
       if (error) throw error;
     },
     onSuccess: (_, { tenantId }) => {
+      // Invalidar a query do painel super admin
       queryClient.invalidateQueries({ queryKey: ['tenant_modules', tenantId] });
+      // Invalidar a query que a Sidebar do tenant usa para exibir os módulos
+      queryClient.invalidateQueries({ queryKey: ['tenant-enabled-modules', tenantId] });
       toast.success('Módulos atualizados com sucesso');
     },
     onError: (error: Error) => {
