@@ -1,37 +1,40 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useMenuHierarchy, MenuItem } from '@/hooks/useMenuConfig';
 import * as LucideIcons from 'lucide-react';
+import { normalizeModuleKeyFromHref, normalizeModuleKey } from '@/lib/moduleKeys';
 
 interface TenantModulesTreeProps {
   modules: string[];
   onChange: (modules: string[]) => void;
 }
 
-// Mapeamento de href para module_key (chaves simples igual ao banco)
+// Mapeamento de href para module_key (chaves normalizadas com underscore)
 function getModuleKey(item: MenuItem): string {
   if (!item.href) {
-    // Para menus cascata sem href, usar o id
-    return item.id;
+    // Para menus cascata sem href, usar o id normalizado
+    return normalizeModuleKey(item.id);
   }
-  // Extrai chave simples do href: /conversations -> conversations, /products/catalogs -> products
-  const path = item.href.replace(/^\//, '').split('/')[0].split('?')[0];
-  return path || item.id;
+  // Usa a função de normalização padrão
+  return normalizeModuleKeyFromHref(item.href) || normalizeModuleKey(item.id);
 }
 
-// Obter todos os module keys de um item e seus filhos
+// Obter todos os module keys de um item e seus filhos (deduplicados)
 function getAllChildModules(item: MenuItem): string[] {
-  const keys: string[] = [];
+  const keysSet = new Set<string>();
+  
   if (item.href || item.permission) {
-    keys.push(getModuleKey(item));
+    keysSet.add(getModuleKey(item));
   }
+  
   if (item.children) {
     item.children.forEach(child => {
-      keys.push(...getAllChildModules(child));
+      getAllChildModules(child).forEach(k => keysSet.add(k));
     });
   }
-  return keys;
+  
+  return Array.from(keysSet);
 }
 
 // Componente de item de menu recursivo
@@ -57,11 +60,14 @@ function MenuItemRow({
   
   const isClickable = !!item.href || hasChildren;
   
-  // Contar filhos habilitados
-  const enabledChildCount = hasChildren
-    ? item.children!.filter(child => enabledModules.has(getModuleKey(child))).length
-    : 0;
-  const totalChildren = hasChildren ? item.children!.length : 0;
+  // Contar filhos habilitados (usando chaves únicas)
+  const childModuleKeys = useMemo(() => {
+    if (!hasChildren) return [];
+    return [...new Set(item.children!.map(child => getModuleKey(child)))];
+  }, [item.children, hasChildren]);
+  
+  const enabledChildCount = childModuleKeys.filter(k => enabledModules.has(k)).length;
+  const totalChildren = childModuleKeys.length;
   
   // Buscar ícone do Lucide
   const IconComponent = (LucideIcons as any)[item.icon] || LucideIcons.Circle;
@@ -133,15 +139,8 @@ function MenuItemRow({
                 onToggle(moduleKey, checked);
                 
                 if (hasChildren && item.children) {
-                  item.children.forEach(child => {
-                    const childKey = getModuleKey(child);
-                    onToggle(childKey, checked);
-                    if (child.children) {
-                      child.children.forEach(grandChild => {
-                        onToggle(getModuleKey(grandChild), checked);
-                      });
-                    }
-                  });
+                  const allChildKeys = getAllChildModules(item);
+                  allChildKeys.forEach(k => onToggle(k, checked));
                 }
               }}
               className="data-[state=checked]:bg-primary"
@@ -173,7 +172,10 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
   const { data: menuHierarchy = [], isLoading } = useMenuHierarchy();
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   
-  const enabledModules = new Set(modules);
+  // Normalizar os módulos recebidos para o padrão com underscores
+  const enabledModules = useMemo(() => {
+    return new Set(modules.map(m => normalizeModuleKey(m)));
+  }, [modules]);
 
   // Expandir itens pai por padrão
   useEffect(() => {
@@ -189,12 +191,15 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
   }, [menuHierarchy]);
 
   const handleToggle = (key: string, value: boolean) => {
+    const normalizedKey = normalizeModuleKey(key);
     if (value) {
-      if (!enabledModules.has(key)) {
-        onChange([...modules, key]);
+      if (!enabledModules.has(normalizedKey)) {
+        // Adiciona apenas se não existir (evita duplicatas)
+        const newModules = [...new Set([...modules.map(m => normalizeModuleKey(m)), normalizedKey])];
+        onChange(newModules);
       }
     } else {
-      onChange(modules.filter(m => m !== key));
+      onChange(modules.map(m => normalizeModuleKey(m)).filter(m => m !== normalizedKey));
     }
   };
 
@@ -211,20 +216,35 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
   };
 
   const handleToggleAll = (enable: boolean) => {
-    const allKeys: string[] = [];
+    const allKeysSet = new Set<string>();
     menuHierarchy.forEach(item => {
       getAllChildModules(item).forEach(key => {
-        allKeys.push(key);
+        allKeysSet.add(key);
       });
     });
-    onChange(enable ? allKeys : []);
+    onChange(enable ? Array.from(allKeysSet) : []);
   };
 
-  // Contar total de módulos
-  const allModuleKeys = menuHierarchy.flatMap(item => getAllChildModules(item));
-  const enabledCount = allModuleKeys.filter(k => enabledModules.has(k)).length;
-  const totalCount = allModuleKeys.length;
-  const allEnabled = enabledCount === totalCount && totalCount > 0;
+  // Contar total de módulos ÚNICOS
+  const { uniqueModuleKeys, enabledCount, totalCount, allEnabled } = useMemo(() => {
+    const allKeysSet = new Set<string>();
+    menuHierarchy.forEach(item => {
+      getAllChildModules(item).forEach(key => {
+        allKeysSet.add(key);
+      });
+    });
+    
+    const uniqueKeys = Array.from(allKeysSet);
+    const enabled = uniqueKeys.filter(k => enabledModules.has(k)).length;
+    const total = uniqueKeys.length;
+    
+    return {
+      uniqueModuleKeys: uniqueKeys,
+      enabledCount: enabled,
+      totalCount: total,
+      allEnabled: enabled === total && total > 0
+    };
+  }, [menuHierarchy, enabledModules]);
 
   if (isLoading) {
     return (
