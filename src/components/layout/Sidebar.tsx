@@ -32,6 +32,7 @@ import { AvailabilityToggle } from './AvailabilityToggle';
 import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
 import { LogoutConfirmDialog } from './LogoutConfirmDialog';
 import { useTenantEnabledModules } from '@/hooks/useTenantEnabledModules';
+import { normalizeModuleKeyFromHref } from '@/lib/moduleKeys';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -126,12 +127,9 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     return `menu_${item.id}`;
   };
 
-  // Helper para obter module_key do menu (chave simples para tenant_modules)
+  // Helper para obter module_key do menu (chave normalizada para tenant_modules)
   const getModuleKey = (item: MenuItem): string | null => {
-    if (!item.href) return null;
-    // Extrai chave simples do href: /conversations -> conversations
-    const path = item.href.replace(/^\//, '').split('/')[0].split('?')[0];
-    return path || null;
+    return normalizeModuleKeyFromHref(item.href);
   };
 
   // Filtrar itens de menu baseado em permissões E módulos do tenant
