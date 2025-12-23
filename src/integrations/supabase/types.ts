@@ -8132,6 +8132,17 @@ export type Database = {
         }
         Returns: Json
       }
+      get_all_super_admins: {
+        Args: never
+        Returns: {
+          full_name: string
+          is_master: boolean
+          profile_created_at: string
+          tenant_id: string
+          tenant_name: string
+          user_id: string
+        }[]
+      }
       get_all_tenants_with_stats: {
         Args: never
         Returns: {
@@ -8146,6 +8157,18 @@ export type Database = {
           slug: string
           trial_ends_at: string
           user_count: number
+        }[]
+      }
+      get_all_users_for_master: {
+        Args: never
+        Returns: {
+          full_name: string
+          is_super_admin: boolean
+          profile_created_at: string
+          role: string
+          tenant_id: string
+          tenant_name: string
+          user_id: string
         }[]
       }
       get_channel_by_instance: {
@@ -8643,6 +8666,7 @@ export type Database = {
         Returns: boolean
       }
       is_lid_contact: { Args: { phone: string }; Returns: boolean }
+      is_master: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id?: string }; Returns: boolean }
       is_tenant_owner: { Args: { _user_id?: string }; Returns: boolean }
       merge_duplicate_contacts: {
@@ -8678,6 +8702,10 @@ export type Database = {
         }
         Returns: Json
       }
+      promote_to_super_admin: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
       register_inventory_movement: {
         Args: {
           p_cost_per_unit?: number
@@ -8699,6 +8727,7 @@ export type Database = {
         }
         Returns: string
       }
+      remove_super_admin: { Args: { p_user_id: string }; Returns: undefined }
       search_contacts_for_erp: {
         Args: { result_limit?: number; search_term: string }
         Returns: {
