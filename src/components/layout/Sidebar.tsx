@@ -128,7 +128,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const filteredMenuItems = useMemo(() => {
     if (!isFullyLoaded) return [];
     
-    // Obter permissões de menu do role_definition (funciona como ALLOWLIST)
+    // Obter permissões de menu do role_definition (funciona como STRICT ALLOWLIST)
     const menuPermissions = (roleDefinition?.permissions as any)?.menu || {};
     const hasMenuPermissions = Object.keys(menuPermissions).length > 0;
     
@@ -152,28 +152,17 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         return item;
       }
       
-      // Para não-admins, usar ALLOWLIST: item só aparece se menuPermissions[permKey] === true
+      // Para não-admins: menuPermissions é STRICT ALLOWLIST
+      // Item só aparece se menuPermissions[permKey] === true (sem fallbacks!)
       const permKey = getMenuPermissionKey(item);
       
-      // Se existem permissões de menu configuradas, usar como ALLOWLIST
       if (hasMenuPermissions) {
-        // Se a permissão está explicitamente como false, ocultar
-        if (menuPermissions[permKey] === false) return null;
-        
-        // Se a permissão não está definida como true, também ocultar (ALLOWLIST)
-        // Exceto se o item tem uma permissão tradicional que o usuário possui
+        // STRICT ALLOWLIST: só mostra se explicitamente true
         if (menuPermissions[permKey] !== true) {
-          // Verificar se tem permissão tradicional
-          if (item.permission) {
-            const [category, action] = item.permission.split('.');
-            if (!hasPermission(category, action)) return null;
-          } else {
-            // Sem permissão tradicional e não está no allowlist = ocultar
-            return null;
-          }
+          return null;
         }
       } else {
-        // Fallback para verificação tradicional quando não há menuPermissions configuradas
+        // Fallback apenas se NÃO existem menuPermissions configuradas (migração)
         if (item.permission) {
           const [category, action] = item.permission.split('.');
           if (!hasPermission(category, action)) return null;
