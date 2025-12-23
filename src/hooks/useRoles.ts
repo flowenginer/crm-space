@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useCurrentTenantId } from '@/hooks/useTenant';
 
 export interface RoleDefinition {
   id: string;
@@ -12,6 +13,7 @@ export interface RoleDefinition {
   is_system: boolean | null;
   order_position: number | null;
   created_at: string | null;
+  tenant_id?: string;
   user_count?: number;
 }
 
@@ -24,20 +26,27 @@ export interface PermissionDefinition {
 }
 
 export function useRoles() {
+  const { data: tenantId } = useCurrentTenantId();
+  
   return useQuery({
-    queryKey: ['role_definitions'],
+    queryKey: ['role_definitions', tenantId],
     queryFn: async () => {
+      if (!tenantId) return [];
+      
+      // Buscar roles APENAS do tenant atual
       const { data: roles, error } = await supabase
         .from('role_definitions')
         .select('*')
+        .eq('tenant_id', tenantId)
         .order('order_position', { ascending: true });
 
       if (error) throw error;
 
-      // Get user count per role
+      // Get user count per role - APENAS do tenant atual
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('role');
+        .select('role')
+        .eq('tenant_id', tenantId);
 
       const roleCounts: Record<string, number> = {};
       profiles?.forEach(p => {
@@ -51,6 +60,7 @@ export function useRoles() {
         user_count: roleCounts[role.role_key] || 0
       }));
     },
+    enabled: !!tenantId,
   });
 }
 
@@ -71,12 +81,15 @@ export function usePermissionDefinitions() {
 
 export function useCreateRole() {
   const queryClient = useQueryClient();
+  const { data: tenantId } = useCurrentTenantId();
   
   return useMutation({
-    mutationFn: async (role: Omit<RoleDefinition, 'id' | 'created_at' | 'user_count'>) => {
+    mutationFn: async (role: Omit<RoleDefinition, 'id' | 'created_at' | 'user_count' | 'tenant_id'>) => {
+      if (!tenantId) throw new Error('Tenant não encontrado');
+      
       const { data, error } = await supabase
         .from('role_definitions')
-        .insert(role)
+        .insert({ ...role, tenant_id: tenantId })
         .select()
         .single();
 
