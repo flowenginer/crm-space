@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Shield,
   Plus,
@@ -7,17 +7,12 @@ import {
   Users,
   MoreVertical,
   Loader2,
-  ChevronDown,
-  ChevronRight,
   Settings2,
-  LucideIcon,
-  RefreshCw,
   Save,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -33,12 +28,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { useRoles, usePermissionDefinitions, useCreateRole, useUpdateRole, useDeleteRole, RoleDefinition } from '@/hooks/useRoles';
-import { SYSTEM_PERMISSIONS, getCategoryConfig } from '@/config/permissions';
-import { usePermissionSync } from '@/hooks/usePermissionSync';
-
-// Usar configuração centralizada de permissões
-const categoryConfig = getCategoryConfig();
+import { useRoles, useCreateRole, useUpdateRole, useDeleteRole, RoleDefinition } from '@/hooks/useRoles';
+import { MenuPermissionsTree } from './MenuPermissionsTree';
 
 const colorOptions = [
   '#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#6366F1', '#14B8A6'
@@ -46,8 +37,6 @@ const colorOptions = [
 
 export function RoleManagement() {
   const { data: roles = [], isLoading: loadingRoles } = useRoles();
-  const { data: permissionDefs = [], isLoading: loadingPermissions } = usePermissionDefinitions();
-  const { syncPermissions, isSyncing } = usePermissionSync();
   
   const createRole = useCreateRole();
   const updateRole = useUpdateRole();
@@ -55,7 +44,6 @@ export function RoleManagement() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleDefinition | null>(null);
-  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   
   const [form, setForm] = useState({
     role_key: '',
@@ -63,20 +51,7 @@ export function RoleManagement() {
     description: '',
     color: '#8B5CF6',
     permissions: {} as Record<string, Record<string, boolean>>,
-  });
-
-  // Group permissions by category and sort by order
-  const permissionsByCategory = permissionDefs.reduce((acc, perm) => {
-    if (!acc[perm.category]) acc[perm.category] = [];
-    acc[perm.category].push(perm);
-    return acc;
-  }, {} as Record<string, typeof permissionDefs>);
-
-  // Sort categories by defined order
-  const sortedCategories = Object.keys(permissionsByCategory).sort((a, b) => {
-    const orderA = categoryConfig[a]?.order ?? 99;
-    const orderB = categoryConfig[b]?.order ?? 99;
-    return orderA - orderB;
+    menuPermissions: {} as Record<string, boolean>,
   });
 
   const handleOpenCreate = () => {
@@ -87,64 +62,25 @@ export function RoleManagement() {
       description: '',
       color: '#8B5CF6',
       permissions: {},
+      menuPermissions: {},
     });
-    setExpandedCategories([]);
     setShowModal(true);
   };
 
   const handleOpenEdit = (role: RoleDefinition) => {
     setEditingRole(role);
+    const rolePerms = (role.permissions || {}) as Record<string, any>;
+    // Extrair menuPermissions se existir, senão usar objeto vazio
+    const menuPerms = rolePerms.menu || {};
     setForm({
       role_key: role.role_key,
       role_name: role.role_name,
       description: role.description || '',
       color: role.color || '#8B5CF6',
-      permissions: (role.permissions || {}) as Record<string, Record<string, boolean>>,
+      permissions: rolePerms as Record<string, Record<string, boolean>>,
+      menuPermissions: menuPerms as Record<string, boolean>,
     });
-    setExpandedCategories([]);
     setShowModal(true);
-  };
-
-  const toggleCategory = (category: string) => {
-    setExpandedCategories(prev =>
-      prev.includes(category)
-        ? prev.filter(c => c !== category)
-        : [...prev, category]
-    );
-  };
-
-  const handlePermissionChange = (category: string, key: string, value: boolean) => {
-    setForm(prev => ({
-      ...prev,
-      permissions: {
-        ...prev.permissions,
-        [category]: {
-          ...(prev.permissions[category] || {}),
-          [key]: value,
-        },
-      },
-    }));
-  };
-
-  const handleToggleAllCategory = (category: string, permissions: typeof permissionDefs) => {
-    const allEnabled = permissions.every(p => {
-      const key = p.permission_key.split('.')[1];
-      return form.permissions[category]?.[key] === true;
-    });
-
-    const newCategoryPerms: Record<string, boolean> = {};
-    permissions.forEach(p => {
-      const key = p.permission_key.split('.')[1];
-      newCategoryPerms[key] = !allEnabled;
-    });
-
-    setForm(prev => ({
-      ...prev,
-      permissions: {
-        ...prev.permissions,
-        [category]: newCategoryPerms,
-      },
-    }));
   };
 
   const handleSave = async () => {
@@ -153,6 +89,12 @@ export function RoleManagement() {
       return;
     }
 
+    // Combinar permissões antigas com as novas permissões de menu
+    const combinedPermissions = {
+      ...form.permissions,
+      menu: form.menuPermissions,
+    };
+
     try {
       if (editingRole) {
         await updateRole.mutateAsync({
@@ -160,7 +102,7 @@ export function RoleManagement() {
           role_name: form.role_name,
           description: form.description || null,
           color: form.color,
-          permissions: form.permissions,
+          permissions: combinedPermissions,
         });
         toast.success('Perfil atualizado com sucesso');
       } else {
@@ -170,7 +112,7 @@ export function RoleManagement() {
           description: form.description || null,
           color: form.color,
           icon: 'User',
-          permissions: form.permissions,
+          permissions: combinedPermissions,
           is_system: false,
           order_position: roles.length,
         });
@@ -209,7 +151,7 @@ export function RoleManagement() {
     }, 0);
   };
 
-  const isLoading = loadingRoles || loadingPermissions;
+  const isLoading = loadingRoles;
 
   return (
     <div className="space-y-6">
@@ -373,121 +315,22 @@ export function RoleManagement() {
               </div>
             </div>
 
-            {/* Permissões */}
+            {/* Permissões baseadas no Menu */}
             <div>
               <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                 <Shield size={16} />
-                Permissões por Módulo
+                Acesso aos Módulos
               </h4>
+              <p className="text-xs text-muted-foreground mb-4">
+                Configure quais módulos e funcionalidades este perfil terá acesso. A estrutura segue o menu lateral.
+              </p>
 
-              <div className="space-y-2">
-                {sortedCategories.map((category) => {
-                  const permissions = permissionsByCategory[category];
-                  const config = categoryConfig[category] || { 
-                    label: category, 
-                    icon: Shield,
-                    order: 99 
-                  };
-                  const Icon = config.icon;
-                  const isExpanded = expandedCategories.includes(category);
-                  const enabledCount = permissions.filter(p => {
-                    const key = p.permission_key.split('.')[1];
-                    return form.permissions[category]?.[key] === true;
-                  }).length;
-                  const allEnabled = enabledCount === permissions.length;
-
-                  return (
-                    <div key={category} className="border border-border rounded-xl overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => toggleCategory(category)}
-                        className="w-full flex items-center justify-between p-4 bg-muted/30 hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          {isExpanded ? (
-                            <ChevronDown size={18} className="text-muted-foreground" />
-                          ) : (
-                            <ChevronRight size={18} className="text-muted-foreground" />
-                          )}
-                          <div 
-                            className="w-8 h-8 rounded-lg flex items-center justify-center"
-                            style={{ backgroundColor: `${form.color}20` }}
-                          >
-                            <Icon size={16} style={{ color: form.color }} />
-                          </div>
-                          <span className="font-medium text-foreground">
-                            {config.label}
-                          </span>
-                          <span 
-                            className={`text-xs px-2 py-0.5 rounded-full ${
-                              enabledCount > 0 
-                                ? 'bg-primary/10 text-primary' 
-                                : 'bg-muted text-muted-foreground'
-                            }`}
-                          >
-                            {enabledCount}/{permissions.length}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleAllCategory(category, permissions);
-                            }}
-                            className={`text-xs px-3 py-1 rounded-lg transition-colors ${
-                              allEnabled 
-                                ? 'bg-destructive/10 text-destructive hover:bg-destructive/20' 
-                                : 'bg-primary/10 text-primary hover:bg-primary/20'
-                            }`}
-                          >
-                            {allEnabled ? 'Remover Todos' : 'Liberar Todos'}
-                          </button>
-                        </div>
-                      </button>
-
-                      {isExpanded && (
-                        <div className="p-4 bg-card border-t border-border">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {permissions.map((perm) => {
-                              const key = perm.permission_key.split('.')[1];
-                              const isEnabled = form.permissions[category]?.[key] === true;
-
-                              return (
-                                <label
-                                  key={perm.id}
-                                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                                    isEnabled 
-                                      ? 'border-primary bg-primary/5' 
-                                      : 'border-border hover:border-muted-foreground/30 hover:bg-muted/30'
-                                  }`}
-                                >
-                                  <Checkbox
-                                    checked={isEnabled}
-                                    onCheckedChange={(checked) =>
-                                      handlePermissionChange(category, key, checked === true)
-                                    }
-                                    className="mt-0.5"
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <span className="text-sm font-medium text-foreground block">
-                                      {perm.permission_name}
-                                    </span>
-                                    {perm.description && (
-                                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                                        {perm.description}
-                                      </p>
-                                    )}
-                                  </div>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+              <div className="border border-border rounded-xl p-4">
+                <MenuPermissionsTree
+                  permissions={form.menuPermissions}
+                  onChange={(newPerms) => setForm(prev => ({ ...prev, menuPermissions: newPerms }))}
+                  color={form.color}
+                />
               </div>
             </div>
           </div>
