@@ -113,14 +113,14 @@ export function useLeadsByOrigin(filters: DashboardFilters) {
       }
 
       return (data || [])
-        .map((row: { origin: string; total: number; converted: number }) => {
+        .map((row: { origin: string; total_leads: number; converted_leads: number; conversion_rate: number }) => {
           const config = ORIGIN_CONFIG[row.origin] || ORIGIN_CONFIG.other;
           return {
             origin: row.origin,
             label: config.label,
-            total: Number(row.total),
-            converted: Number(row.converted),
-            conversionRate: row.total > 0 ? (Number(row.converted) / Number(row.total)) * 100 : 0,
+            total: Number(row.total_leads),
+            converted: Number(row.converted_leads),
+            conversionRate: Number(row.conversion_rate),
             color: config.color,
           };
         })

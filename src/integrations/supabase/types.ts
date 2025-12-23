@@ -8754,67 +8754,24 @@ export type Database = {
           waiting_minutes: number
         }[]
       }
-      get_lead_journey_metrics:
-        | {
-            Args: {
-              p_agent_id?: string
-              p_channel_id?: string
-              p_date_from: string
-              p_date_to: string
-              p_department_id?: string
-              p_origin?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_agent_id?: string
-              p_conversion_status_names?: string[]
-              p_date_from: string
-              p_date_to: string
-              p_department_id?: string
-              p_origin?: string
-            }
-            Returns: {
-              assignment_rate: number
-              avg_time_to_assignment: number
-              avg_time_to_first_response: number
-              conversion_rate: number
-              conversions: number
-              lead_response_rate: number
-              total_assigned: number
-              total_converted_value: number
-              total_unassigned: number
-            }[]
-          }
-        | {
-            Args: {
-              p_agent_id?: string
-              p_date_from: string
-              p_date_to: string
-              p_department_id?: string
-              p_origin?: string
-            }
-            Returns: {
-              avg_time_in_funnel: number
-              avg_time_to_assignment: number
-              avg_time_to_first_response: number
-              conversion_count: number
-              conversion_rate: number
-              new_contacts: number
-              total_conversations: number
-            }[]
-          }
-        | {
-            Args: {
-              p_agent_id?: string
-              p_channel_id?: string
-              p_department_id?: string
-              p_end_date: string
-              p_start_date: string
-            }
-            Returns: Json
-          }
+      get_lead_journey_metrics: {
+        Args: {
+          p_agent_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+          p_origin?: string
+        }
+        Returns: {
+          avg_time_in_funnel: number
+          avg_time_to_assignment: number
+          avg_time_to_first_response: number
+          conversion_count: number
+          conversion_rate: number
+          new_contacts: number
+          total_conversations: number
+        }[]
+      }
       get_lead_status_counts: {
         Args: {
           p_agent_id?: string
@@ -8833,35 +8790,20 @@ export type Database = {
           total_value: number
         }[]
       }
-      get_leads_by_origin:
-        | {
-            Args: {
-              p_agent_id?: string
-              p_date_from: string
-              p_date_to: string
-              p_department_id?: string
-            }
-            Returns: {
-              conversion_rate: number
-              converted_leads: number
-              origin: string
-              total_leads: number
-            }[]
-          }
-        | {
-            Args: {
-              p_agent_id?: string
-              p_conversion_status_names?: string[]
-              p_date_from: string
-              p_date_to: string
-              p_department_id?: string
-            }
-            Returns: {
-              converted: number
-              origin: string
-              total: number
-            }[]
-          }
+      get_leads_by_origin: {
+        Args: {
+          p_agent_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          conversion_rate: number
+          converted_leads: number
+          origin: string
+          total_leads: number
+        }[]
+      }
       get_leads_by_status_batch: {
         Args: {
           p_agent_id?: string
@@ -8952,38 +8894,21 @@ export type Database = {
           unread: number
         }[]
       }
-      get_status_funnel:
-        | {
-            Args: {
-              p_agent_id?: string
-              p_date_from: string
-              p_date_to: string
-              p_department_id?: string
-            }
-            Returns: {
-              avg_duration_seconds: number
-              lead_count: number
-              status_color: string
-              status_name: string
-              status_order: number
-            }[]
-          }
-        | {
-            Args: {
-              p_agent_id?: string
-              p_date_from: string
-              p_date_to: string
-              p_department_id?: string
-              p_origin?: string
-            }
-            Returns: {
-              avg_duration_seconds: number
-              color: string
-              count: number
-              status: string
-              status_order: number
-            }[]
-          }
+      get_status_funnel: {
+        Args: {
+          p_agent_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          avg_duration_seconds: number
+          lead_count: number
+          status_color: string
+          status_name: string
+          status_order: number
+        }[]
+      }
       get_status_funnel_historical: {
         Args: {
           p_agent_id?: string
