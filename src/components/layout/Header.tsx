@@ -431,9 +431,12 @@ export function Header({ title, onMenuClick }: HeaderProps) {
           </h1>
           {/* Tenant Badge - Always visible to prevent cross-tenant confusion */}
           {tenant?.name && (
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium border border-primary/20">
+            <div className="hidden md:flex items-center gap-2 px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium border border-primary/20">
               <Building2 className="h-3.5 w-3.5" />
-              <span className="max-w-[120px] truncate">{tenant.name}</span>
+              <span className="max-w-[140px] truncate">{tenant.name}</span>
+              {currentUser?.email && (
+                <span className="max-w-[180px] truncate text-muted-foreground">({currentUser.email})</span>
+              )}
             </div>
           )}
         </div>
