@@ -8389,6 +8389,10 @@ export type Database = {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
       }
+      copy_menu_items_to_tenant: {
+        Args: { p_source_tenant_id: string; p_target_tenant_id: string }
+        Returns: number
+      }
       current_user_is_super_admin: { Args: never; Returns: boolean }
       delete_contact_permanently: {
         Args: { p_contact_id: string }
