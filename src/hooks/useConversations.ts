@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserStore } from '@/store/userStore';
 
 export interface Conversation {
   id: string;
@@ -102,8 +103,11 @@ const CONVERSATION_FIELDS = `
 `;
 
 export function useConversations(filter?: AssignmentFilter) {
+  // Include tenantId in query key to prevent cross-tenant cache pollution
+  const tenantId = useUserStore((state) => state.tenantId);
+  
   return useQuery({
-    queryKey: ['conversations', filter],
+    queryKey: ['tenant', tenantId, 'conversations', filter],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -125,6 +129,8 @@ export function useConversations(filter?: AssignmentFilter) {
       if (error) throw error;
       return data as Conversation[];
     },
+    // Only run query when tenantId is available
+    enabled: !!tenantId,
     staleTime: 60000, // OTIMIZAÇÃO: 1 minuto de cache
     refetchOnWindowFocus: false,
   });
