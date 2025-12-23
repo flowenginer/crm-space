@@ -9,7 +9,7 @@ import type { Tenant } from '@/types';
  * Usa a função get_user_tenant_id() do banco
  */
 export function useCurrentTenantId() {
-  const { tenantId: storeTenantId, setTenantId } = useUserStore();
+  const { setTenantId } = useUserStore();
   
   return useQuery({
     queryKey: ['current-tenant-id'],
@@ -38,7 +38,11 @@ export function useCurrentTenantId() {
         }
       }
       
-      return storeTenantId;
+      // CRITICAL: Do NOT fallback to store - this prevents cross-tenant data leaks
+      // If no tenant is found, return null to force proper handling (redirect to onboarding, etc.)
+      console.warn('[useTenant] No tenant found for user - returning null');
+      setTenantId(null);
+      return null;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes
@@ -51,12 +55,16 @@ export function useCurrentTenantId() {
  */
 export function useCurrentTenant() {
   const { data: tenantId } = useCurrentTenantId();
-  const { tenant: storeTenant, setTenant } = useUserStore();
+  const { setTenant } = useUserStore();
 
   return useQuery({
     queryKey: ['current-tenant', tenantId],
     queryFn: async () => {
-      if (!tenantId) return null;
+      if (!tenantId) {
+        // CRITICAL: Clear tenant from store if no tenantId
+        setTenant(null);
+        return null;
+      }
 
       const { data, error } = await supabase
         .from('tenants')
@@ -66,7 +74,9 @@ export function useCurrentTenant() {
 
       if (error) {
         console.error('Error fetching tenant:', error);
-        return storeTenant;
+        // CRITICAL: Do NOT fallback to store - return null to prevent cross-tenant data leaks
+        setTenant(null);
+        return null;
       }
       
       // Update store with fresh tenant data
@@ -79,7 +89,7 @@ export function useCurrentTenant() {
     enabled: !!tenantId,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
-    initialData: storeTenant,
+    // CRITICAL: Do NOT use initialData from store - always fetch fresh
   });
 }
 
