@@ -19,13 +19,16 @@ import {
 import { TenantWithStats } from '@/hooks/useSuperAdminTenants';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Search, MoreHorizontal, Edit, Power, AlertTriangle } from 'lucide-react';
+import { Search, MoreHorizontal, Edit, Power, AlertTriangle, Trash2 } from 'lucide-react';
 
 interface TenantsTableProps {
   tenants: TenantWithStats[];
   onEdit: (tenant: TenantWithStats) => void;
   onToggleStatus: (tenant: TenantWithStats) => void;
+  onDelete: (tenant: TenantWithStats) => void;
 }
+
+const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 const planColors: Record<string, string> = {
   free: 'bg-gray-500/10 text-gray-500',
@@ -33,7 +36,7 @@ const planColors: Record<string, string> = {
   enterprise: 'bg-purple-500/10 text-purple-500',
 };
 
-export function TenantsTable({ tenants, onEdit, onToggleStatus }: TenantsTableProps) {
+export function TenantsTable({ tenants, onEdit, onToggleStatus, onDelete }: TenantsTableProps) {
   const [search, setSearch] = useState('');
 
   const filteredTenants = tenants.filter(
@@ -135,6 +138,15 @@ export function TenantsTable({ tenants, onEdit, onToggleStatus }: TenantsTablePr
                             <Power className="h-4 w-4 mr-2" />
                             {tenant.is_active ? 'Desativar' : 'Ativar'}
                           </DropdownMenuItem>
+                          {tenant.id !== MASTER_TENANT_ID && (
+                            <DropdownMenuItem 
+                              onClick={() => onDelete(tenant)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Excluir
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
