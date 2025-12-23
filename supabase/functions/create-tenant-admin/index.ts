@@ -299,6 +299,26 @@ Deno.serve(async (req) => {
       console.log('Default role definitions created');
     }
 
+    // 10. Criar menu_items padrão para o novo tenant
+    const defaultMenuItems = [
+      { tenant_id: tenant.id, title: 'Dashboard', href: '/', icon: 'LayoutDashboard', position: 1, permission: 'dashboard.view', is_active: true },
+      { tenant_id: tenant.id, title: 'Conversas', href: '/conversations', icon: 'MessageSquare', position: 2, permission: 'conversations.view', is_active: true },
+      { tenant_id: tenant.id, title: 'Contatos', href: '/contacts', icon: 'Users', position: 3, permission: 'contacts.view', is_active: true },
+      { tenant_id: tenant.id, title: 'WhatsApp', href: '/whatsapp-channels', icon: 'Phone', position: 4, permission: 'channels.view', is_active: true },
+      { tenant_id: tenant.id, title: 'Relatórios', href: '/reports', icon: 'BarChart3', position: 5, permission: 'reports.view', is_active: true },
+      { tenant_id: tenant.id, title: 'Configurações', href: '/settings', icon: 'Settings', position: 6, permission: 'settings.view', is_active: true }
+    ];
+
+    const { error: menuError } = await supabaseAdmin
+      .from('menu_items')
+      .insert(defaultMenuItems);
+
+    if (menuError) {
+      console.error('Error creating default menu items:', menuError);
+    } else {
+      console.log('Default menu items created');
+    }
+
     console.log('Tenant setup complete:', tenant.id);
 
     return new Response(
