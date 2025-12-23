@@ -49,10 +49,12 @@ export const useUserStore = create<UserState>()(
     }),
     {
       name: 'user-storage',
+      // CRITICAL: Only persist minimal non-sensitive data
+      // Do NOT persist tenant/tenantId to prevent cross-tenant data leaks on user switch
+      // These will be fetched fresh from the server on each session
       partialize: (state) => ({
-        profile: state.profile,
-        tenant: state.tenant,
-        tenantId: state.tenantId,
+        // Only persist roles for quick permission checks during initial load
+        // Everything else is fetched fresh from server
         roles: state.roles,
       }),
     }

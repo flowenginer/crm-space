@@ -54,10 +54,10 @@ serve(async (req) => {
 
     console.log('Requester ID:', requester.id);
 
-    // Check if requester is admin
+    // Check if requester is admin AND get their tenant_id
     const { data: requesterProfile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('role')
+      .select('role, tenant_id')
       .eq('id', requester.id)
       .single()
 
@@ -66,10 +66,16 @@ serve(async (req) => {
       throw new Error('Could not verify admin status')
     }
 
-    console.log('Requester role:', requesterProfile?.role);
+    console.log('Requester role:', requesterProfile?.role, 'tenant_id:', requesterProfile?.tenant_id);
 
     if (requesterProfile?.role !== 'admin') {
       throw new Error('Only admins can create users')
+    }
+
+    // CRITICAL: Get tenant_id from requester - new users MUST belong to the same tenant
+    const requesterTenantId = requesterProfile?.tenant_id;
+    if (!requesterTenantId) {
+      throw new Error('Requester does not have a tenant assigned')
     }
 
     // Get request body
@@ -143,6 +149,7 @@ serve(async (req) => {
     }
 
     // Update the profile that was created by the trigger
+    // CRITICAL: Set tenant_id from the requester's tenant to ensure isolation
     const { error: profileUpdateError } = await supabaseAdmin
       .from('profiles')
       .update({
@@ -152,13 +159,18 @@ serve(async (req) => {
         phone: phone || null,
         is_active: true,
         is_online: false,
+        tenant_id: requesterTenantId, // CRITICAL: Inherit tenant from creator
         updated_at: new Date().toISOString()
       })
       .eq('id', newUser.user.id)
 
     if (profileUpdateError) {
       console.error('Profile update error:', profileUpdateError);
+      // This is critical - if tenant_id wasn't set, the user will see wrong data
+      throw new Error('Failed to set user tenant: ' + profileUpdateError.message);
     }
+
+    console.log('Profile updated with tenant_id:', requesterTenantId);
 
     // Insert into user_departments table
     if (department_ids && department_ids.length > 0) {
