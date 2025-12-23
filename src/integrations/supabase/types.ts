@@ -8389,6 +8389,17 @@ export type Database = {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
       }
+      check_user_tenant_status: {
+        Args: { p_user_id: string }
+        Returns: {
+          error_code: string
+          error_message: string
+          is_valid: boolean
+          tenant_id: string
+          tenant_is_active: boolean
+          tenant_name: string
+        }[]
+      }
       copy_menu_items_to_tenant: {
         Args: { p_source_tenant_id: string; p_target_tenant_id: string }
         Returns: number
