@@ -53,7 +53,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
-  const { hasPermission, isAdmin, role: userRole, isFullyLoaded } = usePermissions();
+  const { hasPermission, isAdmin, role: userRole, isFullyLoaded, roleDefinition } = usePermissions();
   const { data: pendingRequestsCount = 0 } = usePendingRequestsCount();
   const { data: internalChatUnreadCount = 0 } = useInternalChatUnreadCount();
   const { data: internalEmailUnreadCount = 0 } = useInternalEmailUnreadCount();
@@ -114,9 +114,22 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     }
   }, [menuHierarchy, location.pathname, manuallyCollapsed]);
 
+  // Helper para gerar chave de permissão do menu (igual ao MenuPermissionsTree)
+  const getMenuPermissionKey = (item: MenuItem): string => {
+    if (item.permission) return item.permission;
+    if (item.href) {
+      const path = item.href.replace(/^\//, '').replace(/\//g, '_');
+      return `menu_${path}`;
+    }
+    return `menu_${item.id}`;
+  };
+
   // Filtrar itens de menu baseado em permissões
   const filteredMenuItems = useMemo(() => {
     if (!isFullyLoaded) return [];
+    
+    // Obter permissões de menu do role_definition
+    const menuPermissions = (roleDefinition?.permissions as any)?.menu || {};
     
     const filterItem = (item: MenuItem): MenuItem | null => {
       // Verificar se está ativo
@@ -124,6 +137,12 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       
       // Filtrar item Super Admin para não-super-admins
       if (item.href === '/super-admin' && !isSuperAdmin) return null;
+      
+      // Filtrar item Gamificação - verificar permissão de menu
+      if (item.href?.includes('/gamification') || item.href?.includes('gamification')) {
+        const permKey = getMenuPermissionKey(item);
+        if (!isAdmin && menuPermissions[permKey] !== true) return null;
+      }
       
       // Admin vê tudo
       if (isAdmin) {
@@ -137,7 +156,19 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         return item;
       }
       
-      // Verificar permissão
+      // NOVA VERIFICAÇÃO: Checar permissões de menu salvas no perfil
+      const permKey = getMenuPermissionKey(item);
+      if (menuPermissions[permKey] === false) return null;
+      
+      // Para items sem permission definida no banco, verificar se foi explicitamente habilitado
+      if (!item.permission && !item.roles?.length) {
+        // Se existe uma configuração de menu para este item e está false, ocultar
+        if (permKey in menuPermissions && menuPermissions[permKey] !== true) {
+          return null;
+        }
+      }
+      
+      // Verificar permissão tradicional (category.action)
       if (item.permission) {
         const [category, action] = item.permission.split('.');
         if (!hasPermission(category, action)) return null;
@@ -166,7 +197,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     return menuHierarchy
       .map(filterItem)
       .filter((item): item is MenuItem => item !== null);
-  }, [menuHierarchy, isFullyLoaded, isAdmin, hasPermission, userRole, isSuperAdmin]);
+  }, [menuHierarchy, isFullyLoaded, isAdmin, hasPermission, userRole, isSuperAdmin, roleDefinition]);
 
   const toggleExpanded = (id: string) => {
     setExpandedMenus(prev => {
