@@ -178,17 +178,17 @@ Deno.serve(async (req) => {
 
     console.log('User created:', authUser.user.id);
 
-    // 3. Criar o perfil do usuário
+    // 3. Criar/atualizar o perfil do usuário (upsert para lidar com trigger existente)
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .insert({
+      .upsert({
         id: authUser.user.id,
         full_name: adminName,
         email: adminEmail,
         tenant_id: tenant.id,
         is_active: true,
         is_available: true
-      });
+      }, { onConflict: 'id' });
 
     if (profileError) {
       console.error('Error creating profile:', profileError);
