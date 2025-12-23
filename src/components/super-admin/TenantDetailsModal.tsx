@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import {
   TenantWithStats,
@@ -30,32 +29,13 @@ import {
 import { Loader2, Building2, User, Settings, Mail, Shield, Key, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { TenantModulesTree } from './TenantModulesTree';
 
 interface TenantDetailsModalProps {
   tenant: TenantWithStats | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-const AVAILABLE_MODULES = [
-  { key: 'conversations', label: 'Conversas', description: 'Chat com clientes via WhatsApp' },
-  { key: 'crm', label: 'CRM', description: 'Gestão de pipeline de vendas' },
-  { key: 'contacts', label: 'Contatos', description: 'Cadastro de contatos' },
-  { key: 'orders', label: 'Pedidos', description: 'Gestão de pedidos' },
-  { key: 'quotes', label: 'Orçamentos', description: 'Criação de orçamentos' },
-  { key: 'products', label: 'Produtos', description: 'Catálogo de produtos' },
-  { key: 'financial', label: 'Financeiro', description: 'Controle financeiro' },
-  { key: 'reports', label: 'Relatórios', description: 'Relatórios e análises' },
-  { key: 'campaigns', label: 'Campanhas', description: 'Meta Ads analytics' },
-  { key: 'gamification', label: 'Gamificação', description: 'Rankings e conquistas' },
-  { key: 'automations', label: 'Automações', description: 'Fluxos automáticos' },
-  { key: 'bulk_dispatch', label: 'Disparo em Massa', description: 'Envio de mensagens em massa' },
-  { key: 'internal_chat', label: 'Chat Interno', description: 'Comunicação interna' },
-  { key: 'internal_email', label: 'E-mail Interno', description: 'E-mail corporativo' },
-  { key: 'live_monitor', label: 'Monitor ao Vivo', description: 'Monitoramento em tempo real' },
-  { key: 'webhooks', label: 'Webhooks', description: 'Integrações via API' },
-  { key: 'whatsapp_channels', label: 'Canais WhatsApp', description: 'Gestão de instâncias' },
-];
 
 export function TenantDetailsModal({ tenant, open, onOpenChange }: TenantDetailsModalProps) {
   const [name, setName] = useState('');
@@ -124,22 +104,6 @@ export function TenantDetailsModal({ tenant, open, onOpenChange }: TenantDetails
     } catch (error) {
       console.error('Error saving tenant:', error);
     }
-  };
-
-  const toggleModule = (moduleKey: string) => {
-    setSelectedModules(prev =>
-      prev.includes(moduleKey)
-        ? prev.filter(m => m !== moduleKey)
-        : [...prev, moduleKey]
-    );
-  };
-
-  const selectAllModules = () => {
-    setSelectedModules(AVAILABLE_MODULES.map(m => m.key));
-  };
-
-  const clearAllModules = () => {
-    setSelectedModules([]);
   };
 
   const handleResetPassword = async () => {
@@ -370,59 +334,17 @@ export function TenantDetailsModal({ tenant, open, onOpenChange }: TenantDetails
             )}
           </TabsContent>
 
-          {/* Aba Módulos */}
+          {/* Aba Módulos - Agora usando TenantModulesTree */}
           <TabsContent value="modulos" className="space-y-4 mt-4">
             {modulesLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin" />
               </div>
             ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Selecione os módulos habilitados para este tenant
-                  </p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={selectAllModules}>
-                      Selecionar Todos
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={clearAllModules}>
-                      Limpar
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-2">
-                  {AVAILABLE_MODULES.map((module) => (
-                    <div
-                      key={module.key}
-                      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                        selectedModules.includes(module.key)
-                          ? 'border-primary bg-primary/5'
-                          : 'hover:bg-muted/50'
-                      }`}
-                      onClick={() => toggleModule(module.key)}
-                    >
-                      <Checkbox
-                        checked={selectedModules.includes(module.key)}
-                        onCheckedChange={() => toggleModule(module.key)}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm">{module.label}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {module.description}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-lg bg-muted p-3">
-                  <p className="text-sm">
-                    <strong>{selectedModules.length}</strong> de {AVAILABLE_MODULES.length} módulos habilitados
-                  </p>
-                </div>
-              </>
+              <TenantModulesTree
+                modules={selectedModules}
+                onChange={setSelectedModules}
+              />
             )}
           </TabsContent>
         </Tabs>

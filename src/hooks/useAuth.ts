@@ -41,7 +41,7 @@ export function useAuth() {
     }
   }, [setProfile, setTenantId]);
 
-  const fetchTenant = useCallback(async (tenantId: string) => {
+  const fetchTenant = useCallback(async (tenantId: string): Promise<Tenant | null> => {
     const { data, error } = await supabase
       .from('tenants')
       .select('*')
@@ -50,7 +50,9 @@ export function useAuth() {
 
     if (!error && data) {
       setTenant(data as Tenant);
+      return data as Tenant;
     }
+    return null;
   }, [setTenant]);
 
   const fetchRoles = useCallback(async (userId: string) => {
@@ -137,7 +139,18 @@ export function useAuth() {
                 setProfile(profileData as Profile);
                 if (profileData.tenant_id) {
                   setTenantId(profileData.tenant_id);
-                  fetchTenant(profileData.tenant_id);
+                  const tenantData = await fetchTenant(profileData.tenant_id);
+                  
+                  // FASE 2: Validar se o tenant está ativo
+                  if (tenantData && tenantData.is_active === false) {
+                    console.log('[useAuth] Tenant is deactivated, logging out');
+                    // Limpar estado e fazer logout
+                    reset();
+                    await supabase.auth.signOut();
+                    // Toast será mostrado após o redirect
+                    window.location.href = '/auth?error=tenant_inactive';
+                    return;
+                  }
                 }
               }
               
@@ -172,7 +185,16 @@ export function useAuth() {
           setProfile(profileData as Profile);
           if (profileData.tenant_id) {
             setTenantId(profileData.tenant_id);
-            fetchTenant(profileData.tenant_id);
+            const tenantData = await fetchTenant(profileData.tenant_id);
+            
+            // FASE 2: Validar se o tenant está ativo (check inicial)
+            if (tenantData && tenantData.is_active === false) {
+              console.log('[useAuth] Tenant is deactivated on initial load, logging out');
+              reset();
+              await supabase.auth.signOut();
+              window.location.href = '/auth?error=tenant_inactive';
+              return;
+            }
           }
         }
         

@@ -1,11 +1,21 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { useUserStore } from '@/store/userStore';
+import { toast } from 'sonner';
 
 export default function Auth() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { session, profile, tenantId } = useUserStore();
+
+  // Handle tenant_inactive error from redirect
+  useEffect(() => {
+    const error = searchParams.get('error');
+    if (error === 'tenant_inactive') {
+      toast.error('Sua empresa está temporariamente desativada. Entre em contato com o suporte.');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (session && profile) {
