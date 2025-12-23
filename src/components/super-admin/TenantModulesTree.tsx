@@ -11,21 +11,25 @@ interface TenantModulesTreeProps {
 }
 
 // Mapeamento de href para module_key (chaves normalizadas com underscore)
-function getModuleKey(item: MenuItem): string {
+// IMPORTANTE: Itens sem href (menus cascata) NÃO geram module_key próprio
+// Apenas seus filhos com href são salvos no banco
+function getModuleKey(item: MenuItem): string | null {
   if (!item.href) {
-    // Para menus cascata sem href, usar o id normalizado
-    return normalizeModuleKey(item.id);
+    // Menus cascata (sem href) não geram chave própria
+    return null;
   }
   // Usa a função de normalização padrão
-  return normalizeModuleKeyFromHref(item.href) || normalizeModuleKey(item.id);
+  return normalizeModuleKeyFromHref(item.href);
 }
 
-// Obter todos os module keys de um item e seus filhos (deduplicados)
+// Obter todos os module keys VÁLIDOS de um item e seus filhos (deduplicados)
+// Ignora itens que retornam null (menus cascata)
 function getAllChildModules(item: MenuItem): string[] {
   const keysSet = new Set<string>();
   
-  if (item.href || item.permission) {
-    keysSet.add(getModuleKey(item));
+  const key = getModuleKey(item);
+  if (key) {
+    keysSet.add(key);
   }
   
   if (item.children) {
@@ -56,14 +60,18 @@ function MenuItemRow({
   const hasChildren = item.children && item.children.length > 0;
   const isExpanded = expandedItems.has(item.id);
   const moduleKey = getModuleKey(item);
-  const isEnabled = enabledModules.has(moduleKey);
+  const isEnabled = moduleKey ? enabledModules.has(moduleKey) : false;
   
   const isClickable = !!item.href || hasChildren;
   
-  // Contar filhos habilitados (usando chaves únicas)
+  // Contar filhos habilitados (usando chaves únicas e válidas)
   const childModuleKeys = useMemo(() => {
     if (!hasChildren) return [];
-    return [...new Set(item.children!.map(child => getModuleKey(child)))];
+    return [...new Set(
+      item.children!
+        .map(child => getModuleKey(child))
+        .filter((k): k is string => k !== null)
+    )];
   }, [item.children, hasChildren]);
   
   const enabledChildCount = childModuleKeys.filter(k => enabledModules.has(k)).length;
@@ -136,8 +144,12 @@ function MenuItemRow({
             <Switch
               checked={isEnabled}
               onCheckedChange={(checked) => {
-                onToggle(moduleKey, checked);
+                // Se o item tem key própria, toggle
+                if (moduleKey) {
+                  onToggle(moduleKey, checked);
+                }
                 
+                // Se tem filhos, toggle todos os filhos
                 if (hasChildren && item.children) {
                   const allChildKeys = getAllChildModules(item);
                   allChildKeys.forEach(k => onToggle(k, checked));
