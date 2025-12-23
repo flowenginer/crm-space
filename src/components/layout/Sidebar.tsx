@@ -29,6 +29,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AvailabilityToggle } from './AvailabilityToggle';
+import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -55,6 +56,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { data: internalChatUnreadCount = 0 } = useInternalChatUnreadCount();
   const { data: internalEmailUnreadCount = 0 } = useInternalEmailUnreadCount();
   const { data: callbacksCount } = usePendingCallbacksCount();
+  const { data: isSuperAdmin = false } = useCurrentUserIsSuperAdmin();
   
   // Carregar menu do banco de dados
   const { data: menuHierarchy = [], isLoading: menuLoading } = useMenuHierarchy();
@@ -118,6 +120,9 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       // Verificar se está ativo
       if (!item.is_active) return null;
       
+      // Filtrar item Super Admin para não-super-admins
+      if (item.href === '/super-admin' && !isSuperAdmin) return null;
+      
       // Admin vê tudo
       if (isAdmin) {
         // Filtrar children também
@@ -159,7 +164,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     return menuHierarchy
       .map(filterItem)
       .filter((item): item is MenuItem => item !== null);
-  }, [menuHierarchy, isFullyLoaded, isAdmin, hasPermission, userRole]);
+  }, [menuHierarchy, isFullyLoaded, isAdmin, hasPermission, userRole, isSuperAdmin]);
 
   const toggleExpanded = (id: string) => {
     setExpandedMenus(prev => {
