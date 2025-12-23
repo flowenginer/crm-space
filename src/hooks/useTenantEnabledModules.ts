@@ -1,7 +1,33 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export function useTenantEnabledModules() {
+  const queryClient = useQueryClient();
+
+  // Realtime listener para invalidar cache quando módulos mudam
+  useEffect(() => {
+    const channel = supabase
+      .channel('tenant-modules-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tenant_modules',
+        },
+        (payload) => {
+          console.log('[useTenantEnabledModules] Realtime update detected:', payload);
+          queryClient.invalidateQueries({ queryKey: ['tenant-enabled-modules'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   return useQuery({
     queryKey: ['tenant-enabled-modules'],
     queryFn: async () => {
@@ -17,8 +43,8 @@ export function useTenantEnabledModules() {
       console.log('[useTenantEnabledModules] Enabled modules:', Array.from(modules));
       return modules;
     },
-    staleTime: 5 * 60 * 1000, // 5 minutos
-    gcTime: 10 * 60 * 1000,   // 10 minutos
-    refetchOnWindowFocus: false,
+    staleTime: 30 * 1000,      // 30 segundos (reduzido)
+    gcTime: 5 * 60 * 1000,     // 5 minutos
+    refetchOnWindowFocus: true, // Revalidar ao voltar para aba
   });
 }
