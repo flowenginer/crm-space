@@ -139,20 +139,9 @@ export function useAuth() {
                 console.log('[useAuth] Profile loaded:', profileData.id, 'tenant:', profileData.tenant_id);
                 setProfile(profileData as Profile);
                 
-                // FASE 2: Verificar se está no tenant default sem ser super admin
-                const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
-                if (profileData.tenant_id === DEFAULT_TENANT_ID) {
-                  // Verificar se é super admin
-                  const { data: isSuperAdmin } = await supabase.rpc('current_user_is_super_admin');
-                  if (!isSuperAdmin) {
-                    console.log('[useAuth] User in default tenant without super admin role, logging out');
-                    reset();
-                    await supabase.auth.signOut();
-                    window.location.href = '/auth?error=invalid_tenant';
-                    return;
-                  }
-                }
-                
+                // NOTE: Não bloquear login por estar no tenant "default".
+                // Este tenant é válido (ex: Space Sports) e bloquear aqui derruba usuários corretamente vinculados.
+                // (Mantemos apenas a validação de tenant inativo mais abaixo.)
                 if (profileData.tenant_id) {
                   setTenantId(profileData.tenant_id);
                   const tenantData = await fetchTenant(profileData.tenant_id);
@@ -198,19 +187,9 @@ export function useAuth() {
         if (profileData) {
           setProfile(profileData as Profile);
           
-          // FASE 2: Verificar se está no tenant default sem ser super admin
-          const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
-          if (profileData.tenant_id === DEFAULT_TENANT_ID) {
-            const { data: isSuperAdmin } = await supabase.rpc('current_user_is_super_admin');
-            if (!isSuperAdmin) {
-              console.log('[useAuth] User in default tenant without super admin role on initial load, logging out');
-              reset();
-              await supabase.auth.signOut();
-              window.location.href = '/auth?error=invalid_tenant';
-              return;
-            }
-          }
-          
+          // NOTE: Não bloquear login por estar no tenant "default".
+          // Este tenant é válido (ex: Space Sports) e bloquear aqui derruba usuários corretamente vinculados.
+          // (Mantemos apenas a validação de tenant inativo mais abaixo.)
           if (profileData.tenant_id) {
             setTenantId(profileData.tenant_id);
             const tenantData = await fetchTenant(profileData.tenant_id);
