@@ -3,7 +3,9 @@ import { useSuperAdminTenants, useUpdateTenant, TenantWithStats } from '@/hooks/
 import { TenantStatsCards } from '@/components/super-admin/TenantStatsCards';
 import { TenantsTable } from '@/components/super-admin/TenantsTable';
 import { TenantDetailsModal } from '@/components/super-admin/TenantDetailsModal';
-import { Crown, Loader2 } from 'lucide-react';
+import { AdminManagementSection } from '@/components/super-admin/AdminManagementSection';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Crown, Building, Shield, Loader2 } from 'lucide-react';
 
 export default function SuperAdminPanel() {
   const { data: tenants = [], isLoading } = useSuperAdminTenants();
@@ -39,20 +41,39 @@ export default function SuperAdminPanel() {
         </div>
         <div>
           <h1 className="text-2xl font-bold">Super Admin Panel</h1>
-          <p className="text-muted-foreground">Gerencie todos os tenants da plataforma</p>
+          <p className="text-muted-foreground">Gerencie todos os tenants e administradores da plataforma</p>
         </div>
       </div>
 
       <TenantStatsCards tenants={tenants} />
 
-      <div className="bg-card rounded-lg border p-6">
-        <h2 className="text-lg font-semibold mb-4">Tenants</h2>
-        <TenantsTable
-          tenants={tenants}
-          onEdit={handleEdit}
-          onToggleStatus={handleToggleStatus}
-        />
-      </div>
+      <Tabs defaultValue="tenants" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="tenants" className="gap-2">
+            <Building className="h-4 w-4" />
+            Tenants
+          </TabsTrigger>
+          <TabsTrigger value="admins" className="gap-2">
+            <Shield className="h-4 w-4" />
+            Administradores
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="tenants">
+          <div className="bg-card rounded-lg border p-6">
+            <h2 className="text-lg font-semibold mb-4">Tenants</h2>
+            <TenantsTable
+              tenants={tenants}
+              onEdit={handleEdit}
+              onToggleStatus={handleToggleStatus}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="admins">
+          <AdminManagementSection />
+        </TabsContent>
+      </Tabs>
 
       <TenantDetailsModal
         tenant={selectedTenant}
