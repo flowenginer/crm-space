@@ -12,6 +12,7 @@ interface RoleDefinition {
   permissions: Record<string, Record<string, boolean>>;
   order_position: number;
   is_system: boolean;
+  tenant_id: string;
 }
 
 // Suporta roles conhecidos + qualquer novo role criado dinamicamente
@@ -25,12 +26,13 @@ interface UserProfile {
   is_active: boolean | null;
   can_view_all_conversations: boolean | null;
   can_transfer_freely: boolean | null;
+  tenant_id: string | null;
 }
 
 export function usePermissions() {
   const { user } = useAuth();
 
-  // Fetch user profile with role
+  // Fetch user profile with role AND tenant_id
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ['profile-permissions', user?.id],
     staleTime: 30000, // 30 seconds cache for faster permission updates
@@ -40,7 +42,7 @@ export function usePermissions() {
       
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, role, permissions, department_id, is_active, can_view_all_conversations, can_transfer_freely')
+        .select('id, role, permissions, department_id, is_active, can_view_all_conversations, can_transfer_freely, tenant_id')
         .eq('id', user.id)
         .maybeSingle();
       
@@ -73,24 +75,25 @@ export function usePermissions() {
     enabled: !!user?.id,
   });
 
-  // Fetch role definition
+  // Fetch role definition - FILTERED BY TENANT_ID
   const { data: roleDefinition, isLoading: roleLoading } = useQuery({
-    queryKey: ['roleDefinition', profile?.role],
+    queryKey: ['roleDefinition', profile?.role, profile?.tenant_id],
     staleTime: 30000, // 30 seconds cache for faster permission updates
     refetchOnWindowFocus: true,
     queryFn: async () => {
-      if (!profile?.role) return null;
+      if (!profile?.role || !profile?.tenant_id) return null;
       
       const { data, error } = await supabase
         .from('role_definitions')
         .select('*')
         .eq('role_key', profile.role)
+        .eq('tenant_id', profile.tenant_id)
         .maybeSingle();
       
       if (error) throw error;
       return data as RoleDefinition | null;
     },
-    enabled: !!profile?.role,
+    enabled: !!profile?.role && !!profile?.tenant_id,
   });
 
   // Determine if fully loaded (profile + roleDefinition for non-admins)

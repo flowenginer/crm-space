@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useCurrentTenantId } from '@/hooks/useTenant';
 
 export interface MenuItem {
   id: string;
@@ -15,6 +16,7 @@ export interface MenuItem {
   show_badge: string | null;
   created_at: string;
   updated_at: string;
+  tenant_id?: string;
   children?: MenuItem[];
 }
 
@@ -30,20 +32,26 @@ export interface MenuItemInput {
   show_badge?: string | null;
 }
 
-// Hook para buscar todos os itens de menu
+// Hook para buscar todos os itens de menu - FILTRADO POR TENANT
 export function useMenuItems() {
+  const { data: tenantId } = useCurrentTenantId();
+  
   return useQuery({
-    queryKey: ['menu-items'],
+    queryKey: ['menu-items', tenantId],
     queryFn: async () => {
+      if (!tenantId) return [];
+      
       const { data, error } = await supabase
         .from('menu_items')
         .select('*')
+        .eq('tenant_id', tenantId)
         .order('position', { ascending: true });
 
       if (error) throw error;
       return data as MenuItem[];
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
+    enabled: !!tenantId,
   });
 }
 
