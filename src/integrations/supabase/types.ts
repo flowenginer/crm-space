@@ -8188,12 +8188,9 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
-          max_contacts: number
-          max_users: number
           name: string
           plan_type: string
           slug: string
-          trial_ends_at: string
           user_count: number
         }[]
       }
