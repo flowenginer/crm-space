@@ -26,18 +26,33 @@ export interface PermissionDefinition {
 }
 
 export function useRoles() {
-  const { data: tenantId } = useCurrentTenantId();
+  const { data: tenantId, isLoading: tenantLoading } = useCurrentTenantId();
   
   return useQuery({
     queryKey: ['role_definitions', tenantId],
     queryFn: async () => {
-      if (!tenantId) return [];
+      let tid = tenantId;
+      
+      // Fallback: get tenantId directly if not available
+      if (!tid) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('tenant_id')
+            .eq('id', user.id)
+            .single();
+          tid = profile?.tenant_id;
+        }
+      }
+      
+      if (!tid) return [];
       
       // Buscar roles APENAS do tenant atual
       const { data: roles, error } = await supabase
         .from('role_definitions')
         .select('*')
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', tid)
         .order('order_position', { ascending: true });
 
       if (error) throw error;
@@ -46,7 +61,7 @@ export function useRoles() {
       const { data: profiles } = await supabase
         .from('profiles')
         .select('role')
-        .eq('tenant_id', tenantId);
+        .eq('tenant_id', tid);
 
       const roleCounts: Record<string, number> = {};
       profiles?.forEach(p => {
@@ -60,7 +75,7 @@ export function useRoles() {
         user_count: roleCounts[role.role_key] || 0
       }));
     },
-    enabled: !!tenantId,
+    enabled: !tenantLoading,
   });
 }
 

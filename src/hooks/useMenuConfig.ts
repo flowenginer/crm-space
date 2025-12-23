@@ -34,24 +34,39 @@ export interface MenuItemInput {
 
 // Hook para buscar todos os itens de menu - FILTRADO POR TENANT
 export function useMenuItems() {
-  const { data: tenantId } = useCurrentTenantId();
+  const { data: tenantId, isLoading: tenantLoading } = useCurrentTenantId();
   
   return useQuery({
     queryKey: ['menu-items', tenantId],
     queryFn: async () => {
-      if (!tenantId) return [];
+      let tid = tenantId;
+      
+      // Fallback: get tenantId directly if not available
+      if (!tid) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('tenant_id')
+            .eq('id', user.id)
+            .single();
+          tid = profile?.tenant_id;
+        }
+      }
+      
+      if (!tid) return [];
       
       const { data, error } = await supabase
         .from('menu_items')
         .select('*')
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', tid)
         .order('position', { ascending: true });
 
       if (error) throw error;
       return data as MenuItem[];
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
-    enabled: !!tenantId,
+    enabled: !tenantLoading,
   });
 }
 
