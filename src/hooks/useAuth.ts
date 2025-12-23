@@ -65,28 +65,40 @@ export function useAuth() {
   }, [setRoles]);
 
   useEffect(() => {
+    let previousUserId: string | null = null;
+    
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        console.log('[useAuth] onAuthStateChange:', event, session?.user?.id);
+        const currentUserId = session?.user?.id ?? null;
         
-        // CRITICAL: Clear React Query cache on auth changes to prevent cross-tenant data leakage
+        // Only log and process if there's an actual change
+        console.log('[useAuth] onAuthStateChange:', event, 'userId:', currentUserId);
+        
+        // CRITICAL: Clear React Query cache on SIGNED_OUT
         if (event === 'SIGNED_OUT') {
           console.log('[useAuth] SIGNED_OUT - Clearing all query cache');
           resetQueryCache();
+          previousUserId = null;
         }
         
-        // CRITICAL: Clear old state BEFORE setting new session to prevent ghost data
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          console.log('[useAuth] SIGNED_IN/TOKEN_REFRESHED - Resetting query cache and state');
-          // Reset React Query cache to prevent stale data from previous tenant
-          resetQueryCache();
-          // Reset state immediately to prevent stale data from previous session
-          setProfile(null);
-          setTenant(null);
-          setTenantId(null);
-          setRoles([]);
+        // Only reset cache on SIGNED_IN if user actually changed (not TOKEN_REFRESHED with same user)
+        if (event === 'SIGNED_IN') {
+          // Only reset if this is a different user than before
+          if (previousUserId !== null && previousUserId !== currentUserId) {
+            console.log('[useAuth] User changed - Resetting query cache and state');
+            resetQueryCache();
+            setProfile(null);
+            setTenant(null);
+            setTenantId(null);
+            setRoles([]);
+          }
         }
+        
+        // TOKEN_REFRESHED should NOT reset cache - it's the same session
+        // This was causing constant refreshes when the token auto-renewed
+        
+        previousUserId = currentUserId;
         
         setSession(session as any);
         setUser(session?.user as any ?? null);
