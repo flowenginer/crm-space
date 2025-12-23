@@ -156,6 +156,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "active_rescues_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "active_rescues_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -412,6 +419,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "bulk_dispatch_contacts_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "bulk_dispatch_contacts_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -584,6 +598,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -1007,6 +1028,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "contact_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "contact_requests_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -1068,6 +1096,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_tags_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -1475,6 +1510,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "conversations_department_id_fkey"
             columns: ["department_id"]
             isOneToOne: false
@@ -1774,6 +1816,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -2268,6 +2317,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "financial_transactions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "financial_transactions_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
@@ -2469,6 +2525,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_executions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -3466,6 +3529,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "internal_emails_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "internal_emails_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -3701,6 +3771,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "lead_assignment_history_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "lead_assignment_history_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -3763,6 +3840,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_status_history_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -4037,6 +4121,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "messages_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -4197,6 +4288,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "meta_ads_meta_account_id_fkey"
+            columns: ["meta_account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "meta_ads_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -4258,6 +4356,13 @@ export type Database = {
             columns: ["meta_account_id"]
             isOneToOne: false
             referencedRelation: "meta_ad_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_adsets_meta_account_id_fkey"
+            columns: ["meta_account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -4393,6 +4498,13 @@ export type Database = {
             columns: ["meta_account_id"]
             isOneToOne: false
             referencedRelation: "meta_ad_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaigns_meta_account_id_fkey"
+            columns: ["meta_account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -4898,6 +5010,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "orders_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orders_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -5024,6 +5143,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_links_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -6225,6 +6351,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "quote_expiration_notifications_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "quote_expiration_notifications_paused_by_fkey"
             columns: ["paused_by"]
             isOneToOne: false
@@ -6458,6 +6591,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -6822,6 +6962,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -7992,7 +8139,211 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      contacts_safe: {
+        Row: {
+          assigned_to: string | null
+          avatar_url: string | null
+          birth_date: string | null
+          blocked_reason: string | null
+          city: string | null
+          contact_type: string | null
+          country: string | null
+          cpf_cnpj: string | null
+          created_at: string | null
+          custom_fields: Json | null
+          department_id: string | null
+          email: string | null
+          first_contact_at: string | null
+          full_name: string | null
+          id: string | null
+          is_blocked: boolean | null
+          is_online: boolean | null
+          is_typing: boolean | null
+          last_interaction_at: string | null
+          last_seen_at: string | null
+          lead_score: number | null
+          lead_status: string | null
+          negotiated_value: number | null
+          notes: string | null
+          number: string | null
+          origin: string | null
+          origin_campaign: string | null
+          person_type: string | null
+          phone: string | null
+          segment_id: string | null
+          state: string | null
+          street: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          avatar_url?: string | null
+          birth_date?: never
+          blocked_reason?: string | null
+          city?: string | null
+          contact_type?: string | null
+          country?: string | null
+          cpf_cnpj?: never
+          created_at?: string | null
+          custom_fields?: Json | null
+          department_id?: string | null
+          email?: string | null
+          first_contact_at?: string | null
+          full_name?: string | null
+          id?: string | null
+          is_blocked?: boolean | null
+          is_online?: boolean | null
+          is_typing?: boolean | null
+          last_interaction_at?: string | null
+          last_seen_at?: string | null
+          lead_score?: number | null
+          lead_status?: string | null
+          negotiated_value?: number | null
+          notes?: string | null
+          number?: never
+          origin?: string | null
+          origin_campaign?: string | null
+          person_type?: string | null
+          phone?: string | null
+          segment_id?: string | null
+          state?: string | null
+          street?: never
+          tenant_id?: string | null
+          updated_at?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          avatar_url?: string | null
+          birth_date?: never
+          blocked_reason?: string | null
+          city?: string | null
+          contact_type?: string | null
+          country?: string | null
+          cpf_cnpj?: never
+          created_at?: string | null
+          custom_fields?: Json | null
+          department_id?: string | null
+          email?: string | null
+          first_contact_at?: string | null
+          full_name?: string | null
+          id?: string | null
+          is_blocked?: boolean | null
+          is_online?: boolean | null
+          is_typing?: boolean | null
+          last_interaction_at?: string | null
+          last_seen_at?: string | null
+          lead_score?: number | null
+          lead_status?: string | null
+          negotiated_value?: number | null
+          notes?: string | null
+          number?: never
+          origin?: string | null
+          origin_campaign?: string | null
+          person_type?: string | null
+          phone?: string | null
+          segment_id?: string | null
+          state?: string | null
+          street?: never
+          tenant_id?: string | null
+          updated_at?: string | null
+          zip_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contacts_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "segments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_ad_accounts_safe: {
+        Row: {
+          account_id: string | null
+          account_name: string | null
+          business_id: string | null
+          created_at: string | null
+          currency: string | null
+          has_access_token: boolean | null
+          has_refresh_token: boolean | null
+          id: string | null
+          is_active: boolean | null
+          last_sync_at: string | null
+          tenant_id: string | null
+          timezone: string | null
+          token_expires_at: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          account_name?: string | null
+          business_id?: string | null
+          created_at?: string | null
+          currency?: string | null
+          has_access_token?: never
+          has_refresh_token?: never
+          id?: string | null
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          tenant_id?: string | null
+          timezone?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          account_name?: string | null
+          business_id?: string | null
+          created_at?: string | null
+          currency?: string | null
+          has_access_token?: never
+          has_refresh_token?: never
+          id?: string | null
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          tenant_id?: string | null
+          timezone?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ad_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       accept_invitation: {
@@ -8537,6 +8888,14 @@ export type Database = {
           lead_count: number
         }[]
       }
+      get_meta_account_tokens: {
+        Args: { p_account_id: string }
+        Returns: {
+          access_token: string
+          refresh_token: string
+          token_expires_at: string
+        }[]
+      }
       get_no_tag_conversation_count: {
         Args: {
           p_agent_id?: string
@@ -8759,6 +9118,7 @@ export type Database = {
       is_module_enabled: { Args: { p_module_key: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id?: string }; Returns: boolean }
       is_tenant_owner: { Args: { _user_id?: string }; Returns: boolean }
+      mask_cpf_cnpj: { Args: { p_cpf_cnpj: string }; Returns: string }
       merge_duplicate_contacts: {
         Args: {
           p_duplicate_contact_id: string
