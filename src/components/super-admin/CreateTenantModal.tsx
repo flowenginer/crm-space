@@ -1,0 +1,340 @@
+import { useState, useMemo } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useCreateTenant } from '@/hooks/useCreateTenant';
+import { Loader2, Building, User, Settings, Eye, EyeOff } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+interface CreateTenantModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+const ALL_MODULES = [
+  { key: 'conversations', label: 'Conversas', description: 'WhatsApp e mensagens' },
+  { key: 'crm', label: 'CRM', description: 'Pipeline de vendas' },
+  { key: 'contacts', label: 'Contatos', description: 'Gestão de contatos' },
+  { key: 'orders', label: 'Pedidos', description: 'Gestão de pedidos' },
+  { key: 'quotes', label: 'Orçamentos', description: 'Criação de orçamentos' },
+  { key: 'products', label: 'Produtos', description: 'Catálogo de produtos' },
+  { key: 'financial', label: 'Financeiro', description: 'Controle financeiro' },
+  { key: 'reports', label: 'Relatórios', description: 'Dashboard e métricas' },
+  { key: 'campaigns', label: 'Campanhas', description: 'Meta Ads e campanhas' },
+  { key: 'gamification', label: 'Gamificação', description: 'Rankings e conquistas' },
+  { key: 'automations', label: 'Automações', description: 'Fluxos automatizados' },
+  { key: 'bulk_dispatch', label: 'Disparo em Massa', description: 'Envio em lote' },
+  { key: 'internal_chat', label: 'Chat Interno', description: 'Comunicação da equipe' },
+  { key: 'internal_email', label: 'Email Interno', description: 'Caixas compartilhadas' },
+  { key: 'live_monitor', label: 'Monitor ao Vivo', description: 'Supervisão em tempo real' },
+  { key: 'webhooks', label: 'Webhooks', description: 'Integrações via API' },
+  { key: 'whatsapp_channels', label: 'Canais WhatsApp', description: 'Gerenciar instâncias' },
+];
+
+export function CreateTenantModal({ open, onOpenChange }: CreateTenantModalProps) {
+  const createTenant = useCreateTenant();
+  const [showPassword, setShowPassword] = useState(false);
+  
+  // Form state
+  const [tenantName, setTenantName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [planType, setPlanType] = useState<'free' | 'pro' | 'enterprise'>('pro');
+  const [maxUsers, setMaxUsers] = useState(10);
+  const [maxContacts, setMaxContacts] = useState(5000);
+  const [trialDays, setTrialDays] = useState<number | undefined>(undefined);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminName, setAdminName] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [enabledModules, setEnabledModules] = useState<string[]>(
+    ALL_MODULES.map(m => m.key)
+  );
+
+  // Auto-generate slug from tenant name
+  const generatedSlug = useMemo(() => {
+    return tenantName
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }, [tenantName]);
+
+  const handleTenantNameChange = (value: string) => {
+    setTenantName(value);
+    if (!slug || slug === generatedSlug) {
+      setSlug(value
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, ''));
+    }
+  };
+
+  const toggleModule = (moduleKey: string) => {
+    setEnabledModules(prev => 
+      prev.includes(moduleKey)
+        ? prev.filter(m => m !== moduleKey)
+        : [...prev, moduleKey]
+    );
+  };
+
+  const selectAllModules = () => {
+    setEnabledModules(ALL_MODULES.map(m => m.key));
+  };
+
+  const deselectAllModules = () => {
+    setEnabledModules([]);
+  };
+
+  const handleSubmit = async () => {
+    if (!tenantName || !slug || !adminEmail || !adminName || !adminPassword) {
+      return;
+    }
+
+    await createTenant.mutateAsync({
+      tenantName,
+      slug,
+      planType,
+      maxUsers,
+      maxContacts,
+      trialDays,
+      adminEmail,
+      adminName,
+      adminPassword,
+      enabledModules
+    });
+
+    // Reset form
+    setTenantName('');
+    setSlug('');
+    setPlanType('pro');
+    setMaxUsers(10);
+    setMaxContacts(5000);
+    setTrialDays(undefined);
+    setAdminEmail('');
+    setAdminName('');
+    setAdminPassword('');
+    setEnabledModules(ALL_MODULES.map(m => m.key));
+    
+    onOpenChange(false);
+  };
+
+  const isValid = tenantName && slug && adminEmail && adminName && adminPassword.length >= 6;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Building className="h-5 w-5" />
+            Criar Novo Tenant
+          </DialogTitle>
+        </DialogHeader>
+
+        <Tabs defaultValue="tenant" className="mt-4">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="tenant" className="gap-2">
+              <Building className="h-4 w-4" />
+              Empresa
+            </TabsTrigger>
+            <TabsTrigger value="admin" className="gap-2">
+              <User className="h-4 w-4" />
+              Administrador
+            </TabsTrigger>
+            <TabsTrigger value="modules" className="gap-2">
+              <Settings className="h-4 w-4" />
+              Módulos
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="tenant" className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="tenantName">Nome da Empresa *</Label>
+                <Input
+                  id="tenantName"
+                  value={tenantName}
+                  onChange={(e) => handleTenantNameChange(e.target.value)}
+                  placeholder="Ex: Minha Empresa"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="slug">Slug (URL) *</Label>
+                <Input
+                  id="slug"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  placeholder="minha-empresa"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="planType">Plano</Label>
+                <Select value={planType} onValueChange={(v) => setPlanType(v as typeof planType)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="pro">Pro</SelectItem>
+                    <SelectItem value="enterprise">Enterprise</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxUsers">Limite de Usuários</Label>
+                <Input
+                  id="maxUsers"
+                  type="number"
+                  value={maxUsers}
+                  onChange={(e) => setMaxUsers(parseInt(e.target.value) || 0)}
+                  min={1}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxContacts">Limite de Contatos</Label>
+                <Input
+                  id="maxContacts"
+                  type="number"
+                  value={maxContacts}
+                  onChange={(e) => setMaxContacts(parseInt(e.target.value) || 0)}
+                  min={100}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="trialDays">Dias de Trial (opcional)</Label>
+              <Input
+                id="trialDays"
+                type="number"
+                value={trialDays || ''}
+                onChange={(e) => setTrialDays(e.target.value ? parseInt(e.target.value) : undefined)}
+                placeholder="Ex: 14"
+                min={1}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="admin" className="space-y-4 mt-4">
+            <p className="text-sm text-muted-foreground">
+              Estes serão os dados de acesso do administrador principal do tenant.
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="adminName">Nome do Administrador *</Label>
+              <Input
+                id="adminName"
+                value={adminName}
+                onChange={(e) => setAdminName(e.target.value)}
+                placeholder="Nome completo"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="adminEmail">Email *</Label>
+              <Input
+                id="adminEmail"
+                type="email"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                placeholder="admin@empresa.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="adminPassword">Senha Inicial * (mín. 6 caracteres)</Label>
+              <div className="relative">
+                <Input
+                  id="adminPassword"
+                  type={showPassword ? 'text' : 'password'}
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  placeholder="••••••"
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="modules" className="space-y-4 mt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Selecione quais módulos estarão disponíveis para este tenant.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={selectAllModules}>
+                  Selecionar Todos
+                </Button>
+                <Button variant="outline" size="sm" onClick={deselectAllModules}>
+                  Limpar
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto">
+              {ALL_MODULES.map((module) => (
+                <div
+                  key={module.key}
+                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    enabledModules.includes(module.key)
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-muted-foreground/50'
+                  }`}
+                  onClick={() => toggleModule(module.key)}
+                >
+                  <Checkbox
+                    checked={enabledModules.includes(module.key)}
+                    onCheckedChange={() => toggleModule(module.key)}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{module.label}</p>
+                    <p className="text-xs text-muted-foreground">{module.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              {enabledModules.length} de {ALL_MODULES.length} módulos selecionados
+            </p>
+          </TabsContent>
+        </Tabs>
+
+        <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={!isValid || createTenant.isPending}
+          >
+            {createTenant.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Criando...
+              </>
+            ) : (
+              'Criar Tenant'
+            )}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
