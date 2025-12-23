@@ -84,17 +84,12 @@ export function useAuth() {
           previousUserId = null;
         }
         
-        // Only reset cache on SIGNED_IN if user actually changed (not TOKEN_REFRESHED with same user)
+        // Reset cache and store on SIGNED_IN to ensure clean state
         if (event === 'SIGNED_IN') {
-          // Only reset if this is a different user than before
-          if (previousUserId !== null && previousUserId !== currentUserId) {
-            console.log('[useAuth] User changed - Resetting query cache and state');
-            resetQueryCache();
-            setProfile(null);
-            setTenant(null);
-            setTenantId(null);
-            setRoles([]);
-          }
+          // ALWAYS reset store and cache on new sign in to prevent stale tenant data
+          console.log('[useAuth] SIGNED_IN - Resetting store and query cache for clean state');
+          reset(); // Clear ALL store state including tenantId
+          resetQueryCache();
         }
         
         // TOKEN_REFRESHED should NOT reset cache - it's the same session

@@ -134,7 +134,9 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
   // Filtrar itens de menu baseado em permissões E módulos do tenant
   const filteredMenuItems = useMemo(() => {
+    // CRITICAL: Aguardar carregamento completo de permissões E módulos
     if (!isFullyLoaded) return [];
+    if (modulesLoading) return []; // Não renderizar até módulos estarem carregados
     
     // Obter permissões de menu do role_definition (funciona como STRICT ALLOWLIST)
     const menuPermissions = (roleDefinition?.permissions as any)?.menu || {};
@@ -248,7 +250,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     
     console.log('[Sidebar] Filtered items:', result.map(i => i.title));
     return result;
-  }, [menuHierarchy, isFullyLoaded, isAdmin, hasPermission, userRole, isSuperAdmin, roleDefinition, tenantEnabledModules]);
+  }, [menuHierarchy, isFullyLoaded, isAdmin, hasPermission, userRole, isSuperAdmin, roleDefinition, tenantEnabledModules, modulesLoading]);
 
   const toggleExpanded = (id: string) => {
     setExpandedMenus(prev => {
