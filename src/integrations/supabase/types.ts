@@ -8411,7 +8411,7 @@ export type Database = {
       }
       delete_tenant_by_super_admin: {
         Args: { p_tenant_id: string }
-        Returns: Json
+        Returns: undefined
       }
       detect_origin_by_message_pattern: {
         Args: { p_message: string }
