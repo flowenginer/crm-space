@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useMenuHierarchy, MenuItem } from '@/hooks/useMenuConfig';
@@ -46,21 +46,35 @@ function MenuItemRow({
   item,
   level = 0,
   enabledModules,
-  onToggle,
+  onToggleBatch,
   expandedItems,
   onToggleExpand,
 }: {
   item: MenuItem;
   level?: number;
   enabledModules: Set<string>;
-  onToggle: (key: string, value: boolean, childKeys?: string[]) => void;
+  onToggleBatch: (keys: string[], value: boolean) => void;
   expandedItems: Set<string>;
   onToggleExpand: (id: string) => void;
 }) {
   const hasChildren = item.children && item.children.length > 0;
   const isExpanded = expandedItems.has(item.id);
   const moduleKey = getModuleKey(item);
-  const isEnabled = moduleKey ? enabledModules.has(moduleKey) : false;
+  
+  // Para itens sem href mas com filhos, verificar se TODOS os filhos estão habilitados
+  const allChildKeys = useMemo(() => getAllChildModules(item), [item]);
+  
+  const isEnabled = useMemo(() => {
+    if (moduleKey) {
+      // Item tem href próprio - verificar se está habilitado
+      return enabledModules.has(moduleKey);
+    }
+    if (hasChildren && allChildKeys.length > 0) {
+      // Menu cascata - está "habilitado" se todos os filhos válidos estão habilitados
+      return allChildKeys.every(k => enabledModules.has(k));
+    }
+    return false;
+  }, [moduleKey, hasChildren, allChildKeys, enabledModules]);
   
   const isClickable = !!item.href || hasChildren;
   
@@ -79,6 +93,36 @@ function MenuItemRow({
   
   // Buscar ícone do Lucide
   const IconComponent = (LucideIcons as any)[item.icon] || LucideIcons.Circle;
+  
+  const handleSwitchChange = useCallback((checked: boolean) => {
+    // Coletar todas as chaves que devem ser alteradas
+    const keysToChange: string[] = [];
+    
+    // Se o item tem key própria, incluir
+    if (moduleKey) {
+      keysToChange.push(moduleKey);
+    }
+    
+    // Se tem filhos, incluir todas as chaves dos filhos
+    if (hasChildren) {
+      allChildKeys.forEach(k => {
+        if (!keysToChange.includes(k)) {
+          keysToChange.push(k);
+        }
+      });
+    }
+    
+    // Chamar toggle em lote (uma única chamada)
+    if (keysToChange.length > 0) {
+      onToggleBatch(keysToChange, checked);
+    }
+  }, [moduleKey, hasChildren, allChildKeys, onToggleBatch]);
+  
+  const handleMarkAllClick = useCallback(() => {
+    const childKeys = getAllChildModules(item);
+    const allEnabled = childKeys.every(k => enabledModules.has(k));
+    onToggleBatch(childKeys, !allEnabled);
+  }, [item, enabledModules, onToggleBatch]);
   
   return (
     <div className="w-full">
@@ -127,11 +171,7 @@ function MenuItemRow({
             {hasChildren && (
               <button
                 type="button"
-                onClick={() => {
-                  const childKeys = getAllChildModules(item);
-                  const allEnabled = childKeys.every(k => enabledModules.has(k));
-                  childKeys.forEach(k => onToggle(k, !allEnabled));
-                }}
+                onClick={handleMarkAllClick}
                 className={`text-xs px-2 py-0.5 rounded transition-colors ${
                   enabledChildCount === totalChildren
                     ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
@@ -143,18 +183,7 @@ function MenuItemRow({
             )}
             <Switch
               checked={isEnabled}
-              onCheckedChange={(checked) => {
-                // Se o item tem key própria, toggle
-                if (moduleKey) {
-                  onToggle(moduleKey, checked);
-                }
-                
-                // Se tem filhos, toggle todos os filhos
-                if (hasChildren && item.children) {
-                  const allChildKeys = getAllChildModules(item);
-                  allChildKeys.forEach(k => onToggle(k, checked));
-                }
-              }}
+              onCheckedChange={handleSwitchChange}
               className="data-[state=checked]:bg-primary"
             />
           </div>
@@ -169,7 +198,7 @@ function MenuItemRow({
               item={child}
               level={level + 1}
               enabledModules={enabledModules}
-              onToggle={onToggle}
+              onToggleBatch={onToggleBatch}
               expandedItems={expandedItems}
               onToggleExpand={onToggleExpand}
             />
@@ -183,15 +212,17 @@ function MenuItemRow({
 export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps) {
   const { data: menuHierarchy = [], isLoading } = useMenuHierarchy();
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const hasInitializedExpand = useRef(false);
   
   // Normalizar os módulos recebidos para o padrão com underscores
   const enabledModules = useMemo(() => {
     return new Set(modules.map(m => normalizeModuleKey(m)));
   }, [modules]);
 
-  // Expandir itens pai por padrão
+  // Expandir itens pai por padrão - APENAS UMA VEZ quando o menu carregar
   useEffect(() => {
-    if (menuHierarchy.length > 0) {
+    if (menuHierarchy.length > 0 && !hasInitializedExpand.current) {
+      hasInitializedExpand.current = true;
       const parentIds = new Set<string>();
       menuHierarchy.forEach(item => {
         if (item.children && item.children.length > 0) {
@@ -202,20 +233,26 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
     }
   }, [menuHierarchy]);
 
-  const handleToggle = (key: string, value: boolean) => {
-    const normalizedKey = normalizeModuleKey(key);
+  // Toggle em lote - recebe array de keys e aplica add/remove de uma só vez
+  const handleToggleBatch = useCallback((keys: string[], value: boolean) => {
+    const normalizedKeys = keys.map(k => normalizeModuleKey(k));
+    
     if (value) {
-      if (!enabledModules.has(normalizedKey)) {
-        // Adiciona apenas se não existir (evita duplicatas)
-        const newModules = [...new Set([...modules.map(m => normalizeModuleKey(m)), normalizedKey])];
-        onChange(newModules);
-      }
+      // Adicionar todas as chaves (usando Set para evitar duplicatas)
+      const currentSet = new Set(modules.map(m => normalizeModuleKey(m)));
+      normalizedKeys.forEach(k => currentSet.add(k));
+      onChange(Array.from(currentSet));
     } else {
-      onChange(modules.map(m => normalizeModuleKey(m)).filter(m => m !== normalizedKey));
+      // Remover todas as chaves
+      const keysToRemove = new Set(normalizedKeys);
+      const newModules = modules
+        .map(m => normalizeModuleKey(m))
+        .filter(m => !keysToRemove.has(m));
+      onChange(newModules);
     }
-  };
+  }, [modules, onChange]);
 
-  const handleToggleExpand = (id: string) => {
+  const handleToggleExpand = useCallback((id: string) => {
     setExpandedItems(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -225,9 +262,9 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
       }
       return next;
     });
-  };
+  }, []);
 
-  const handleToggleAll = (enable: boolean) => {
+  const handleToggleAll = useCallback((enable: boolean) => {
     const allKeysSet = new Set<string>();
     menuHierarchy.forEach(item => {
       getAllChildModules(item).forEach(key => {
@@ -235,10 +272,10 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
       });
     });
     onChange(enable ? Array.from(allKeysSet) : []);
-  };
+  }, [menuHierarchy, onChange]);
 
   // Contar total de módulos ÚNICOS
-  const { uniqueModuleKeys, enabledCount, totalCount, allEnabled } = useMemo(() => {
+  const { enabledCount, totalCount, allEnabled } = useMemo(() => {
     const allKeysSet = new Set<string>();
     menuHierarchy.forEach(item => {
       getAllChildModules(item).forEach(key => {
@@ -251,7 +288,6 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
     const total = uniqueKeys.length;
     
     return {
-      uniqueModuleKeys: uniqueKeys,
       enabledCount: enabled,
       totalCount: total,
       allEnabled: enabled === total && total > 0
@@ -296,7 +332,7 @@ export function TenantModulesTree({ modules, onChange }: TenantModulesTreeProps)
             key={item.id}
             item={item}
             enabledModules={enabledModules}
-            onToggle={handleToggle}
+            onToggleBatch={handleToggleBatch}
             expandedItems={expandedItems}
             onToggleExpand={handleToggleExpand}
           />
