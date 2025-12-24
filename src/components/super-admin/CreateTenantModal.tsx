@@ -5,10 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCreateTenant } from '@/hooks/useCreateTenant';
-import { Loader2, Building, User, Settings, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Building, User, Settings, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TenantModulesTree } from './TenantModulesTree';
 import { useBaseMenuHierarchy } from '@/hooks/useBaseMenuConfig';
+import { toast } from 'sonner';
 
 interface CreateTenantModalProps {
   open: boolean;
@@ -35,6 +36,7 @@ export function CreateTenantModal({ open, onOpenChange }: CreateTenantModalProps
   const createTenant = useCreateTenant();
   const { data: menuHierarchy = [] } = useBaseMenuHierarchy();
   const [showPassword, setShowPassword] = useState(false);
+  const [activeTab, setActiveTab] = useState('tenant');
   
   // Form state
   const [tenantName, setTenantName] = useState('');
@@ -78,52 +80,85 @@ export function CreateTenantModal({ open, onOpenChange }: CreateTenantModalProps
     }
   };
 
+  // Validações por aba
+  const tenantTabValid = tenantName.trim() && slug.trim();
+  const adminTabValid = adminName.trim() && adminEmail.trim() && adminPassword.length >= 6;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailValid = emailRegex.test(adminEmail.trim().toLowerCase());
+
   const handleSubmit = async () => {
     const trimmedEmail = adminEmail.trim().toLowerCase();
     const trimmedName = adminName.trim();
     const trimmedTenantName = tenantName.trim();
     const trimmedSlug = slug.trim().toLowerCase();
     
-    if (!trimmedTenantName || !trimmedSlug || !trimmedEmail || !trimmedName || !adminPassword) {
+    // Validações com feedback
+    if (!trimmedTenantName) {
+      toast.error('Preencha o nome da empresa');
+      setActiveTab('tenant');
       return;
     }
-
-    // Validação básica de email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!trimmedSlug) {
+      toast.error('Preencha o slug');
+      setActiveTab('tenant');
+      return;
+    }
+    if (!trimmedName) {
+      toast.error('Preencha o nome do administrador');
+      setActiveTab('admin');
+      return;
+    }
+    if (!trimmedEmail) {
+      toast.error('Preencha o email do administrador');
+      setActiveTab('admin');
+      return;
+    }
     if (!emailRegex.test(trimmedEmail)) {
+      toast.error('Email inválido');
+      setActiveTab('admin');
+      return;
+    }
+    if (!adminPassword || adminPassword.length < 6) {
+      toast.error('A senha deve ter pelo menos 6 caracteres');
+      setActiveTab('admin');
       return;
     }
 
-    await createTenant.mutateAsync({
-      tenantName: trimmedTenantName,
-      slug: trimmedSlug,
-      planType,
-      maxUsers,
-      maxContacts,
-      trialDays,
-      adminEmail: trimmedEmail,
-      adminName: trimmedName,
-      adminPassword,
-      enabledModules
-    });
+    try {
+      await createTenant.mutateAsync({
+        tenantName: trimmedTenantName,
+        slug: trimmedSlug,
+        planType,
+        maxUsers,
+        maxContacts,
+        trialDays,
+        adminEmail: trimmedEmail,
+        adminName: trimmedName,
+        adminPassword,
+        enabledModules
+      });
 
-    // Reset form
-    setTenantName('');
-    setSlug('');
-    setPlanType('pro');
-    setMaxUsers(10);
-    setMaxContacts(5000);
-    setTrialDays(undefined);
-    setAdminEmail('');
-    setAdminName('');
-    setAdminPassword('');
-    const allKeys = getAllModuleKeysFromHierarchy(menuHierarchy);
-    setEnabledModules(allKeys);
-    
-    onOpenChange(false);
+      // Reset form
+      setTenantName('');
+      setSlug('');
+      setPlanType('pro');
+      setMaxUsers(10);
+      setMaxContacts(5000);
+      setTrialDays(undefined);
+      setAdminEmail('');
+      setAdminName('');
+      setAdminPassword('');
+      const allKeys = getAllModuleKeysFromHierarchy(menuHierarchy);
+      setEnabledModules(allKeys);
+      setActiveTab('tenant');
+      
+      onOpenChange(false);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao criar tenant');
+    }
   };
 
-  const isValid = tenantName && slug && adminEmail && adminName && adminPassword.length >= 6;
+  const isValid = tenantTabValid && adminTabValid && emailValid;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -135,15 +170,21 @@ export function CreateTenantModal({ open, onOpenChange }: CreateTenantModalProps
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="tenant" className="mt-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="tenant" className="gap-2">
+            <TabsTrigger value="tenant" className="gap-2 relative">
               <Building className="h-4 w-4" />
               Empresa
+              {!tenantTabValid && (
+                <AlertCircle className="h-3 w-3 text-destructive absolute -top-1 -right-1" />
+              )}
             </TabsTrigger>
-            <TabsTrigger value="admin" className="gap-2">
+            <TabsTrigger value="admin" className="gap-2 relative">
               <User className="h-4 w-4" />
               Administrador
+              {(!adminTabValid || !emailValid) && (
+                <AlertCircle className="h-3 w-3 text-destructive absolute -top-1 -right-1" />
+              )}
             </TabsTrigger>
             <TabsTrigger value="modules" className="gap-2">
               <Settings className="h-4 w-4" />
