@@ -9117,6 +9117,7 @@ export type Database = {
       is_master: { Args: { _user_id: string }; Returns: boolean }
       is_module_enabled: { Args: { p_module_key: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id?: string }; Returns: boolean }
+      is_super_admin_without_tenant: { Args: never; Returns: boolean }
       is_tenant_owner: { Args: { _user_id?: string }; Returns: boolean }
       mask_cpf_cnpj: { Args: { p_cpf_cnpj: string }; Returns: string }
       merge_duplicate_contacts: {
