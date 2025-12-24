@@ -9357,6 +9357,14 @@ export type Database = {
           total_in_target: number
         }[]
       }
+      sync_menu_items_to_tenant_internal: {
+        Args: { p_source_tenant_id?: string; p_target_tenant_id: string }
+        Returns: {
+          items_copied: number
+          items_skipped: number
+          total_in_target: number
+        }[]
+      }
       sync_menu_to_all_tenants: {
         Args: { p_source_tenant_id: string }
         Returns: {
