@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
       console.error('Error setting owner:', ownerError);
     }
 
-    // 6. Criar configurações de módulos
+    // 6. Criar configurações de módulos (usando upsert para evitar duplicatas)
     if (enabledModules && enabledModules.length > 0) {
       const moduleInserts = enabledModules.map(moduleKey => ({
         tenant_id: tenant.id,
@@ -251,10 +251,15 @@ Deno.serve(async (req) => {
 
       const { error: modulesError } = await supabaseAdmin
         .from('tenant_modules')
-        .insert(moduleInserts);
+        .upsert(moduleInserts, { 
+          onConflict: 'tenant_id,module_key',
+          ignoreDuplicates: true 
+        });
 
       if (modulesError) {
         console.error('Error creating modules:', modulesError);
+      } else {
+        console.log('Tenant modules configured:', enabledModules.length);
       }
     }
 
@@ -372,19 +377,128 @@ Deno.serve(async (req) => {
     }
 
     // 10. Sincronizar menu_items do tenant base para o novo tenant
-    // Usando a função interna que copia toda a estrutura hierárquica correta
-    const { data: menuSyncResult, error: menuSyncError } = await supabaseAdmin.rpc(
-      'sync_menu_items_to_tenant_internal',
-      { 
-        p_target_tenant_id: tenant.id,
-        p_source_tenant_id: '00000000-0000-0000-0000-000000000001'
-      }
-    );
-
-    if (menuSyncError) {
-      console.error('Error syncing menu items:', menuSyncError);
+    // CRÍTICO: Esta etapa deve funcionar para o menu aparecer corretamente
+    console.log('Starting menu sync for tenant:', tenant.id);
+    
+    // Primeiro limpar qualquer menu existente (pode ter sido criado por trigger)
+    const { error: deleteMenuError } = await supabaseAdmin
+      .from('menu_items')
+      .delete()
+      .eq('tenant_id', tenant.id);
+    
+    if (deleteMenuError) {
+      console.error('Error clearing existing menu items:', deleteMenuError);
     } else {
-      console.log('Menu items synced from base tenant:', menuSyncResult);
+      console.log('Cleared existing menu items for tenant');
+    }
+
+    // Copiar itens raiz do tenant base
+    const { data: rootItems, error: rootError } = await supabaseAdmin
+      .from('menu_items')
+      .select('*')
+      .eq('tenant_id', '00000000-0000-0000-0000-000000000001')
+      .is('parent_id', null)
+      .order('position');
+
+    if (rootError) {
+      console.error('Error fetching root menu items:', rootError);
+      return new Response(
+        JSON.stringify({ error: 'Erro ao configurar menu: ' + rootError.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Found', rootItems?.length || 0, 'root items to copy');
+
+    // Mapa para rastrear IDs antigos -> novos
+    const idMap = new Map<string, string>();
+
+    // Inserir itens raiz
+    for (const item of rootItems || []) {
+      const { data: newItem, error: insertError } = await supabaseAdmin
+        .from('menu_items')
+        .insert({
+          tenant_id: tenant.id,
+          title: item.title,
+          href: item.href,
+          icon: item.icon,
+          parent_id: null,
+          position: item.position,
+          permission: item.permission,
+          roles: item.roles,
+          is_active: item.is_active,
+          show_badge: item.show_badge
+        })
+        .select('id')
+        .single();
+
+      if (insertError) {
+        console.error('Error inserting root menu item:', insertError);
+      } else if (newItem) {
+        idMap.set(item.id, newItem.id);
+      }
+    }
+
+    // Copiar itens filhos (nível 1)
+    const { data: childItems, error: childError } = await supabaseAdmin
+      .from('menu_items')
+      .select('*, parent:parent_id(href)')
+      .eq('tenant_id', '00000000-0000-0000-0000-000000000001')
+      .not('parent_id', 'is', null)
+      .order('position');
+
+    if (!childError && childItems) {
+      for (const item of childItems) {
+        // Encontrar o novo parent_id baseado no href do parent original
+        const parentHref = (item.parent as any)?.href;
+        let newParentId = idMap.get(item.parent_id);
+
+        if (!newParentId && parentHref) {
+          // Buscar pelo href se não tiver no mapa
+          const { data: parentData } = await supabaseAdmin
+            .from('menu_items')
+            .select('id')
+            .eq('tenant_id', tenant.id)
+            .eq('href', parentHref)
+            .single();
+          newParentId = parentData?.id;
+        }
+
+        if (newParentId) {
+          const { data: newItem, error: insertError } = await supabaseAdmin
+            .from('menu_items')
+            .insert({
+              tenant_id: tenant.id,
+              title: item.title,
+              href: item.href,
+              icon: item.icon,
+              parent_id: newParentId,
+              position: item.position,
+              permission: item.permission,
+              roles: item.roles,
+              is_active: item.is_active,
+              show_badge: item.show_badge
+            })
+            .select('id')
+            .single();
+
+          if (!insertError && newItem) {
+            idMap.set(item.id, newItem.id);
+          }
+        }
+      }
+    }
+
+    // Verificar quantos itens foram criados
+    const { count: menuCount } = await supabaseAdmin
+      .from('menu_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenant.id);
+
+    console.log('Menu items created for tenant:', menuCount);
+
+    if (!menuCount || menuCount < 10) {
+      console.error('WARNING: Menu sync may have failed, only', menuCount, 'items created');
     }
 
     console.log('Tenant setup complete:', tenant.id);
