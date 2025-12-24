@@ -127,9 +127,24 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     return `menu_${item.id}`;
   };
 
-  // Helper para obter module_key do menu (chave normalizada para tenant_modules)
+  // Helper para obter module_key do menu (usa module_key do banco diretamente)
   const getModuleKey = (item: MenuItem): string | null => {
-    return normalizeModuleKeyFromHref(item.href);
+    // Usar module_key do banco diretamente
+    if ((item as any).module_key) {
+      return (item as any).module_key;
+    }
+    // Fallback para items antigos sem module_key
+    if (!item.href) {
+      return null;
+    }
+    // Gerar module_key a partir do href (mesma lógica do banco)
+    if (item.href === '/') return 'dashboard';
+    return item.href
+      .substring(1)
+      .replace(/\//g, '_')
+      .replace(/-/g, '_')
+      .replace(/\?tab=/g, '_')
+      .replace(/\?/g, '_');
   };
 
   // Filtrar itens de menu baseado em permissões E módulos do tenant

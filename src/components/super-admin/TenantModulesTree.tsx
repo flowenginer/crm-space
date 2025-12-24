@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useBaseMenuHierarchy, useSyncTenantMenu } from '@/hooks/useBaseMenuConfig';
 import { MenuItem } from '@/hooks/useMenuConfig';
 import * as LucideIcons from 'lucide-react';
-import { normalizeModuleKeyFromHref, normalizeModuleKey } from '@/lib/moduleKeys';
+import { normalizeModuleKey } from '@/lib/moduleKeys';
 
 interface TenantModulesTreeProps {
   modules: string[];
@@ -13,12 +13,24 @@ interface TenantModulesTreeProps {
   tenantId?: string; // ID do tenant sendo editado
 }
 
-// Mapeamento de href para module_key (chaves normalizadas com underscore)
+// Obter module_key diretamente do item (já populado no banco)
 function getModuleKey(item: MenuItem): string | null {
+  // Usar module_key do banco diretamente
+  if (item.module_key) {
+    return item.module_key;
+  }
+  // Fallback para items antigos sem module_key
   if (!item.href) {
     return null;
   }
-  return normalizeModuleKeyFromHref(item.href);
+  // Gerar module_key a partir do href (mesma lógica do banco)
+  if (item.href === '/') return 'dashboard';
+  return item.href
+    .substring(1)
+    .replace(/\//g, '_')
+    .replace(/-/g, '_')
+    .replace(/\?tab=/g, '_')
+    .replace(/\?/g, '_');
 }
 
 // Obter todos os module keys VÁLIDOS de um item e seus filhos
