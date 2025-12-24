@@ -249,12 +249,25 @@ Deno.serve(async (req) => {
     if (keysError) {
       console.error('Error fetching base module keys:', keysError);
     } else if (allModuleKeys && allModuleKeys.length > 0) {
+      // LOG DETALHADO para debugging
+      console.log('=== MODULE CONFIGURATION DEBUG ===');
+      console.log('enabledModules from request:', JSON.stringify(enabledModules));
+      console.log('Total module keys from base:', allModuleKeys.length);
+      
       // Criar entrada para CADA module_key: habilitado se selecionado, desabilitado caso contrário
       const moduleInserts = allModuleKeys.map((mk: { module_key: string }) => ({
         tenant_id: tenant.id,
         module_key: mk.module_key,
         is_enabled: enabledModules?.includes(mk.module_key) ?? false
       }));
+
+      // Log dos módulos que serão DESABILITADOS
+      const disabledModules = moduleInserts.filter((m: { is_enabled: boolean }) => !m.is_enabled);
+      console.log('Modules to be DISABLED:', disabledModules.length, disabledModules.map((m: { module_key: string }) => m.module_key));
+      
+      // Log dos módulos que serão HABILITADOS
+      const enabledModulesInsert = moduleInserts.filter((m: { is_enabled: boolean }) => m.is_enabled);
+      console.log('Modules to be ENABLED:', enabledModulesInsert.length);
 
       const { error: modulesError } = await supabaseAdmin
         .from('tenant_modules')
@@ -266,8 +279,7 @@ Deno.serve(async (req) => {
       if (modulesError) {
         console.error('Error creating modules:', modulesError);
       } else {
-        const enabledCount = moduleInserts.filter((m: { is_enabled: boolean }) => m.is_enabled).length;
-        console.log(`Tenant modules configured: ${enabledCount} enabled of ${moduleInserts.length} total`);
+        console.log(`SUCCESS: Tenant modules configured - ${enabledModulesInsert.length} enabled, ${disabledModules.length} disabled of ${moduleInserts.length} total`);
       }
     }
 
