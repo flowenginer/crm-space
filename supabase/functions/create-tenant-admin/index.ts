@@ -157,12 +157,14 @@ Deno.serve(async (req) => {
     console.log('Tenant created:', tenant.id);
 
     // 2. Criar o usuário admin
+    // IMPORTANTE: Passar skip_auto_tenant para evitar que o trigger crie um tenant separado
     const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: adminEmail,
       password: adminPassword,
       email_confirm: true, // Confirmar email automaticamente
       user_metadata: {
-        full_name: adminName
+        full_name: adminName,
+        skip_auto_tenant: true // Evita que o trigger handle_new_user() crie profile/tenant automaticamente
       }
     });
 
