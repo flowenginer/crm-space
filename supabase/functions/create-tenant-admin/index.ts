@@ -88,10 +88,25 @@ Deno.serve(async (req) => {
       enabledModules
     } = body;
 
+    // Sanitização dos inputs
+    const cleanTenantName = tenantName?.trim();
+    const cleanSlug = slug?.trim().toLowerCase();
+    const cleanAdminEmail = adminEmail?.trim().toLowerCase();
+    const cleanAdminName = adminName?.trim();
+
     // Validações
-    if (!tenantName || !slug || !adminEmail || !adminName || !adminPassword) {
+    if (!cleanTenantName || !cleanSlug || !cleanAdminEmail || !cleanAdminName || !adminPassword) {
       return new Response(
         JSON.stringify({ error: 'Campos obrigatórios não preenchidos' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanAdminEmail)) {
+      return new Response(
+        JSON.stringify({ error: 'Formato de email inválido' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
