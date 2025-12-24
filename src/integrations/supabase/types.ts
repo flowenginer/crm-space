@@ -8585,6 +8585,12 @@ export type Database = {
           waiting_response: number
         }[]
       }
+      get_all_base_module_keys: {
+        Args: never
+        Returns: {
+          module_key: string
+        }[]
+      }
       get_all_conversation_counts: {
         Args: {
           p_agent_id?: string
@@ -9275,6 +9281,14 @@ export type Database = {
           max_depth: number
           root_count: number
           total_copied: number
+        }[]
+      }
+      repair_tenant_modules: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          existing_count: number
+          inserted_count: number
+          total_keys: number
         }[]
       }
       search_contacts_for_erp: {

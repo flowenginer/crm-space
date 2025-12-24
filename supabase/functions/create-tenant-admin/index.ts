@@ -241,25 +241,33 @@ Deno.serve(async (req) => {
       console.error('Error setting owner:', ownerError);
     }
 
-    // 6. Criar configurações de módulos (usando upsert para evitar duplicatas)
-    if (enabledModules && enabledModules.length > 0) {
-      const moduleInserts = enabledModules.map(moduleKey => ({
+    // 6. Criar configurações de módulos para TODOS os module_keys
+    // Buscar todos os module_keys do menu base
+    const { data: allModuleKeys, error: keysError } = await supabaseAdmin
+      .rpc('get_all_base_module_keys');
+
+    if (keysError) {
+      console.error('Error fetching base module keys:', keysError);
+    } else if (allModuleKeys && allModuleKeys.length > 0) {
+      // Criar entrada para CADA module_key: habilitado se selecionado, desabilitado caso contrário
+      const moduleInserts = allModuleKeys.map((mk: { module_key: string }) => ({
         tenant_id: tenant.id,
-        module_key: moduleKey,
-        is_enabled: true
+        module_key: mk.module_key,
+        is_enabled: enabledModules?.includes(mk.module_key) ?? false
       }));
 
       const { error: modulesError } = await supabaseAdmin
         .from('tenant_modules')
         .upsert(moduleInserts, { 
           onConflict: 'tenant_id,module_key',
-          ignoreDuplicates: true 
+          ignoreDuplicates: false // Atualizar se já existir
         });
 
       if (modulesError) {
         console.error('Error creating modules:', modulesError);
       } else {
-        console.log('Tenant modules configured:', enabledModules.length);
+        const enabledCount = moduleInserts.filter((m: { is_enabled: boolean }) => m.is_enabled).length;
+        console.log(`Tenant modules configured: ${enabledCount} enabled of ${moduleInserts.length} total`);
       }
     }
 
