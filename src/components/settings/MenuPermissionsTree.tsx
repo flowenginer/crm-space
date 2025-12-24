@@ -55,7 +55,7 @@ function MenuItemRow({
   item: MenuItem;
   level?: number;
   permissions: Record<string, boolean>;
-  onToggle: (key: string, value: boolean, childKeys?: string[]) => void;
+  onToggle: (key: string, value: boolean, batchChanges?: Record<string, boolean>) => void;
   expandedItems: Set<string>;
   onToggleExpand: (id: string) => void;
   color?: string;
@@ -128,7 +128,12 @@ function MenuItemRow({
                 onClick={() => {
                   const childKeys = getAllChildPermissions(item);
                   const allEnabled = childKeys.every(k => permissions[k] === true);
-                  childKeys.forEach(k => onToggle(k, !allEnabled));
+                  // Criar objeto com todas as mudanças de uma vez
+                  const changes: Record<string, boolean> = {};
+                  childKeys.forEach(k => {
+                    changes[k] = !allEnabled;
+                  });
+                  onToggle(permKey, !allEnabled, changes);
                 }}
                 className={`text-xs px-2 py-0.5 rounded transition-colors ${
                   enabledChildCount === totalChildren
@@ -142,22 +147,19 @@ function MenuItemRow({
             <Switch
               checked={isEnabled}
               onCheckedChange={(checked) => {
-                // Sempre toggle o próprio item primeiro
-                onToggle(permKey, checked);
+                // Criar objeto com todas as mudanças de uma vez (batch update)
+                const changes: Record<string, boolean> = {
+                  [permKey]: checked
+                };
                 
-                // Se tem filhos, toggle apenas os filhos diretos (não irmãos)
+                // Se tem filhos, incluir todos no mesmo batch
                 if (hasChildren && item.children) {
-                  item.children.forEach(child => {
-                    const childKey = getPermissionKey(child);
-                    onToggle(childKey, checked);
-                    // Recursivamente toggle os netos
-                    if (child.children) {
-                      child.children.forEach(grandChild => {
-                        onToggle(getPermissionKey(grandChild), checked);
-                      });
-                    }
+                  getAllChildPermissions(item).forEach(key => {
+                    changes[key] = checked;
                   });
                 }
+                
+                onToggle(permKey, checked, changes);
               }}
               className="data-[state=checked]:bg-primary"
             />
@@ -203,11 +205,21 @@ export function MenuPermissionsTree({ permissions, onChange, color }: MenuPermis
     }
   }, [menuHierarchy]);
 
-  const handleToggle = (key: string, value: boolean) => {
-    onChange({
-      ...permissions,
-      [key]: value,
-    });
+  // Handler que suporta batch updates para evitar sobrescrita de estado
+  const handleToggle = (key: string, value: boolean, batchChanges?: Record<string, boolean>) => {
+    if (batchChanges && Object.keys(batchChanges).length > 0) {
+      // Batch update: aplicar todas as mudanças de uma vez
+      onChange({
+        ...permissions,
+        ...batchChanges,
+      });
+    } else {
+      // Update individual
+      onChange({
+        ...permissions,
+        [key]: value,
+      });
+    }
   };
 
   const handleToggleExpand = (id: string) => {

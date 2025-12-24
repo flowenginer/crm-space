@@ -8397,6 +8397,16 @@ export type Database = {
         Returns: boolean
       }
       check_overdue_transactions: { Args: never; Returns: undefined }
+      check_tenant_menu_health: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          is_healthy: boolean
+          max_depth: number
+          orphan_items: number
+          root_items: number
+          total_items: number
+        }[]
+      }
       check_user_permission: {
         Args: { permission_key: string; user_id: string }
         Returns: boolean
@@ -8410,6 +8420,14 @@ export type Database = {
           tenant_id: string
           tenant_is_active: boolean
           tenant_name: string
+        }[]
+      }
+      copy_menu_items_recursive: {
+        Args: { p_source_tenant_id: string; p_target_tenant_id: string }
+        Returns: {
+          max_depth: number
+          root_count: number
+          total_copied: number
         }[]
       }
       copy_menu_items_to_tenant: {
@@ -9234,6 +9252,14 @@ export type Database = {
         Returns: string
       }
       remove_super_admin: { Args: { p_user_id: string }; Returns: undefined }
+      repair_tenant_menu: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          max_depth: number
+          root_count: number
+          total_copied: number
+        }[]
+      }
       search_contacts_for_erp: {
         Args: { result_limit?: number; search_term: string }
         Returns: {
