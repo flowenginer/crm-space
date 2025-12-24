@@ -163,8 +163,10 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     const menuPermissions = (roleDefinition?.permissions as any)?.menu || {};
     const hasMenuPermissions = Object.keys(menuPermissions).length > 0;
     
-    // Verificar se os módulos do tenant estão carregados e têm itens
-    const hasTenantModules = tenantEnabledModules && tenantEnabledModules.size > 0;
+    // ALTERADO: Se tenantEnabledModules existe (mesmo vazio), significa que há configuração de módulos
+    // Size 0 = todos desabilitados = devemos aplicar o filtro (e ocultar tudo)
+    const hasTenantModulesConfig = tenantEnabledModules !== undefined;
+    const hasAnyModuleEnabled = tenantEnabledModules && tenantEnabledModules.size > 0;
     
     // Debug: log detalhado para diagnóstico
     console.log('[Sidebar] === Module Filter Debug ===');
@@ -188,8 +190,13 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       }
       
       // FILTRO DE MÓDULOS DO TENANT (aplica para todos, inclusive admins)
-      // Agora verifica module_key diretamente (não mais apenas itens com href)
-      if (hasTenantModules && item.href !== '/super-admin') {
+      // Se existe configuração de módulos (mesmo que todos desabilitados), aplicar filtro
+      if (hasTenantModulesConfig && item.href !== '/super-admin') {
+        // Se NENHUM módulo está habilitado e não é Super Admin, bloquear tudo
+        if (!hasAnyModuleEnabled && !isSuperAdmin) {
+          console.log('[Sidebar] BLOCKED (all modules disabled):', item.title);
+          return null;
+        }
         const moduleKey = getModuleKey(item);
         if (moduleKey) {
           const isModuleEnabled = tenantEnabledModules.has(moduleKey);
