@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -68,15 +68,26 @@ export function TenantDetailsModal({ tenant, open, onOpenChange }: TenantDetails
     }
   }, [tenant]);
 
+  // Ref para evitar sobrescrever mudanças do usuário quando modules é re-fetchado
+  const hasInitializedModules = useRef(false);
+
   useEffect(() => {
-    if (modules) {
-      // module_keys já vêm normalizadas do banco
+    // Só inicializar uma vez quando os módulos carregam pela primeira vez
+    if (modules && !hasInitializedModules.current) {
+      hasInitializedModules.current = true;
       const enabled = modules
         .filter(m => m.is_enabled)
         .map(m => m.module_key);
       setSelectedModules(enabled);
     }
   }, [modules]);
+
+  // Resetar o flag quando o modal fecha para permitir nova inicialização
+  useEffect(() => {
+    if (!open) {
+      hasInitializedModules.current = false;
+    }
+  }, [open]);
 
   const handleSave = async () => {
     if (!tenant) return;
