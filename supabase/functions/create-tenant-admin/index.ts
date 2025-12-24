@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     const { data: existingTenant } = await supabaseAdmin
       .from('tenants')
       .select('id')
-      .eq('slug', slug)
+      .eq('slug', cleanSlug)
       .single();
 
     if (existingTenant) {
@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
 
     // Verificar se email já está em uso
     const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers();
-    const emailExists = existingUser?.users?.some(u => u.email === adminEmail);
+    const emailExists = existingUser?.users?.some(u => u.email?.toLowerCase() === cleanAdminEmail);
     if (emailExists) {
       return new Response(
         JSON.stringify({ error: 'Email já está em uso' }),
@@ -150,8 +150,8 @@ Deno.serve(async (req) => {
     const { data: tenant, error: tenantError } = await supabaseAdmin
       .from('tenants')
       .insert({
-        name: tenantName,
-        slug,
+        name: cleanTenantName,
+        slug: cleanSlug,
         plan_type: planType,
         max_users: maxUsers,
         max_contacts: maxContacts,
@@ -174,11 +174,11 @@ Deno.serve(async (req) => {
     // 2. Criar o usuário admin
     // IMPORTANTE: Passar skip_auto_tenant para evitar que o trigger crie um tenant separado
     const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: adminEmail,
+      email: cleanAdminEmail,
       password: adminPassword,
       email_confirm: true, // Confirmar email automaticamente
       user_metadata: {
-        full_name: adminName,
+        full_name: cleanAdminName,
         skip_auto_tenant: true // Evita que o trigger handle_new_user() crie profile/tenant automaticamente
       }
     });
@@ -201,8 +201,8 @@ Deno.serve(async (req) => {
       .from('profiles')
       .upsert({
         id: authUser.user.id,
-        full_name: adminName,
-        email: adminEmail,
+        full_name: cleanAdminName,
+        email: cleanAdminEmail,
         tenant_id: tenant.id,
         role: 'admin', // Definir role como admin no profile
         is_active: true,
@@ -303,7 +303,7 @@ Deno.serve(async (req) => {
       .from('company_settings')
       .insert({
         tenant_id: tenant.id,
-        company_name: tenantName
+        company_name: cleanTenantName
       });
 
     if (settingsError) {
@@ -461,8 +461,8 @@ Deno.serve(async (req) => {
         },
         admin: {
           id: authUser.user.id,
-          email: adminEmail,
-          name: adminName
+          email: cleanAdminEmail,
+          name: cleanAdminName
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
