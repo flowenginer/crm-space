@@ -79,19 +79,30 @@ export function CreateTenantModal({ open, onOpenChange }: CreateTenantModalProps
   };
 
   const handleSubmit = async () => {
-    if (!tenantName || !slug || !adminEmail || !adminName || !adminPassword) {
+    const trimmedEmail = adminEmail.trim().toLowerCase();
+    const trimmedName = adminName.trim();
+    const trimmedTenantName = tenantName.trim();
+    const trimmedSlug = slug.trim().toLowerCase();
+    
+    if (!trimmedTenantName || !trimmedSlug || !trimmedEmail || !trimmedName || !adminPassword) {
+      return;
+    }
+
+    // Validação básica de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
       return;
     }
 
     await createTenant.mutateAsync({
-      tenantName,
-      slug,
+      tenantName: trimmedTenantName,
+      slug: trimmedSlug,
       planType,
       maxUsers,
       maxContacts,
       trialDays,
-      adminEmail,
-      adminName,
+      adminEmail: trimmedEmail,
+      adminName: trimmedName,
       adminPassword,
       enabledModules
     });
