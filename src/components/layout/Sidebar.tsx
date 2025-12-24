@@ -216,6 +216,10 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           const filteredChildren = item.children
             .map(filterItem)
             .filter((child): child is MenuItem => child !== null);
+          
+          // Se é um menu cascata (sem href) e não sobrou nenhum filho, não exibir o pai
+          if (!item.href && filteredChildren.length === 0) return null;
+          
           return { ...item, children: filteredChildren };
         }
         return item;
