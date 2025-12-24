@@ -560,6 +560,38 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           ) : (
             filteredMenuItems.map((item) => renderMenuItem(item))
           )}
+
+          {/* Platform Admin Link - Only for Super Admins */}
+          {isSuperAdmin && !menuLoading && (
+            <>
+              <div className={cn(
+                'my-4 border-t',
+                isDark ? 'border-border/50' : 'border-white/20'
+              )} />
+              <NavLink
+                to="/platform"
+                className={cn(
+                  'group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
+                  location.pathname.startsWith('/platform')
+                    ? isDark
+                      ? 'bg-amber-500/20 text-amber-400 border-l-4 border-amber-400'
+                      : 'bg-amber-400/20 text-amber-100 shadow-lg border-l-4 border-amber-300'
+                    : isDark
+                      ? 'text-amber-400/70 hover:bg-amber-500/10 hover:text-amber-400'
+                      : 'text-amber-200 hover:bg-amber-400/10 hover:text-amber-100',
+                  isCollapsed && 'justify-center px-3'
+                )}
+              >
+                <LucideIcons.Crown className={cn(
+                  'h-5 w-5 shrink-0',
+                  location.pathname.startsWith('/platform')
+                    ? isDark ? 'text-amber-400' : 'text-amber-200'
+                    : isDark ? 'text-amber-400/60' : 'text-amber-300'
+                )} />
+                {!isCollapsed && <span>Painel da Plataforma</span>}
+              </NavLink>
+            </>
+          )}
         </div>
       </nav>
 
