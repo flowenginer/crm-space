@@ -10,6 +10,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Layout
 import { MainLayout } from "@/components/layout/MainLayout";
+import { PlatformAdminLayout } from "@/components/layout/PlatformAdminLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 // Auth pages
@@ -59,6 +60,16 @@ import AcceptInvite from "@/pages/AcceptInvite";
 import SuperAdminPanel from "@/pages/SuperAdminPanel";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import NotFound from "@/pages/NotFound";
+
+// Platform Admin Pages
+import {
+  PlatformDashboard,
+  PlatformTenants,
+  PlatformAdmins,
+  PlatformModules,
+  PlatformLogs,
+  PlatformSettings,
+} from "@/pages/platform-admin";
 
 const App = () => (
   <ErrorBoundary>
@@ -278,6 +289,16 @@ const App = () => (
                   <SuperAdminPanel />
                 </SuperAdminGuard>
               } />
+            </Route>
+
+            {/* Platform Admin Routes (Super Admin only) */}
+            <Route element={<PlatformAdminLayout />}>
+              <Route path="/platform" element={<PlatformDashboard />} />
+              <Route path="/platform/tenants" element={<PlatformTenants />} />
+              <Route path="/platform/admins" element={<PlatformAdmins />} />
+              <Route path="/platform/modules" element={<PlatformModules />} />
+              <Route path="/platform/logs" element={<PlatformLogs />} />
+              <Route path="/platform/settings" element={<PlatformSettings />} />
             </Route>
 
             {/* Catch-all */}
