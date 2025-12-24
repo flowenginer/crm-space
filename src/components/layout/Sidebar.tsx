@@ -197,24 +197,38 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           console.log('[Sidebar] BLOCKED (all modules disabled):', item.title);
           return null;
         }
+        
         const moduleKey = getModuleKey(item);
+        
+        // FAIL-CLOSED: Se tem module_key e está desabilitado, bloquear IMEDIATAMENTE
+        // Não verificar filhos - se o módulo do pai está off, o menu inteiro some
         if (moduleKey) {
           const isModuleEnabled = tenantEnabledModules.has(moduleKey);
           console.log('[Sidebar] Module check:', item.title, 'moduleKey:', moduleKey, 'enabled:', isModuleEnabled);
           if (!isModuleEnabled) {
-            // Se é um grupo cascata (sem href, com children), verificar se algum filho passa
-            if (!item.href && item.children && item.children.length > 0) {
-              const filteredChildren = item.children
-                .map(filterItem)
-                .filter((child): child is MenuItem => child !== null);
-              if (filteredChildren.length > 0) {
-                return { ...item, children: filteredChildren };
-              }
-            }
+            console.log('[Sidebar] BLOCKED (module disabled, fail-closed):', item.title);
             return null;
           }
         }
-        // Se não tem module_key, permitir (fail-open para menus sem module_key - legado)
+        
+        // FAIL-CLOSED para menus sem module_key: se não tem module_key, bloquear (exceto Super Admin)
+        // Isso evita que menus "órfãos" apareçam
+        if (!moduleKey && !isSuperAdmin) {
+          // Exceção: menus cascata (sem href) podem passar se tiverem filhos válidos
+          if (!item.href && item.children && item.children.length > 0) {
+            const filteredChildren = item.children
+              .map(filterItem)
+              .filter((child): child is MenuItem => child !== null);
+            if (filteredChildren.length > 0) {
+              return { ...item, children: filteredChildren };
+            }
+          }
+          // Menu sem module_key e sem filhos válidos = bloquear
+          if (!item.href || !item.children) {
+            console.log('[Sidebar] BLOCKED (no module_key, fail-closed):', item.title);
+            return null;
+          }
+        }
       }
       
       // Admin vê tudo (exceto módulos desabilitados do tenant que já foram verificados)
