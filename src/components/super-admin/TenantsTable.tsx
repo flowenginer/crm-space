@@ -28,7 +28,8 @@ interface TenantsTableProps {
   onDelete: (tenant: TenantWithStats) => void;
 }
 
-const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+// Tenant principal (Space Sports) - protegido contra exclusão
+const PRIMARY_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 const planColors: Record<string, string> = {
   free: 'bg-gray-500/10 text-gray-500',
@@ -138,7 +139,7 @@ export function TenantsTable({ tenants, onEdit, onToggleStatus, onDelete }: Tena
                             <Power className="h-4 w-4 mr-2" />
                             {tenant.is_active ? 'Desativar' : 'Ativar'}
                           </DropdownMenuItem>
-                          {tenant.id !== MASTER_TENANT_ID && (
+                          {tenant.id !== PRIMARY_TENANT_ID && (
                             <DropdownMenuItem 
                               onClick={() => onDelete(tenant)}
                               className="text-destructive focus:text-destructive"
