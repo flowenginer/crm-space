@@ -9,7 +9,6 @@ import { Loader2, Building, User, Settings, Eye, EyeOff } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TenantModulesTree } from './TenantModulesTree';
 import { useBaseMenuHierarchy } from '@/hooks/useBaseMenuConfig';
-import { normalizeModuleKeyFromHref } from '@/lib/moduleKeys';
 
 interface CreateTenantModalProps {
   open: boolean;
@@ -17,12 +16,13 @@ interface CreateTenantModalProps {
 }
 
 // Helper para extrair todas as chaves de módulo da hierarquia
+// Agora usa item.module_key diretamente do banco
 function getAllModuleKeysFromHierarchy(items: any[]): string[] {
   const keys: string[] = [];
   items.forEach(item => {
-    if (item.href) {
-      const key = normalizeModuleKeyFromHref(item.href);
-      if (key) keys.push(key);
+    // Usar module_key diretamente do banco
+    if (item.module_key) {
+      keys.push(item.module_key);
     }
     if (item.children) {
       keys.push(...getAllModuleKeysFromHierarchy(item.children));

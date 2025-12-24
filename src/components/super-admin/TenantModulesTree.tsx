@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { useBaseMenuHierarchy, useSyncTenantMenu } from '@/hooks/useBaseMenuConfig';
 import { MenuItem } from '@/hooks/useMenuConfig';
 import * as LucideIcons from 'lucide-react';
-import { normalizeModuleKey } from '@/lib/moduleKeys';
 
 interface TenantModulesTreeProps {
   modules: string[];
@@ -14,23 +13,15 @@ interface TenantModulesTreeProps {
 }
 
 // Obter module_key diretamente do item (já populado no banco)
+// IMPORTANTE: Todos os menus agora têm module_key no banco de dados
 function getModuleKey(item: MenuItem): string | null {
-  // Usar module_key do banco diretamente
+  // Usar module_key do banco diretamente - OBRIGATÓRIO
   if (item.module_key) {
     return item.module_key;
   }
-  // Fallback para items antigos sem module_key
-  if (!item.href) {
-    return null;
-  }
-  // Gerar module_key a partir do href (mesma lógica do banco)
-  if (item.href === '/') return 'dashboard';
-  return item.href
-    .substring(1)
-    .replace(/\//g, '_')
-    .replace(/-/g, '_')
-    .replace(/\?tab=/g, '_')
-    .replace(/\?/g, '_');
+  // Não há fallback - menus sem module_key são ignorados
+  console.warn('[TenantModulesTree] Menu sem module_key:', item.title, item.id);
+  return null;
 }
 
 // Obter todos os module keys VÁLIDOS de um item e seus filhos
@@ -219,7 +210,8 @@ export function TenantModulesTree({ modules, onChange, tenantId }: TenantModules
   const hasInitializedExpand = useRef(false);
   
   const enabledModules = useMemo(() => {
-    return new Set(modules.map(m => normalizeModuleKey(m)));
+    // module_keys já vêm normalizadas do banco
+    return new Set(modules);
   }, [modules]);
 
   useEffect(() => {
@@ -236,17 +228,14 @@ export function TenantModulesTree({ modules, onChange, tenantId }: TenantModules
   }, [menuHierarchy]);
 
   const handleToggleBatch = useCallback((keys: string[], value: boolean) => {
-    const normalizedKeys = keys.map(k => normalizeModuleKey(k));
-    
+    // module_keys já estão normalizadas - não precisa converter
     if (value) {
-      const currentSet = new Set(modules.map(m => normalizeModuleKey(m)));
-      normalizedKeys.forEach(k => currentSet.add(k));
+      const currentSet = new Set(modules);
+      keys.forEach(k => currentSet.add(k));
       onChange(Array.from(currentSet));
     } else {
-      const keysToRemove = new Set(normalizedKeys);
-      const newModules = modules
-        .map(m => normalizeModuleKey(m))
-        .filter(m => !keysToRemove.has(m));
+      const keysToRemove = new Set(keys);
+      const newModules = modules.filter(m => !keysToRemove.has(m));
       onChange(newModules);
     }
   }, [modules, onChange]);
