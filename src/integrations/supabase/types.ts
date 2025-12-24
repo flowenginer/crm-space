@@ -8353,6 +8353,15 @@ export type Database = {
         Args: { invitation_token: string; user_id: string }
         Returns: Json
       }
+      audit_tenant_data_integrity: {
+        Args: never
+        Returns: {
+          orphan_records: number
+          records_in_base_tenant: number
+          table_name: string
+          total_records: number
+        }[]
+      }
       calculate_variation_price: {
         Args: {
           p_attribute_value_ids: string[]
@@ -8407,6 +8416,7 @@ export type Database = {
         Args: { p_source_tenant_id: string; p_target_tenant_id: string }
         Returns: number
       }
+      create_tenant_triggers: { Args: never; Returns: undefined }
       current_user_is_super_admin: { Args: never; Returns: boolean }
       delete_contact_permanently: {
         Args: { p_contact_id: string }
@@ -9172,6 +9182,13 @@ export type Database = {
           p_keep_conversation_id: string
         }
         Returns: undefined
+      }
+      migrate_user_data_to_correct_tenant: {
+        Args: { p_correct_tenant_id: string; p_user_id: string }
+        Returns: {
+          records_migrated: number
+          table_name: string
+        }[]
       }
       process_incoming_message: {
         Args: {
