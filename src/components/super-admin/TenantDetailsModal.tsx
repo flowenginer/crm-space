@@ -30,7 +30,6 @@ import { Loader2, Building2, User, Settings, Mail, Shield, Key, Eye, EyeOff } fr
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { TenantModulesTree } from './TenantModulesTree';
-import { normalizeModuleKey } from '@/lib/moduleKeys';
 
 interface TenantDetailsModalProps {
   tenant: TenantWithStats | null;
@@ -71,10 +70,10 @@ export function TenantDetailsModal({ tenant, open, onOpenChange }: TenantDetails
 
   useEffect(() => {
     if (modules) {
-      // Normaliza as chaves do banco para o formato atual (hífens -> underscores)
+      // module_keys já vêm normalizadas do banco
       const enabled = modules
         .filter(m => m.is_enabled)
-        .map(m => normalizeModuleKey(m.module_key));
+        .map(m => m.module_key);
       setSelectedModules(enabled);
     }
   }, [modules]);
@@ -93,8 +92,8 @@ export function TenantDetailsModal({ tenant, open, onOpenChange }: TenantDetails
         trialEndsAt: trialEndsAt || null,
       });
 
-      // Salvar módulos se mudaram (comparar com chaves normalizadas)
-      const currentEnabled = modules?.filter(m => m.is_enabled).map(m => normalizeModuleKey(m.module_key)) || [];
+      // Salvar módulos se mudaram
+      const currentEnabled = modules?.filter(m => m.is_enabled).map(m => m.module_key) || [];
       const modulesChanged = JSON.stringify(currentEnabled.sort()) !== JSON.stringify(selectedModules.sort());
       
       if (modulesChanged) {

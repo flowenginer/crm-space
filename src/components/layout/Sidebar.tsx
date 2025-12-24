@@ -32,7 +32,7 @@ import { AvailabilityToggle } from './AvailabilityToggle';
 import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
 import { LogoutConfirmDialog } from './LogoutConfirmDialog';
 import { useTenantEnabledModules } from '@/hooks/useTenantEnabledModules';
-import { normalizeModuleKeyFromHref } from '@/lib/moduleKeys';
+// moduleKeys está deprecated - usar item.module_key diretamente
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -127,24 +127,15 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     return `menu_${item.id}`;
   };
 
-  // Helper para obter module_key do menu (usa module_key do banco diretamente)
+  // Helper para obter module_key do menu
+  // IMPORTANTE: Todos os menus agora têm module_key no banco de dados
   const getModuleKey = (item: MenuItem): string | null => {
-    // Usar module_key do banco diretamente
+    // Usar module_key do banco diretamente - OBRIGATÓRIO
     if ((item as any).module_key) {
       return (item as any).module_key;
     }
-    // Fallback para items antigos sem module_key
-    if (!item.href) {
-      return null;
-    }
-    // Gerar module_key a partir do href (mesma lógica do banco)
-    if (item.href === '/') return 'dashboard';
-    return item.href
-      .substring(1)
-      .replace(/\//g, '_')
-      .replace(/-/g, '_')
-      .replace(/\?tab=/g, '_')
-      .replace(/\?/g, '_');
+    // Não há fallback - menus sem module_key são ignorados no filtro de módulos
+    return null;
   };
 
   // Filtrar itens de menu baseado em permissões E módulos do tenant
@@ -197,15 +188,15 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       }
       
       // FILTRO DE MÓDULOS DO TENANT (aplica para todos, inclusive admins)
-      // Exceto Super Admin que já passou a verificação acima
-      if (hasTenantModules && item.href && item.href !== '/super-admin') {
+      // Agora verifica module_key diretamente (não mais apenas itens com href)
+      if (hasTenantModules && item.href !== '/super-admin') {
         const moduleKey = getModuleKey(item);
         if (moduleKey) {
           const isModuleEnabled = tenantEnabledModules.has(moduleKey);
           console.log('[Sidebar] Module check:', item.title, 'moduleKey:', moduleKey, 'enabled:', isModuleEnabled);
           if (!isModuleEnabled) {
-            // Se é um item com filhos (cascata), ainda verificar se algum filho passa
-            if (item.children && item.children.length > 0) {
+            // Se é um grupo cascata (sem href, com children), verificar se algum filho passa
+            if (!item.href && item.children && item.children.length > 0) {
               const filteredChildren = item.children
                 .map(filterItem)
                 .filter((child): child is MenuItem => child !== null);
@@ -216,6 +207,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             return null;
           }
         }
+        // Se não tem module_key, permitir (fail-open para menus sem module_key - legado)
       }
       
       // Admin vê tudo (exceto módulos desabilitados do tenant que já foram verificados)
