@@ -135,20 +135,41 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   // Filtrar itens de menu baseado em permissões E módulos do tenant
   const filteredMenuItems = useMemo(() => {
     // CRITICAL: Aguardar carregamento completo de permissões E módulos
-    if (!isFullyLoaded) return [];
-    if (modulesLoading) return []; // Não renderizar até módulos estarem carregados
+    if (!isFullyLoaded) {
+      console.log('[Sidebar] BLOCKED: Permissions not fully loaded yet');
+      return [];
+    }
+    
+    // FAIL-CLOSED: Se módulos ainda estão carregando, não mostrar nenhum menu
+    if (modulesLoading) {
+      console.log('[Sidebar] BLOCKED: Modules still loading');
+      return [];
+    }
+    
+    // FAIL-CLOSED: Se tenantEnabledModules é undefined (erro ou não carregou), bloquear menu
+    // Exceto para SuperAdmin que pode ver tudo
+    if (tenantEnabledModules === undefined && !isSuperAdmin) {
+      console.log('[Sidebar] BLOCKED: tenantEnabledModules is undefined (failed to load or no tenant)');
+      return [];
+    }
     
     // Obter permissões de menu do role_definition (funciona como STRICT ALLOWLIST)
     const menuPermissions = (roleDefinition?.permissions as any)?.menu || {};
     const hasMenuPermissions = Object.keys(menuPermissions).length > 0;
     
-    // Verificar se os módulos do tenant estão carregados
+    // Verificar se os módulos do tenant estão carregados e têm itens
     const hasTenantModules = tenantEnabledModules && tenantEnabledModules.size > 0;
     
-    // Debug: log para verificar permissões
+    // Debug: log detalhado para diagnóstico
+    console.log('[Sidebar] === Module Filter Debug ===');
     console.log('[Sidebar] Role:', userRole, 'isAdmin:', isAdmin, 'isSuperAdmin:', isSuperAdmin);
+    console.log('[Sidebar] tenantEnabledModules status:', {
+      isUndefined: tenantEnabledModules === undefined,
+      isEmpty: tenantEnabledModules?.size === 0,
+      count: tenantEnabledModules?.size || 0,
+      modules: tenantEnabledModules ? Array.from(tenantEnabledModules) : 'N/A'
+    });
     console.log('[Sidebar] menuPermissions:', menuPermissions);
-    console.log('[Sidebar] tenantEnabledModules:', tenantEnabledModules ? Array.from(tenantEnabledModules) : 'not loaded');
     
     const filterItem = (item: MenuItem): MenuItem | null => {
       // Verificar se está ativo
@@ -523,11 +544,19 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-6 px-3">
         <div className="space-y-1.5">
-          {(menuLoading || modulesLoading) ? (
-            // Skeleton loading
-            Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full rounded-xl" />
-            ))
+          {(menuLoading || modulesLoading || (!isSuperAdmin && tenantEnabledModules === undefined)) ? (
+            // Skeleton loading - FAIL-CLOSED: mostra skeleton se módulos não carregaram
+            <>
+              {process.env.NODE_ENV === 'development' && (
+                <div className="text-xs text-muted-foreground px-2 mb-2">
+                  [DEV] Loading: menu={menuLoading ? 'yes' : 'no'}, modules={modulesLoading ? 'yes' : 'no'}, 
+                  data={tenantEnabledModules === undefined ? 'undefined' : `${tenantEnabledModules?.size || 0} items`}
+                </div>
+              )}
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full rounded-xl" />
+              ))}
+            </>
           ) : (
             filteredMenuItems.map((item) => renderMenuItem(item))
           )}
