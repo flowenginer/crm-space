@@ -1,41 +1,39 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { useCreateTenant } from '@/hooks/useCreateTenant';
 import { Loader2, Building, User, Settings, Eye, EyeOff } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TenantModulesTree } from './TenantModulesTree';
+import { useBaseMenuHierarchy } from '@/hooks/useBaseMenuConfig';
+import { normalizeModuleKeyFromHref } from '@/lib/moduleKeys';
 
 interface CreateTenantModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-const ALL_MODULES = [
-  { key: 'conversations', label: 'Conversas', description: 'WhatsApp e mensagens' },
-  { key: 'crm', label: 'CRM', description: 'Pipeline de vendas' },
-  { key: 'contacts', label: 'Contatos', description: 'Gestão de contatos' },
-  { key: 'orders', label: 'Pedidos', description: 'Gestão de pedidos' },
-  { key: 'quotes', label: 'Orçamentos', description: 'Criação de orçamentos' },
-  { key: 'products', label: 'Produtos', description: 'Catálogo de produtos' },
-  { key: 'financial', label: 'Financeiro', description: 'Controle financeiro' },
-  { key: 'reports', label: 'Relatórios', description: 'Dashboard e métricas' },
-  { key: 'campaigns', label: 'Campanhas', description: 'Meta Ads e campanhas' },
-  { key: 'gamification', label: 'Gamificação', description: 'Rankings e conquistas' },
-  { key: 'automations', label: 'Automações', description: 'Fluxos automatizados' },
-  { key: 'bulk_dispatch', label: 'Disparo em Massa', description: 'Envio em lote' },
-  { key: 'internal_chat', label: 'Chat Interno', description: 'Comunicação da equipe' },
-  { key: 'internal_email', label: 'Email Interno', description: 'Caixas compartilhadas' },
-  { key: 'live_monitor', label: 'Monitor ao Vivo', description: 'Supervisão em tempo real' },
-  { key: 'webhooks', label: 'Webhooks', description: 'Integrações via API' },
-  { key: 'whatsapp_channels', label: 'Canais WhatsApp', description: 'Gerenciar instâncias' },
-];
+// Helper para extrair todas as chaves de módulo da hierarquia
+function getAllModuleKeysFromHierarchy(items: any[]): string[] {
+  const keys: string[] = [];
+  items.forEach(item => {
+    if (item.href) {
+      const key = normalizeModuleKeyFromHref(item.href);
+      if (key) keys.push(key);
+    }
+    if (item.children) {
+      keys.push(...getAllModuleKeysFromHierarchy(item.children));
+    }
+  });
+  return [...new Set(keys)];
+}
 
 export function CreateTenantModal({ open, onOpenChange }: CreateTenantModalProps) {
   const createTenant = useCreateTenant();
+  const { data: menuHierarchy = [] } = useBaseMenuHierarchy();
   const [showPassword, setShowPassword] = useState(false);
   
   // Form state
@@ -48,9 +46,15 @@ export function CreateTenantModal({ open, onOpenChange }: CreateTenantModalProps
   const [adminEmail, setAdminEmail] = useState('');
   const [adminName, setAdminName] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
-  const [enabledModules, setEnabledModules] = useState<string[]>(
-    ALL_MODULES.map(m => m.key)
-  );
+  const [enabledModules, setEnabledModules] = useState<string[]>([]);
+
+  // Inicializa os módulos quando a hierarquia carrega
+  useEffect(() => {
+    if (menuHierarchy.length > 0 && enabledModules.length === 0) {
+      const allKeys = getAllModuleKeysFromHierarchy(menuHierarchy);
+      setEnabledModules(allKeys);
+    }
+  }, [menuHierarchy, enabledModules.length]);
 
   // Auto-generate slug from tenant name
   const generatedSlug = useMemo(() => {
@@ -72,22 +76,6 @@ export function CreateTenantModal({ open, onOpenChange }: CreateTenantModalProps
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, ''));
     }
-  };
-
-  const toggleModule = (moduleKey: string) => {
-    setEnabledModules(prev => 
-      prev.includes(moduleKey)
-        ? prev.filter(m => m !== moduleKey)
-        : [...prev, moduleKey]
-    );
-  };
-
-  const selectAllModules = () => {
-    setEnabledModules(ALL_MODULES.map(m => m.key));
-  };
-
-  const deselectAllModules = () => {
-    setEnabledModules([]);
   };
 
   const handleSubmit = async () => {
@@ -118,7 +106,8 @@ export function CreateTenantModal({ open, onOpenChange }: CreateTenantModalProps
     setAdminEmail('');
     setAdminName('');
     setAdminPassword('');
-    setEnabledModules(ALL_MODULES.map(m => m.key));
+    const allKeys = getAllModuleKeysFromHierarchy(menuHierarchy);
+    setEnabledModules(allKeys);
     
     onOpenChange(false);
   };
@@ -273,46 +262,14 @@ export function CreateTenantModal({ open, onOpenChange }: CreateTenantModalProps
           </TabsContent>
 
           <TabsContent value="modules" className="space-y-4 mt-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Selecione quais módulos estarão disponíveis para este tenant.
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={selectAllModules}>
-                  Selecionar Todos
-                </Button>
-                <Button variant="outline" size="sm" onClick={deselectAllModules}>
-                  Limpar
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto">
-              {ALL_MODULES.map((module) => (
-                <div
-                  key={module.key}
-                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                    enabledModules.includes(module.key)
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-muted-foreground/50'
-                  }`}
-                  onClick={() => toggleModule(module.key)}
-                >
-                  <Checkbox
-                    checked={enabledModules.includes(module.key)}
-                    onCheckedChange={() => toggleModule(module.key)}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{module.label}</p>
-                    <p className="text-xs text-muted-foreground">{module.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
             <p className="text-sm text-muted-foreground">
-              {enabledModules.length} de {ALL_MODULES.length} módulos selecionados
+              Selecione quais módulos estarão disponíveis para este tenant.
             </p>
+            
+            <TenantModulesTree
+              modules={enabledModules}
+              onChange={setEnabledModules}
+            />
           </TabsContent>
         </Tabs>
 
