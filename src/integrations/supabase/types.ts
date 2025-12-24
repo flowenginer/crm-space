@@ -7497,6 +7497,7 @@ export type Database = {
       }
       tenants: {
         Row: {
+          auto_sync_from_base: boolean | null
           created_at: string | null
           id: string
           is_active: boolean | null
@@ -7511,6 +7512,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          auto_sync_from_base?: boolean | null
           created_at?: string | null
           id?: string
           is_active?: boolean | null
@@ -7525,6 +7527,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          auto_sync_from_base?: boolean | null
           created_at?: string | null
           id?: string
           is_active?: boolean | null
@@ -8621,6 +8624,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_base_tenant_id: { Args: never; Returns: string }
       get_channel_by_instance: {
         Args: { p_instance_id: string }
         Returns: {
@@ -8893,6 +8897,18 @@ export type Database = {
           lead_count: number
         }[]
       }
+      get_menu_diff: {
+        Args: { p_source_tenant_id: string; p_target_tenant_id: string }
+        Returns: {
+          exists_in_target: boolean
+          source_href: string
+          source_icon: string
+          source_item_id: string
+          source_parent_id: string
+          source_title: string
+          target_item_id: string
+        }[]
+      }
       get_meta_account_tokens: {
         Args: { p_account_id: string }
         Returns: {
@@ -8932,6 +8948,15 @@ export type Database = {
           meta_ads_count: number
           organic_count: number
           other_count: number
+        }[]
+      }
+      get_platform_sync_config: {
+        Args: never
+        Returns: {
+          auto_sync_enabled: boolean
+          base_tenant_id: string
+          base_tenant_name: string
+          total_tenants: number
         }[]
       }
       get_returning_leads_metrics: {
@@ -9012,6 +9037,19 @@ export type Database = {
         Returns: {
           is_enabled: boolean
           module_key: string
+        }[]
+      }
+      get_tenants_sync_status: {
+        Args: { p_base_tenant_id: string }
+        Returns: {
+          base_menus: number
+          is_active: boolean
+          is_base: boolean
+          missing_menus: number
+          sync_percentage: number
+          tenant_id: string
+          tenant_name: string
+          total_menus: number
         }[]
       }
       get_timeline_data_batch: {
@@ -9299,6 +9337,26 @@ export type Database = {
         Returns: {
           items_copied: number
           items_skipped: number
+          total_in_target: number
+        }[]
+      }
+      sync_menu_to_all_tenants: {
+        Args: { p_source_tenant_id: string }
+        Returns: {
+          items_copied: number
+          items_skipped: number
+          tenant_id: string
+          tenant_name: string
+          total_in_target: number
+        }[]
+      }
+      sync_menu_to_selected_tenants: {
+        Args: { p_source_tenant_id: string; p_target_tenant_ids: string[] }
+        Returns: {
+          items_copied: number
+          items_skipped: number
+          tenant_id: string
+          tenant_name: string
           total_in_target: number
         }[]
       }
