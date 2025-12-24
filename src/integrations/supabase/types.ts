@@ -3903,6 +3903,7 @@ export type Database = {
           icon: string
           id: string
           is_active: boolean | null
+          module_key: string | null
           parent_id: string | null
           permission: string | null
           position: number
@@ -3918,6 +3919,7 @@ export type Database = {
           icon?: string
           id?: string
           is_active?: boolean | null
+          module_key?: string | null
           parent_id?: string | null
           permission?: string | null
           position?: number
@@ -3933,6 +3935,7 @@ export type Database = {
           icon?: string
           id?: string
           is_active?: boolean | null
+          module_key?: string | null
           parent_id?: string | null
           permission?: string | null
           position?: number
@@ -8470,6 +8473,12 @@ export type Database = {
           user_role: string
         }[]
       }
+      expand_legacy_module_key: {
+        Args: { p_old_key: string; p_tenant_id: string }
+        Returns: {
+          new_key: string
+        }[]
+      }
       find_contact_by_phone_suffix: {
         Args: { phone_suffix: string }
         Returns: {
@@ -8589,6 +8598,13 @@ export type Database = {
         }
         Returns: Json
       }
+      get_all_module_keys: {
+        Args: never
+        Returns: {
+          module_key: string
+          title: string
+        }[]
+      }
       get_all_super_admins: {
         Args: never
         Returns: {
@@ -8636,6 +8652,7 @@ export type Database = {
           icon: string
           id: string
           is_active: boolean | null
+          module_key: string | null
           parent_id: string | null
           permission: string | null
           position: number

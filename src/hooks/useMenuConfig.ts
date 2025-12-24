@@ -17,6 +17,7 @@ export interface MenuItem {
   created_at: string;
   updated_at: string;
   tenant_id?: string;
+  module_key?: string | null;  // Nova coluna para identificação única do módulo
   children?: MenuItem[];
 }
 
