@@ -8810,6 +8810,20 @@ export type Database = {
           stage_name: string
         }[]
       }
+      get_interaction_timeline: {
+        Args: {
+          p_agent_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+        }
+        Returns: {
+          agent_messages: number
+          client_messages: number
+          hour_label: string
+          hour_slot: number
+        }[]
+      }
       get_internal_chat_threads: {
         Args: { p_user_id: string }
         Returns: {

@@ -790,6 +790,7 @@ export interface InteractionHourlyData {
 }
 
 // Interaction Timeline Hook - Shows client vs agent messages by hour (00:00-23:59)
+// Uses RPC function to aggregate directly in database, avoiding 1000 row limit
 export function useInteractionTimeline(filters: DashboardFilters) {
   return useQuery({
     queryKey: ['interaction_timeline', filters.dateFrom, filters.dateTo, filters.agentId, filters.departmentId],
@@ -797,17 +798,15 @@ export function useInteractionTimeline(filters: DashboardFilters) {
       const dateFrom = startOfDay(filters.dateFrom).toISOString();
       const dateTo = endOfDay(filters.dateTo).toISOString();
 
-      // Initialize slots array (00:00, 00:30, 01:00, 01:30, ... 23:30 - 48 slots of 30 min)
+      // Initialize all 48 slots with zero (00:00, 00:30, ..., 23:30)
       const hours: InteractionHourlyData[] = [];
       for (let h = 0; h <= 23; h++) {
-        // First slot: XX:00
         hours.push({
           hour: `${h.toString().padStart(2, '0')}:00`,
           hourNum: h * 2,
           clientMessages: 0,
           agentMessages: 0
         });
-        // Second slot: XX:30
         hours.push({
           hour: `${h.toString().padStart(2, '0')}:30`,
           hourNum: h * 2 + 1,
@@ -816,59 +815,25 @@ export function useInteractionTimeline(filters: DashboardFilters) {
         });
       }
 
-      // If agent or department filter is applied, get conversation IDs first
-      let conversationIds: string[] | null = null;
-      
-      if (filters.agentId || filters.departmentId) {
-        let conversationsQuery = supabase
-          .from('conversations')
-          .select('id');
+      // Call RPC function that aggregates data directly in the database
+      const { data: rpcData, error } = await supabase.rpc('get_interaction_timeline', {
+        p_date_from: dateFrom,
+        p_date_to: dateTo,
+        p_agent_id: filters.agentId || null,
+        p_department_id: filters.departmentId || null
+      });
 
-        if (filters.agentId) {
-          conversationsQuery = conversationsQuery.eq('assigned_to', filters.agentId);
-        }
-        if (filters.departmentId) {
-          conversationsQuery = conversationsQuery.eq('department_id', filters.departmentId);
-        }
-
-        const { data: conversations } = await conversationsQuery;
-        
-        if (!conversations || conversations.length === 0) {
-          return hours;
-        }
-        
-        conversationIds = conversations.map(c => c.id);
+      if (error) {
+        console.error('Error fetching interaction timeline:', error);
+        return hours;
       }
 
-      // Get all messages directly from the period (not filtered by conversation creation date)
-      let messagesQuery = supabase
-        .from('messages')
-        .select('id, conversation_id, is_from_me, created_at')
-        .gte('created_at', dateFrom)
-        .lte('created_at', dateTo);
-
-      // Apply conversation filter if we have filtered IDs
-      if (conversationIds && conversationIds.length > 0) {
-        messagesQuery = messagesQuery.in('conversation_id', conversationIds);
-      }
-
-      const { data: messages } = await messagesQuery;
-
-      // Count messages by 30-min slot and type (with timezone correction)
-      messages?.forEach(msg => {
-        const zonedDate = toZonedTime(new Date(msg.created_at), BRAZIL_TIMEZONE);
-        const hour = zonedDate.getHours();
-        const minutes = zonedDate.getMinutes();
-        // Calculate slot index: 0-29 min = first slot, 30-59 min = second slot
-        const slotIndex = hour * 2 + (minutes >= 30 ? 1 : 0);
-        const hourData = hours.find(h => h.hourNum === slotIndex);
-        
+      // Fill slots with data from RPC
+      rpcData?.forEach((row: { hour_slot: number; client_messages: number; agent_messages: number }) => {
+        const hourData = hours.find(h => h.hourNum === row.hour_slot);
         if (hourData) {
-          if (msg.is_from_me) {
-            hourData.agentMessages++;
-          } else {
-            hourData.clientMessages++;
-          }
+          hourData.clientMessages = Number(row.client_messages) || 0;
+          hourData.agentMessages = Number(row.agent_messages) || 0;
         }
       });
 
