@@ -278,24 +278,23 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
 
       const conversions = convertedContacts.length;
 
-      // 4) Converted value (proxy: sum of won deals in the period)
-      let dealsQuery = supabase
-        .from('deals')
-        .select('value')
-        .gte('created_at', dateFrom)
-        .lte('created_at', dateTo)
-        .eq('status', 'won');
-
-      if (filters.agentId) {
-        dealsQuery = dealsQuery.eq('assigned_to', filters.agentId);
+      // 4) Converted value (soma do negotiated_value dos contatos convertidos)
+      let totalConvertedValue = 0;
+      if (convertedContacts.length > 0) {
+        const { data: contactValues, error: contactValuesError } = await supabase
+          .from('contacts')
+          .select('negotiated_value')
+          .in('id', convertedContacts);
+          
+        if (contactValuesError) {
+          console.warn('Error fetching contact values:', contactValuesError);
+        } else {
+          totalConvertedValue = (contactValues || []).reduce(
+            (sum, c) => sum + (Number(c.negotiated_value) || 0), 
+            0
+          );
+        }
       }
-
-      const { data: deals, error: dealsError } = await dealsQuery;
-      if (dealsError) {
-        console.warn('Error fetching deals for converted value:', dealsError);
-      }
-
-      const totalConvertedValue = (deals || []).reduce((sum: number, d: any) => sum + (Number(d.value) || 0), 0);
 
       // 5) Rates
       const conversionRate = totalConversations > 0 ? (conversions / totalConversations) * 100 : 0;
