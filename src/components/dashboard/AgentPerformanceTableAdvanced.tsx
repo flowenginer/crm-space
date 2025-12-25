@@ -1,4 +1,5 @@
-import { Loader2, Users, TrendingUp, Clock, MessageSquare } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Loader2, Users, TrendingUp, Clock, MessageSquare, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -13,12 +14,79 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
+type SortableColumn = 'leadsReceived' | 'leadsResponded' | 'conversions' | 'conversionRate' | 'avgResponseTime';
+
+interface SortConfig {
+  key: SortableColumn;
+  direction: 'asc' | 'desc';
+}
+
+interface SortableHeaderProps {
+  column: SortableColumn;
+  label: string;
+  icon?: React.ReactNode;
+  sortConfig: SortConfig;
+  onSort: (column: SortableColumn) => void;
+}
+
+function SortableHeader({ column, label, icon, sortConfig, onSort }: SortableHeaderProps) {
+  const isActive = sortConfig.key === column;
+  
+  return (
+    <TableHead 
+      className="text-center cursor-pointer hover:bg-muted/50 transition-colors select-none"
+      onClick={() => onSort(column)}
+    >
+      <div className="flex items-center justify-center gap-1">
+        {icon}
+        <span>{label}</span>
+        {isActive ? (
+          sortConfig.direction === 'desc' ? (
+            <ArrowDown className="h-3 w-3 text-primary" />
+          ) : (
+            <ArrowUp className="h-3 w-3 text-primary" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-30" />
+        )}
+      </div>
+    </TableHead>
+  );
+}
+
 interface AgentPerformanceTableAdvancedProps {
   data: AgentDistribution[];
   isLoading?: boolean;
 }
 
 export function AgentPerformanceTableAdvanced({ data, isLoading }: AgentPerformanceTableAdvancedProps) {
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
+    key: 'leadsReceived',
+    direction: 'desc'
+  });
+
+  const handleSort = (column: SortableColumn) => {
+    setSortConfig(current => ({
+      key: column,
+      direction: current.key === column && current.direction === 'desc' ? 'asc' : 'desc'
+    }));
+  };
+
+  const sortedData = useMemo(() => {
+    if (!data || data.length === 0) return [];
+    
+    return [...data].sort((a, b) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+      
+      // Para tempo de resposta, menor é melhor
+      if (sortConfig.direction === 'asc') {
+        return aVal - bVal;
+      }
+      return bVal - aVal;
+    });
+  }, [data, sortConfig]);
+
   if (isLoading) {
     return (
       <Card>
@@ -68,26 +136,44 @@ export function AgentPerformanceTableAdvanced({ data, isLoading }: AgentPerforma
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[200px]">Vendedor</TableHead>
-                <TableHead className="text-center">Leads</TableHead>
+                <SortableHeader
+                  column="leadsReceived"
+                  label="Leads"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                />
                 <TableHead className="text-center">Origem</TableHead>
-                <TableHead className="text-center">Respondidos</TableHead>
-                <TableHead className="text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <TrendingUp className="h-3 w-3" />
-                    Conversões
-                  </div>
-                </TableHead>
-                <TableHead className="text-center">Taxa</TableHead>
-                <TableHead className="text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Tempo Resp.
-                  </div>
-                </TableHead>
+                <SortableHeader
+                  column="leadsResponded"
+                  label="Respondidos"
+                  icon={<MessageSquare className="h-3 w-3" />}
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  column="conversions"
+                  label="Conversões"
+                  icon={<TrendingUp className="h-3 w-3" />}
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  column="conversionRate"
+                  label="Taxa"
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  column="avgResponseTime"
+                  label="Tempo Resp."
+                  icon={<Clock className="h-3 w-3" />}
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((agent, index) => (
+              {sortedData.map((agent) => (
                 <TableRow key={agent.id} className="hover:bg-muted/50">
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -98,13 +184,6 @@ export function AgentPerformanceTableAdvanced({ data, isLoading }: AgentPerforma
                             {agent.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                           </AvatarFallback>
                         </Avatar>
-                        {index < 3 && (
-                          <div className={`absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
-                            index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : 'bg-amber-600'
-                          }`}>
-                            {index + 1}
-                          </div>
-                        )}
                       </div>
                       <div className="min-w-0">
                         <p className="font-medium text-foreground truncate">{agent.name}</p>
