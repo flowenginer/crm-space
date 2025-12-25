@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { 
   UserPlus, 
   Users, 
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { LeadJourneyMetrics, ReturningLeadsMetrics, formatDuration } from '@/hooks/useLeadJourneyDashboard';
+import { AssignmentTimeDistributionDialog } from './AssignmentTimeDistributionDialog';
 
 interface JourneyKPICardsProps {
   metrics: LeadJourneyMetrics | undefined;
@@ -24,6 +26,7 @@ interface KPICardProps {
   icon: React.ReactNode;
   color: 'primary' | 'green' | 'blue' | 'orange' | 'purple' | 'red';
   isLoading?: boolean;
+  onClick?: () => void;
 }
 
 const colorVariants = {
@@ -59,11 +62,17 @@ const colorVariants = {
   },
 };
 
-function KPICard({ title, value, subtitle, icon, color, isLoading }: KPICardProps) {
+function KPICard({ title, value, subtitle, icon, color, isLoading, onClick }: KPICardProps) {
   const colors = colorVariants[color];
+  const isClickable = !!onClick;
 
   return (
-    <Card className={`relative overflow-hidden bg-gradient-to-br ${colors.gradient} border-0`}>
+    <Card 
+      className={`relative overflow-hidden bg-gradient-to-br ${colors.gradient} border-0 ${
+        isClickable ? 'cursor-pointer hover:scale-[1.02] transition-transform duration-200' : ''
+      }`}
+      onClick={onClick}
+    >
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
@@ -105,6 +114,8 @@ export function JourneyKPICards({
   returningMetrics,
   isLoading 
 }: JourneyKPICardsProps) {
+  const [showDistributionDialog, setShowDistributionDialog] = useState(false);
+  
   const totalConversations = returningMetrics?.totalConversations || 0;
   const newContacts = returningMetrics?.newContacts || 0;
   const returningContacts = returningMetrics?.returningContacts || 0;
@@ -112,60 +123,71 @@ export function JourneyKPICards({
   const totalConvertedValue = metrics?.totalConvertedValue || 0;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-      <KPICard
-        title="Conversas Iniciadas"
-        value={totalConversations}
-        subtitle="No período"
-        icon={<MessageSquare className="h-5 w-5" />}
-        color="primary"
-        isLoading={isLoading}
-      />
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <KPICard
+          title="Conversas Iniciadas"
+          value={totalConversations}
+          subtitle="No período"
+          icon={<MessageSquare className="h-5 w-5" />}
+          color="primary"
+          isLoading={isLoading}
+        />
 
-      <KPICard
-        title="Novos Contatos"
-        value={newContacts}
-        subtitle={`${returningMetrics?.newContactRate.toFixed(0) || 0}% do total`}
-        icon={<UserPlus className="h-5 w-5" />}
-        color="green"
-        isLoading={isLoading}
-      />
+        <KPICard
+          title="Novos Contatos"
+          value={newContacts}
+          subtitle={`${returningMetrics?.newContactRate.toFixed(0) || 0}% do total`}
+          icon={<UserPlus className="h-5 w-5" />}
+          color="green"
+          isLoading={isLoading}
+        />
 
-      <KPICard
-        title="Retornantes"
-        value={returningContacts}
-        subtitle="Já tinham histórico"
-        icon={<RefreshCw className="h-5 w-5" />}
-        color="orange"
-        isLoading={isLoading}
+        <KPICard
+          title="Retornantes"
+          value={returningContacts}
+          subtitle="Já tinham histórico"
+          icon={<RefreshCw className="h-5 w-5" />}
+          color="orange"
+          isLoading={isLoading}
+        />
+        
+        <KPICard
+          title="Taxa Atribuição"
+          value={`${metrics?.assignmentRate.toFixed(0) || 0}%`}
+          subtitle={`${metrics?.totalAssigned || 0} atribuídos`}
+          icon={<Users className="h-5 w-5" />}
+          color="blue"
+          isLoading={isLoading}
+        />
+        
+        <KPICard
+          title="Tempo p/ Atribuição"
+          value={formatDuration(metrics?.medianTimeToAssignment || 0)}
+          subtitle="Mediana • Clique para detalhes"
+          icon={<Clock className="h-5 w-5" />}
+          color="purple"
+          isLoading={isLoading}
+          onClick={() => setShowDistributionDialog(true)}
+        />
+        
+        <KPICard
+          title="Conversões"
+          value={conversions}
+          subtitle={formatCurrency(totalConvertedValue)}
+          icon={<Target className="h-5 w-5" />}
+          color="green"
+          isLoading={isLoading}
+        />
+      </div>
+
+      <AssignmentTimeDistributionDialog
+        open={showDistributionDialog}
+        onOpenChange={setShowDistributionDialog}
+        distribution={metrics?.assignmentTimeDistribution || []}
+        median={metrics?.medianTimeToAssignment || 0}
+        total={metrics?.assignmentDistributionTotal || 0}
       />
-      
-      <KPICard
-        title="Taxa Atribuição"
-        value={`${metrics?.assignmentRate.toFixed(0) || 0}%`}
-        subtitle={`${metrics?.totalAssigned || 0} atribuídos`}
-        icon={<Users className="h-5 w-5" />}
-        color="blue"
-        isLoading={isLoading}
-      />
-      
-      <KPICard
-        title="Tempo p/ Atribuição"
-        value={formatDuration(metrics?.avgTimeToAssignment || 0)}
-        subtitle="Média"
-        icon={<Clock className="h-5 w-5" />}
-        color="purple"
-        isLoading={isLoading}
-      />
-      
-      <KPICard
-        title="Conversões"
-        value={conversions}
-        subtitle={formatCurrency(totalConvertedValue)}
-        icon={<Target className="h-5 w-5" />}
-        color="green"
-        isLoading={isLoading}
-      />
-    </div>
+    </>
   );
 }

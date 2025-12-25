@@ -134,8 +134,18 @@ export function useLeadsByOrigin(filters: DashboardFilters) {
 // 2.2 - useLeadJourneyMetrics (usando RPC)
 // =====================================================
 
+export interface AssignmentTimeDistribution {
+  range: string;
+  count: number;
+  percentage: number;
+  order: number;
+}
+
 export interface LeadJourneyMetrics {
   avgTimeToAssignment: number;
+  medianTimeToAssignment: number;
+  assignmentTimeDistribution: AssignmentTimeDistribution[];
+  assignmentDistributionTotal: number;
   avgTimeToFirstResponse: number;
   avgTimeToConversion: number;
   totalAssigned: number;
@@ -197,45 +207,32 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
       const assignedConversations = Number(kpi?.assigned_conversations) || 0;
       const assignmentRate = Number(kpi?.assignment_rate) || 0;
 
-      // 2) Avg time to assignment (seconds)
-      // NOTE: we filter assignments by assigned_at (when assignment happened)
-      // and additionally by conversation fields (department/channel/origin) when available.
-      let assignmentHistoryQuery = supabase
-        .from('lead_assignment_history')
-        .select(
-          `time_to_assign_seconds,
-           conversations!inner(id, department_id, channel_id, referral_source)`
-        )
-        .gte('assigned_at', dateFrom)
-        .lte('assigned_at', dateTo)
-        .not('time_to_assign_seconds', 'is', null);
+      // 2) Assignment time distribution (median + ranges) via RPC
+      const { data: distributionData, error: distributionError } = await supabase.rpc('get_assignment_time_distribution', {
+        p_date_from: dateFrom,
+        p_date_to: dateTo,
+        p_agent_id: filters.agentId || null,
+        p_department_id: filters.departmentId || null,
+        p_channel_id: filters.channelId || null,
+        p_origin: origin || null,
+      });
 
-      if (filters.agentId) {
-        assignmentHistoryQuery = assignmentHistoryQuery.eq('assigned_to', filters.agentId);
-      }
-      if (filters.departmentId) {
-        assignmentHistoryQuery = assignmentHistoryQuery.eq('conversations.department_id', filters.departmentId);
-      }
-      if (filters.channelId) {
-        assignmentHistoryQuery = assignmentHistoryQuery.eq('conversations.channel_id', filters.channelId);
-      }
-      if (origin) {
-        assignmentHistoryQuery = assignmentHistoryQuery.eq('conversations.referral_source', origin);
+      if (distributionError) {
+        console.warn('Error fetching assignment time distribution:', distributionError);
       }
 
-      const { data: assignmentHistory, error: assignmentHistoryError } = await assignmentHistoryQuery;
-      if (assignmentHistoryError) {
-        console.warn('Error fetching assignment history:', assignmentHistoryError);
-      }
+      const distResult = distributionData as unknown as {
+        median: number;
+        total: number;
+        distribution: AssignmentTimeDistribution[];
+      } | null;
 
-      const assignmentTimes = (assignmentHistory || [])
-        .map((r: any) => Number(r.time_to_assign_seconds))
-        .filter((n: number) => Number.isFinite(n) && n >= 0);
-
-      const avgTimeToAssignment =
-        assignmentTimes.length > 0
-          ? Math.round(assignmentTimes.reduce((a, b) => a + b, 0) / assignmentTimes.length)
-          : 0;
+      const medianTimeToAssignment = Math.round(distResult?.median || 0);
+      const assignmentTimeDistribution = distResult?.distribution || [];
+      const assignmentDistributionTotal = distResult?.total || 0;
+      
+      // Keep avgTimeToAssignment for backward compatibility (using median as fallback)
+      const avgTimeToAssignment = medianTimeToAssignment;
 
       // 3) Conversions (count distinct contacts that reached a conversion status in the period)
       let convertedContacts: string[] = [];
@@ -301,6 +298,9 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
 
       return {
         avgTimeToAssignment,
+        medianTimeToAssignment,
+        assignmentTimeDistribution,
+        assignmentDistributionTotal,
         avgTimeToFirstResponse: 0,
         avgTimeToConversion: 0,
         totalAssigned: assignedConversations,
