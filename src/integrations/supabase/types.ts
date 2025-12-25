@@ -8650,6 +8650,17 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_assignment_time_distribution: {
+        Args: {
+          p_agent_id?: string
+          p_channel_id?: string
+          p_date_from: string
+          p_date_to: string
+          p_department_id?: string
+          p_origin?: string
+        }
+        Returns: Json
+      }
       get_base_menu_items: {
         Args: { p_base_tenant_id?: string }
         Returns: {
