@@ -183,7 +183,9 @@ export function useLeadJourneyMetrics(filters: DashboardFilters, origin?: string
         console.error('Error fetching lead journey metrics:', kpiError);
       }
 
-      const kpi = (kpiData || null) as
+      const kpiRow = Array.isArray(kpiData) ? kpiData[0] : kpiData;
+
+      const kpi = (kpiRow || null) as
         | {
             total_conversations?: number;
             assigned_conversations?: number;
