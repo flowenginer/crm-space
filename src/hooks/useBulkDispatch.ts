@@ -194,10 +194,26 @@ export function usePreviewContacts(filters: BulkDispatchFilters, enabled: boolea
         query = query.eq('is_blocked', false);
       }
 
-      const { data, error } = await query.limit(50000);
-      if (error) throw error;
+      // Buscar TODOS os contatos usando paginação automática (sem limite)
+      const PAGE_SIZE = 1000;
+      let allContacts: PreviewContact[] = [];
+      let offset = 0;
+      let hasMore = true;
 
-      let contacts = data as PreviewContact[];
+      while (hasMore) {
+        const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allContacts = [...allContacts, ...data];
+          offset += PAGE_SIZE;
+          hasMore = data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      let contacts = allContacts as PreviewContact[];
 
       // Filtrar por tags (se especificado)
       if (filters.tagIds && filters.tagIds.length > 0) {
