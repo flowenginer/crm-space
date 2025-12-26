@@ -132,24 +132,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verificar se email já está em uso (busca mais eficiente)
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers({
+    // Verificar se email já está em uso no auth.users
+    const { data: authUsers, error: authListError } = await supabaseAdmin.auth.admin.listUsers({
       page: 1,
-      perPage: 1,
+      perPage: 1000,
     });
     
-    // Buscar diretamente na tabela profiles pelo email
-    const { data: existingProfile } = await supabaseAdmin
-      .from('profiles')
-      .select('id')
-      .ilike('email', cleanAdminEmail)
-      .maybeSingle();
-    
-    if (existingProfile) {
-      return new Response(
-        JSON.stringify({ error: 'Email já está em uso' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!authListError && authUsers?.users) {
+      const emailExists = authUsers.users.some(u => u.email?.toLowerCase() === cleanAdminEmail);
+      if (emailExists) {
+        return new Response(
+          JSON.stringify({ error: 'Email já está em uso' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // 1. Criar o tenant
