@@ -2532,7 +2532,11 @@ async function handleConnectionEvent(
 // =====================================================
 
 function isCallEvent(provider: WhatsAppProvider, payload: any): boolean {
-  const eventType = (payload.event || "").toLowerCase();
+  // IMPORTANTE: payload.event pode ser um OBJETO (ex: presence events do UAZAPI)
+  // Só usar se for string
+  const eventType = typeof payload.event === 'string' 
+    ? payload.event.toLowerCase() 
+    : "";
   
   switch (provider) {
     case "evolution":
