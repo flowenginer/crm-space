@@ -40,8 +40,12 @@ export function InteractionChart({ data, isLoading, agentName }: InteractionChar
   // Calculate summary stats
   const totalClient = data.reduce((sum, d) => sum + d.clientMessages, 0);
   const totalAgent = data.reduce((sum, d) => sum + d.agentMessages, 0);
-  const peakClientHour = data.reduce((max, d) => d.clientMessages > max.clientMessages ? d : max, data[0]);
-  const peakAgentHour = data.reduce((max, d) => d.agentMessages > max.agentMessages ? d : max, data[0]);
+  const peakClientHour = data.length > 0 
+    ? data.reduce((max, d) => d.clientMessages > max.clientMessages ? d : max, data[0]) 
+    : null;
+  const peakAgentHour = data.length > 0 
+    ? data.reduce((max, d) => d.agentMessages > max.agentMessages ? d : max, data[0]) 
+    : null;
 
   if (isLoading) {
     return (

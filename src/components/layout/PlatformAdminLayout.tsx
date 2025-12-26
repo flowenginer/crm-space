@@ -318,9 +318,9 @@ export function PlatformAdminLayout() {
           </div>
         </header>
 
-        {/* Content */}
+        {/* Content - Only render when confirmed super admin */}
         <main className="flex-1 p-6 md:p-8 overflow-y-auto animate-fade-in">
-          <Outlet />
+          {isSuperAdmin ? <Outlet /> : null}
         </main>
       </div>
 

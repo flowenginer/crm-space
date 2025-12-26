@@ -29,6 +29,8 @@ export interface TenantAdmin {
 }
 
 export function useSuperAdminTenants() {
+  const { data: isSuperAdmin } = useCurrentUserIsSuperAdmin();
+  
   return useQuery({
     queryKey: ['super_admin_tenants'],
     queryFn: async (): Promise<TenantWithStats[]> => {
@@ -41,6 +43,7 @@ export function useSuperAdminTenants() {
       
       return (data || []) as TenantWithStats[];
     },
+    enabled: isSuperAdmin === true,
   });
 }
 
