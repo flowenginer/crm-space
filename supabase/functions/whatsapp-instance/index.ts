@@ -2264,21 +2264,9 @@ serve(async (req) => {
       );
     }
 
-    // Determine admin_token: use Supabase Secret if provider is shared, otherwise use from DB
-    let adminToken = provider.admin_token;
-    
-    if (provider.is_shared) {
-      // Provider compartilhado: ler admin_token de Supabase Secrets
-      const secretName = providerCode === 'uazapi' ? 'UAZAPI_ADMIN_TOKEN' : `${providerCode.toUpperCase()}_API_KEY`;
-      const secretToken = Deno.env.get(secretName);
-      
-      if (secretToken) {
-        console.log(`[WhatsApp Instance] Using shared provider, reading ${secretName} from Secrets`);
-        adminToken = secretToken;
-      } else {
-        console.warn(`[WhatsApp Instance] Shared provider but secret ${secretName} not found, falling back to DB token`);
-      }
-    }
+    // Sempre usar admin_token do banco de dados (mais confiável)
+    const adminToken = provider.admin_token;
+    console.log(`[WhatsApp Instance] Using provider ${provider.name} (is_shared: ${provider.is_shared}), admin_token from DB`);
 
     if (!provider.is_configured && !adminToken) {
       return new Response(
