@@ -575,7 +575,7 @@ export function useUpdateConversation() {
       // Retornar dados para uso no onSuccess
       return { id, ...data };
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (result, variables) => {
       // Sempre invalidar queries não-paginadas
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       
@@ -583,6 +583,30 @@ export function useUpdateConversation() {
       // O realtime e a remoção otimista já cuidam disso
       if (variables.status !== 'closed') {
         queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      }
+      
+      // Schedule satisfaction survey when conversation is closed
+      if (variables.status === 'closed') {
+        try {
+          // Get user's tenant_id
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('tenant_id')
+            .eq('id', (await supabase.auth.getUser()).data.user?.id)
+            .single();
+          
+          if (profile?.tenant_id) {
+            supabase.functions.invoke('process-satisfaction', {
+              body: {
+                action: 'schedule',
+                conversationId: result.id,
+                tenantId: profile.tenant_id,
+              },
+            }).catch(err => console.log('Satisfaction survey scheduling:', err));
+          }
+        } catch (err) {
+          console.log('Error scheduling satisfaction survey:', err);
+        }
       }
     },
   });

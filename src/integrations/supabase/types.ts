@@ -6891,6 +6891,56 @@ export type Database = {
           },
         ]
       }
+      satisfaction_config: {
+        Row: {
+          auto_close_on_response: boolean
+          created_at: string
+          delay_minutes: number
+          id: string
+          is_active: boolean
+          message_csat: string
+          message_nps: string
+          send_only_business_hours: boolean
+          survey_type: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          auto_close_on_response?: boolean
+          created_at?: string
+          delay_minutes?: number
+          id?: string
+          is_active?: boolean
+          message_csat?: string
+          message_nps?: string
+          send_only_business_hours?: boolean
+          survey_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          auto_close_on_response?: boolean
+          created_at?: string
+          delay_minutes?: number
+          id?: string
+          is_active?: boolean
+          message_csat?: string
+          message_nps?: string
+          send_only_business_hours?: boolean
+          survey_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satisfaction_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       satisfaction_surveys: {
         Row: {
           agent_id: string | null
@@ -6902,7 +6952,9 @@ export type Database = {
           response: string | null
           score: number | null
           sent_at: string | null
+          sent_via_channel_id: string | null
           status: string | null
+          survey_message_id: string | null
           survey_type: string
           tenant_id: string
           updated_at: string | null
@@ -6917,7 +6969,9 @@ export type Database = {
           response?: string | null
           score?: number | null
           sent_at?: string | null
+          sent_via_channel_id?: string | null
           status?: string | null
+          survey_message_id?: string | null
           survey_type?: string
           tenant_id?: string
           updated_at?: string | null
@@ -6932,7 +6986,9 @@ export type Database = {
           response?: string | null
           score?: number | null
           sent_at?: string | null
+          sent_via_channel_id?: string | null
           status?: string | null
+          survey_message_id?: string | null
           survey_type?: string
           tenant_id?: string
           updated_at?: string | null
@@ -6964,6 +7020,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satisfaction_surveys_sent_via_channel_id_fkey"
+            columns: ["sent_via_channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
             referencedColumns: ["id"]
           },
           {
