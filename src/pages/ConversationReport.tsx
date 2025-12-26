@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
 import { DateRangePicker } from '@/components/reports/DateRangePicker';
+import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 
 interface Filters {
   startDate: string;
@@ -56,6 +57,7 @@ export default function ConversationReportPage() {
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [previewConversationId, setPreviewConversationId] = useState<string | null>(null);
   const pageSize = 50;
 
   // Setup realtime subscription
@@ -609,7 +611,7 @@ export default function ConversationReportPage() {
                       </td>
                       <td className="px-3 py-3">
                         <button
-                          onClick={() => window.open(`/conversations?id=${conv.id}`, '_blank')}
+                          onClick={() => setPreviewConversationId(conv.id)}
                           className="p-2 hover:bg-muted rounded-lg transition-colors"
                           title="Ver conversa"
                         >
@@ -665,6 +667,13 @@ export default function ConversationReportPage() {
           )}
         </div>
       </div>
+
+      {/* Conversation Preview Dialog */}
+      <ConversationPreviewDialog
+        conversationId={previewConversationId}
+        isOpen={!!previewConversationId}
+        onClose={() => setPreviewConversationId(null)}
+      />
     </div>
   );
 }
