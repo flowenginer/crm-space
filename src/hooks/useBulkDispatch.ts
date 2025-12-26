@@ -395,7 +395,7 @@ export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled
     queryKey: ['bulk-dispatch-preview-infinite', filters],
     enabled,
     initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => {
+    getNextPageParam: (lastPage: PreviewContact[], allPages) => {
       if (lastPage.length < PREVIEW_PAGE_SIZE) return undefined;
       return allPages.length * PREVIEW_PAGE_SIZE;
     },

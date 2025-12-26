@@ -24,6 +24,7 @@ import Conversations from "@/pages/Conversations";
 import QuickMessages from "@/pages/QuickMessages";
 import CRM from "@/pages/CRM";
 import CRMSettings from "@/pages/CRMSettings";
+import Shipping from "@/pages/Shipping";
 import WhatsAppChannels from "@/pages/WhatsAppChannels";
 import Contacts from "@/pages/Contacts";
 import Reports from "@/pages/Reports";
@@ -137,6 +138,11 @@ const App = () => (
               <Route path="/crm/settings" element={
                 <ProtectedRoute permission="deals.view">
                   <CRMSettings />
+                </ProtectedRoute>
+              } />
+              <Route path="/shipping" element={
+                <ProtectedRoute permission="deals.view">
+                  <Shipping />
                 </ProtectedRoute>
               } />
               <Route path="/whatsapp-channels" element={

@@ -467,9 +467,6 @@ export function Header({ title, onMenuClick }: HeaderProps) {
               <TabsTrigger value="deals" className={isMobile ? "text-xs px-2 py-1" : ""}>
                 {isMobile ? "Negócios" : "Negócios"}
               </TabsTrigger>
-              <TabsTrigger value="frete" className={isMobile ? "text-xs px-2 py-1" : ""}>
-                Frete
-              </TabsTrigger>
             </TabsList>
           </Tabs>
         )}
