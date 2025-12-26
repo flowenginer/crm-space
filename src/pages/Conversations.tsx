@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useTheme } from '@/contexts/ThemeContext';
+import { adjustColorForLightMode } from '@/lib/colorUtils';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -1284,6 +1286,7 @@ export default function Conversations() {
     id: selectedConversationId,
     fullSearch: searchParams.toString()
   });
+  const { theme } = useTheme();
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -3270,7 +3273,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               {leadStatuses?.map((status) => (
                 <SelectItem key={status.id} value={status.name}>
                   <div className="flex items-center justify-between w-full gap-2">
-                    <span style={{ color: status.color || undefined }}>{status.name}</span>
+                    <span style={{ color: adjustColorForLightMode(status.color, theme) }}>{status.name}</span>
                     {leadStatusCountsData?.[status.name] !== undefined && (
                       <span className="text-xs bg-muted px-1.5 py-0.5 rounded-md text-muted-foreground">
                         {leadStatusCountsData[status.name] || 0}
