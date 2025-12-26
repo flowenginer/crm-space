@@ -4,8 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Save, Loader2, ExternalLink } from 'lucide-react';
+import { Save, Loader2, ExternalLink, Shield, Info } from 'lucide-react';
 
 interface Provider {
   id: string;
@@ -15,6 +16,7 @@ interface Provider {
   admin_token?: string | null;
   client_token?: string | null;
   is_configured?: boolean;
+  is_shared?: boolean;
 }
 
 interface WhatsAppProviderFormProps {
@@ -29,6 +31,7 @@ export function WhatsAppProviderForm({ provider, onSuccess }: WhatsAppProviderFo
     adminToken: provider.admin_token || '',
     clientToken: provider.client_token || '',
     baseUrl: provider.base_url || '',
+    isShared: provider.is_shared || false,
   });
 
   useEffect(() => {
@@ -36,20 +39,32 @@ export function WhatsAppProviderForm({ provider, onSuccess }: WhatsAppProviderFo
       adminToken: provider.admin_token || '',
       clientToken: provider.client_token || '',
       baseUrl: provider.base_url || '',
+      isShared: provider.is_shared || false,
     });
   }, [provider]);
 
   const saveConfig = useMutation({
     mutationFn: async () => {
+      const updateData: any = {
+        base_url: formData.baseUrl || undefined,
+        is_shared: formData.isShared,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Se provider é compartilhado, não salvar admin_token no banco
+      if (!formData.isShared) {
+        updateData.admin_token = formData.adminToken || null;
+        updateData.client_token = formData.clientToken || null;
+        updateData.is_configured = !!formData.adminToken;
+      } else {
+        // Provider compartilhado: admin_token vem de Supabase Secrets
+        updateData.admin_token = null;
+        updateData.is_configured = true; // Assume que o secret foi configurado
+      }
+
       const { error } = await supabase
         .from('whatsapp_providers')
-        .update({
-          admin_token: formData.adminToken || null,
-          client_token: formData.clientToken || null,
-          base_url: formData.baseUrl || undefined,
-          is_configured: !!formData.adminToken,
-          updated_at: new Date().toISOString(),
-        } as any)
+        .update(updateData)
         .eq('id', provider.id);
 
       if (error) throw error;
@@ -101,6 +116,39 @@ export function WhatsAppProviderForm({ provider, onSuccess }: WhatsAppProviderFo
 
   return (
     <div className="space-y-6">
+      {/* Shared Provider Toggle - Only for UAZAPI */}
+      {provider.code === 'uazapi' && (
+        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
+          <div className="flex items-start gap-3">
+            <Shield className="h-5 w-5 text-primary mt-0.5" />
+            <div className="space-y-1">
+              <Label htmlFor="is-shared" className="font-medium cursor-pointer">
+                Provider Compartilhado
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                O Admin Token é gerenciado centralmente via Supabase Secrets
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="is-shared"
+            checked={formData.isShared}
+            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isShared: checked }))}
+          />
+        </div>
+      )}
+
+      {/* Shared Provider Info */}
+      {formData.isShared && (
+        <div className="flex items-start gap-2 p-3 bg-primary/10 rounded-lg border border-primary/20">
+          <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+          <p className="text-sm text-muted-foreground">
+            O Admin Token será lido automaticamente de <code className="text-xs bg-muted px-1 rounded">UAZAPI_ADMIN_TOKEN</code> nos Supabase Secrets. 
+            Todos os tenants usarão o mesmo servidor UAZAPI.
+          </p>
+        </div>
+      )}
+
       {/* URL Base (Evolution e UAZAPI) */}
       {(provider.code === 'evolution' || provider.code === 'uazapi') && (
         <div className="space-y-2">
@@ -118,40 +166,42 @@ export function WhatsAppProviderForm({ provider, onSuccess }: WhatsAppProviderFo
         </div>
       )}
 
-      {/* Main Token */}
-      <div className="space-y-2">
-        <Label>{getTokenLabel()} *</Label>
-        <Input
-          type="password"
-          value={formData.adminToken}
-          onChange={(e) => setFormData(prev => ({ ...prev, adminToken: e.target.value }))}
-          placeholder="Cole sua chave de acesso..."
-        />
-        {provider.code === 'zapi' && (
-          <p className="text-xs text-muted-foreground">
-            Obtenha em{' '}
-            <a 
-              href="https://app.z-api.io/app/security" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-primary hover:underline inline-flex items-center gap-1"
-            >
-              app.z-api.io/app/security
-              <ExternalLink size={10} />
-            </a>
-          </p>
-        )}
-        {provider.code === 'uazapi' && (
-          <p className="text-xs text-muted-foreground">
-            Encontre no painel administrativo do UAZAPI
-          </p>
-        )}
-        {provider.code === 'evolution' && (
-          <p className="text-xs text-muted-foreground">
-            AUTHENTICATION_API_KEY do seu arquivo .env
-          </p>
-        )}
-      </div>
+      {/* Main Token - Hide if shared */}
+      {!formData.isShared && (
+        <div className="space-y-2">
+          <Label>{getTokenLabel()} *</Label>
+          <Input
+            type="password"
+            value={formData.adminToken}
+            onChange={(e) => setFormData(prev => ({ ...prev, adminToken: e.target.value }))}
+            placeholder="Cole sua chave de acesso..."
+          />
+          {provider.code === 'zapi' && (
+            <p className="text-xs text-muted-foreground">
+              Obtenha em{' '}
+              <a 
+                href="https://app.z-api.io/app/security" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:underline inline-flex items-center gap-1"
+              >
+                app.z-api.io/app/security
+                <ExternalLink size={10} />
+              </a>
+            </p>
+          )}
+          {provider.code === 'uazapi' && (
+            <p className="text-xs text-muted-foreground">
+              Encontre no painel administrativo do UAZAPI
+            </p>
+          )}
+          {provider.code === 'evolution' && (
+            <p className="text-xs text-muted-foreground">
+              AUTHENTICATION_API_KEY do seu arquivo .env
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Security Token (Z-API only) */}
       {provider.code === 'zapi' && (
