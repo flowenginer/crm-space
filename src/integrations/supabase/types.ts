@@ -8905,6 +8905,7 @@ export type Database = {
           provider_admin_token: string
           provider_base_url: string
           provider_code: string
+          tenant_id: string
         }[]
       }
       get_channel_counts: {

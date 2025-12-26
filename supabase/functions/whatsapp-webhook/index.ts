@@ -850,12 +850,13 @@ serve(async (req) => {
       .rpc("get_channel_by_instance", { p_instance_id: instanceId })
       .single();
     
-    // Mapear resultado para formato esperado
+    // Mapear resultado para formato esperado (agora incluindo tenant_id)
     const channelRow = channelData as {
       id: string;
       name: string;
       instance_id: string;
       department_id: string | null;
+      tenant_id: string;
       provider_code: string;
       provider_base_url: string;
       provider_admin_token: string;
@@ -866,6 +867,7 @@ serve(async (req) => {
       name: channelRow.name,
       instance_id: channelRow.instance_id,
       department_id: channelRow.department_id,
+      tenant_id: channelRow.tenant_id,
       provider: {
         code: channelRow.provider_code,
         base_url: channelRow.provider_base_url,
@@ -908,11 +910,12 @@ serve(async (req) => {
       let contact = null;
       let conversation = null;
       
-      // Tentar buscar contato pelo telefone diretamente
+      // Tentar buscar contato pelo telefone diretamente (FILTRAR POR TENANT!)
       const { data: directContact } = await supabase
         .from("contacts")
         .select("id")
         .eq("phone", recipientPhone)
+        .eq("tenant_id", channel.tenant_id)
         .single();
       
       if (directContact) {
@@ -972,6 +975,7 @@ serve(async (req) => {
             first_contact_at: new Date().toISOString(),
             origin: "whatsapp",
             department_id: channel.department_id || null,
+            tenant_id: channel.tenant_id,
           })
           .select("id")
           .single();
@@ -984,6 +988,7 @@ serve(async (req) => {
               .from("contacts")
               .select("id")
               .eq("phone", recipientPhone)
+              .eq("tenant_id", channel.tenant_id)
               .single();
             contact = existingContact;
           } else {
@@ -1030,6 +1035,7 @@ serve(async (req) => {
               contact_id: contact.id,
               channel_id: channel.id,
               department_id: channel.department_id || null,
+              tenant_id: channel.tenant_id,
               status: "open",
               is_unread: false, // Mensagem enviada por nós, não é unread
               unread_count: 0,
@@ -1369,6 +1375,7 @@ serve(async (req) => {
         whatsapp_message_id: normalizedMessage.originalId,
         created_at: normalizedMessage.timestamp.toISOString(),
         reply_to_message_id: replyToMessageIdFromMe,
+        tenant_id: channel.tenant_id,
       });
 
       if (msgError) {
@@ -1520,11 +1527,12 @@ serve(async (req) => {
     const phoneVariations = generatePhoneVariations(normalizedMessage.from);
     console.log(`[Webhook] Searching contact with phone variations: ${phoneVariations.join(', ')}`);
     
-    // Primeiro, tentar buscar o contato existente por todas as variações
+    // Primeiro, tentar buscar o contato existente por todas as variações (FILTRAR POR TENANT!)
     let { data: contact } = await supabase
       .from("contacts")
       .select("id, full_name, phone")
       .in("phone", phoneVariations)
+      .eq("tenant_id", channel.tenant_id)
       .limit(1)
       .maybeSingle();
 
@@ -1561,8 +1569,9 @@ serve(async (req) => {
           referral_data: referralDataJson,
           first_contact_at: new Date().toISOString(),
           department_id: channel.department_id || null,
+          tenant_id: channel.tenant_id,
         }, {
-          onConflict: 'phone',
+          onConflict: 'phone,tenant_id',
           ignoreDuplicates: false
         })
         .select("id, full_name, phone")
@@ -1576,6 +1585,7 @@ serve(async (req) => {
             .from("contacts")
             .select("id, full_name, phone")
             .in("phone", phoneVariations)
+            .eq("tenant_id", channel.tenant_id)
             .limit(1)
             .maybeSingle();
           contact = existingContact;
@@ -1875,6 +1885,7 @@ serve(async (req) => {
             contact_id: contact.id,
             channel_id: channel.id,
             department_id: channel.department_id || null,
+            tenant_id: channel.tenant_id,
             status: initialStatus,
             is_unread: true,
             unread_count: 1,
@@ -2188,6 +2199,7 @@ serve(async (req) => {
       whatsapp_message_id: normalizedMessage.originalId,
       created_at: normalizedMessage.timestamp.toISOString(),
       reply_to_message_id: replyToMessageId,
+      tenant_id: channel.tenant_id,
     });
 
     if (msgError) {
