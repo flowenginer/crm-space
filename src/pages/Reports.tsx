@@ -33,7 +33,6 @@ import {
   Wallet,
   Info,
 } from 'lucide-react';
-import { FinancialDashboard } from '@/components/reports/FinancialDashboard';
 import { TransferHistoryPanel } from '@/components/reports/TransferHistoryPanel';
 import { CallHistoryPanel } from '@/components/reports/CallHistoryPanel';
 import { SLAConfigCard } from '@/components/reports/SLAConfigCard';
@@ -88,6 +87,12 @@ import {
   useReportPerformance,
   useReportCloseReasons,
 } from '@/hooks/useReports';
+import {
+  exportSLAReport,
+  exportAttendanceReport,
+  exportSalesReport,
+  exportPerformanceReport,
+} from '@/hooks/useReportExport';
 import { useReportsTabs } from '@/hooks/useReportsTabs';
 
 const COLORS = ['#8B5CF6', '#EC4899', '#3B82F6', '#10B981', '#6B7280'];
@@ -321,15 +326,42 @@ export default function Reports() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem className="flex items-center gap-2">
+                <DropdownMenuItem 
+                  className="flex items-center gap-2"
+                  onClick={() => {
+                    const dr = dateRange as { from: Date; to: Date } | undefined;
+                    if (slaData) exportSLAReport('pdf', dr, slaData);
+                    else if (attendanceData) exportAttendanceReport('pdf', dr, attendanceData);
+                    else if (salesData) exportSalesReport('pdf', dr, salesData);
+                    else if (performanceData) exportPerformanceReport('pdf', dr, performanceData);
+                  }}
+                >
                   <FileText size={16} />
                   Exportar PDF
                 </DropdownMenuItem>
-                <DropdownMenuItem className="flex items-center gap-2">
+                <DropdownMenuItem 
+                  className="flex items-center gap-2"
+                  onClick={() => {
+                    const dr = dateRange as { from: Date; to: Date } | undefined;
+                    if (slaData) exportSLAReport('excel', dr, slaData);
+                    else if (attendanceData) exportAttendanceReport('excel', dr, attendanceData);
+                    else if (salesData) exportSalesReport('excel', dr, salesData);
+                    else if (performanceData) exportPerformanceReport('excel', dr, performanceData);
+                  }}
+                >
                   <FileText size={16} />
                   Exportar Excel
                 </DropdownMenuItem>
-                <DropdownMenuItem className="flex items-center gap-2">
+                <DropdownMenuItem 
+                  className="flex items-center gap-2"
+                  onClick={() => {
+                    const dr = dateRange as { from: Date; to: Date } | undefined;
+                    if (slaData) exportSLAReport('csv', dr, slaData);
+                    else if (attendanceData) exportAttendanceReport('csv', dr, attendanceData);
+                    else if (salesData) exportSalesReport('csv', dr, salesData);
+                    else if (performanceData) exportPerformanceReport('csv', dr, performanceData);
+                  }}
+                >
                   <FileText size={16} />
                   Exportar CSV
                 </DropdownMenuItem>
@@ -897,11 +929,6 @@ export default function Reports() {
                 </div>
               )}
             </div>
-          </TabsContent>
-
-          {/* TAB 4: Financial */}
-          <TabsContent value="financial">
-            <FinancialDashboard filters={{}} />
           </TabsContent>
 
           {/* TAB 5: Satisfaction Report */}
