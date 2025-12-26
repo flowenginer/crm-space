@@ -893,10 +893,10 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, instanceTo
       return { connected: true, ownerJid: statusData.owner };
     }
     
-    // Se tem QRCode no status, retornar
-    if (statusData.qrcode || statusData.qr) {
+    // Se tem QRCode no status, retornar (pode estar na raiz ou em instance)
+    if (statusData.qrcode || statusData.qr || statusData.instance?.qrcode) {
       return {
-        qrCode: statusData.qrcode || statusData.qr,
+        qrCode: statusData.qrcode || statusData.qr || statusData.instance?.qrcode,
         connected: false,
       };
     }
@@ -918,8 +918,10 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, instanceTo
     const connectData = await safeJsonParse(connectResponse, 'UAZAPI Reconnect');
     console.log('[UAZAPI] Reconnect response:', connectData);
     
+    // QR Code pode estar na raiz ou dentro de instance
     return {
-      qrCode: connectData.qrcode || connectData.qr || connectData.base64,
+      qrCode: connectData.qrcode || connectData.qr || connectData.base64 || 
+              connectData.instance?.qrcode || connectData.instance?.qr,
       connected: false,
     };
   } catch (err: any) {
