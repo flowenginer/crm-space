@@ -15,6 +15,7 @@ export interface WhatsAppProvider {
   admin_token?: string | null;
   client_token?: string | null;
   is_configured?: boolean;
+  is_shared?: boolean;
 }
 
 export function useProviders() {
@@ -47,6 +48,25 @@ export function useConfiguredProviders() {
 
       if (error) throw error;
       return data as WhatsAppProvider[];
+    },
+  });
+}
+
+// Hook para buscar o provedor compartilhado padrão (UAZAPI global)
+export function useDefaultSharedProvider() {
+  return useQuery({
+    queryKey: ['whatsapp-default-shared-provider'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('whatsapp_providers')
+        .select('*')
+        .eq('is_active', true)
+        .eq('is_configured', true)
+        .eq('is_shared', true)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as WhatsAppProvider | null;
     },
   });
 }
