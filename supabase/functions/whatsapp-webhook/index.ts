@@ -2428,7 +2428,11 @@ function getEventType(provider: WhatsAppProvider, payload: any): string {
     case "zapi":
       return payload.type || payload.event || "message";
     case "uazapi":
-      return payload.event || payload.type || "message";
+      // IMPORTANTE: payload.event pode ser um OBJETO (ex: presence events)
+      // Priorizar payload.type ou payload.EventType que são sempre strings
+      return payload.type || payload.EventType || 
+             (typeof payload.event === 'string' ? payload.event : null) || 
+             "message";
     case "evolution":
       return (payload.event || "message").toLowerCase().replace(/_/g, '.');
     default:
