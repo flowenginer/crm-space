@@ -2434,7 +2434,9 @@ function getEventType(provider: WhatsAppProvider, payload: any): string {
              (typeof payload.event === 'string' ? payload.event : null) || 
              "message";
     case "evolution":
-      return (payload.event || "message").toLowerCase().replace(/_/g, '.');
+      // IMPORTANTE: payload.event pode ser objeto em alguns casos
+      const evolutionEventStr = typeof payload.event === 'string' ? payload.event : "message";
+      return evolutionEventStr.toLowerCase().replace(/_/g, '.');
     default:
       return "unknown";
   }
@@ -2451,7 +2453,8 @@ function isConnectionEvent(provider: WhatsAppProvider, payload: any): boolean {
              payload.event === "status" ||
              payload.type === "connection";
     case "evolution":
-      const evolutionConnEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
+      const evolutionConnEventStr = typeof payload.event === 'string' ? payload.event : "";
+      const evolutionConnEvent = evolutionConnEventStr.toLowerCase().replace(/_/g, '.');
       return evolutionConnEvent === "connection.update";
     default:
       return false;
@@ -2669,8 +2672,9 @@ function isPresenceEvent(provider: WhatsAppProvider, payload: any): boolean {
     case "uazapi":
       return payload.event === "presence.update";
     case "evolution":
-      const evolutionEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
-      return evolutionEvent === "presence.update";
+      const evolutionPresenceStr = typeof payload.event === 'string' ? payload.event : "";
+      const evolutionPresenceEvent = evolutionPresenceStr.toLowerCase().replace(/_/g, '.');
+      return evolutionPresenceEvent === "presence.update";
     default:
       return false;
   }
@@ -2757,7 +2761,9 @@ function isMessageStatusEvent(provider: WhatsAppProvider, payload: any): boolean
     case "uazapi":
       // Formato antigo: payload.event (minúsculo)
       // Formato UAZAPI V2: payload.EventType (com E maiúsculo)
-      const uazapiEvent = (payload.event || "").toLowerCase();
+      // IMPORTANTE: payload.event pode ser objeto em alguns casos (presence events)
+      const uazapiEventStr = typeof payload.event === 'string' ? payload.event : "";
+      const uazapiEvent = uazapiEventStr.toLowerCase();
       const uazapiEventType = (payload.EventType || payload.body?.EventType || "").toLowerCase();
       
       // Verificar também se há ack no payload (evento de status inline)
@@ -2778,7 +2784,8 @@ function isMessageStatusEvent(provider: WhatsAppProvider, payload: any): boolean
       
       return isStatusEvent;
     case "evolution":
-      const evolutionStatusEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
+      const evolutionStatusStr = typeof payload.event === 'string' ? payload.event : "";
+      const evolutionStatusEvent = evolutionStatusStr.toLowerCase().replace(/_/g, '.');
       return evolutionStatusEvent === "messages.update";
     default:
       return false;
@@ -2944,7 +2951,8 @@ function isReactionEvent(provider: WhatsAppProvider, payload: any): boolean {
     case "uazapi":
       return payload.event === "messages.reaction";
     case "evolution":
-      const evolutionEvent = (payload.event || "").toLowerCase().replace(/_/g, '.');
+      const evolutionReactionStr = typeof payload.event === 'string' ? payload.event : "";
+      const evolutionEvent = evolutionReactionStr.toLowerCase().replace(/_/g, '.');
       
       // Case 1: Explicit messages.reaction event
       if (evolutionEvent === "messages.reaction") return true;
@@ -3680,7 +3688,8 @@ function extractUAZAPIContent(msg: any, type: MessageType): string {
 }
 
 function normalizeEvolutionMessage(payload: any): NormalizedMessage | null {
-  const eventType = (payload.event || "").toLowerCase().replace(/_/g, '.');
+  const eventStr = typeof payload.event === 'string' ? payload.event : "";
+  const eventType = eventStr.toLowerCase().replace(/_/g, '.');
   if (eventType !== "messages.upsert" && eventType !== "send.message") return null;
 
   let msg = payload.data;
