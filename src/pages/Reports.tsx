@@ -38,6 +38,9 @@ import { CallHistoryPanel } from '@/components/reports/CallHistoryPanel';
 import { SLAConfigCard } from '@/components/reports/SLAConfigCard';
 import { SatisfactionPanel } from '@/components/reports/SatisfactionPanel';
 import { VolumeHeatmap } from '@/components/reports/VolumeHeatmap';
+import { SalesFunnelChart } from '@/components/reports/SalesFunnelChart';
+import { SalesOriginChart } from '@/components/reports/SalesOriginChart';
+import { SalesFiltersPanel } from '@/components/reports/SalesFiltersPanel';
 import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -127,6 +130,7 @@ export default function Reports() {
   const tabFromUrl = searchParams.get('tab');
   const canViewAllReports = isAdmin || hasPermission('reports', 'view_all');
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [salesFilters, setSalesFilters] = useState<{ sellerId?: string; origin?: string }>({});
   
   // Load persisted date range from localStorage
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
@@ -161,7 +165,8 @@ export default function Reports() {
   const { data: salesData, isLoading: salesLoading } = useReportSales(
     dateRange as { from: Date; to: Date } | undefined,
     profile?.id,
-    canViewAllReports
+    canViewAllReports,
+    salesFilters
   );
   const { data: performanceData, isLoading: performanceLoading } = useReportPerformance(
     dateRange as { from: Date; to: Date } | undefined,
@@ -915,6 +920,14 @@ export default function Reports() {
 
           {/* TAB 3: Sales Report */}
           <TabsContent value="sales" className="space-y-6">
+            {/* Filters Panel */}
+            <SalesFiltersPanel
+              filters={salesFilters}
+              onFiltersChange={setSalesFilters}
+              availableSellers={salesData?.availableSellers || []}
+              availableOrigins={salesData?.availableOrigins || []}
+            />
+
             {/* Sales Metric Cards */}
             {salesLoading ? (
               <div className="grid grid-cols-4 gap-6">
@@ -923,8 +936,8 @@ export default function Reports() {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-6 gap-4">
-                <div className="bg-gradient-to-br from-primary to-accent rounded-2xl p-5 shadow-lg text-white">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+                <div className="bg-gradient-to-br from-primary to-accent rounded-2xl p-5 shadow-lg text-white col-span-2">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-white/80 text-sm font-medium">Faturamento</span>
                     <DollarSign size={18} className="text-white/80" />
@@ -932,6 +945,12 @@ export default function Reports() {
                   <div className="text-2xl font-bold">
                     R$ {((salesData?.totalRevenue || 0) / 1000).toFixed(1)}K
                   </div>
+                  {salesData?.revenueGrowthDirection !== 'neutral' && (
+                    <div className={`text-xs mt-1 flex items-center gap-1 ${salesData?.revenueGrowthDirection === 'up' ? 'text-green-200' : 'text-red-200'}`}>
+                      <TrendingUp size={12} className={salesData?.revenueGrowthDirection === 'down' ? 'rotate-180' : ''} />
+                      {salesData?.revenueGrowth}% vs período anterior
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
@@ -950,7 +969,7 @@ export default function Reports() {
                     <Receipt size={16} className="text-status-info" />
                   </div>
                   <div className="text-2xl font-bold text-foreground">
-                    R$ {salesData?.totalConversions ? Math.round((salesData?.totalRevenue || 0) / salesData.totalConversions).toLocaleString() : 0}
+                    R$ {(salesData?.avgTicket || 0).toLocaleString()}
                   </div>
                 </div>
 
@@ -976,21 +995,31 @@ export default function Reports() {
 
                 <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs text-muted-foreground font-medium">Vendedores</span>
-                    <ShoppingBag size={16} className="text-primary" />
+                    <span className="text-xs text-muted-foreground font-medium">Maior Venda</span>
+                    <Trophy size={16} className="text-yellow-500" />
                   </div>
                   <div className="text-2xl font-bold text-foreground">
-                    {salesData?.sellers?.length || 0}
+                    R$ {(salesData?.highestSale || 0).toLocaleString()}
+                  </div>
+                </div>
+
+                <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs text-muted-foreground font-medium">Total Leads</span>
+                    <Users size={16} className="text-primary" />
+                  </div>
+                  <div className="text-2xl font-bold text-foreground">
+                    {salesData?.totalLeads || 0}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Sales Timeline & Ranking */}
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-foreground mb-6">Evolução de Vendas</h3>
-              {salesLoading ? (
-                <Skeleton className="h-64" />
+            {/* Sales Timeline & Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Sales Timeline */}
+              <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                <h3 className="text-lg font-semibold text-foreground mb-6">Evolução de Vendas</h3>
               ) : (salesData?.timeline?.length || 0) > 0 ? (
                 <ResponsiveContainer width="100%" height={280}>
                   <ComposedChart data={salesData?.timeline}>
@@ -1009,12 +1038,39 @@ export default function Reports() {
                   <Info size={32} className="mb-2" />
                   <p className="text-sm">Sem dados no período</p>
                 </div>
-              )}
+                )}
+              </div>
+
+              {/* Sales by Origin */}
+              <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                <h3 className="text-lg font-semibold text-foreground mb-6">Vendas por Origem</h3>
+                {salesLoading ? (
+                  <Skeleton className="h-64" />
+                ) : (salesData?.byOrigin?.length || 0) > 0 ? (
+                  <SalesOriginChart data={salesData?.byOrigin || []} />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                    <Info size={32} className="mb-2" />
+                    <p className="text-sm">Sem dados no período</p>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Top Sellers Table with Trophies */}
-            <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-border">
+            {/* Sales Funnel */}
+            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-foreground mb-6">Funil de Vendas</h3>
+              {salesLoading ? (
+                <Skeleton className="h-64" />
+              ) : (salesData?.funnel?.length || 0) > 0 ? (
+                <SalesFunnelChart data={salesData?.funnel || []} />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                  <Info size={32} className="mb-2" />
+                  <p className="text-sm">Sem dados no período</p>
+                </div>
+              )}
+            </div>
                 <h3 className="text-lg font-semibold text-foreground">Ranking de Vendedores</h3>
               </div>
               {salesLoading ? (
