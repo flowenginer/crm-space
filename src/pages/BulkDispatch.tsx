@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { 
   Send, 
   Filter, 
@@ -19,6 +19,7 @@ import {
   Building,
   Target,
   Radio,
+  ChevronDown,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,7 +42,8 @@ import { ptBR } from 'date-fns/locale';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { 
   useBulkDispatches,
-  usePreviewContacts,
+  useInfinitePreviewContacts,
+  usePreviewContactsCount,
   useCreateBulkDispatch,
   useStartBulkDispatch,
   usePauseBulkDispatch,
@@ -98,6 +100,8 @@ export default function BulkDispatch() {
   const [intervalSeconds, setIntervalSeconds] = useState(10);
   const [filters, setFilters] = useState<BulkDispatchFilters>({ includeBlocked: false });
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   const { data: dispatches = [], isLoading: dispatchesLoading } = useBulkDispatches();
   const { data: templates = [] } = useRescueTemplates();
   const { data: channels = [] } = useChannels();
@@ -106,7 +110,20 @@ export default function BulkDispatch() {
   const { data: segments = [] } = useSegments();
   const { data: team = [] } = useTeam();
   const { data: departments = [] } = useDepartments();
-  const { data: previewContacts = [], isLoading: previewLoading } = usePreviewContacts(filters);
+  
+  // Contagem exata via COUNT
+  const { data: totalContacts = 0, isLoading: countLoading } = usePreviewContactsCount(filters);
+  
+  // Preview com scroll infinito
+  const {
+    data: previewPages,
+    isLoading: previewLoading,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useInfinitePreviewContacts(filters);
+
+  const previewContacts = useMemo(() => previewPages?.pages.flat() || [], [previewPages]);
 
   const createDispatch = useCreateBulkDispatch();
   const startDispatch = useStartBulkDispatch();
@@ -117,21 +134,36 @@ export default function BulkDispatch() {
   useBulkDispatchRealtime(selectedDispatchId);
 
   const connectedChannels = useMemo(() => channels.filter(c => c.status === 'connected'), [channels]);
-  const estimatedTime = useMemo(() => formatDuration(previewContacts.length * intervalSeconds), [previewContacts.length, intervalSeconds]);
+  const estimatedTime = useMemo(() => formatDuration(totalContacts * intervalSeconds), [totalContacts, intervalSeconds]);
   const leadStatusOptions = useMemo(() => leadStatuses.map(ls => ({ value: ls.id, label: ls.name })), [leadStatuses]);
   const tagOptions = useMemo(() => tags.map(t => ({ value: t.id, label: t.name })), [tags]);
   const teamOptions = useMemo(() => team.map(t => ({ value: t.id, label: t.full_name })), [team]);
   const departmentOptions = useMemo(() => departments.map(d => ({ value: d.id, label: d.name })), [departments]);
 
+  // Scroll infinito - carregar mais ao chegar no final
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement;
+    const isNearBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 100;
+    
+    if (isNearBottom && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   const handleCreateAndStart = async () => {
     if (!name.trim()) { toast.error('Digite um nome para a campanha'); return; }
     if (!templateId) { toast.error('Selecione um template de resgate'); return; }
     if (!channelId) { toast.error('Selecione um canal de envio'); return; }
-    if (previewContacts.length === 0) { toast.error('Nenhum contato selecionado'); return; }
+    if (totalContacts === 0) { toast.error('Nenhum contato selecionado'); return; }
 
     try {
       const dispatch = await createDispatch.mutateAsync({
-        name, template_id: templateId, channel_id: channelId, filters, interval_seconds: intervalSeconds, contacts: previewContacts,
+        name, 
+        template_id: templateId, 
+        channel_id: channelId, 
+        filters, 
+        interval_seconds: intervalSeconds, 
+        totalContacts,
       });
       await startDispatch.mutateAsync(dispatch.id);
       toast.success('Disparo em massa iniciado!');
@@ -253,7 +285,9 @@ export default function BulkDispatch() {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 rounded-lg bg-primary/10 text-center">
-                    <p className="text-3xl font-bold text-primary">{previewLoading ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : previewContacts.length}</p>
+                    <p className="text-3xl font-bold text-primary">
+                      {countLoading ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : totalContacts.toLocaleString('pt-BR')}
+                    </p>
                     <p className="text-sm text-muted-foreground">Contatos</p>
                   </div>
                   <div className="p-4 rounded-lg bg-muted text-center">
@@ -261,25 +295,63 @@ export default function BulkDispatch() {
                     <p className="text-sm text-muted-foreground">Tempo estimado</p>
                   </div>
                 </div>
+                
+                {/* Indicador de carregados vs total */}
+                {!countLoading && totalContacts > 0 && (
+                  <div className="text-center text-xs text-muted-foreground">
+                    Mostrando {previewContacts.length.toLocaleString('pt-BR')} de {totalContacts.toLocaleString('pt-BR')}
+                  </div>
+                )}
+                
                 <Separator />
-                <ScrollArea className="h-[250px]">
+                
+                <ScrollArea 
+                  className="h-[250px]" 
+                  onScrollCapture={handleScroll}
+                >
                   {previewLoading ? (
                     <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>
                   ) : previewContacts.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground"><Users className="h-12 w-12 mb-2 opacity-50" /><p>Nenhum contato</p></div>
                   ) : (
                     <div className="space-y-2">
-                      {previewContacts.map(c => (
+                      {previewContacts.map((c: any) => (
                         <div key={c.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
                           <Avatar className="h-8 w-8"><AvatarImage src={c.avatar_url || undefined} /><AvatarFallback className="text-xs">{getInitials(c.full_name)}</AvatarFallback></Avatar>
                           <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{c.full_name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
                         </div>
                       ))}
+                      
+                      {/* Botão para carregar mais */}
+                      {hasNextPage && (
+                        <div className="flex justify-center py-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => fetchNextPage()}
+                            disabled={isFetchingNextPage}
+                          >
+                            {isFetchingNextPage ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 mr-2" />
+                            )}
+                            Carregar mais
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </ScrollArea>
-                <Button className="w-full" size="lg" disabled={!name || !templateId || !channelId || previewContacts.length === 0 || createDispatch.isPending} onClick={handleCreateAndStart}>
-                  {createDispatch.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}Iniciar Disparo
+                
+                <Button 
+                  className="w-full" 
+                  size="lg" 
+                  disabled={!name || !templateId || !channelId || totalContacts === 0 || createDispatch.isPending || countLoading} 
+                  onClick={handleCreateAndStart}
+                >
+                  {createDispatch.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+                  Iniciar Disparo ({totalContacts.toLocaleString('pt-BR')} contatos)
                 </Button>
               </CardContent>
             </Card>

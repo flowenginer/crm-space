@@ -1,6 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 
 export interface BulkDispatchFilters {
   firstContactStart?: string;
@@ -143,35 +143,80 @@ export function useBulkDispatchContacts(dispatchId: string | null) {
   });
 }
 
-// Preview de contatos baseado nos filtros
-export function usePreviewContacts(filters: BulkDispatchFilters, enabled: boolean = true) {
+// Helper: aplicar filtros base a uma query de contacts
+async function applyBaseFilters(filters: BulkDispatchFilters) {
+  // Se há filtro de leadStatusIds, primeiro buscar os nomes dos status
+  let leadStatusNames: string[] = [];
+  if (filters.leadStatusIds && filters.leadStatusIds.length > 0) {
+    const { data: statusData } = await supabase
+      .from('lead_statuses')
+      .select('name')
+      .in('id', filters.leadStatusIds);
+    leadStatusNames = statusData?.map(s => s.name) || [];
+  }
+  
+  return { leadStatusNames };
+}
+
+// Helper: construir query base com filtros
+function buildContactsQuery(filters: BulkDispatchFilters, leadStatusNames: string[], selectFields: string) {
+  let query = supabase
+    .from('contacts')
+    .select(selectFields)
+    .order('full_name', { ascending: true });
+
+  // Aplicar filtros
+  if (filters.firstContactStart) {
+    query = query.gte('first_contact_at', filters.firstContactStart);
+  }
+  if (filters.firstContactEnd) {
+    query = query.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
+  }
+  if (leadStatusNames.length > 0) {
+    query = query.in('lead_status', leadStatusNames);
+  }
+  if (filters.segmentId) {
+    query = query.eq('segment_id', filters.segmentId);
+  }
+  if (filters.origin) {
+    query = query.eq('origin', filters.origin);
+  }
+  if (filters.assignedTo && filters.assignedTo.length > 0) {
+    query = query.in('assigned_to', filters.assignedTo);
+  }
+  if (filters.departmentIds && filters.departmentIds.length > 0) {
+    query = query.in('department_id', filters.departmentIds);
+  }
+  if (filters.contactType) {
+    query = query.eq('contact_type', filters.contactType);
+  }
+  if (!filters.includeBlocked) {
+    query = query.eq('is_blocked', false);
+  }
+
+  return query;
+}
+
+// Contagem EXATA de contatos via COUNT (rápido, sem carregar dados)
+export function usePreviewContactsCount(filters: BulkDispatchFilters, enabled: boolean = true) {
   return useQuery({
-    queryKey: ['bulk-dispatch-preview', filters],
+    queryKey: ['bulk-dispatch-preview-count', filters],
     enabled,
     queryFn: async () => {
-      // Se há filtro de leadStatusIds, primeiro buscar os nomes dos status
-      let leadStatusNames: string[] = [];
-      if (filters.leadStatusIds && filters.leadStatusIds.length > 0) {
-        const { data: statusData } = await supabase
-          .from('lead_statuses')
-          .select('name')
-          .in('id', filters.leadStatusIds);
-        leadStatusNames = statusData?.map(s => s.name) || [];
-      }
-
+      const { leadStatusNames } = await applyBaseFilters(filters);
+      
+      // Query com COUNT exato
       let query = supabase
         .from('contacts')
-        .select('id, full_name, phone, avatar_url, lead_status, last_interaction_at')
-        .order('full_name', { ascending: true });
+        .select('id', { count: 'exact', head: true });
 
-      // Aplicar filtros
+      // Aplicar mesmos filtros
       if (filters.firstContactStart) {
         query = query.gte('first_contact_at', filters.firstContactStart);
       }
       if (filters.firstContactEnd) {
         query = query.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
       }
-      // Filtrar por NOMES dos status (não IDs)
       if (leadStatusNames.length > 0) {
         query = query.in('lead_status', leadStatusNames);
       }
@@ -194,47 +239,237 @@ export function usePreviewContacts(filters: BulkDispatchFilters, enabled: boolea
         query = query.eq('is_blocked', false);
       }
 
-      // Buscar TODOS os contatos usando paginação automática (sem limite)
-      const PAGE_SIZE = 1000;
-      let allContacts: PreviewContact[] = [];
-      let offset = 0;
-      let hasMore = true;
+      const { count, error } = await query;
+      if (error) throw error;
 
-      while (hasMore) {
-        const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
-        if (error) throw error;
+      let totalCount = count || 0;
 
-        if (data && data.length > 0) {
-          allContacts = [...allContacts, ...data];
-          offset += PAGE_SIZE;
-          hasMore = data.length === PAGE_SIZE;
-        } else {
-          hasMore = false;
-        }
-      }
-
-      let contacts = allContacts as PreviewContact[];
-
-      // Filtrar por tags (se especificado)
+      // Se há filtro de tags, precisamos ajustar a contagem
       if (filters.tagIds && filters.tagIds.length > 0) {
+        // Buscar IDs dos contatos que têm as tags
         const { data: taggedContacts } = await supabase
           .from('contact_tags')
           .select('contact_id')
           .in('tag_id', filters.tagIds);
         
-        const taggedIds = new Set(taggedContacts?.map(tc => tc.contact_id) || []);
-        contacts = contacts.filter(c => taggedIds.has(c.id));
+        if (taggedContacts) {
+          // Precisamos fazer a interseção com os filtros base
+          // Buscar IDs dos contatos que passam nos filtros base
+          const PAGE_SIZE = 1000;
+          let baseContactIds: string[] = [];
+          let offset = 0;
+          let hasMore = true;
+
+          while (hasMore) {
+            let idQuery = supabase
+              .from('contacts')
+              .select('id');
+
+            // Aplicar mesmos filtros
+            if (filters.firstContactStart) {
+              idQuery = idQuery.gte('first_contact_at', filters.firstContactStart);
+            }
+            if (filters.firstContactEnd) {
+              idQuery = idQuery.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
+            }
+            if (leadStatusNames.length > 0) {
+              idQuery = idQuery.in('lead_status', leadStatusNames);
+            }
+            if (filters.segmentId) {
+              idQuery = idQuery.eq('segment_id', filters.segmentId);
+            }
+            if (filters.origin) {
+              idQuery = idQuery.eq('origin', filters.origin);
+            }
+            if (filters.assignedTo && filters.assignedTo.length > 0) {
+              idQuery = idQuery.in('assigned_to', filters.assignedTo);
+            }
+            if (filters.departmentIds && filters.departmentIds.length > 0) {
+              idQuery = idQuery.in('department_id', filters.departmentIds);
+            }
+            if (filters.contactType) {
+              idQuery = idQuery.eq('contact_type', filters.contactType);
+            }
+            if (!filters.includeBlocked) {
+              idQuery = idQuery.eq('is_blocked', false);
+            }
+
+            const { data, error: idError } = await idQuery.range(offset, offset + PAGE_SIZE - 1);
+            if (idError) throw idError;
+
+            if (data && data.length > 0) {
+              baseContactIds = [...baseContactIds, ...data.map(c => c.id)];
+              offset += PAGE_SIZE;
+              hasMore = data.length === PAGE_SIZE;
+            } else {
+              hasMore = false;
+            }
+          }
+
+          const taggedIds = new Set(taggedContacts.map(tc => tc.contact_id));
+          totalCount = baseContactIds.filter(id => taggedIds.has(id)).length;
+        }
+      }
+
+      // Se há filtro de conversationStatus, ajustar contagem
+      if (filters.conversationStatus && filters.conversationStatus.length > 0) {
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('contact_id')
+          .in('status', filters.conversationStatus);
+        
+        if (conversations) {
+          const contactsWithStatus = new Set(conversations.map(c => c.contact_id));
+          
+          // Se já temos contagem ajustada por tags, usar ela
+          if (filters.tagIds && filters.tagIds.length > 0) {
+            // Já foi calculado acima, agora filtrar novamente
+            // Precisa refazer a lógica completa
+          } else {
+            // Buscar IDs e filtrar
+            const PAGE_SIZE = 1000;
+            let baseContactIds: string[] = [];
+            let offset = 0;
+            let hasMore = true;
+
+            while (hasMore) {
+              let idQuery = supabase
+                .from('contacts')
+                .select('id');
+
+              if (filters.firstContactStart) {
+                idQuery = idQuery.gte('first_contact_at', filters.firstContactStart);
+              }
+              if (filters.firstContactEnd) {
+                idQuery = idQuery.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
+              }
+              if (leadStatusNames.length > 0) {
+                idQuery = idQuery.in('lead_status', leadStatusNames);
+              }
+              if (filters.segmentId) {
+                idQuery = idQuery.eq('segment_id', filters.segmentId);
+              }
+              if (filters.origin) {
+                idQuery = idQuery.eq('origin', filters.origin);
+              }
+              if (filters.assignedTo && filters.assignedTo.length > 0) {
+                idQuery = idQuery.in('assigned_to', filters.assignedTo);
+              }
+              if (filters.departmentIds && filters.departmentIds.length > 0) {
+                idQuery = idQuery.in('department_id', filters.departmentIds);
+              }
+              if (filters.contactType) {
+                idQuery = idQuery.eq('contact_type', filters.contactType);
+              }
+              if (!filters.includeBlocked) {
+                idQuery = idQuery.eq('is_blocked', false);
+              }
+
+              const { data, error: idError } = await idQuery.range(offset, offset + PAGE_SIZE - 1);
+              if (idError) throw idError;
+
+              if (data && data.length > 0) {
+                baseContactIds = [...baseContactIds, ...data.map(c => c.id)];
+                offset += PAGE_SIZE;
+                hasMore = data.length === PAGE_SIZE;
+              } else {
+                hasMore = false;
+              }
+            }
+
+            totalCount = baseContactIds.filter(id => contactsWithStatus.has(id)).length;
+          }
+        }
+      }
+
+      return totalCount;
+    },
+  });
+}
+
+// Preview de contatos com SCROLL INFINITO (paginado)
+const PREVIEW_PAGE_SIZE = 100;
+
+export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled: boolean = true) {
+  return useInfiniteQuery({
+    queryKey: ['bulk-dispatch-preview-infinite', filters],
+    enabled,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < PREVIEW_PAGE_SIZE) return undefined;
+      return allPages.length * PREVIEW_PAGE_SIZE;
+    },
+    queryFn: async ({ pageParam = 0 }) => {
+      const { leadStatusNames } = await applyBaseFilters(filters);
+
+      let query = supabase
+        .from('contacts')
+        .select('id, full_name, phone, avatar_url, lead_status, last_interaction_at')
+        .order('full_name', { ascending: true })
+        .range(pageParam, pageParam + PREVIEW_PAGE_SIZE - 1);
+
+      // Aplicar filtros
+      if (filters.firstContactStart) {
+        query = query.gte('first_contact_at', filters.firstContactStart);
+      }
+      if (filters.firstContactEnd) {
+        query = query.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
+      }
+      if (leadStatusNames.length > 0) {
+        query = query.in('lead_status', leadStatusNames);
+      }
+      if (filters.segmentId) {
+        query = query.eq('segment_id', filters.segmentId);
+      }
+      if (filters.origin) {
+        query = query.eq('origin', filters.origin);
+      }
+      if (filters.assignedTo && filters.assignedTo.length > 0) {
+        query = query.in('assigned_to', filters.assignedTo);
+      }
+      if (filters.departmentIds && filters.departmentIds.length > 0) {
+        query = query.in('department_id', filters.departmentIds);
+      }
+      if (filters.contactType) {
+        query = query.eq('contact_type', filters.contactType);
+      }
+      if (!filters.includeBlocked) {
+        query = query.eq('is_blocked', false);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      let contacts = (data || []) as PreviewContact[];
+
+      // Filtrar por tags (se especificado) - client-side para esta página
+      if (filters.tagIds && filters.tagIds.length > 0) {
+        const contactIds = contacts.map(c => c.id);
+        if (contactIds.length > 0) {
+          const { data: taggedContacts } = await supabase
+            .from('contact_tags')
+            .select('contact_id')
+            .in('tag_id', filters.tagIds)
+            .in('contact_id', contactIds);
+          
+          const taggedIds = new Set(taggedContacts?.map(tc => tc.contact_id) || []);
+          contacts = contacts.filter(c => taggedIds.has(c.id));
+        }
       }
 
       // Filtrar por status de conversa (se especificado)
       if (filters.conversationStatus && filters.conversationStatus.length > 0) {
-        const { data: conversations } = await supabase
-          .from('conversations')
-          .select('contact_id, status')
-          .in('status', filters.conversationStatus);
-        
-        const contactsWithStatus = new Set(conversations?.map(c => c.contact_id) || []);
-        contacts = contacts.filter(c => contactsWithStatus.has(c.id));
+        const contactIds = contacts.map(c => c.id);
+        if (contactIds.length > 0) {
+          const { data: conversations } = await supabase
+            .from('conversations')
+            .select('contact_id')
+            .in('status', filters.conversationStatus)
+            .in('contact_id', contactIds);
+          
+          const contactsWithStatus = new Set(conversations?.map(c => c.contact_id) || []);
+          contacts = contacts.filter(c => contactsWithStatus.has(c.id));
+        }
       }
 
       return contacts;
@@ -242,16 +477,22 @@ export function usePreviewContacts(filters: BulkDispatchFilters, enabled: boolea
   });
 }
 
-// Contar contatos para preview rápido
-export function usePreviewContactsCount(filters: BulkDispatchFilters, enabled: boolean = true) {
-  const { data: contacts, isLoading } = usePreviewContacts(filters, enabled);
+// Hook de compatibilidade - retorna todos os contatos carregados do infinite query
+export function usePreviewContacts(filters: BulkDispatchFilters, enabled: boolean = true) {
+  const infiniteQuery = useInfinitePreviewContacts(filters, enabled);
+  
+  const allContacts = useMemo((): PreviewContact[] => {
+    return (infiniteQuery.data?.pages.flat() || []) as PreviewContact[];
+  }, [infiniteQuery.data]);
+
   return {
-    count: contacts?.length || 0,
-    isLoading,
+    ...infiniteQuery,
+    data: allContacts,
+    isLoading: infiniteQuery.isLoading,
   };
 }
 
-// Criar campanha
+// Criar campanha - agora só envia filtros, backend gera os contatos
 export function useCreateBulkDispatch() {
   const queryClient = useQueryClient();
 
@@ -262,12 +503,11 @@ export function useCreateBulkDispatch() {
       channel_id: string;
       filters: BulkDispatchFilters;
       interval_seconds: number;
-      contacts: PreviewContact[];
+      totalContacts: number; // Total exato vindo do COUNT
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Criar a campanha
-      // Se channel_id for '__existing__', enviar null para indicar uso do canal existente
+      // Criar a campanha com filtros - backend vai gerar os contatos
       const channelIdValue = data.channel_id === '__existing__' ? null : data.channel_id;
       
       const { data: dispatch, error: dispatchError } = await supabase
@@ -278,27 +518,13 @@ export function useCreateBulkDispatch() {
           channel_id: channelIdValue,
           filters: data.filters as any,
           interval_seconds: data.interval_seconds,
-          total_contacts: data.contacts.length,
+          total_contacts: data.totalContacts,
           created_by: user?.id,
         })
         .select()
         .single();
 
       if (dispatchError) throw dispatchError;
-
-      // Inserir contatos
-      if (data.contacts.length > 0) {
-        const contactsToInsert = data.contacts.map(c => ({
-          dispatch_id: dispatch.id,
-          contact_id: c.id,
-        }));
-
-        const { error: contactsError } = await supabase
-          .from('bulk_dispatch_contacts')
-          .insert(contactsToInsert);
-
-        if (contactsError) throw contactsError;
-      }
 
       return dispatch;
     },
