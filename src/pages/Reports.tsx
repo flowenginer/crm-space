@@ -442,57 +442,79 @@ export default function Reports() {
                       ))}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-4 gap-6">
-                      <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-sm text-muted-foreground font-medium">SLA Bom</span>
-                          <div className="p-2 bg-status-success/10 rounded-lg">
-                            <CheckCircle size={20} className="text-status-success" />
+                    <div className="grid grid-cols-6 gap-4">
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">SLA Bom</span>
+                          <div className="p-1.5 bg-status-success/10 rounded-lg">
+                            <CheckCircle size={16} className="text-status-success" />
                           </div>
                         </div>
-                        <div className="text-3xl font-bold text-status-success mb-1">
+                        <div className="text-2xl font-bold text-status-success">
                           {slaData?.metrics.total_bom.toLocaleString() || 0}
                         </div>
-                        <div className="text-sm text-muted-foreground">atendimentos</div>
                       </div>
 
-                      <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-sm text-muted-foreground font-medium">SLA Regular</span>
-                          <div className="p-2 bg-status-warning/10 rounded-lg">
-                            <AlertTriangle size={20} className="text-status-warning" />
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">SLA Regular</span>
+                          <div className="p-1.5 bg-status-warning/10 rounded-lg">
+                            <AlertTriangle size={16} className="text-status-warning" />
                           </div>
                         </div>
-                        <div className="text-3xl font-bold text-status-warning mb-1">
+                        <div className="text-2xl font-bold text-status-warning">
                           {slaData?.metrics.total_regular.toLocaleString() || 0}
                         </div>
-                        <div className="text-sm text-muted-foreground">atendimentos</div>
                       </div>
 
-                      <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-sm text-muted-foreground font-medium">SLA Crítico</span>
-                          <div className="p-2 bg-status-error/10 rounded-lg">
-                            <XCircle size={20} className="text-status-error" />
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">SLA Crítico</span>
+                          <div className="p-1.5 bg-status-error/10 rounded-lg">
+                            <XCircle size={16} className="text-status-error" />
                           </div>
                         </div>
-                        <div className="text-3xl font-bold text-status-error mb-1">
+                        <div className="text-2xl font-bold text-status-error">
                           {slaData?.metrics.total_critico.toLocaleString() || 0}
                         </div>
-                        <div className="text-sm text-muted-foreground">atendimentos</div>
                       </div>
 
-                      <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-sm text-muted-foreground font-medium">TMA Geral</span>
-                          <div className="p-2 bg-primary/10 rounded-lg">
-                            <Clock size={20} className="text-primary" />
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">TMA Geral</span>
+                          <div className="p-1.5 bg-primary/10 rounded-lg">
+                            <Clock size={16} className="text-primary" />
                           </div>
                         </div>
-                        <div className="text-3xl font-bold text-foreground mb-1">
-                          {slaData?.metrics.avg_tma_minutes || 0}
+                        <div className="text-2xl font-bold text-foreground">
+                          {slaData?.metrics.avg_tma_minutes || 0}<span className="text-sm font-normal text-muted-foreground ml-1">min</span>
                         </div>
-                        <div className="text-sm text-muted-foreground">minutos</div>
+                      </div>
+
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">FCR</span>
+                          <div className="p-1.5 bg-status-info/10 rounded-lg">
+                            <Target size={16} className="text-status-info" />
+                          </div>
+                        </div>
+                        <div className="text-2xl font-bold text-status-info">
+                          {slaData?.metrics.fcr_percent || 0}%
+                        </div>
+                        <div className="text-xs text-muted-foreground">1º Contato</div>
+                      </div>
+
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">Tendência</span>
+                          <div className={`p-1.5 rounded-lg ${slaData?.metrics.trend_direction === 'up' ? 'bg-status-success/10' : slaData?.metrics.trend_direction === 'down' ? 'bg-status-error/10' : 'bg-muted'}`}>
+                            <TrendingUp size={16} className={slaData?.metrics.trend_direction === 'up' ? 'text-status-success' : slaData?.metrics.trend_direction === 'down' ? 'text-status-error rotate-180' : 'text-muted-foreground'} />
+                          </div>
+                        </div>
+                        <div className={`text-2xl font-bold ${slaData?.metrics.trend_direction === 'up' ? 'text-status-success' : slaData?.metrics.trend_direction === 'down' ? 'text-status-error' : 'text-foreground'}`}>
+                          {slaData?.metrics.trend_direction === 'up' ? '+' : slaData?.metrics.trend_direction === 'down' ? '-' : ''}{slaData?.metrics.trend_percent || 0}%
+                        </div>
+                        <div className="text-xs text-muted-foreground">vs período anterior</div>
                       </div>
                     </div>
                   ),
@@ -685,6 +707,60 @@ export default function Reports() {
                     </div>
                   ),
                 },
+                {
+                  id: 'sla-by-channel',
+                  fullWidth: true,
+                  component: (
+                    <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+                      <div className="p-6 border-b border-border">
+                        <h3 className="text-lg font-semibold text-foreground">SLA por Canal</h3>
+                      </div>
+                      {slaLoading ? (
+                        <div className="p-6 space-y-4">
+                          {[1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}
+                        </div>
+                      ) : (slaData?.channels?.length || 0) > 0 ? (
+                        <table className="w-full">
+                          <thead>
+                            <tr className="bg-muted/50 border-b border-border">
+                              <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Canal</th>
+                              <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Total</th>
+                              <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Bom</th>
+                              <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Regular</th>
+                              <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Crítico</th>
+                              <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">% SLA Bom</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {slaData?.channels.map((ch) => (
+                              <tr key={ch.channel_id} className="hover:bg-muted/30">
+                                <td className="px-6 py-4 font-medium text-foreground">{ch.channel_name}</td>
+                                <td className="px-6 py-4 text-center text-foreground font-medium">{ch.total}</td>
+                                <td className="px-6 py-4 text-center text-status-success font-medium">{ch.bom}</td>
+                                <td className="px-6 py-4 text-center text-status-warning font-medium">{ch.regular}</td>
+                                <td className="px-6 py-4 text-center text-status-error font-medium">{ch.critico}</td>
+                                <td className="px-6 py-4 text-center">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                    ch.sla_good_percent >= 70 ? 'bg-status-success/10 text-status-success' :
+                                    ch.sla_good_percent >= 50 ? 'bg-status-warning/10 text-status-warning' :
+                                    'bg-status-error/10 text-status-error'
+                                  }`}>
+                                    {ch.sla_good_percent}%
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                          <Info size={32} className="mb-2" />
+                          <p className="text-sm">Sem dados no período</p>
+                        </div>
+                      )}
+                    </div>
+                  ),
+                },
               ] as DashboardCardConfig[]}
             />
           </TabsContent>
@@ -704,41 +780,59 @@ export default function Reports() {
                       ))}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-4 gap-6">
-                      <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-sm text-muted-foreground font-medium">Total</span>
-                          <MessageSquare size={20} className="text-primary" />
+                    <div className="grid grid-cols-6 gap-4">
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">Total</span>
+                          <MessageSquare size={16} className="text-primary" />
                         </div>
-                        <div className="text-3xl font-bold text-foreground">
+                        <div className="text-2xl font-bold text-foreground">
                           {attendanceData?.metrics.total.toLocaleString() || 0}
                         </div>
                       </div>
-                      <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-sm text-muted-foreground font-medium">Abertos</span>
-                          <MessageSquare size={20} className="text-status-info" />
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">Abertos</span>
+                          <MessageSquare size={16} className="text-status-info" />
                         </div>
-                        <div className="text-3xl font-bold text-foreground">
+                        <div className="text-2xl font-bold text-foreground">
                           {attendanceData?.metrics.open.toLocaleString() || 0}
                         </div>
                       </div>
-                      <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-sm text-muted-foreground font-medium">Pendentes</span>
-                          <Clock size={20} className="text-status-warning" />
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">Pendentes</span>
+                          <Clock size={16} className="text-status-warning" />
                         </div>
-                        <div className="text-3xl font-bold text-status-warning">
+                        <div className="text-2xl font-bold text-status-warning">
                           {attendanceData?.metrics.pending.toLocaleString() || 0}
                         </div>
                       </div>
-                      <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-sm text-muted-foreground font-medium">Finalizados</span>
-                          <CheckCircle size={20} className="text-status-success" />
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">Finalizados</span>
+                          <CheckCircle size={16} className="text-status-success" />
                         </div>
-                        <div className="text-3xl font-bold text-status-success">
+                        <div className="text-2xl font-bold text-status-success">
                           {attendanceData?.metrics.closed.toLocaleString() || 0}
+                        </div>
+                      </div>
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">Taxa Reabertura</span>
+                          <GitCompare size={16} className="text-status-error" />
+                        </div>
+                        <div className="text-2xl font-bold text-status-error">
+                          {attendanceData?.metrics.reopenRate || 0}%
+                        </div>
+                      </div>
+                      <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs text-muted-foreground font-medium">Tempo Resolução</span>
+                          <Clock size={16} className="text-primary" />
+                        </div>
+                        <div className="text-2xl font-bold text-foreground">
+                          {attendanceData?.metrics.avgResolutionMinutes ? `${Math.floor(attendanceData.metrics.avgResolutionMinutes / 60)}h${attendanceData.metrics.avgResolutionMinutes % 60}m` : '0h'}
                         </div>
                       </div>
                     </div>
@@ -796,6 +890,25 @@ export default function Reports() {
                     </div>
                   ),
                 },
+                {
+                  id: 'volume-heatmap',
+                  fullWidth: true,
+                  component: (
+                    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+                      <h3 className="text-lg font-semibold text-foreground mb-6">Heatmap de Volume</h3>
+                      {attendanceLoading ? (
+                        <Skeleton className="h-64" />
+                      ) : (attendanceData?.heatmapData?.length || 0) > 0 ? (
+                        <VolumeHeatmap data={attendanceData?.heatmapData || []} />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                          <Info size={32} className="mb-2" />
+                          <p className="text-sm">Sem dados no período</p>
+                        </div>
+                      )}
+                    </div>
+                  ),
+                },
               ] as DashboardCardConfig[]}
             />
           </TabsContent>
@@ -810,43 +923,63 @@ export default function Reports() {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-4 gap-6">
-                <div className="bg-gradient-to-br from-primary to-accent rounded-2xl p-6 shadow-lg text-white">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-white/80 font-medium">Faturamento Total</span>
-                    <DollarSign size={24} className="text-white/80" />
+              <div className="grid grid-cols-6 gap-4">
+                <div className="bg-gradient-to-br from-primary to-accent rounded-2xl p-5 shadow-lg text-white">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-white/80 text-sm font-medium">Faturamento</span>
+                    <DollarSign size={18} className="text-white/80" />
                   </div>
-                  <div className="text-4xl font-bold mb-1">
+                  <div className="text-2xl font-bold">
                     R$ {((salesData?.totalRevenue || 0) / 1000).toFixed(1)}K
                   </div>
                 </div>
 
-                <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm text-muted-foreground font-medium">Conversões</span>
-                    <Target size={20} className="text-status-success" />
+                <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs text-muted-foreground font-medium">Conversões</span>
+                    <Target size={16} className="text-status-success" />
                   </div>
-                  <div className="text-3xl font-bold text-foreground">
+                  <div className="text-2xl font-bold text-foreground">
                     {salesData?.totalConversions || 0}
                   </div>
                 </div>
 
-                <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm text-muted-foreground font-medium">Ticket Médio</span>
-                    <Receipt size={20} className="text-status-info" />
+                <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs text-muted-foreground font-medium">Ticket Médio</span>
+                    <Receipt size={16} className="text-status-info" />
                   </div>
-                  <div className="text-3xl font-bold text-foreground">
+                  <div className="text-2xl font-bold text-foreground">
                     R$ {salesData?.totalConversions ? Math.round((salesData?.totalRevenue || 0) / salesData.totalConversions).toLocaleString() : 0}
                   </div>
                 </div>
 
-                <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm text-muted-foreground font-medium">Vendedores Ativos</span>
-                    <ShoppingBag size={20} className="text-primary" />
+                <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs text-muted-foreground font-medium">Taxa Conversão</span>
+                    <TrendingUp size={16} className="text-status-success" />
                   </div>
-                  <div className="text-3xl font-bold text-foreground">
+                  <div className="text-2xl font-bold text-status-success">
+                    {salesData?.conversionRate || 0}%
+                  </div>
+                </div>
+
+                <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs text-muted-foreground font-medium">Ciclo Médio</span>
+                    <Clock size={16} className="text-primary" />
+                  </div>
+                  <div className="text-2xl font-bold text-foreground">
+                    {salesData?.avgCycleDays || 0}<span className="text-sm font-normal text-muted-foreground ml-1">dias</span>
+                  </div>
+                </div>
+
+                <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs text-muted-foreground font-medium">Vendedores</span>
+                    <ShoppingBag size={16} className="text-primary" />
+                  </div>
+                  <div className="text-2xl font-bold text-foreground">
                     {salesData?.sellers?.length || 0}
                   </div>
                 </div>
@@ -1002,44 +1135,71 @@ export default function Reports() {
               </div>
             ) : (
               <div className="grid grid-cols-6 gap-4">
-                {[
-                  { 
-                    label: 'Atendimentos', 
-                    value: selectedAgentId ? performanceData?.selectedAgent?.total_conversations || 0 : performanceData?.average.conversations || 0,
-                    Icon: MessageSquare, 
-                    bgColor: 'bg-primary/10', 
-                    iconColor: 'text-primary' 
-                  },
-                  { 
-                    label: 'Vendas', 
-                    value: selectedAgentId ? performanceData?.selectedAgent?.total_sales || 0 : performanceData?.average.sales || 0,
-                    Icon: ShoppingBag, 
-                    bgColor: 'bg-status-success/10', 
-                    iconColor: 'text-status-success' 
-                  },
-                  { 
-                    label: 'Faturamento', 
-                    value: `R$ ${((selectedAgentId ? performanceData?.selectedAgent?.revenue || 0 : performanceData?.average.revenue || 0) / 1000).toFixed(1)}K`,
-                    Icon: DollarSign, 
-                    bgColor: 'bg-status-info/10', 
-                    iconColor: 'text-status-info' 
-                  },
-                  { 
-                    label: 'SLA Bom', 
-                    value: `${selectedAgentId ? performanceData?.selectedAgent?.sla_good_percent || 0 : performanceData?.average.sla || 0}%`,
-                    Icon: CheckCircle, 
-                    bgColor: 'bg-emerald-100', 
-                    iconColor: 'text-emerald-600' 
-                  },
-                ].map((stat) => (
-                  <div key={stat.label} className="bg-card rounded-xl border border-border p-4 shadow-sm">
-                    <div className={`w-10 h-10 ${stat.bgColor} rounded-lg flex items-center justify-center mb-3`}>
-                      <stat.Icon size={20} className={stat.iconColor} />
-                    </div>
-                    <div className="text-xl font-bold text-foreground">{stat.value}</div>
-                    <div className="text-xs text-muted-foreground">{stat.label}</div>
+                {/* Score Unificado - Destacado */}
+                <div className="bg-gradient-to-br from-primary to-accent rounded-xl p-4 shadow-lg text-white">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-white/80 text-xs font-medium">Score Geral</span>
+                    <Trophy size={18} className="text-white/80" />
                   </div>
-                ))}
+                  <div className="text-2xl font-bold">
+                    {selectedAgentId ? performanceData?.selectedAgent?.unified_score || 0 : performanceData?.average.score || 0}
+                  </div>
+                  <div className="text-xs text-white/70">de 100 pontos</div>
+                </div>
+
+                <div className="bg-card rounded-xl border border-border p-4 shadow-sm">
+                  <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center mb-2">
+                    <MessageSquare size={16} className="text-primary" />
+                  </div>
+                  <div className="text-xl font-bold text-foreground">
+                    {selectedAgentId ? performanceData?.selectedAgent?.total_conversations || 0 : performanceData?.average.conversations || 0}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Atendimentos</div>
+                </div>
+
+                <div className="bg-card rounded-xl border border-border p-4 shadow-sm">
+                  <div className="w-8 h-8 bg-status-success/10 rounded-lg flex items-center justify-center mb-2">
+                    <ShoppingBag size={16} className="text-status-success" />
+                  </div>
+                  <div className="text-xl font-bold text-foreground">
+                    {selectedAgentId ? performanceData?.selectedAgent?.total_sales || 0 : performanceData?.average.sales || 0}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Vendas</div>
+                </div>
+
+                <div className="bg-card rounded-xl border border-border p-4 shadow-sm">
+                  <div className="w-8 h-8 bg-status-info/10 rounded-lg flex items-center justify-center mb-2">
+                    <DollarSign size={16} className="text-status-info" />
+                  </div>
+                  <div className="text-xl font-bold text-foreground">
+                    R$ {((selectedAgentId ? performanceData?.selectedAgent?.revenue || 0 : performanceData?.average.revenue || 0) / 1000).toFixed(1)}K
+                  </div>
+                  <div className="text-xs text-muted-foreground">Faturamento</div>
+                </div>
+
+                <div className="bg-card rounded-xl border border-border p-4 shadow-sm">
+                  <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center mb-2">
+                    <CheckCircle size={16} className="text-emerald-600" />
+                  </div>
+                  <div className="text-xl font-bold text-foreground">
+                    {selectedAgentId ? performanceData?.selectedAgent?.sla_good_percent || 0 : performanceData?.average.sla || 0}%
+                  </div>
+                  <div className="text-xs text-muted-foreground">SLA Bom</div>
+                </div>
+
+                <div className="bg-card rounded-xl border border-border p-4 shadow-sm">
+                  <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center mb-2">
+                    <TrendingUp size={16} className="text-amber-600" />
+                  </div>
+                  <div className={`text-xl font-bold ${
+                    (selectedAgentId ? performanceData?.selectedAgent?.unified_score || 0 : performanceData?.average.score || 0) >= 70 ? 'text-status-success' :
+                    (selectedAgentId ? performanceData?.selectedAgent?.unified_score || 0 : performanceData?.average.score || 0) >= 40 ? 'text-status-warning' : 'text-status-error'
+                  }`}>
+                    {(selectedAgentId ? performanceData?.selectedAgent?.unified_score || 0 : performanceData?.average.score || 0) >= 70 ? 'Excelente' :
+                     (selectedAgentId ? performanceData?.selectedAgent?.unified_score || 0 : performanceData?.average.score || 0) >= 40 ? 'Regular' : 'Crítico'}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Classificação</div>
+                </div>
               </div>
             )}
 
@@ -1115,6 +1275,7 @@ export default function Reports() {
                   <thead>
                     <tr className="bg-muted/50 border-b border-border">
                       <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Atendente</th>
+                      <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Score</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Atendimentos</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Vendas</th>
                       <th className="text-center px-6 py-4 text-xs font-semibold text-muted-foreground uppercase">Faturamento</th>
@@ -1122,7 +1283,7 @@ export default function Reports() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {performanceData?.agents.map((agent) => (
+                    {performanceData?.agents.map((agent, index) => (
                       <tr 
                         key={agent.agent_id} 
                         className={`hover:bg-muted/30 cursor-pointer ${selectedAgentId === agent.agent_id ? 'bg-primary/5' : ''}`}
@@ -1130,6 +1291,9 @@ export default function Reports() {
                       >
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
+                            {index < 3 && (
+                              <Trophy size={18} className={index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : 'text-orange-600'} />
+                            )}
                             <Avatar className="h-8 w-8">
                               <AvatarImage src={agent.avatar_url || undefined} />
                               <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-white text-sm">
@@ -1138,6 +1302,15 @@ export default function Reports() {
                             </Avatar>
                             <span className="font-medium text-foreground">{agent.name}</span>
                           </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-3 py-1.5 rounded-full text-sm font-bold ${
+                            agent.unified_score >= 70 ? 'bg-status-success/10 text-status-success' :
+                            agent.unified_score >= 40 ? 'bg-status-warning/10 text-status-warning' :
+                            'bg-status-error/10 text-status-error'
+                          }`}>
+                            {agent.unified_score}
+                          </span>
                         </td>
                         <td className="px-6 py-4 text-center font-medium text-foreground">{agent.total_conversations}</td>
                         <td className="px-6 py-4 text-center font-medium text-foreground">{agent.total_sales}</td>
