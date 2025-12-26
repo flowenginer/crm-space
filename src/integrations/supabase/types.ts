@@ -1273,6 +1273,61 @@ export type Database = {
           },
         ]
       }
+      conversation_analysis: {
+        Row: {
+          analyzed_at: string
+          assigned_to: string
+          conversation_id: string
+          feedback: string | null
+          id: string
+          overall_score: number | null
+          scores: Json
+          tenant_id: string
+        }
+        Insert: {
+          analyzed_at?: string
+          assigned_to: string
+          conversation_id: string
+          feedback?: string | null
+          id?: string
+          overall_score?: number | null
+          scores: Json
+          tenant_id?: string
+        }
+        Update: {
+          analyzed_at?: string
+          assigned_to?: string
+          conversation_id?: string
+          feedback?: string | null
+          id?: string
+          overall_score?: number | null
+          scores?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_analysis_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_analysis_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: true
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_analysis_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_events: {
         Row: {
           actor_id: string | null
@@ -1380,6 +1435,7 @@ export type Database = {
           department_id: string | null
           first_response_at: string | null
           id: string
+          is_analyzed: boolean | null
           is_new_transfer: boolean | null
           is_unread: boolean | null
           last_message_at: string | null
@@ -1417,6 +1473,7 @@ export type Database = {
           department_id?: string | null
           first_response_at?: string | null
           id?: string
+          is_analyzed?: boolean | null
           is_new_transfer?: boolean | null
           is_unread?: boolean | null
           last_message_at?: string | null
@@ -1454,6 +1511,7 @@ export type Database = {
           department_id?: string | null
           first_response_at?: string | null
           id?: string
+          is_analyzed?: boolean | null
           is_new_transfer?: boolean | null
           is_unread?: boolean | null
           last_message_at?: string | null
