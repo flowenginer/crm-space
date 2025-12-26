@@ -3133,7 +3133,10 @@ function extractInstanceId(provider: WhatsAppProvider, payload: any): string {
 }
 
 function isMessageEvent(provider: WhatsAppProvider, payload: any): boolean {
-  const event = payload.event || payload.type || "";
+  // IMPORTANTE: payload.event pode ser objeto em eventos de presence do UAZAPI
+  const eventStr = typeof payload.event === 'string' ? payload.event : "";
+  const typeStr = typeof payload.type === 'string' ? payload.type : "";
+  const event = eventStr || typeStr || "";
   const normalizedEvent = event.toLowerCase().replace(/_/g, '.');
   
   let isMsg = false;
