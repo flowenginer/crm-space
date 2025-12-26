@@ -85,8 +85,8 @@ export function AgentPerformanceTable({ data, isLoading }: AgentPerformanceTable
                     <span className="font-semibold text-success">{agent.conversions}</span>
                   </TableCell>
                   <TableCell className="text-right">
-                    <span className={agent.conversionRate >= 10 ? 'text-success' : 'text-muted-foreground'}>
-                      {agent.conversionRate.toFixed(1)}%
+                    <span className={(agent.conversionRate ?? 0) >= 10 ? 'text-success' : 'text-muted-foreground'}>
+                      {(agent.conversionRate ?? 0).toFixed(1)}%
                     </span>
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">

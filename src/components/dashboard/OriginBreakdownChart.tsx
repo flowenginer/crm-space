@@ -31,7 +31,7 @@ const CustomTooltip = ({ active, payload }: any) => {
           Conversões: <span className="font-semibold text-primary">{data.converted}</span>
         </p>
         <p className="text-sm text-muted-foreground">
-          Taxa: <span className="font-semibold text-accent">{data.conversionRate.toFixed(1)}%</span>
+          Taxa: <span className="font-semibold text-accent">{(data.conversionRate ?? 0).toFixed(1)}%</span>
         </p>
       </div>
     );
@@ -281,7 +281,7 @@ export function OriginBreakdownChart({
                   {!showAgentPanel && (
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[10px] text-muted-foreground">Conversão</span>
-                      <span className="text-xs font-semibold text-primary">{origin.conversionRate.toFixed(1)}%</span>
+                      <span className="text-xs font-semibold text-primary">{(origin.conversionRate ?? 0).toFixed(1)}%</span>
                     </div>
                   )}
                 </button>
@@ -323,7 +323,7 @@ export function OriginBreakdownChart({
                 <p className="text-[10px] text-muted-foreground">Convertidos</p>
               </div>
               <div>
-                <p className="text-lg font-bold text-accent">{selectedData.conversionRate.toFixed(1)}%</p>
+                <p className="text-lg font-bold text-accent">{(selectedData.conversionRate ?? 0).toFixed(1)}%</p>
                 <p className="text-[10px] text-muted-foreground">Taxa</p>
               </div>
             </div>

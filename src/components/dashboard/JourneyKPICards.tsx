@@ -137,7 +137,7 @@ export function JourneyKPICards({
         <KPICard
           title="Novos Contatos"
           value={newContacts}
-          subtitle={`${returningMetrics?.newContactRate.toFixed(0) || 0}% do total`}
+          subtitle={`${returningMetrics?.newContactRate?.toFixed(0) ?? 0}% do total`}
           icon={<UserPlus className="h-5 w-5" />}
           color="green"
           isLoading={isLoading}
@@ -154,7 +154,7 @@ export function JourneyKPICards({
         
         <KPICard
           title="Taxa Atribuição"
-          value={`${metrics?.assignmentRate.toFixed(0) || 0}%`}
+          value={`${metrics?.assignmentRate?.toFixed(0) ?? 0}%`}
           subtitle={`${metrics?.totalAssigned || 0} atribuídos`}
           icon={<Users className="h-5 w-5" />}
           color="blue"

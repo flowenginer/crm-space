@@ -60,10 +60,10 @@ export function AssignmentTimeDistributionDialog({
 
               return (
                 <div key={item.range} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between text-sm">
                     <span className="font-medium text-foreground">{item.range}</span>
                     <span className="text-muted-foreground">
-                      {item.count.toLocaleString('pt-BR')} ({item.percentage}%)
+                      {(item.count ?? 0).toLocaleString('pt-BR')} ({item.percentage ?? 0}%)
                     </span>
                   </div>
                   <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
@@ -79,7 +79,7 @@ export function AssignmentTimeDistributionDialog({
           <div className="mt-6 pt-4 border-t border-border space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Total de atribuições</span>
-              <span className="font-semibold text-foreground">{total.toLocaleString('pt-BR')}</span>
+              <span className="font-semibold text-foreground">{(total ?? 0).toLocaleString('pt-BR')}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Mediana</span>

@@ -244,7 +244,7 @@ export function AgentPerformanceTableAdvanced({ data, isLoading }: AgentPerforma
                           ? 'text-yellow-600' 
                           : 'text-muted-foreground'
                     }`}>
-                      {agent.conversionRate.toFixed(1)}%
+                      {(agent.conversionRate ?? 0).toFixed(1)}%
                     </span>
                   </TableCell>
                   <TableCell className="text-center">
