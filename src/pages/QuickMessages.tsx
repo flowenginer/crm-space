@@ -4,8 +4,6 @@ import {
   MessageSquare,
   Image,
   FileText,
-  GitBranch,
-  Zap,
   Settings,
   Search,
   Plus,
@@ -75,8 +73,6 @@ const categoryConfig = [
   { id: 'audios', icon: Mic, label: 'Áudios' },
   { id: 'media', icon: Image, label: 'Mídias' },
   { id: 'documents', icon: FileText, label: 'Documentos' },
-  { id: 'funnels', icon: GitBranch, label: 'Funis' },
-  { id: 'triggers', icon: Zap, label: 'Gatilhos' },
   { id: 'rescue', icon: UserRoundPlus, label: 'Resgate' },
 ];
 
