@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useTheme } from 'next-themes';
+import { adjustColorForLightMode } from '@/lib/colorUtils';
 import {
   Search,
   Plus,
@@ -83,7 +85,9 @@ const getTagColorClass = (color: string | null) => {
 export default function Contacts() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissions();
+  const { resolvedTheme } = useTheme();
+  const theme = (resolvedTheme === 'dark' ? 'dark' : 'light') as 'light' | 'dark';
+  const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissions();
   const canAccessAllContacts = canViewAllConversations;
   
   // Modal de solicitação de acesso
@@ -157,13 +161,19 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
     return found?.name || status;
   };
 
-  const getLeadStatusColor = (status: string | null) => {
-    if (!status) return 'bg-muted text-muted-foreground';
+  const getLeadStatusStyles = (status: string | null) => {
+    if (!status) return { className: 'bg-muted text-muted-foreground', style: {} };
     const found = leadStatuses.find(s => s.name === status || s.id === status);
     if (found?.color) {
-      return `bg-[${found.color}]/10 text-[${found.color}]`;
+      return {
+        className: 'px-2.5 py-1 rounded-full text-xs font-medium',
+        style: {
+          backgroundColor: `${found.color}20`,
+          color: adjustColorForLightMode(found.color, theme),
+        }
+      };
     }
-    return 'bg-muted text-muted-foreground';
+    return { className: 'bg-muted text-muted-foreground', style: {} };
   };
 
   // Usar contagens do servidor
@@ -797,6 +807,11 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
                       Dept.
                     </span>
                   </th>
+                  <th className="text-left px-4 py-4">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Canais
+                    </span>
+                  </th>
                   <th className="text-center px-4 py-4">
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Ações
@@ -808,7 +823,7 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
               <tbody className="divide-y divide-border/50">
                 {paginatedContacts.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-16">
+                    <td colSpan={11} className="text-center py-16">
                       <div className="mx-auto h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
                         <Users className="h-8 w-8 text-muted-foreground" />
                       </div>
@@ -865,9 +880,17 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
                       </td>
 
                       <td className="px-4 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getLeadStatusColor(contact.lead_status)}`}>
-                          {getLeadStatusLabel(contact.lead_status)}
-                        </span>
+                        {(() => {
+                          const statusStyles = getLeadStatusStyles(contact.lead_status);
+                          return (
+                            <span 
+                              className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusStyles.className}`}
+                              style={statusStyles.style}
+                            >
+                              {getLeadStatusLabel(contact.lead_status)}
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       <td className="px-4 py-4">
@@ -909,6 +932,28 @@ const { isAdmin, isSupervisor, profile, canViewAllConversations } = usePermissio
                           <span className="px-2.5 py-1 bg-muted text-muted-foreground rounded-lg text-xs font-medium">
                             {contact.department.name}
                           </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {contact.channels && contact.channels.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {contact.channels.slice(0, 3).map((channel) => (
+                              <span 
+                                key={channel.id} 
+                                className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-xs font-medium"
+                              >
+                                {channel.name}
+                              </span>
+                            ))}
+                            {contact.channels.length > 3 && (
+                              <span className="px-2 py-0.5 bg-muted text-muted-foreground rounded-full text-xs font-medium">
+                                +{contact.channels.length - 3}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-sm text-muted-foreground">-</span>
                         )}
