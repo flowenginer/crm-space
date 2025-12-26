@@ -576,6 +576,14 @@ export default function WhatsAppChannels() {
           status: 'connected',
           last_sync_at: new Date().toISOString(),
         });
+        
+        // Auto-configurar webhook quando conecta
+        try {
+          await reconfigureChannelWebhook(channel.id);
+        } catch (e) {
+          console.warn('[handleConnect] Erro ao configurar webhook:', e);
+        }
+        
         toast.success(`${channel.name} está conectado!`);
         return;
       }
