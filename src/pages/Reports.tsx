@@ -36,6 +36,7 @@ import {
 import { FinancialDashboard } from '@/components/reports/FinancialDashboard';
 import { TransferHistoryPanel } from '@/components/reports/TransferHistoryPanel';
 import { CallHistoryPanel } from '@/components/reports/CallHistoryPanel';
+import { SLAConfigCard } from '@/components/reports/SLAConfigCard';
 import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -370,6 +371,11 @@ export default function Reports() {
 
           {/* TAB 1: SLA Report */}
           <TabsContent value="sla">
+            {/* SLA Configuration Panel */}
+            <div className="mb-6">
+              <SLAConfigCard />
+            </div>
+            
             <DashboardGrid
               storageKey="reports-sla-card-order"
               cards={[
