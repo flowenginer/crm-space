@@ -432,16 +432,100 @@ export default function WhatsAppChannels() {
     
     setIsConnecting(true);
     try {
-      const result = await whatsappService.connect(createdChannelId);
-      if (result.qrCode) {
-        setQrCode(result.qrCode);
-        setQrCountdown(60);
-      } else if (result.status === 'connected') {
+      // Buscar dados do canal no banco ou nos canais já carregados
+      let channel = channels.find(c => c.id === createdChannelId);
+      
+      // Se não encontrou na lista (canal recém-criado), buscar do banco
+      if (!channel) {
+        const { data: channelData } = await supabase
+          .from('whatsapp_channels')
+          .select('*, provider:whatsapp_providers(*)')
+          .eq('id', createdChannelId)
+          .single();
+        
+        if (channelData) {
+          channel = channelData as any;
+        }
+      }
+      
+      if (!channel) {
+        toast.error('Canal não encontrado');
+        return;
+      }
+      
+      // Buscar provedor
+      const provider = providers.find(p => p.id === channel.provider_id) || (channel as any).provider;
+      if (!provider || !channel.instance_id) {
+        toast.error('Canal sem provedor ou instância configurada');
+        return;
+      }
+      
+      // Verificar status via Edge Function
+      const statusResult = await getInstanceStatus(
+        provider.code as 'zapi' | 'uazapi' | 'evolution',
+        channel.instance_id
+      );
+      
+      if (statusResult.success && statusResult.status === 'connected') {
+        // Já conectou! Atualizar banco e avançar
+        await supabase
+          .from('whatsapp_channels')
+          .update({ 
+            status: 'connected', 
+            qr_code: null,
+            last_sync_at: new Date().toISOString()
+          })
+          .eq('id', createdChannelId);
+        
+        // Configurar webhook e sincronizar status
+        try {
+          await reconfigureChannelWebhook(createdChannelId);
+        } catch (e) {
+          console.warn('[handleRefreshQR] Erro ao configurar webhook:', e);
+        }
+        
         setAddStep(3);
         toast.success('Canal conectado com sucesso!');
+        refetchChannels();
+        return;
+      }
+      
+      // Não está conectado - buscar novo QR Code via Edge Function
+      const qrResult = await getWhatsAppQRCode(
+        provider.code as 'zapi' | 'uazapi' | 'evolution',
+        channel.instance_id,
+        channel.instance_token || provider.admin_token || ''
+      );
+      
+      if (qrResult.connected) {
+        // Conectou durante a verificação
+        await supabase
+          .from('whatsapp_channels')
+          .update({ 
+            status: 'connected', 
+            qr_code: null,
+            last_sync_at: new Date().toISOString()
+          })
+          .eq('id', createdChannelId);
+        
+        try {
+          await reconfigureChannelWebhook(createdChannelId);
+        } catch (e) {
+          console.warn('[handleRefreshQR] Erro ao configurar webhook:', e);
+        }
+        
+        setAddStep(3);
+        toast.success('Canal conectado com sucesso!');
+        refetchChannels();
+      } else if (qrResult.qrCode) {
+        setQrCode(qrResult.qrCode);
+        setQrCountdown(60);
+      } else {
+        toast.error('Não foi possível obter QR Code. Tente novamente.');
       }
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao gerar QR Code');
+      console.error('[handleRefreshQR] Error:', error);
+      toast.error(error.message || 'Erro ao verificar conexão');
     } finally {
       setIsConnecting(false);
     }
