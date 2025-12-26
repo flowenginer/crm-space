@@ -137,9 +137,25 @@ export function usePaginatedContacts(filters: ContactFilters, pagination: Pagina
             if (ct.tag) tagMap[ct.contact_id].push(ct.tag as { id: string; name: string; color: string | null });
           });
 
+          // Buscar canais associados a cada contato (via conversations)
+          const { data: contactChannels } = await supabase
+            .from('conversations')
+            .select('contact_id, channel:whatsapp_channels(id, name)')
+            .in('contact_id', contactIds)
+            .not('channel_id', 'is', null);
+
+          const channelMap: Record<string, { id: string; name: string }[]> = {};
+          contactChannels?.forEach(cc => {
+            if (!channelMap[cc.contact_id]) channelMap[cc.contact_id] = [];
+            if (cc.channel && !channelMap[cc.contact_id].some(c => c.id === (cc.channel as any).id)) {
+              channelMap[cc.contact_id].push(cc.channel as { id: string; name: string });
+            }
+          });
+
           contactsWithTags = contacts?.map(contact => ({
             ...contact,
-            tags: tagMap[contact.id] || []
+            tags: tagMap[contact.id] || [],
+            channels: channelMap[contact.id] || []
           })) || [];
         }
 
@@ -212,11 +228,27 @@ export function usePaginatedContacts(filters: ContactFilters, pagination: Pagina
           if (ct.tag) tagMap[ct.contact_id].push(ct.tag as { id: string; name: string; color: string | null });
         });
 
+        // Buscar canais associados a cada contato (via conversations)
+        const { data: contactChannels } = await supabase
+          .from('conversations')
+          .select('contact_id, channel:whatsapp_channels(id, name)')
+          .in('contact_id', contactIds)
+          .not('channel_id', 'is', null);
+
+        const channelMap: Record<string, { id: string; name: string }[]> = {};
+        contactChannels?.forEach(cc => {
+          if (!channelMap[cc.contact_id]) channelMap[cc.contact_id] = [];
+          if (cc.channel && !channelMap[cc.contact_id].some(c => c.id === (cc.channel as any).id)) {
+            channelMap[cc.contact_id].push(cc.channel as { id: string; name: string });
+          }
+        });
+
         contactsWithTags = rpcData.map((contact: any) => ({
           ...contact,
           assignee: relatedMap[contact.id]?.assignee || null,
           department: relatedMap[contact.id]?.department || null,
-          tags: tagMap[contact.id] || []
+          tags: tagMap[contact.id] || [],
+          channels: channelMap[contact.id] || []
         }));
       }
 

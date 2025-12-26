@@ -36,6 +36,7 @@ export interface Contact {
   assignee?: { id: string; full_name: string | null } | null;
   department?: { id: string; name: string } | null;
   tags?: { id: string; name: string; color: string | null }[];
+  channels?: { id: string; name: string }[];
 }
 
 // Campos otimizados - não usar SELECT *
