@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { createWhatsAppInstance, getWhatsAppQRCode, syncChannelStatus } from '@/lib/whatsapp/instance-creator';
+import { createWhatsAppInstance, getWhatsAppQRCode, syncChannelStatus, reconfigureChannelWebhook } from '@/lib/whatsapp/instance-creator';
 
 interface CreateChannelData {
   name: string;
@@ -85,6 +85,20 @@ export function useCreateChannelWithInstance() {
         throw new Error('Falha ao salvar canal: ' + channelError.message);
       }
 
+      // 5. Configurar webhook automaticamente após criação
+      console.log('[useCreateChannelWithInstance] Configurando webhook automaticamente para canal:', channel.id);
+      try {
+        const webhookResult = await reconfigureChannelWebhook(channel.id);
+        if (webhookResult.success) {
+          console.log('[useCreateChannelWithInstance] Webhook configurado com sucesso:', webhookResult.webhookUrl);
+        } else {
+          console.warn('[useCreateChannelWithInstance] Falha ao configurar webhook:', webhookResult.error);
+        }
+      } catch (webhookError) {
+        console.warn('[useCreateChannelWithInstance] Erro ao configurar webhook:', webhookError);
+        // Não falhar a criação do canal se o webhook falhar - pode ser reconfigurado depois
+      }
+
       return {
         channel,
         qrCode: result.qrCode,
@@ -150,6 +164,27 @@ export function useRefreshQRCode() {
             qr_expires_at: null,
           })
           .eq('id', channelId);
+
+        // Após conexão, reconfigurar webhook e sincronizar status
+        console.log('[useRefreshQRCode] Canal conectado, reconfigurando webhook...');
+        try {
+          const webhookResult = await reconfigureChannelWebhook(channelId);
+          if (webhookResult.success) {
+            console.log('[useRefreshQRCode] Webhook reconfigurado:', webhookResult.webhookUrl);
+          } else {
+            console.warn('[useRefreshQRCode] Falha ao reconfigurar webhook:', webhookResult.error);
+          }
+        } catch (webhookError) {
+          console.warn('[useRefreshQRCode] Erro ao reconfigurar webhook:', webhookError);
+        }
+
+        // Sincronizar status para garantir que está atualizado
+        try {
+          const syncResult = await syncChannelStatus(channelId);
+          console.log('[useRefreshQRCode] Status sincronizado:', syncResult);
+        } catch (syncError) {
+          console.warn('[useRefreshQRCode] Erro ao sincronizar status:', syncError);
+        }
 
         return { connected: true };
       }
