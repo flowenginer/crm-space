@@ -76,7 +76,7 @@ import {
   useRestoreChannel,
   type WhatsAppChannel 
 } from '@/hooks/useChannels';
-import { useProviders, useConfiguredProviders } from '@/hooks/useProviders';
+import { useProviders, useConfiguredProviders, useDefaultSharedProvider } from '@/hooks/useProviders';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useCreateChannelWithInstance, useRefreshQRCode, useSyncChannelStatus } from '@/hooks/useCreateChannelWithInstance';
 import { whatsappService } from '@/lib/whatsapp';
@@ -90,7 +90,11 @@ export default function WhatsAppChannels() {
   const { data: deletedChannels = [] } = useDeletedChannels();
   const { data: providers = [] } = useProviders();
   const { data: configuredProviders = [] } = useConfiguredProviders();
+  const { data: defaultSharedProvider } = useDefaultSharedProvider();
   const { data: departments = [] } = useDepartments();
+  
+  // Verifica se há provedor compartilhado disponível
+  const hasSharedProvider = !!defaultSharedProvider;
   
   const createChannel = useCreateChannel();
   const createChannelWithInstance = useCreateChannelWithInstance();
@@ -223,6 +227,11 @@ export default function WhatsAppChannels() {
 
   const handleAddChannel = () => {
     resetForm();
+    // Auto-selecionar provedor compartilhado se disponível
+    if (defaultSharedProvider) {
+      setSelectedProviderCode(defaultSharedProvider.code);
+      setSelectedProviderId(defaultSharedProvider.id);
+    }
     setShowAddModal(true);
   };
 
@@ -801,8 +810,63 @@ export default function WhatsAppChannels() {
                   />
                 </div>
 
-                {/* Modo de criação */}
-                {configuredProviders.length > 0 ? (
+                {/* Provedor compartilhado disponível - UI simplificada */}
+                {hasSharedProvider ? (
+                  <>
+                    <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                      <div className="flex items-center gap-2">
+                        <Check size={18} className="text-green-600" />
+                        <span className="text-sm font-medium text-green-700 dark:text-green-400">
+                          Usando provedor {defaultSharedProvider?.name} (configurado automaticamente)
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="phone">Número do WhatsApp (opcional)</Label>
+                      <Input
+                        id="phone"
+                        placeholder="+55 21 99999-9999"
+                        value={newChannelPhone}
+                        onChange={(e) => setNewChannelPhone(e.target.value)}
+                        className="mt-2"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label>Departamento de entrada</Label>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info size={14} className="text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p>Leads que chegarem por este canal serão direcionados automaticamente para este departamento</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      <Select value={selectedDepartmentId || "none"} onValueChange={(val) => setSelectedDepartmentId(val === "none" ? "" : val)}>
+                        <SelectTrigger className="mt-2">
+                          <SelectValue placeholder="Selecionar departamento..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Nenhum</SelectItem>
+                          {departments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!selectedDepartmentId && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1">
+                          <AlertCircle size={12} />
+                          Sem departamento, leads ficarão sem atribuição inicial
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : configuredProviders.length > 0 ? (
                   <>
                     <div>
                       <Label>Provedor WhatsApp *</Label>
