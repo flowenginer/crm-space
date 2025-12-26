@@ -9083,20 +9083,36 @@ export type Database = {
           total_value: number
         }[]
       }
-      get_leads_by_origin: {
-        Args: {
-          p_agent_id?: string
-          p_date_from: string
-          p_date_to: string
-          p_department_id?: string
-        }
-        Returns: {
-          conversion_rate: number
-          converted_leads: number
-          origin: string
-          total_leads: number
-        }[]
-      }
+      get_leads_by_origin:
+        | {
+            Args: {
+              p_agent_id?: string
+              p_date_from: string
+              p_date_to: string
+              p_department_id?: string
+            }
+            Returns: {
+              conversion_rate: number
+              converted_leads: number
+              origin: string
+              total_leads: number
+            }[]
+          }
+        | {
+            Args: {
+              p_agent_id?: string
+              p_conversion_status_names?: string[]
+              p_date_from: string
+              p_date_to: string
+              p_department_id?: string
+            }
+            Returns: {
+              conversion_rate: number
+              converted_leads: number
+              origin: string
+              total_leads: number
+            }[]
+          }
       get_leads_by_status_batch: {
         Args: {
           p_agent_id?: string

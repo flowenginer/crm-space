@@ -104,6 +104,7 @@ export function useLeadsByOrigin(filters: DashboardFilters) {
         p_date_to: dateTo,
         p_agent_id: filters.agentId || null,
         p_department_id: filters.departmentId || null,
+        p_conversion_status_names: conversionStatusNames,
       });
 
       if (error) {
