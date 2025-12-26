@@ -463,7 +463,8 @@ export default function WhatsAppChannels() {
       // Verificar status via Edge Function
       const statusResult = await getInstanceStatus(
         provider.code as 'zapi' | 'uazapi' | 'evolution',
-        channel.instance_id
+        channel.instance_id,
+        channel.instance_token || ''
       );
       
       if (statusResult.success && statusResult.status === 'connected') {
@@ -546,7 +547,8 @@ export default function WhatsAppChannels() {
       // Primeiro verificar se já está conectado via Edge Function
       const statusResult = await getInstanceStatus(
         provider.code as 'zapi' | 'uazapi' | 'evolution',
-        channel.instance_id
+        channel.instance_id,
+        channel.instance_token || ''
       );
 
       if (statusResult.success && statusResult.status === 'connected') {
