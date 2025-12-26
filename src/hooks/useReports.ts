@@ -380,6 +380,7 @@ export function useReportSales(dateRange: DateRange | undefined, userId?: string
 }
 
 // ============ Performance Report Hooks ============
+// Uses contacts.negotiated_value for revenue and lead_status for conversions
 
 interface AgentPerformanceData {
   agent_id: string;
@@ -408,25 +409,33 @@ export function useReportPerformance(dateRange: DateRange | undefined, selectedA
       const startDate = startOfDay(dateRange.from).toISOString();
       const endDate = endOfDay(dateRange.to).toISOString();
 
+      // Fetch company settings for conversion status IDs
+      const { data: companySettings } = await supabase
+        .from('company_settings')
+        .select('conversion_status_ids')
+        .single();
+
+      const conversionStatusIds: string[] = companySettings?.conversion_status_ids || [];
+
       // Fetch profiles (agents)
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, full_name, avatar_url, role')
         .in('role', ['vendedor', 'admin', 'supervisor', 'atendente']);
 
-      // Fetch conversations
+      // Fetch conversations with assigned_to in the period
       const { data: conversations } = await supabase
         .from('conversations')
         .select('id, assigned_to, sla_status, created_at')
         .gte('created_at', startDate)
         .lte('created_at', endDate);
 
-      // Fetch contacts for conversions
+      // Fetch ALL contacts assigned to agents (not filtered by creation date)
+      // to get sales and revenue based on current assignments
       const { data: contacts } = await supabase
         .from('contacts')
-        .select('id, assigned_to, lead_status, negotiated_value')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate);
+        .select('id, assigned_to, lead_status, negotiated_value, updated_at')
+        .not('assigned_to', 'is', null);
 
       // Aggregate by agent
       const agentMap = new Map<string, AgentPerformanceData>();
@@ -460,19 +469,18 @@ export function useReportPerformance(dateRange: DateRange | undefined, selectedA
         }
       });
 
-      // Count sales from orders table
-      const { data: ordersByAgent } = await supabase
-        .from('orders')
-        .select('seller_id, total')
-        .neq('status', 'canceled')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate);
-
-      (ordersByAgent || []).forEach((order: any) => {
-        if (order.seller_id && agentMap.has(order.seller_id)) {
-          const agent = agentMap.get(order.seller_id)!;
-          agent.total_sales++;
-          agent.revenue += order.total || 0;
+      // Count sales and revenue from CONTACTS (not orders)
+      // Sales = contacts with lead_status in conversion_status_ids
+      // Revenue = sum of negotiated_value from those contacts
+      (contacts || []).forEach((contact: any) => {
+        if (contact.assigned_to && agentMap.has(contact.assigned_to)) {
+          const agent = agentMap.get(contact.assigned_to)!;
+          
+          // Check if contact's lead_status is a conversion status
+          if (contact.lead_status && conversionStatusIds.includes(contact.lead_status)) {
+            agent.total_sales++;
+            agent.revenue += contact.negotiated_value || 0;
+          }
         }
       });
 
@@ -484,8 +492,8 @@ export function useReportPerformance(dateRange: DateRange | undefined, selectedA
       });
 
       const agents = Array.from(agentMap.values())
-        .filter(a => a.total_conversations > 0 || a.total_sales > 0)
-        .sort((a, b) => b.total_conversations - a.total_conversations);
+        .filter(a => a.total_conversations > 0 || a.total_sales > 0 || a.revenue > 0)
+        .sort((a, b) => b.revenue - a.revenue || b.total_sales - a.total_sales || b.total_conversations - a.total_conversations);
 
       // Calculate average
       const avgConv = agents.length > 0 ? Math.round(agents.reduce((s, a) => s + a.total_conversations, 0) / agents.length) : 0;
@@ -495,13 +503,14 @@ export function useReportPerformance(dateRange: DateRange | undefined, selectedA
 
       const selectedAgent = selectedAgentId ? agents.find(a => a.agent_id === selectedAgentId) || null : null;
 
-      // Calculate weekly data based on orders
-      const ordersCount = ordersByAgent?.length || 0;
+      // Calculate weekly data
+      const totalConversations = conversations?.length || 0;
+      const totalSales = agents.reduce((s, a) => s + a.total_sales, 0);
       const weeklyData = [
-        { week: 'Sem 1', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor(ordersCount / 4), sla: avgSla },
-        { week: 'Sem 2', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor(ordersCount / 4), sla: avgSla },
-        { week: 'Sem 3', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor(ordersCount / 4), sla: avgSla },
-        { week: 'Sem 4', atendimentos: Math.floor((conversations?.length || 0) / 4), vendas: Math.floor(ordersCount / 4), sla: avgSla },
+        { week: 'Sem 1', atendimentos: Math.floor(totalConversations / 4), vendas: Math.floor(totalSales / 4), sla: avgSla },
+        { week: 'Sem 2', atendimentos: Math.floor(totalConversations / 4), vendas: Math.floor(totalSales / 4), sla: avgSla },
+        { week: 'Sem 3', atendimentos: Math.floor(totalConversations / 4), vendas: Math.floor(totalSales / 4), sla: avgSla },
+        { week: 'Sem 4', atendimentos: Math.floor(totalConversations / 4), vendas: Math.floor(totalSales / 4), sla: avgSla },
       ];
 
       return {
