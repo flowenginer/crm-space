@@ -245,16 +245,18 @@ export async function deleteProviderInstance(
 // =====================================================
 export async function getInstanceStatus(
   providerCode: 'zapi' | 'uazapi' | 'evolution',
-  instanceId: string
+  instanceId: string,
+  instanceToken?: string
 ): Promise<{ success: boolean; status?: string; state?: string; ownerJid?: string; error?: string }> {
   try {
-    console.log('[Instance Creator] Getting status:', { providerCode, instanceId });
+    console.log('[Instance Creator] Getting status:', { providerCode, instanceId, hasToken: !!instanceToken });
     
     const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
       body: {
         action: 'getStatus',
         providerCode,
         instanceId,
+        instanceToken,
       },
     });
 
