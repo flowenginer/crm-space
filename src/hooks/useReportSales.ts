@@ -129,40 +129,77 @@ export function useReportSales(
         .select('id, name, color')
         .order('name');
 
-      // Fetch converted contacts in period
-      let convertedQuery = supabase
-        .from('contacts')
-        .select(`
-          id,
-          assigned_to,
-          negotiated_value,
-          origin,
-          first_contact_at,
-          updated_at,
-          lead_status,
-          profiles:assigned_to(id, full_name, avatar_url)
-        `)
-        .in('lead_status', conversionStatusNames)
-        .gte('updated_at', startDate)
-        .lte('updated_at', endDate);
+      // CORREÇÃO: Buscar conversões pelo lead_status_history.changed_at (igual ao Dashboard)
+      // Primeiro buscar IDs de contatos que CONVERTERAM no período atual
+      let conversionHistoryQuery = supabase
+        .from('lead_status_history')
+        .select('contact_id, changed_at')
+        .in('new_status', conversionStatusNames)
+        .gte('changed_at', startDate)
+        .lte('changed_at', endDate);
 
-      // Apply filters
-      if (filters?.sellerId) {
-        convertedQuery = convertedQuery.eq('assigned_to', filters.sellerId);
+      const { data: conversionHistory } = await conversionHistoryQuery;
+      
+      // Extrair IDs únicos de contatos convertidos
+      const convertedContactIds = [...new Set(conversionHistory?.map(r => r.contact_id) || [])];
+      
+      // Criar mapa de data de conversão para cada contato (primeira conversão no período)
+      const conversionDateMap = new Map<string, string>();
+      conversionHistory?.forEach(h => {
+        if (!conversionDateMap.has(h.contact_id)) {
+          conversionDateMap.set(h.contact_id, h.changed_at);
+        }
+      });
+
+      // Buscar dados completos dos contatos convertidos
+      let convertedContacts: any[] = [];
+      if (convertedContactIds.length > 0) {
+        let contactsQuery = supabase
+          .from('contacts')
+          .select(`
+            id,
+            assigned_to,
+            negotiated_value,
+            origin,
+            first_contact_at,
+            lead_status,
+            profiles:assigned_to(id, full_name, avatar_url)
+          `)
+          .in('id', convertedContactIds);
+
+        // Apply filters
+        if (filters?.sellerId) {
+          contactsQuery = contactsQuery.eq('assigned_to', filters.sellerId);
+        }
+        if (filters?.origin) {
+          contactsQuery = contactsQuery.eq('origin', filters.origin);
+        }
+
+        const { data } = await contactsQuery;
+        convertedContacts = (data || []).map(c => ({
+          ...c,
+          conversion_date: conversionDateMap.get(c.id) || null
+        }));
       }
-      if (filters?.origin) {
-        convertedQuery = convertedQuery.eq('origin', filters.origin);
+
+      // Buscar conversões do período anterior (também pelo lead_status_history)
+      const { data: prevConversionHistory } = await supabase
+        .from('lead_status_history')
+        .select('contact_id')
+        .in('new_status', conversionStatusNames)
+        .gte('changed_at', prevStartDate)
+        .lte('changed_at', prevEndDate);
+
+      const prevConvertedContactIds = [...new Set(prevConversionHistory?.map(r => r.contact_id) || [])];
+      
+      let prevConversions: any[] = [];
+      if (prevConvertedContactIds.length > 0) {
+        const { data } = await supabase
+          .from('contacts')
+          .select('id, negotiated_value')
+          .in('id', prevConvertedContactIds);
+        prevConversions = data || [];
       }
-
-      const { data: convertedContacts } = await convertedQuery;
-
-      // Fetch previous period conversions
-      const { data: prevConversions } = await supabase
-        .from('contacts')
-        .select('id, negotiated_value')
-        .in('lead_status', conversionStatusNames)
-        .gte('updated_at', prevStartDate)
-        .lte('updated_at', prevEndDate);
 
       // Fetch total leads for conversion rate
       let leadsQuery = supabase
@@ -210,12 +247,12 @@ export function useReportSales(
       const revenueGrowthDirection: 'up' | 'down' | 'neutral' = 
         revenueGrowth > 0 ? 'up' : revenueGrowth < 0 ? 'down' : 'neutral';
 
-      // Calculate avg cycle days
+      // Calculate avg cycle days - usar conversion_date do histórico
       let totalCycleDays = 0;
       let cycleCount = 0;
-      convertedContacts?.forEach(c => {
-        if (c.first_contact_at && c.updated_at) {
-          const cycleDays = differenceInDays(new Date(c.updated_at), new Date(c.first_contact_at));
+      convertedContacts?.forEach((c: any) => {
+        if (c.first_contact_at && c.conversion_date) {
+          const cycleDays = differenceInDays(new Date(c.conversion_date), new Date(c.first_contact_at));
           if (cycleDays >= 0 && cycleDays < 365) {
             totalCycleDays += cycleDays;
             cycleCount++;
@@ -292,10 +329,14 @@ export function useReportSales(
         .sort((a, b) => b.revenue - a.revenue)
         .map((s, idx) => ({ ...s, rank: idx + 1 }));
 
-      // Timeline by day
+      // Timeline by day - usar conversion_date do lead_status_history
       const timelineMap = new Map<string, { vendas: number; quantidade: number }>();
       (convertedContacts || []).forEach((contact: any) => {
-        const dateKey = format(new Date(contact.updated_at), 'dd/MM');
+        // Usar a data de conversão do histórico, não updated_at
+        const conversionDate = contact.conversion_date;
+        if (!conversionDate) return;
+        
+        const dateKey = format(new Date(conversionDate), 'dd/MM');
         if (!timelineMap.has(dateKey)) {
           timelineMap.set(dateKey, { vendas: 0, quantidade: 0 });
         }
