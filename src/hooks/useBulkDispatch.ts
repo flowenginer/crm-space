@@ -194,7 +194,7 @@ export function usePreviewContacts(filters: BulkDispatchFilters, enabled: boolea
         query = query.eq('is_blocked', false);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await query.limit(50000);
       if (error) throw error;
 
       let contacts = data as PreviewContact[];

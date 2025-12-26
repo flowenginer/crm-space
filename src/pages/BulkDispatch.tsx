@@ -269,13 +269,12 @@ export default function BulkDispatch() {
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground"><Users className="h-12 w-12 mb-2 opacity-50" /><p>Nenhum contato</p></div>
                   ) : (
                     <div className="space-y-2">
-                      {previewContacts.slice(0, 50).map(c => (
+                      {previewContacts.map(c => (
                         <div key={c.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
                           <Avatar className="h-8 w-8"><AvatarImage src={c.avatar_url || undefined} /><AvatarFallback className="text-xs">{getInitials(c.full_name)}</AvatarFallback></Avatar>
                           <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{c.full_name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
                         </div>
                       ))}
-                      {previewContacts.length > 50 && <p className="text-xs text-muted-foreground text-center py-2">+{previewContacts.length - 50} contatos</p>}
                     </div>
                   )}
                 </ScrollArea>
