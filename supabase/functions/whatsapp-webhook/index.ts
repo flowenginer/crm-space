@@ -2196,6 +2196,102 @@ serve(async (req) => {
     }
 
     // =====================================================
+    // SATISFACTION SURVEY RESPONSE DETECTION
+    // =====================================================
+    try {
+      // Check if there's a pending satisfaction survey for this contact
+      const { data: pendingSurvey, error: surveyError } = await supabase
+        .from('satisfaction_surveys')
+        .select('id, survey_type, conversation_id, agent_id')
+        .eq('contact_id', contact.id)
+        .eq('status', 'sent')
+        .order('sent_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!surveyError && pendingSurvey) {
+        const messageContent = normalizedMessage.content.trim();
+        let score: number | null = null;
+        let classification: string | null = null;
+
+        if (pendingSurvey.survey_type === 'nps') {
+          // NPS: Extract number 0-10 from response
+          const npsMatch = messageContent.match(/^(\d+)$/);
+          if (npsMatch) {
+            const npsScore = parseInt(npsMatch[1], 10);
+            if (npsScore >= 0 && npsScore <= 10) {
+              score = npsScore;
+              // NPS Classification
+              if (npsScore >= 9) {
+                classification = 'promoter';
+              } else if (npsScore >= 7) {
+                classification = 'passive';
+              } else {
+                classification = 'detractor';
+              }
+              console.log(`[Webhook] 📊 NPS response detected: ${score} (${classification})`);
+            }
+          }
+        } else if (pendingSurvey.survey_type === 'csat') {
+          // CSAT: Extract 1, 3, or 5 from response
+          const csatMatch = messageContent.match(/^([135])$/);
+          if (csatMatch) {
+            score = parseInt(csatMatch[1], 10);
+            // CSAT Classification
+            if (score === 5) {
+              classification = 'satisfied';
+            } else if (score === 3) {
+              classification = 'neutral';
+            } else {
+              classification = 'dissatisfied';
+            }
+            console.log(`[Webhook] 📊 CSAT response detected: ${score} (${classification})`);
+          }
+          
+          // Also check for emoji responses
+          if (!score) {
+            if (messageContent.includes('😊') || messageContent.toLowerCase().includes('ótimo') || messageContent.toLowerCase().includes('otimo')) {
+              score = 5;
+              classification = 'satisfied';
+            } else if (messageContent.includes('😐') || messageContent.toLowerCase().includes('regular')) {
+              score = 3;
+              classification = 'neutral';
+            } else if (messageContent.includes('😞') || messageContent.toLowerCase().includes('ruim')) {
+              score = 1;
+              classification = 'dissatisfied';
+            }
+            if (score) {
+              console.log(`[Webhook] 📊 CSAT emoji/text response detected: ${score} (${classification})`);
+            }
+          }
+        }
+
+        // Update survey with response
+        if (score !== null) {
+          const { error: updateError } = await supabase
+            .from('satisfaction_surveys')
+            .update({
+              score: score,
+              nps_classification: classification,
+              status: 'responded',
+              responded_at: new Date().toISOString(),
+              response_text: messageContent,
+            })
+            .eq('id', pendingSurvey.id);
+
+          if (updateError) {
+            console.error(`[Webhook] Error updating satisfaction survey:`, updateError);
+          } else {
+            console.log(`[Webhook] ✅ Satisfaction survey ${pendingSurvey.id} updated with score ${score}`);
+          }
+        }
+      }
+    } catch (satisfactionError) {
+      // Non-critical error - log but don't fail the webhook
+      console.error(`[Webhook] Error processing satisfaction response:`, satisfactionError);
+    }
+
+    // =====================================================
     // AUTO-PAUSE QUOTE NOTIFICATIONS ON CLIENT RESPONSE
     // =====================================================
     try {

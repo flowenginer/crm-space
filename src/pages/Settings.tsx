@@ -55,7 +55,8 @@ import { MenuConfiguration } from '@/components/settings/MenuConfiguration';
 import { CompanySettings } from '@/components/settings/CompanySettings';
 import { SharedBoxManagement } from '@/components/settings/SharedBoxManagement';
 import { InvitationManagement } from '@/components/settings/InvitationManagement';
-import { Facebook, UserCheck, Unlock, Store, Package, Layers } from 'lucide-react';
+import { SatisfactionSettings } from '@/components/settings/SatisfactionSettings';
+import { Facebook, UserCheck, Unlock, Store, Package, Layers, Star } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
@@ -134,6 +135,7 @@ const TAB_METADATA: Record<string, TabMetadata> = {
   'tools': { icon: Wrench, permission: ['settings', 'update'] },
   'metrics': { icon: Target, permission: ['settings', 'update'] },
   'shared-boxes': { icon: Package, permission: ['settings', 'update'] },
+  'satisfaction': { icon: Star, permission: ['settings', 'update'] },
 };
 
 export default function Settings() {
@@ -680,6 +682,13 @@ export default function Settings() {
         {isTabAvailable('shared-boxes') && (
           <TabsContent value="shared-boxes" className="space-y-6">
             <SharedBoxManagement />
+          </TabsContent>
+        )}
+
+        {/* TAB: Satisfaction Settings */}
+        {isTabAvailable('satisfaction') && (
+          <TabsContent value="satisfaction" className="space-y-6">
+            <SatisfactionSettings />
           </TabsContent>
         )}
 
