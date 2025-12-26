@@ -36,6 +36,8 @@ import {
 import { TransferHistoryPanel } from '@/components/reports/TransferHistoryPanel';
 import { CallHistoryPanel } from '@/components/reports/CallHistoryPanel';
 import { SLAConfigCard } from '@/components/reports/SLAConfigCard';
+import { SatisfactionPanel } from '@/components/reports/SatisfactionPanel';
+import { VolumeHeatmap } from '@/components/reports/VolumeHeatmap';
 import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -98,11 +100,11 @@ import { useReportsTabs } from '@/hooks/useReportsTabs';
 const COLORS = ['#8B5CF6', '#EC4899', '#3B82F6', '#10B981', '#6B7280'];
 
 // Tab metadata with icons and permissions (keyed by tab value)
+// Note: 'financial' removed - disabled in database
 const TAB_METADATA: Record<string, { icon: typeof Clock; permission: string }> = {
   'sla': { icon: Clock, permission: 'view_sla' },
   'attendance': { icon: MessageSquare, permission: 'view_attendance' },
   'sales': { icon: DollarSign, permission: 'view_sales' },
-  'financial': { icon: Wallet, permission: 'view_financial' },
   'satisfaction': { icon: Smile, permission: 'view_satisfaction' },
   'performance': { icon: Users, permission: 'view_performance' },
   'transfers': { icon: ArrowLeftRight, permission: 'view_transfers' },
@@ -125,13 +127,32 @@ export default function Reports() {
   const tabFromUrl = searchParams.get('tab');
   const canViewAllReports = isAdmin || hasPermission('reports', 'view_all');
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 6),
-    to: new Date(),
+  
+  // Load persisted date range from localStorage
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const saved = localStorage.getItem('reports-date-range');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return { from: new Date(parsed.from), to: new Date(parsed.to) };
+      } catch { /* ignore */ }
+    }
+    return { from: subDays(new Date(), 6), to: new Date() };
   });
+  
   const [compareDateRange, setCompareDateRange] = useState<DateRange | undefined>(undefined);
   const [showComparison, setShowComparison] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  
+  // Persist date range to localStorage
+  useEffect(() => {
+    if (dateRange?.from && dateRange?.to) {
+      localStorage.setItem('reports-date-range', JSON.stringify({
+        from: dateRange.from.toISOString(),
+        to: dateRange.to.toISOString(),
+      }));
+    }
+  }, [dateRange]);
   const [isComparePickerOpen, setIsComparePickerOpen] = useState(false);
 
   // Real data hooks
@@ -931,53 +952,9 @@ export default function Reports() {
             </div>
           </TabsContent>
 
-          {/* TAB 5: Satisfaction Report */}
+          {/* TAB 5: Satisfaction Report - NPS/CSAT Dashboard */}
           <TabsContent value="satisfaction" className="space-y-6">
-            <div className="bg-card rounded-2xl border border-border p-8 shadow-sm">
-              <div className="flex flex-col items-center justify-center text-center">
-                <div className="p-4 bg-status-warning/10 rounded-full mb-4">
-                  <Info size={32} className="text-status-warning" />
-                </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">Sistema de Avaliação em Desenvolvimento</h3>
-                <p className="text-muted-foreground max-w-lg mb-6">
-                  Estamos implementando um sistema completo de avaliação por NPS e emojis. 
-                  Por enquanto, você pode visualizar os motivos de encerramento como indicador básico de satisfação.
-                </p>
-
-                {/* Close Reasons as basic satisfaction indicator */}
-                {closeReasonsLoading ? (
-                  <Skeleton className="h-48 w-full max-w-2xl" />
-                ) : (closeReasonsData?.reasons?.length || 0) > 0 ? (
-                  <div className="w-full max-w-2xl">
-                    <h4 className="text-lg font-medium text-foreground mb-4 text-left">Motivos de Encerramento</h4>
-                    <div className="space-y-3">
-                      {closeReasonsData?.reasons.map((reason) => (
-                        <div key={reason.value} className="flex items-center gap-4">
-                          <div 
-                            className="w-4 h-4 rounded-full flex-shrink-0" 
-                            style={{ backgroundColor: reason.color }}
-                          />
-                          <span className="text-sm font-medium text-foreground flex-1 text-left">{reason.name}</span>
-                          <span className="text-sm text-muted-foreground">{reason.count}</span>
-                          <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
-                            <div 
-                              className="h-full rounded-full" 
-                              style={{ width: `${reason.percentage}%`, backgroundColor: reason.color }}
-                            />
-                          </div>
-                          <span className="text-sm font-medium text-foreground w-12 text-right">{reason.percentage}%</span>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-4">
-                      Total de {closeReasonsData?.total || 0} conversas encerradas no período
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Sem dados de encerramento no período selecionado</p>
-                )}
-              </div>
-            </div>
+            <SatisfactionPanel dateRange={dateRange as { from: Date; to: Date } | undefined} />
           </TabsContent>
 
           {/* TAB 6: Individual Performance */}

@@ -6891,6 +6891,90 @@ export type Database = {
           },
         ]
       }
+      satisfaction_surveys: {
+        Row: {
+          agent_id: string | null
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string | null
+          id: string
+          responded_at: string | null
+          response: string | null
+          score: number | null
+          sent_at: string | null
+          status: string | null
+          survey_type: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          agent_id?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          responded_at?: string | null
+          response?: string | null
+          score?: number | null
+          sent_at?: string | null
+          status?: string | null
+          survey_type?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          agent_id?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          responded_at?: string | null
+          response?: string | null
+          score?: number | null
+          sent_at?: string | null
+          status?: string | null
+          survey_type?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satisfaction_surveys_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satisfaction_surveys_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satisfaction_surveys_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satisfaction_surveys_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satisfaction_surveys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduled_messages: {
         Row: {
           attempts: number | null
