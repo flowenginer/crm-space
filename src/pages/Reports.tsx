@@ -1020,24 +1020,26 @@ export default function Reports() {
               {/* Sales Timeline */}
               <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
                 <h3 className="text-lg font-semibold text-foreground mb-6">Evolução de Vendas</h3>
-              ) : (salesData?.timeline?.length || 0) > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <ComposedChart data={salesData?.timeline}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <Tooltip />
-                    <Legend />
-                    <Bar yAxisId="left" dataKey="vendas" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Vendas (R$)" />
-                    <Line yAxisId="right" type="monotone" dataKey="quantidade" stroke="#10B981" strokeWidth={2} name="Quantidade" />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-                  <Info size={32} className="mb-2" />
-                  <p className="text-sm">Sem dados no período</p>
-                </div>
+                {salesLoading ? (
+                  <Skeleton className="h-64" />
+                ) : (salesData?.timeline?.length || 0) > 0 ? (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <ComposedChart data={salesData?.timeline}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                      <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                      <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                      <Tooltip />
+                      <Legend />
+                      <Bar yAxisId="left" dataKey="vendas" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Vendas (R$)" />
+                      <Line yAxisId="right" type="monotone" dataKey="quantidade" stroke="#10B981" strokeWidth={2} name="Quantidade" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                    <Info size={32} className="mb-2" />
+                    <p className="text-sm">Sem dados no período</p>
+                  </div>
                 )}
               </div>
 
@@ -1071,6 +1073,10 @@ export default function Reports() {
                 </div>
               )}
             </div>
+
+            {/* Top Sellers Table with Trophies */}
+            <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-border">
                 <h3 className="text-lg font-semibold text-foreground">Ranking de Vendedores</h3>
               </div>
               {salesLoading ? (
