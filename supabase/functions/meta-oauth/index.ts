@@ -351,11 +351,16 @@ p { color: #666; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
 </body>
 </html>`;
       
+      // Force fresh response with explicit headers
       return new Response(successHtml, { 
-        headers: { 
+        status: 200,
+        headers: new Headers({
           'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache, no-store, must-revalidate'
-        } 
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'X-Content-Type-Options': 'nosniff'
+        })
       });
     }
 
