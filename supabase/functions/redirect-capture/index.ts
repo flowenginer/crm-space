@@ -21,6 +21,49 @@ interface CaptureRequest {
   user_agent?: string;
 }
 
+function determineOrigin(utms: CaptureRequest['utms']): string {
+  const campaign = (utms.utm_campaign || '').toLowerCase();
+  const source = (utms.utm_source || '').toLowerCase();
+  
+  // Meta Ads (Facebook/Instagram)
+  if (
+    campaign.includes('ads') ||
+    campaign.includes('fb') ||
+    campaign.includes('meta') ||
+    campaign.includes('facebook') ||
+    campaign.includes('instagram') ||
+    source === 'facebook' ||
+    source === 'instagram' ||
+    source === 'fb' ||
+    source === 'meta'
+  ) {
+    return 'meta_ads';
+  }
+  
+  // Linktree
+  if (campaign.includes('linktree') || source === 'linktree') {
+    return 'linktree';
+  }
+  
+  // Site orgânico
+  if (campaign.includes('site') || campaign.includes('organico') || source === 'site') {
+    return 'site';
+  }
+  
+  // Google Ads
+  if (campaign.includes('google') || campaign.includes('gads') || source === 'google') {
+    return 'google_ads';
+  }
+  
+  // Indicação/Referral
+  if (campaign.includes('indicacao') || campaign.includes('referral') || source === 'referral') {
+    return 'referral';
+  }
+  
+  // Fallback para redirect
+  return 'redirect';
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -136,7 +179,7 @@ Deno.serve(async (req) => {
           tenant_id,
           phone,
           full_name: `Lead ${phone.slice(-4)}`,
-          origin: 'redirect',
+          origin: determineOrigin(utms),
           origin_campaign: utms.utm_campaign || campaign.name,
           referral_data: utms,
           lead_status: 'new',
