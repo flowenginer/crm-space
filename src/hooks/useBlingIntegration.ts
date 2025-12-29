@@ -7,6 +7,9 @@ export interface BlingConfig {
   tenant_id: string;
   client_id: string | null;
   client_secret: string | null;
+  access_token: string | null;
+  refresh_token: string | null;
+  token_expires_at: string | null;
   is_active: boolean;
   is_configured: boolean;
   sync_contacts: boolean;
@@ -17,7 +20,24 @@ export interface BlingConfig {
   auto_sync_enabled: boolean;
   sync_interval_hours: number;
   last_sync_at: string | null;
-  token_expires_at: string | null;
+  next_sync_at: string | null;
+  webhook_url: string | null;
+  webhook_secret: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BlingStatusMapping {
+  id: string;
+  tenant_id: string;
+  entity_type: 'order' | 'quote';
+  bling_status_id: string;
+  bling_status_name: string;
+  local_status: string;
+  color: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface BlingSyncLog {
@@ -259,6 +279,133 @@ export function useTriggerBlingSync() {
     onError: (error) => {
       console.error('Sync error:', error);
       toast.error('Erro ao sincronizar com Bling');
+    },
+  });
+}
+
+// Hook to fetch status mappings
+export function useBlingStatusMappings(entityType?: 'order' | 'quote') {
+  return useQuery({
+    queryKey: ['bling-status-mappings', entityType],
+    queryFn: async () => {
+      let query = supabase
+        .from('bling_status_mappings')
+        .select('*')
+        .order('bling_status_id', { ascending: true });
+
+      if (entityType) {
+        query = query.eq('entity_type', entityType);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as BlingStatusMapping[];
+    },
+  });
+}
+
+// Hook to manage status mappings
+export function useBlingStatusMappingsMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (mappings: Array<{
+      entity_type: 'order' | 'quote';
+      bling_status_id: string;
+      bling_status_name: string;
+      local_status: string;
+      color?: string | null;
+      is_active?: boolean;
+    }>) => {
+      // Get tenant_id
+      const { data: config } = await supabase
+        .from('bling_integration_config')
+        .select('tenant_id')
+        .maybeSingle();
+
+      if (!config?.tenant_id) {
+        throw new Error('Bling not configured');
+      }
+
+      // Upsert all mappings
+      const mappingsWithTenant = mappings.map(m => ({
+        ...m,
+        tenant_id: config.tenant_id,
+      }));
+
+      const { data, error } = await supabase
+        .from('bling_status_mappings')
+        .upsert(mappingsWithTenant, { 
+          onConflict: 'tenant_id,entity_type,bling_status_id',
+          ignoreDuplicates: false,
+        })
+        .select();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bling-status-mappings'] });
+      toast.success('Mapeamentos de status salvos');
+    },
+    onError: (error) => {
+      console.error('Error saving status mappings:', error);
+      toast.error('Erro ao salvar mapeamentos');
+    },
+  });
+}
+
+// Hook to initialize default Bling status mappings
+export function useInitializeBlingStatusMappings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      // Get tenant_id
+      const { data: config } = await supabase
+        .from('bling_integration_config')
+        .select('tenant_id')
+        .maybeSingle();
+
+      if (!config?.tenant_id) {
+        throw new Error('Bling not configured');
+      }
+
+      // Default Bling status mappings for orders
+      const defaultMappings: Omit<BlingStatusMapping, 'id' | 'created_at' | 'updated_at'>[] = [
+        { tenant_id: config.tenant_id, entity_type: 'order', bling_status_id: '0', bling_status_name: 'Em aberto', local_status: 'pending', color: '#f59e0b', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'order', bling_status_id: '1', bling_status_name: 'Atendido', local_status: 'completed', color: '#22c55e', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'order', bling_status_id: '2', bling_status_name: 'Cancelado', local_status: 'cancelled', color: '#ef4444', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'order', bling_status_id: '3', bling_status_name: 'Em andamento', local_status: 'in_production', color: '#3b82f6', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'order', bling_status_id: '4', bling_status_name: 'Venda Agenciada', local_status: 'approved', color: '#8b5cf6', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'order', bling_status_id: '5', bling_status_name: 'Pronto para envio', local_status: 'ready_to_ship', color: '#06b6d4', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'order', bling_status_id: '6', bling_status_name: 'Enviado', local_status: 'shipped', color: '#14b8a6', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'order', bling_status_id: '7', bling_status_name: 'Entregue', local_status: 'delivered', color: '#22c55e', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'order', bling_status_id: '8', bling_status_name: 'Devolvido', local_status: 'returned', color: '#f97316', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'order', bling_status_id: '9', bling_status_name: 'Verificado', local_status: 'verified', color: '#a855f7', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'quote', bling_status_id: '0', bling_status_name: 'Pendente', local_status: 'pending', color: '#f59e0b', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'quote', bling_status_id: '1', bling_status_name: 'Aprovado', local_status: 'approved', color: '#22c55e', is_active: true },
+        { tenant_id: config.tenant_id, entity_type: 'quote', bling_status_id: '2', bling_status_name: 'Recusado', local_status: 'rejected', color: '#ef4444', is_active: true },
+      ];
+
+      const { data, error } = await supabase
+        .from('bling_status_mappings')
+        .upsert(defaultMappings, { 
+          onConflict: 'tenant_id,entity_type,bling_status_id',
+          ignoreDuplicates: true,
+        })
+        .select();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bling-status-mappings'] });
+      toast.success('Mapeamentos padrão criados');
+    },
+    onError: (error) => {
+      console.error('Error initializing status mappings:', error);
+      toast.error('Erro ao criar mapeamentos padrão');
     },
   });
 }

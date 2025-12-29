@@ -499,6 +499,53 @@ export type Database = {
           },
         ]
       }
+      bling_status_mappings: {
+        Row: {
+          bling_status_id: string
+          bling_status_name: string
+          color: string | null
+          created_at: string | null
+          entity_type: string
+          id: string
+          is_active: boolean | null
+          local_status: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          bling_status_id: string
+          bling_status_name: string
+          color?: string | null
+          created_at?: string | null
+          entity_type?: string
+          id?: string
+          is_active?: boolean | null
+          local_status: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          bling_status_id?: string
+          bling_status_name?: string
+          color?: string | null
+          created_at?: string | null
+          entity_type?: string
+          id?: string
+          is_active?: boolean | null
+          local_status?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bling_status_mappings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bling_sync_logs: {
         Row: {
           completed_at: string | null

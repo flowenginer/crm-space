@@ -146,6 +146,50 @@ async function processWebhookV2(supabase: any, tenantId: string, config: any, re
   }
 }
 
+// Helper to get local status from Bling status using database mappings
+async function getLocalStatusFromBling(
+  supabase: any, 
+  tenantId: string, 
+  entityType: 'order' | 'quote', 
+  blingStatusId: string
+): Promise<string | null> {
+  const { data: mapping } = await supabase
+    .from('bling_status_mappings')
+    .select('local_status')
+    .eq('tenant_id', tenantId)
+    .eq('entity_type', entityType)
+    .eq('bling_status_id', blingStatusId)
+    .eq('is_active', true)
+    .single();
+
+  if (mapping) {
+    return mapping.local_status;
+  }
+
+  // Fallback to default mapping if no custom mapping exists
+  const defaultOrderMap: Record<string, string> = {
+    '0': 'pending',
+    '1': 'completed',
+    '2': 'cancelled',
+    '3': 'in_production',
+    '4': 'approved',
+    '5': 'ready_to_ship',
+    '6': 'shipped',
+    '7': 'delivered',
+    '8': 'returned',
+    '9': 'verified',
+  };
+
+  const defaultQuoteMap: Record<string, string> = {
+    '0': 'pending',
+    '1': 'approved',
+    '2': 'rejected',
+  };
+
+  const fallbackMap = entityType === 'order' ? defaultOrderMap : defaultQuoteMap;
+  return fallbackMap[blingStatusId] || null;
+}
+
 // Sync order from Bling to local database
 async function syncOrderFromBling(supabase: any, tenantId: string, config: any, orderData: any) {
   const blingId = String(orderData.id || orderData.numero);
@@ -167,26 +211,14 @@ async function syncOrderFromBling(supabase: any, tenantId: string, config: any, 
       updated_at: new Date().toISOString(),
     };
 
-    // Map Bling status to local status
-    const statusMap: Record<string, string> = {
-      '0': 'pending',
-      '1': 'pending',
-      '2': 'pending',
-      '3': 'approved',
-      '4': 'in_production',
-      '5': 'in_production',
-      '6': 'shipped',
-      '7': 'shipped',
-      '8': 'shipped',
-      '9': 'completed',
-      '10': 'cancelled',
-      '11': 'cancelled',
-      '12': 'pending',
-    };
-
-    const blingStatus = String(orderData.situacao?.id || orderData.situacao || '');
-    if (statusMap[blingStatus]) {
-      updateData.status = statusMap[blingStatus];
+    // Get status from database mappings
+    const blingStatusId = String(orderData.situacao?.id || orderData.situacao || '');
+    if (blingStatusId && config.sync_statuses !== false) {
+      const localStatus = await getLocalStatusFromBling(supabase, tenantId, 'order', blingStatusId);
+      if (localStatus) {
+        updateData.status = localStatus;
+        console.log('[Bling Webhook] Status mapped:', blingStatusId, '->', localStatus);
+      }
     }
 
     // Update total if available
