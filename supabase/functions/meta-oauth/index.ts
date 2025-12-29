@@ -60,13 +60,25 @@ serve(async (req) => {
     }
 
     if (action === 'get-login-url') {
-      // Generate Facebook OAuth URL - URL must match exactly what's configured in Meta Developer
-      const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback`;
+      // Get the origin from the request to build the frontend callback URL
+      const origin = req.headers.get('origin') || req.headers.get('referer')?.replace(/\/[^/]*$/, '') || 'https://crm.lojaspacesports.com.br';
+      const frontendCallbackUrl = `${origin}/meta-oauth-callback`;
+      
+      // Generate Facebook OAuth URL - redirect to our frontend page that will call exchange-code
+      const redirectUri = frontendCallbackUrl;
       const state = crypto.randomUUID();
       
-      console.log('[Meta OAuth] Generated login URL with redirectUri:', redirectUri);
+      console.log('[Meta OAuth] Generated login URL with frontendCallbackUrl:', frontendCallbackUrl);
       
-      // Store state temporarily for verification
+      // Store state for later verification
+      await supabase.from('meta_oauth_states').upsert({
+        state: state,
+        user_id: userId,
+        tenant_id: tenantId,
+        redirect_origin: origin
+      }, { onConflict: 'state' });
+      
+      // Store state temporarily for verification (legacy)
       if (userId) {
         await supabase.from('meta_ad_accounts').upsert({
           user_id: userId,
@@ -82,7 +94,93 @@ serve(async (req) => {
         `&state=${state}` +
         `&scope=ads_read,ads_management,business_management`;
       
-      return new Response(JSON.stringify({ loginUrl, state }), {
+      return new Response(JSON.stringify({ loginUrl, state, redirectUri }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // New action: exchange code for token (called by frontend callback page)
+    if (action === 'exchange-code') {
+      const code = url.searchParams.get('code');
+      const state = url.searchParams.get('state');
+      
+      if (!code) {
+        return new Response(JSON.stringify({ error: 'Código de autorização não encontrado' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
+      console.log('[Meta OAuth] Exchange code for token, state:', state);
+      
+      // Get the stored state to find the redirect origin
+      let frontendCallbackUrl = 'https://crm.lojaspacesports.com.br/meta-oauth-callback';
+      
+      if (state) {
+        const { data: stateData } = await supabase
+          .from('meta_oauth_states')
+          .select('redirect_origin, user_id, tenant_id')
+          .eq('state', state)
+          .single();
+        
+        if (stateData?.redirect_origin) {
+          frontendCallbackUrl = `${stateData.redirect_origin}/meta-oauth-callback`;
+        }
+        
+        // Clean up old state
+        await supabase.from('meta_oauth_states').delete().eq('state', state);
+      }
+      
+      // Exchange code for access token
+      const redirectUri = frontendCallbackUrl;
+      
+      console.log('[Meta OAuth] Token exchange with redirectUri:', redirectUri);
+      const tokenResponse = await fetch(
+        `https://graph.facebook.com/v21.0/oauth/access_token?` +
+        `client_id=${META_APP_ID}` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+        `&client_secret=${META_APP_SECRET}` +
+        `&code=${code}`
+      );
+
+      const tokenData = await tokenResponse.json();
+      console.log('[Meta OAuth] Token exchange response:', tokenResponse.status);
+
+      if (!tokenData.access_token) {
+        console.error('[Meta OAuth] No access token:', tokenData);
+        return new Response(JSON.stringify({ 
+          error: tokenData.error?.message || 'Erro ao obter token de acesso' 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Get long-lived token
+      const longLivedResponse = await fetch(
+        `https://graph.facebook.com/v21.0/oauth/access_token?` +
+        `grant_type=fb_exchange_token` +
+        `&client_id=${META_APP_ID}` +
+        `&client_secret=${META_APP_SECRET}` +
+        `&fb_exchange_token=${tokenData.access_token}`
+      );
+      const longLivedData = await longLivedResponse.json();
+      const accessToken = longLivedData.access_token || tokenData.access_token;
+      const expiresIn = longLivedData.expires_in || tokenData.expires_in || 5184000;
+
+      // Get ad accounts
+      const adAccountsResponse = await fetch(
+        `https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,account_id,currency,timezone_name,business&access_token=${accessToken}`
+      );
+      const adAccountsData = await adAccountsResponse.json();
+      console.log('[Meta OAuth] Ad accounts found:', adAccountsData.data?.length || 0);
+
+      return new Response(JSON.stringify({
+        accessToken: accessToken,
+        expiresIn: expiresIn,
+        adAccounts: adAccountsData.data || [],
+        state: state
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }

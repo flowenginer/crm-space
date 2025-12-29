@@ -4577,6 +4577,30 @@ export type Database = {
           },
         ]
       }
+      meta_oauth_states: {
+        Row: {
+          created_at: string
+          redirect_origin: string
+          state: string
+          tenant_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          redirect_origin: string
+          state: string
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          redirect_origin?: string
+          state?: string
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       notification_settings: {
         Row: {
           created_at: string
