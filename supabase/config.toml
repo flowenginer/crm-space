@@ -67,3 +67,9 @@ verify_jwt = false
 
 [functions.redirect-capture]
 verify_jwt = false
+
+[functions.process-flow-triggers]
+verify_jwt = false
+
+[functions.execute-flow-node]
+verify_jwt = false

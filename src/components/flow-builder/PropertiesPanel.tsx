@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useTags } from '@/hooks/useTags';
 import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
 import { FlowNodeData } from '@/types/flow';
 
 interface PropertiesPanelProps {
@@ -20,6 +21,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
   const { data: tags } = useTags();
   const { data: team } = useTeam();
   const { data: departments } = useDepartments();
+  const { data: campaigns } = useRedirectCampaigns();
   
   const updateConfig = useCallback((key: string, value: unknown) => {
     if (!node) return;
@@ -59,7 +61,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
         </div>
         
         {/* Campos específicos por tipo */}
-        {renderNodeConfig(node, updateConfig, { tags, team, departments })}
+        {renderNodeConfig(node, updateConfig, { tags, team, departments, campaigns })}
       </div>
     </div>
   );
@@ -69,6 +71,7 @@ interface DataProps {
   tags: Array<{ id: string; name: string; color: string }> | undefined;
   team: Array<{ id: string; full_name: string }> | undefined;
   departments: Array<{ id: string; name: string }> | undefined;
+  campaigns: Array<{ id: string; name: string }> | undefined;
 }
 
 function renderNodeConfig(
@@ -111,6 +114,32 @@ function renderNodeConfig(
             </Select>
           </div>
         </>
+      );
+      
+    case 'redirect_lead':
+      return (
+        <div className="space-y-2">
+          <Label>Campanha (opcional)</Label>
+          <Select 
+            value={(config?.campaign_id as string) || 'any'}
+            onValueChange={(v) => updateConfig('campaign_id', v === 'any' ? null : v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Qualquer campanha" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Qualquer campanha</SelectItem>
+              {data.campaigns?.map((campaign) => (
+                <SelectItem key={campaign.id} value={campaign.id}>
+                  {campaign.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Dispara quando um lead chega via página de captura/redirect
+          </p>
+        </div>
       );
       
     case 'inactivity':
