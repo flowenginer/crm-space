@@ -13,7 +13,7 @@ import {
   ReactFlowProvider,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ArrowLeft, Save, Play, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Play, Loader2, Plus, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -33,9 +33,15 @@ const nodeTypes = {
   end: BaseNode,
 };
 
-// Verifica se o ID é um UUID (vem do banco) ou temporário (node_xxx)
-function isExistingNode(nodeId: string): boolean {
-  return !nodeId.startsWith('node_');
+// Verifica se o ID é um UUID válido (vem do banco)
+function isUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+// Gera UUID para novos nós (ao invés de node_xxx)
+function generateNodeId(): string {
+  return crypto.randomUUID();
 }
 
 function FlowEditorInner() {
@@ -53,10 +59,13 @@ function FlowEditorInner() {
   const [selectedNode, setSelectedNode] = useState<FlowNodeData | null>(null);
   const [saving, setSaving] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<number>(0);
+  const [isDataReady, setIsDataReady] = useState(false);
+  
+  // Determina se o fluxo está vazio (carregado mas sem nós)
+  const isFlowEmpty = nodesLoaded && connectionsLoaded && savedNodes?.length === 0;
   
   // Carregar nós e conexões salvos
   useEffect(() => {
-    // Recarregar quando os dados forem atualizados (após salvar)
     const shouldReload = nodesLoaded && connectionsLoaded && 
       (nodesUpdatedAt > lastLoadedAt || connectionsUpdatedAt > lastLoadedAt);
     
@@ -88,18 +97,28 @@ function FlowEditorInner() {
               animated: true,
             }));
             setEdges(loadedEdges);
+            setIsDataReady(true);
           }, 50);
         } else {
           setEdges([]);
+          setIsDataReady(true);
         }
-      } else if (savedNodes && savedNodes.length === 0) {
+      } else {
         setNodes([]);
         setEdges([]);
+        setIsDataReady(true);
       }
       
       setLastLoadedAt(Math.max(nodesUpdatedAt, connectionsUpdatedAt));
     }
   }, [nodesLoaded, connectionsLoaded, savedNodes, savedConnections, nodesUpdatedAt, connectionsUpdatedAt, lastLoadedAt, setNodes, setEdges]);
+
+  // Marcar como pronto quando os dados estão carregados
+  useEffect(() => {
+    if (nodesLoaded && connectionsLoaded && lastLoadedAt > 0) {
+      setIsDataReady(true);
+    }
+  }, [nodesLoaded, connectionsLoaded, lastLoadedAt]);
   
   // Conectar nós
   const onConnect = useCallback(
@@ -109,7 +128,7 @@ function FlowEditorInner() {
     [setEdges]
   );
   
-  // Dropar nó do palette
+  // Dropar nó do palette - AGORA USA UUID
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
@@ -127,7 +146,8 @@ function FlowEditorInner() {
         y: event.clientY - reactFlowBounds.top - 25,
       };
       
-      const newNodeId = `node_${Date.now()}`;
+      // USAR UUID ao invés de node_xxx para estabilidade
+      const newNodeId = generateNodeId();
       const newNode = {
         id: newNodeId,
         type: nodeData.nodeType,
@@ -178,9 +198,114 @@ function FlowEditorInner() {
     setSelectedNode((prev) => prev?.id === nodeId ? { ...prev, config } : prev);
   }, [setNodes]);
   
-  // Salvar fluxo
+  // Criar fluxo inicial para fluxos vazios
+  const createInitialFlow = async () => {
+    if (!flowId) return;
+    
+    setSaving(true);
+    try {
+      const triggerId = generateNodeId();
+      const actionId = generateNodeId();
+      const endId = generateNodeId();
+      
+      // Criar 3 nós básicos
+      const nodesData = [
+        {
+          id: triggerId,
+          flow_id: flowId,
+          name: 'Início',
+          node_type: 'trigger',
+          node_subtype: 'message_received',
+          position_x: 250,
+          position_y: 50,
+          config: {},
+        },
+        {
+          id: actionId,
+          flow_id: flowId,
+          name: 'Enviar Mensagem',
+          node_type: 'action',
+          node_subtype: 'send_message',
+          position_x: 250,
+          position_y: 200,
+          config: { message: 'Olá! Como posso ajudar?' },
+        },
+        {
+          id: endId,
+          flow_id: flowId,
+          name: 'Fim',
+          node_type: 'end',
+          node_subtype: 'end_flow',
+          position_x: 250,
+          position_y: 350,
+          config: {},
+        },
+      ];
+      
+      const { error: nodesError } = await supabase
+        .from('flow_nodes')
+        .insert(nodesData as any);
+      
+      if (nodesError) throw nodesError;
+      
+      // Criar 2 conexões
+      const connectionsData = [
+        {
+          flow_id: flowId,
+          source_node_id: triggerId,
+          target_node_id: actionId,
+          source_handle: 'default',
+        },
+        {
+          flow_id: flowId,
+          source_node_id: actionId,
+          target_node_id: endId,
+          source_handle: 'default',
+        },
+      ];
+      
+      const { error: connError } = await supabase
+        .from('flow_connections')
+        .insert(connectionsData);
+      
+      if (connError) throw connError;
+      
+      // Invalidar cache para recarregar
+      await queryClient.invalidateQueries({ queryKey: ['flow-nodes', flowId] });
+      await queryClient.invalidateQueries({ queryKey: ['flow-connections', flowId] });
+      
+      toast.success('Fluxo inicial criado!');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast.error('Erro ao criar fluxo: ' + message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  
+  // Salvar fluxo - COM PROTEÇÕES
   const handleSave = async () => {
     if (!flowId) return;
+    
+    // PROTEÇÃO 1: Não salvar se os dados ainda não carregaram
+    if (!isDataReady) {
+      toast.warning('Aguarde o carregamento completo antes de salvar.');
+      return;
+    }
+    
+    // PROTEÇÃO 2: Se nodes está vazio e o banco tinha dados, bloquear
+    if (nodes.length === 0) {
+      const { data: existingCheck } = await supabase
+        .from('flow_nodes')
+        .select('id')
+        .eq('flow_id', flowId)
+        .limit(1);
+      
+      if (existingCheck && existingCheck.length > 0) {
+        toast.error('Canvas vazio detectado. Recarregue a página e tente novamente.');
+        return;
+      }
+    }
     
     setSaving(true);
     try {
@@ -199,26 +324,19 @@ function FlowEditorInner() {
       // Identificar nós para UPDATE (já existiam no banco)
       const toUpdate = nodes.filter(n => existingIds.has(n.id));
       
-      // Identificar nós para INSERT (novos, com ID temporário)
-      const toInsert = nodes.filter(n => !isExistingNode(n.id));
+      // Identificar nós para INSERT (novos - não estão no banco)
+      const toInsert = nodes.filter(n => !existingIds.has(n.id));
       
-      // Mapear IDs para UUIDs finais
-      const nodeIdMap: Record<string, string> = {};
-      
-      // Nós existentes mantêm seus IDs
-      toUpdate.forEach(n => {
-        nodeIdMap[n.id] = n.id;
-      });
-      
-      // Deletar conexões primeiro (por causa de foreign keys)
-      await supabase.from('flow_connections').delete().eq('flow_id', flowId);
-      
-      // Deletar nós removidos
-      if (toDelete.length > 0) {
-        await supabase.from('flow_nodes').delete().in('id', toDelete);
+      // PROTEÇÃO 3: Se vamos apagar tudo sem inserir/atualizar nada, abortar
+      if (toDelete.length > 0 && toUpdate.length === 0 && toInsert.length === 0) {
+        toast.error('Operação bloqueada: isso apagaria todos os nós sem substituição.');
+        setSaving(false);
+        return;
       }
       
-      // Atualizar nós existentes
+      // === REORDENADO: PRIMEIRO INSERIR/ATUALIZAR, DEPOIS DELETAR ===
+      
+      // 1. Atualizar nós existentes PRIMEIRO
       for (const node of toUpdate) {
         const nodeData = node.data as FlowNodeData;
         const { error } = await supabase
@@ -236,10 +354,11 @@ function FlowEditorInner() {
         if (error) throw error;
       }
       
-      // Inserir nós novos
+      // 2. Inserir nós novos (já têm UUID, usar o mesmo ID)
       for (const node of toInsert) {
         const nodeData = node.data as FlowNodeData;
         const insertData: Record<string, unknown> = {
+          id: node.id, // USAR O MESMO UUID
           flow_id: flowId,
           name: nodeData.name,
           node_type: nodeData.nodeType,
@@ -248,38 +367,48 @@ function FlowEditorInner() {
           position_y: node.position.y,
           config: nodeData.config,
         };
-        const { data: newNode, error } = await supabase
+        const { error } = await supabase
           .from('flow_nodes')
-          .insert(insertData as any)
-          .select()
-          .single();
+          .insert(insertData as any);
         
         if (error) throw error;
-        nodeIdMap[node.id] = newNode.id;
       }
       
-      // Inserir conexões usando o mapa de IDs
-      for (const edge of edges) {
-        const sourceId = nodeIdMap[edge.source];
-        const targetId = nodeIdMap[edge.target];
-        
-        if (sourceId && targetId) {
-          await supabase.from('flow_connections').insert({
+      // 3. Deletar conexões antigas
+      await supabase.from('flow_connections').delete().eq('flow_id', flowId);
+      
+      // 4. Inserir conexões em lote (IDs já são estáveis)
+      if (edges.length > 0) {
+        const connectionsToInsert = edges
+          .filter(edge => edge.source && edge.target)
+          .map(edge => ({
             flow_id: flowId,
-            source_node_id: sourceId,
-            target_node_id: targetId,
+            source_node_id: edge.source,
+            target_node_id: edge.target,
             source_handle: edge.sourceHandle || 'default',
-          });
+          }));
+        
+        if (connectionsToInsert.length > 0) {
+          const { error: connError } = await supabase
+            .from('flow_connections')
+            .insert(connectionsToInsert);
+          
+          if (connError) throw connError;
         }
       }
       
-      // Atualizar timestamp do fluxo
+      // 5. Deletar nós removidos APENAS NO FINAL
+      if (toDelete.length > 0) {
+        await supabase.from('flow_nodes').delete().in('id', toDelete);
+      }
+      
+      // 6. Atualizar timestamp do fluxo
       await supabase
         .from('chatbot_flows')
         .update({ updated_at: new Date().toISOString(), is_draft: false })
         .eq('id', flowId);
       
-      // Invalidar cache para recarregar dados atualizados
+      // 7. Invalidar cache para recarregar dados atualizados
       await queryClient.invalidateQueries({ queryKey: ['flow-nodes', flowId] });
       await queryClient.invalidateQueries({ queryKey: ['flow-connections', flowId] });
       
@@ -291,6 +420,9 @@ function FlowEditorInner() {
       setSaving(false);
     }
   };
+  
+  // Loading state
+  const isLoading = !nodesLoaded || !connectionsLoaded;
   
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -316,15 +448,17 @@ function FlowEditorInner() {
           <Button 
             size="sm" 
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || isLoading || !isDataReady}
             className="bg-gradient-to-r from-primary to-pink-600"
           >
             {saving ? (
               <Loader2 size={16} className="mr-2 animate-spin" />
+            ) : isLoading ? (
+              <Loader2 size={16} className="mr-2 animate-spin" />
             ) : (
               <Save size={16} className="mr-2" />
             )}
-            Salvar
+            {isLoading ? 'Carregando...' : 'Salvar'}
           </Button>
         </div>
       </div>
@@ -335,7 +469,34 @@ function FlowEditorInner() {
         <NodePalette />
         
         {/* Canvas */}
-        <div className="flex-1" ref={reactFlowWrapper}>
+        <div className="flex-1 relative" ref={reactFlowWrapper}>
+          {/* Empty state overlay */}
+          {isFlowEmpty && isDataReady && nodes.length === 0 && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+              <div className="text-center p-8 bg-card rounded-lg border border-border shadow-lg max-w-md">
+                <AlertTriangle className="mx-auto h-12 w-12 text-amber-500 mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  Fluxo vazio
+                </h3>
+                <p className="text-muted-foreground mb-6">
+                  Este fluxo não possui nenhum bloco. Você pode criar um fluxo inicial básico ou arrastar blocos da paleta à esquerda.
+                </p>
+                <Button 
+                  onClick={createInitialFlow}
+                  disabled={saving}
+                  className="bg-gradient-to-r from-primary to-pink-600"
+                >
+                  {saving ? (
+                    <Loader2 size={16} className="mr-2 animate-spin" />
+                  ) : (
+                    <Plus size={16} className="mr-2" />
+                  )}
+                  Criar fluxo inicial
+                </Button>
+              </div>
+            </div>
+          )}
+          
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -370,7 +531,7 @@ function FlowEditorInner() {
       {/* Footer */}
       <div className="h-8 bg-card border-t border-border flex items-center justify-between px-4 text-xs text-muted-foreground">
         <span>Nós: {nodes.length} | Conexões: {edges.length}</span>
-        <span>Arraste blocos da esquerda para o canvas</span>
+        <span>{isDataReady ? 'Arraste blocos da esquerda para o canvas' : 'Carregando dados...'}</span>
       </div>
     </div>
   );
