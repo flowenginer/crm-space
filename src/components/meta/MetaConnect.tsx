@@ -77,51 +77,66 @@ export function MetaConnect() {
     }
   }, [stopPolling]);
 
+  // Verificar localStorage e processar dados
+  const checkLocalStorageForOAuthData = useCallback(() => {
+    try {
+      const storedData = localStorage.getItem('meta_oauth_result');
+      if (storedData) {
+        const data = JSON.parse(storedData) as OAuthMessage;
+        if (data.type === 'META_OAUTH_SUCCESS' || data.type === 'META_OAUTH_ERROR') {
+          console.log('[MetaConnect] Found OAuth data in localStorage');
+          localStorage.removeItem('meta_oauth_result');
+          processOAuthData(data);
+          return true;
+        }
+      }
+    } catch (e) {
+      console.error('[MetaConnect] Error checking localStorage:', e);
+      localStorage.removeItem('meta_oauth_result');
+    }
+    return false;
+  }, [processOAuthData]);
+
   // Iniciar polling do localStorage
   const startPolling = useCallback((popup: Window) => {
     popupWindowRef.current = popup;
     
     // Verificar imediatamente se há dados de tentativa anterior
-    const existingData = localStorage.getItem('meta_oauth_result');
-    if (existingData) {
-      try {
-        const data = JSON.parse(existingData) as OAuthMessage;
-        if (data.type === 'META_OAUTH_SUCCESS' || data.type === 'META_OAUTH_ERROR') {
-          console.log('[MetaConnect] Found existing OAuth data in localStorage');
-          localStorage.removeItem('meta_oauth_result');
-          processOAuthData(data);
-          return;
-        }
-      } catch (e) {
-        localStorage.removeItem('meta_oauth_result');
-      }
+    if (checkLocalStorageForOAuthData()) {
+      return;
     }
     
-    // Iniciar polling
+    // Iniciar polling com verificação mais frequente
     pollingIntervalRef.current = setInterval(() => {
-      try {
-        const storedData = localStorage.getItem('meta_oauth_result');
-        if (storedData) {
-          const data = JSON.parse(storedData) as OAuthMessage;
-          if (data.type === 'META_OAUTH_SUCCESS' || data.type === 'META_OAUTH_ERROR') {
-            console.log('[MetaConnect] Found OAuth data in localStorage via polling');
-            localStorage.removeItem('meta_oauth_result');
-            processOAuthData(data);
-            return;
-          }
-        }
-      } catch (e) {
-        // Ignore parse errors
+      // Verificar localStorage
+      if (checkLocalStorageForOAuthData()) {
+        stopPolling();
+        return;
       }
       
       // Verificar se popup foi fechado
       if (popup.closed) {
-        console.log('[MetaConnect] Popup closed, stopping polling');
+        console.log('[MetaConnect] Popup closed, checking localStorage one more time...');
+        
+        // Dar um tempo extra para o localStorage ser preenchido antes de desistir
+        setTimeout(() => {
+          if (checkLocalStorageForOAuthData()) {
+            stopPolling();
+            return;
+          }
+          
+          console.log('[MetaConnect] No OAuth data found after popup closed');
+          stopPolling();
+          setIsLoading(false);
+          
+          // Mostrar toast informativo
+          toast.info('O popup foi fechado. Se você autorizou o acesso, tente novamente.');
+        }, 500);
+        
         stopPolling();
-        setIsLoading(false);
       }
-    }, 500);
-  }, [processOAuthData, stopPolling]);
+    }, 300); // Polling mais frequente (300ms)
+  }, [processOAuthData, stopPolling, checkLocalStorageForOAuthData]);
 
   // Listener para postMessage e storage events
   useEffect(() => {

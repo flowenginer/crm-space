@@ -43,9 +43,12 @@ serve(async (req) => {
     }
 
     if (action === 'get-login-url') {
-      // Generate Facebook OAuth URL
-      const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback`;
+      // Generate Facebook OAuth URL with cache-busting timestamp
+      const timestamp = Date.now();
+      const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback&t=${timestamp}`;
       const state = crypto.randomUUID();
+      
+      console.log('[Meta OAuth] Generated login URL with timestamp:', timestamp);
       
       // Store state temporarily for verification
       if (userId) {
@@ -147,8 +150,13 @@ serve(async (req) => {
         return new Response('Missing code', { status: 400, headers: corsHeaders });
       }
 
-      // Exchange code for access token
-      const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback`;
+      // Exchange code for access token - must match the redirect URI used in get-login-url
+      const callbackTimestamp = url.searchParams.get('t') || '';
+      const redirectUri = callbackTimestamp 
+        ? `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback&t=${callbackTimestamp}`
+        : `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback`;
+      
+      console.log('[Meta OAuth] Token exchange with redirectUri:', redirectUri);
       const tokenResponse = await fetch(
         `https://graph.facebook.com/v21.0/oauth/access_token?` +
         `client_id=${META_APP_ID}` +
@@ -351,16 +359,22 @@ p { color: #666; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
 </body>
 </html>`;
       
-      // Force fresh response with explicit headers
+      // Force fresh response with explicit anti-cache headers
+      console.log('[Meta OAuth] Returning HTML response, size:', successHtml.length, 'bytes');
+      
+      const htmlHeaders = new Headers({
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Vary': '*',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'SAMEORIGIN'
+      });
+      
       return new Response(successHtml, { 
         status: 200,
-        headers: new Headers({
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-          'X-Content-Type-Options': 'nosniff'
-        })
+        headers: htmlHeaders
       });
     }
 
