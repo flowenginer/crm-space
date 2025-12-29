@@ -282,6 +282,33 @@ export function BlingIntegrationForm({ onSuccess }: BlingIntegrationFormProps) {
         <>
           <Separator />
 
+          {/* Webhook URL Section */}
+          <div className="space-y-3">
+            <h3 className="font-medium text-foreground">Webhook para Atualizações em Tempo Real</h3>
+            <p className="text-sm text-muted-foreground">
+              Configure esta URL no seu aplicativo Bling para receber atualizações automaticamente:
+            </p>
+            <div className="flex items-center gap-2">
+              <Input
+                readOnly
+                value={`https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/bling-webhook?tenant_id=${config?.tenant_id || ''}`}
+                className="font-mono text-xs"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(`https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/bling-webhook?tenant_id=${config?.tenant_id || ''}`);
+                  toast.success('URL copiada!');
+                }}
+              >
+                Copiar
+              </Button>
+            </div>
+          </div>
+
+          <Separator />
+
           <div className="space-y-4">
             <h3 className="font-medium text-foreground">Configurações de Sincronização</h3>
             
