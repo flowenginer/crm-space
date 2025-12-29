@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ReactFlow,
   Background,
@@ -32,24 +33,34 @@ const nodeTypes = {
   end: BaseNode,
 };
 
+// Verifica se o ID é um UUID (vem do banco) ou temporário (node_xxx)
+function isExistingNode(nodeId: string): boolean {
+  return !nodeId.startsWith('node_');
+}
+
 function FlowEditorInner() {
   const { id: flowId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   
   const { data: flow } = useChatbotFlow(flowId || null);
-  const { data: savedNodes, isSuccess: nodesLoaded } = useFlowNodes(flowId || null);
-  const { data: savedConnections, isSuccess: connectionsLoaded } = useFlowConnections(flowId || null);
+  const { data: savedNodes, isSuccess: nodesLoaded, dataUpdatedAt: nodesUpdatedAt } = useFlowNodes(flowId || null);
+  const { data: savedConnections, isSuccess: connectionsLoaded, dataUpdatedAt: connectionsUpdatedAt } = useFlowConnections(flowId || null);
   
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<FlowNodeData | null>(null);
   const [saving, setSaving] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [lastLoadedAt, setLastLoadedAt] = useState<number>(0);
   
   // Carregar nós e conexões salvos
   useEffect(() => {
-    if (nodesLoaded && connectionsLoaded && !loaded) {
+    // Recarregar quando os dados forem atualizados (após salvar)
+    const shouldReload = nodesLoaded && connectionsLoaded && 
+      (nodesUpdatedAt > lastLoadedAt || connectionsUpdatedAt > lastLoadedAt);
+    
+    if (shouldReload) {
       if (savedNodes && savedNodes.length > 0) {
         const loadedNodes = savedNodes.map(n => ({
           id: n.id,
@@ -78,12 +89,17 @@ function FlowEditorInner() {
             }));
             setEdges(loadedEdges);
           }, 50);
+        } else {
+          setEdges([]);
         }
+      } else if (savedNodes && savedNodes.length === 0) {
+        setNodes([]);
+        setEdges([]);
       }
       
-      setLoaded(true);
+      setLastLoadedAt(Math.max(nodesUpdatedAt, connectionsUpdatedAt));
     }
-  }, [nodesLoaded, connectionsLoaded, savedNodes, savedConnections, loaded, setNodes, setEdges]);
+  }, [nodesLoaded, connectionsLoaded, savedNodes, savedConnections, nodesUpdatedAt, connectionsUpdatedAt, lastLoadedAt, setNodes, setEdges]);
   
   // Conectar nós
   const onConnect = useCallback(
@@ -168,15 +184,60 @@ function FlowEditorInner() {
     
     setSaving(true);
     try {
-      // Deletar nós e conexões existentes
-      await supabase.from('flow_connections').delete().eq('flow_id', flowId);
-      await supabase.from('flow_nodes').delete().eq('flow_id', flowId);
+      // Buscar IDs dos nós atualmente salvos no banco
+      const { data: existingNodesData } = await supabase
+        .from('flow_nodes')
+        .select('id')
+        .eq('flow_id', flowId);
       
-      // Mapear IDs temporários para UUIDs
+      const existingIds = new Set(existingNodesData?.map(n => n.id) || []);
+      const currentIds = new Set(nodes.map(n => n.id));
+      
+      // Identificar nós para DELETE (estavam no banco mas não estão mais)
+      const toDelete = [...existingIds].filter(id => !currentIds.has(id));
+      
+      // Identificar nós para UPDATE (já existiam no banco)
+      const toUpdate = nodes.filter(n => existingIds.has(n.id));
+      
+      // Identificar nós para INSERT (novos, com ID temporário)
+      const toInsert = nodes.filter(n => !isExistingNode(n.id));
+      
+      // Mapear IDs para UUIDs finais
       const nodeIdMap: Record<string, string> = {};
       
-      // Inserir nós
-      for (const node of nodes) {
+      // Nós existentes mantêm seus IDs
+      toUpdate.forEach(n => {
+        nodeIdMap[n.id] = n.id;
+      });
+      
+      // Deletar conexões primeiro (por causa de foreign keys)
+      await supabase.from('flow_connections').delete().eq('flow_id', flowId);
+      
+      // Deletar nós removidos
+      if (toDelete.length > 0) {
+        await supabase.from('flow_nodes').delete().in('id', toDelete);
+      }
+      
+      // Atualizar nós existentes
+      for (const node of toUpdate) {
+        const nodeData = node.data as FlowNodeData;
+        const { error } = await supabase
+          .from('flow_nodes')
+          .update({
+            name: nodeData.name,
+            node_type: nodeData.nodeType,
+            node_subtype: nodeData.nodeSubtype,
+            position_x: node.position.x,
+            position_y: node.position.y,
+            config: nodeData.config as any,
+          })
+          .eq('id', node.id);
+        
+        if (error) throw error;
+      }
+      
+      // Inserir nós novos
+      for (const node of toInsert) {
         const nodeData = node.data as FlowNodeData;
         const insertData: Record<string, unknown> = {
           flow_id: flowId,
@@ -197,7 +258,7 @@ function FlowEditorInner() {
         nodeIdMap[node.id] = newNode.id;
       }
       
-      // Inserir conexões
+      // Inserir conexões usando o mapa de IDs
       for (const edge of edges) {
         const sourceId = nodeIdMap[edge.source];
         const targetId = nodeIdMap[edge.target];
@@ -217,6 +278,10 @@ function FlowEditorInner() {
         .from('chatbot_flows')
         .update({ updated_at: new Date().toISOString(), is_draft: false })
         .eq('id', flowId);
+      
+      // Invalidar cache para recarregar dados atualizados
+      await queryClient.invalidateQueries({ queryKey: ['flow-nodes', flowId] });
+      await queryClient.invalidateQueries({ queryKey: ['flow-connections', flowId] });
       
       toast.success('Fluxo salvo com sucesso!');
     } catch (error) {
