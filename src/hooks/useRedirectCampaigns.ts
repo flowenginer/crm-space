@@ -8,17 +8,18 @@ export interface RedirectCampaign {
   tenant_id: string;
   name: string;
   slug: string;
-  logo_url: string | null;
-  title: string;
+  title: string | null;
   subtitle: string | null;
-  button_text: string;
-  button_color: string;
-  background_color: string;
-  welcome_message: string;
+  button_text: string | null;
+  button_color: string | null;
+  background_color: string | null;
+  welcome_message: string | null;
+  logo_url: string | null;
   is_active: boolean;
+  current_channel_index: number;
   total_clicks: number;
   total_leads: number;
-  current_channel_index: number;
+  distribution_mode: 'equal' | 'percentage';
   created_at: string;
   updated_at: string;
   channels?: RedirectCampaignChannel[];
@@ -28,10 +29,9 @@ export interface RedirectCampaignChannel {
   id: string;
   campaign_id: string;
   channel_id: string;
-  tenant_id: string;
-  position: number;
   is_active: boolean;
-  created_at: string;
+  position: number;
+  percentage: number;
   channel?: {
     id: string;
     name: string;
@@ -51,6 +51,8 @@ export interface CreateCampaignInput {
   background_color?: string;
   welcome_message?: string;
   channel_ids: string[];
+  distribution_mode?: 'equal' | 'percentage';
+  channel_percentages?: Record<string, number>;
 }
 
 export interface UpdateCampaignInput extends Partial<CreateCampaignInput> {
@@ -137,19 +139,21 @@ export function useCreateRedirectCampaign() {
           button_color: input.button_color || '#8B5CF6',
           background_color: input.background_color || '#FFFFFF',
           welcome_message: input.welcome_message || 'Olá! Vi seu anúncio e gostaria de mais informações.',
+          distribution_mode: input.distribution_mode || 'equal',
         })
         .select()
         .single();
 
       if (campaignError) throw campaignError;
 
-      // Vincular canais
+      // Vincular canais com porcentagens
       if (input.channel_ids.length > 0) {
         const channelInserts = input.channel_ids.map((channel_id, index) => ({
           campaign_id: campaign.id,
           channel_id,
           tenant_id: profile.tenant_id,
           position: index,
+          percentage: input.channel_percentages?.[channel_id] || 0,
         }));
 
         const { error: channelsError } = await supabase
@@ -184,7 +188,7 @@ export function useUpdateRedirectCampaign() {
     mutationFn: async (input: UpdateCampaignInput) => {
       if (!profile?.tenant_id) throw new Error('Tenant não encontrado');
 
-      const { id, channel_ids, ...updateData } = input;
+      const { id, channel_ids, channel_percentages, ...updateData } = input;
 
       // Atualizar campanha
       const { data: campaign, error: campaignError } = await supabase
@@ -205,13 +209,14 @@ export function useUpdateRedirectCampaign() {
           .delete()
           .eq('campaign_id', id);
 
-        // Adicionar novos canais
+        // Adicionar novos canais com porcentagens
         if (channel_ids.length > 0) {
           const channelInserts = channel_ids.map((channel_id, index) => ({
             campaign_id: id,
             channel_id,
             tenant_id: profile.tenant_id,
             position: index,
+            percentage: channel_percentages?.[channel_id] || 0,
           }));
 
           const { error: channelsError } = await supabase

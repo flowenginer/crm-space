@@ -7064,6 +7064,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_active: boolean | null
+          percentage: number | null
           position: number | null
           tenant_id: string
         }
@@ -7073,6 +7074,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_active?: boolean | null
+          percentage?: number | null
           position?: number | null
           tenant_id?: string
         }
@@ -7082,6 +7084,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_active?: boolean | null
+          percentage?: number | null
           position?: number | null
           tenant_id?: string
         }
@@ -7109,6 +7112,7 @@ export type Database = {
           button_text: string | null
           created_at: string | null
           current_channel_index: number | null
+          distribution_mode: string | null
           id: string
           is_active: boolean | null
           logo_url: string | null
@@ -7128,6 +7132,7 @@ export type Database = {
           button_text?: string | null
           created_at?: string | null
           current_channel_index?: number | null
+          distribution_mode?: string | null
           id?: string
           is_active?: boolean | null
           logo_url?: string | null
@@ -7147,6 +7152,7 @@ export type Database = {
           button_text?: string | null
           created_at?: string | null
           current_channel_index?: number | null
+          distribution_mode?: string | null
           id?: string
           is_active?: boolean | null
           logo_url?: string | null
