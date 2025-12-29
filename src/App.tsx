@@ -62,6 +62,8 @@ import SuperAdminPanel from "@/pages/SuperAdminPanel";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import NotFound from "@/pages/NotFound";
 import MetaOAuthCallback from "@/pages/MetaOAuthCallback";
+import Redirect from "@/pages/Redirect";
+import RedirectLanding from "@/pages/RedirectLanding";
 
 // Platform Admin Pages
 import {
@@ -83,6 +85,9 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
             <Routes>
+            {/* Public landing page for redirect */}
+            <Route path="/r/:slug" element={<RedirectLanding />} />
+
             {/* Auth routes */}
             <Route path="/auth" element={<Auth />} />
             <Route path="/auth/register" element={<Register />} />
@@ -296,6 +301,11 @@ const App = () => (
                 <SuperAdminGuard>
                   <SuperAdminPanel />
                 </SuperAdminGuard>
+              } />
+              <Route path="/redirect" element={
+                <ProtectedRoute permission="channels.view">
+                  <Redirect />
+                </ProtectedRoute>
               } />
             </Route>
 
