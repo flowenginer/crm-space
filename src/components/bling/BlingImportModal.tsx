@@ -136,12 +136,13 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
   const missingDependencies = useMemo(() => dependencies.filter(d => !d.existsLocally), [dependencies]);
 
   const handleLoadPreview = () => {
-    const filters = config.hasDateFilter && dateRange.from && dateRange.to ? {
-      startDate: format(dateRange.from, 'yyyy-MM-dd'),
-      endDate: format(dateRange.to, 'yyyy-MM-dd'),
-    } : undefined;
+    const filters = {
+      startDate: config.hasDateFilter && dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined,
+      endDate: config.hasDateFilter && dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined,
+      mode: importMode,
+    };
 
-    preview.mutate(filters as any, {
+    preview.mutate(filters, {
       onSuccess: (data) => {
         // Transform to extended items with selection
         const extendedItems: ExtendedPreviewItem[] = data.items.map(item => ({
@@ -157,11 +158,17 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
         }
 
         // Check if we need to show dependencies step
-        if (config.hasDependencies && missingDependencies.length > 0) {
+        const hasMissingDeps = (data.dependencies || []).some((d: any) => !d.existsLocally);
+        if (config.hasDependencies && hasMissingDeps) {
+          setDependencies(data.dependencies as BlingDependency[]);
           setStep('dependencies');
         } else {
           setStep('preview');
         }
+      },
+      onError: () => {
+        // Error is already handled by the hook with toast
+        // Just ensure we stay on options step
       },
     });
   };
@@ -326,6 +333,25 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
             </Label>
           </div>
         </RadioGroup>
+
+        {entityType === 'financial' && (
+          <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+            <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+            <p className="text-sm text-muted-foreground">
+              <strong>Dica:</strong> Para evitar lentidão, importe mês a mês. Períodos grandes podem demorar mais.
+            </p>
+          </div>
+        )}
+
+        {preview.isError && (
+          <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <XCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-destructive">Erro ao carregar dados</p>
+              <p className="text-muted-foreground">Verifique sua conexão e tente novamente. Se o problema persistir, reduza o período selecionado.</p>
+            </div>
+          </div>
+        )}
       </div>
 
       <DialogFooter>
@@ -502,9 +528,14 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
                             ({item.code})
                           </span>
                         )}
+                        {item.date && (
+                          <span className="text-xs text-muted-foreground ml-2">
+                            {item.date}
+                          </span>
+                        )}
                       </div>
                       {item.value !== undefined && (
-                        <span className="text-sm text-muted-foreground">
+                        <span className="text-sm font-medium">
                           R$ {item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </span>
                       )}

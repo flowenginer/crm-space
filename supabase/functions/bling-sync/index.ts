@@ -9,9 +9,15 @@ const BLING_API_URL = "https://www.bling.com.br/Api/v3";
 
 interface SyncRequest {
   tenant_id: string;
-  entity_type?: "contacts" | "orders" | "products" | "quotes" | "all";
+  entity_type?: "contacts" | "orders" | "products" | "quotes" | "financial" | "all";
   direction?: "local_to_bling" | "bling_to_local" | "bidirectional";
   triggered_by?: string;
+  preview_only?: boolean;
+  start_date?: string;
+  end_date?: string;
+  import_mode?: "all" | "new_only" | "update_existing";
+  selected_ids?: string[];
+  create_dependencies?: boolean;
 }
 
 interface BlingContact {
@@ -80,7 +86,18 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body: SyncRequest = await req.json();
-    const { tenant_id, entity_type = "all", direction = "bidirectional", triggered_by } = body;
+    const { 
+      tenant_id, 
+      entity_type = "all", 
+      direction = "bidirectional", 
+      triggered_by,
+      preview_only = false,
+      start_date,
+      end_date,
+      import_mode = "all",
+      selected_ids,
+      create_dependencies = true,
+    } = body;
 
     if (!tenant_id) {
       return new Response(
@@ -142,20 +159,39 @@ Deno.serve(async (req) => {
       orders: { created: 0, updated: 0, skipped: 0, errors: 0 },
       products: { created: 0, updated: 0, skipped: 0, errors: 0 },
       quotes: { created: 0, updated: 0, skipped: 0, errors: 0 },
+      financial: { created: 0, updated: 0, skipped: 0, errors: 0 },
     };
     const errors: Array<{ entity: string; message: string; details?: string }> = [];
+    const previewData: any[] = [];
+    const dependenciesData: any[] = [];
 
     // Sync based on config flags and request
-    const entitiesToSync: Array<"contacts" | "orders" | "products" | "quotes"> = 
-      entity_type === "all" 
-        ? ["contacts", "orders", "products", "quotes"].filter(e => {
-            if (e === "contacts") return config.sync_contacts;
-            if (e === "orders") return config.sync_orders;
-            if (e === "products") return config.sync_products;
-            if (e === "quotes") return config.sync_quotes;
-            return false;
-          }) as Array<"contacts" | "orders" | "products" | "quotes">
-        : [entity_type];
+    // Handle financial as a special case
+    if (entity_type === "financial") {
+      try {
+        const financialResults = await syncFinancial(supabase, tenant_id, accessToken, direction, preview_only, start_date, end_date, import_mode, selected_ids);
+        results.financial = financialResults.counts;
+        errors.push(...financialResults.errors);
+        if (preview_only) {
+          previewData.push(...financialResults.preview);
+          dependenciesData.push(...financialResults.dependencies);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        console.error(`[bling-sync] Error syncing financial: ${errorMessage}`);
+        errors.push({ entity: "financial", message: errorMessage });
+      }
+    } else {
+      const entitiesToSync: Array<"contacts" | "orders" | "products" | "quotes"> = 
+        entity_type === "all" 
+          ? ["contacts", "orders", "products", "quotes"].filter(e => {
+              if (e === "contacts") return config.sync_contacts;
+              if (e === "orders") return config.sync_orders;
+              if (e === "products") return config.sync_products;
+              if (e === "quotes") return config.sync_quotes;
+              return false;
+            }) as Array<"contacts" | "orders" | "products" | "quotes">
+          : [entity_type as "contacts" | "orders" | "products" | "quotes"];
 
     for (const entityType of entitiesToSync) {
       try {
@@ -183,6 +219,7 @@ Deno.serve(async (req) => {
         errors.push({ entity: entityType, message: errorMessage });
       }
     }
+  }
 
     // Calculate totals
     const totalRecords = Object.values(results).reduce((sum, r) => sum + r.created + r.updated + r.skipped, 0);
@@ -216,6 +253,23 @@ Deno.serve(async (req) => {
       .eq("tenant_id", tenant_id);
 
     console.log(`[bling-sync] Completed: ${totalCreated} created, ${totalUpdated} updated, ${totalErrors} errors`);
+
+    // Return preview data if requested
+    if (preview_only && previewData.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          preview: previewData,
+          dependencies: dependenciesData,
+          summary: {
+            total: previewData.length,
+            new: previewData.filter((i: any) => !i.exists_locally).length,
+            existing: previewData.filter((i: any) => i.exists_locally).length,
+          },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     return new Response(
       JSON.stringify({
@@ -982,4 +1036,242 @@ async function syncQuotes(supabase: any, tenantId: string, accessToken: string, 
   }
 
   return { counts, errors };
+}
+
+// Sync Financial Data (Contas a Pagar e Receber)
+async function syncFinancial(
+  supabase: any, 
+  tenantId: string, 
+  accessToken: string, 
+  direction: string,
+  previewOnly: boolean = false,
+  startDate?: string,
+  endDate?: string,
+  importMode: string = "all",
+  selectedIds?: string[]
+) {
+  const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
+  const errors: Array<{ entity: string; message: string; details?: string }> = [];
+  const preview: any[] = [];
+  const dependencies: any[] = [];
+
+  try {
+    // Build date filter for Bling API
+    const dateFilter = startDate && endDate 
+      ? `&dataInicial=${startDate}&dataFinal=${endDate}` 
+      : "";
+
+    console.log(`[bling-sync] Syncing financial data from Bling... ${previewOnly ? '(preview only)' : ''} ${dateFilter}`);
+
+    // Fetch "Contas a Receber" (Accounts Receivable)
+    const receivablesData: any[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      try {
+        const response = await blingApi(
+          `/contas/receber?pagina=${page}&limite=100${dateFilter}`,
+          accessToken
+        );
+        const items = response.data || [];
+        
+        if (items.length === 0) {
+          hasMore = false;
+        } else {
+          receivablesData.push(...items);
+          page++;
+          if (items.length < 100) hasMore = false;
+          // Limit to prevent timeout
+          if (page > 10 && previewOnly) {
+            console.log(`[bling-sync] Preview limit reached for receivables`);
+            hasMore = false;
+          }
+        }
+      } catch (error) {
+        console.error(`[bling-sync] Error fetching receivables page ${page}:`, error);
+        hasMore = false;
+      }
+    }
+
+    // Fetch "Contas a Pagar" (Accounts Payable)
+    const payablesData: any[] = [];
+    page = 1;
+    hasMore = true;
+
+    while (hasMore) {
+      try {
+        const response = await blingApi(
+          `/contas/pagar?pagina=${page}&limite=100${dateFilter}`,
+          accessToken
+        );
+        const items = response.data || [];
+        
+        if (items.length === 0) {
+          hasMore = false;
+        } else {
+          payablesData.push(...items);
+          page++;
+          if (items.length < 100) hasMore = false;
+          // Limit to prevent timeout
+          if (page > 10 && previewOnly) {
+            console.log(`[bling-sync] Preview limit reached for payables`);
+            hasMore = false;
+          }
+        }
+      } catch (error) {
+        console.error(`[bling-sync] Error fetching payables page ${page}:`, error);
+        hasMore = false;
+      }
+    }
+
+    console.log(`[bling-sync] Found ${receivablesData.length} receivables, ${payablesData.length} payables`);
+
+    // Process all financial items
+    const allFinancialItems = [
+      ...receivablesData.map(item => ({ ...item, _type: 'receivable' })),
+      ...payablesData.map(item => ({ ...item, _type: 'payable' })),
+    ];
+
+    for (const item of allFinancialItems) {
+      const blingId = String(item.id);
+      
+      // Check if mapping exists
+      const { data: existingMapping } = await supabase
+        .from("bling_id_mappings")
+        .select("local_id")
+        .eq("tenant_id", tenantId)
+        .eq("entity_type", "financial")
+        .eq("bling_id", blingId)
+        .maybeSingle();
+
+      const existsLocally = !!existingMapping?.local_id;
+
+      if (previewOnly) {
+        // Just collect preview data
+        preview.push({
+          id: blingId,
+          bling_id: blingId,
+          nome: item.historico || item.descricao || `${item._type === 'receivable' ? 'A Receber' : 'A Pagar'} #${blingId}`,
+          descricao: item.historico || item.descricao || '',
+          numero: item.numeroDocumento || blingId,
+          data: item.dataEmissao || item.vencimento,
+          vencimento: item.vencimento,
+          valor: item.valor || 0,
+          tipo: item._type,
+          situacao: item.situacao,
+          exists_locally: existsLocally,
+          contato: item.contato?.nome || null,
+        });
+        continue;
+      }
+
+      // Filter by selected_ids if provided
+      if (selectedIds && selectedIds.length > 0 && !selectedIds.includes(blingId)) {
+        counts.skipped++;
+        continue;
+      }
+
+      // Filter by import mode
+      if (importMode === 'new_only' && existsLocally) {
+        counts.skipped++;
+        continue;
+      }
+
+      try {
+        // Create transaction data for local financial_transactions table
+        const transactionData = {
+          tenant_id: tenantId,
+          type: item._type === 'receivable' ? 'income' : 'expense',
+          description: item.historico || item.descricao || `Importado do Bling #${blingId}`,
+          amount: Math.abs(item.valor || 0),
+          due_date: item.vencimento || null,
+          payment_date: item.dataPagamento || null,
+          status: item.situacao === 1 ? 'paid' : 'pending',
+          document_number: item.numeroDocumento || null,
+          notes: `Importado do Bling. ID: ${blingId}`,
+          // Use default account if not set - will be created in fallback
+          category_name: item.categoria?.descricao || 'Importado do Bling',
+        };
+
+        if (existsLocally && existingMapping?.local_id) {
+          // Update existing
+          await supabase
+            .from("financial_transactions")
+            .update({
+              description: transactionData.description,
+              amount: transactionData.amount,
+              due_date: transactionData.due_date,
+              payment_date: transactionData.payment_date,
+              status: transactionData.status,
+            })
+            .eq("id", existingMapping.local_id);
+
+          await supabase
+            .from("bling_id_mappings")
+            .update({ 
+              last_synced_at: new Date().toISOString(),
+              sync_status: 'synced'
+            })
+            .eq("tenant_id", tenantId)
+            .eq("entity_type", "financial")
+            .eq("bling_id", blingId);
+
+          counts.updated++;
+        } else {
+          // Create new transaction
+          const { data: newTransaction, error: insertError } = await supabase
+            .from("financial_transactions")
+            .insert({
+              tenant_id: tenantId,
+              type: transactionData.type,
+              description: transactionData.description,
+              amount: transactionData.amount,
+              due_date: transactionData.due_date,
+              payment_date: transactionData.payment_date,
+              status: transactionData.status,
+            })
+            .select("id")
+            .single();
+
+          if (insertError) {
+            throw new Error(insertError.message);
+          }
+
+          // Create mapping
+          await supabase
+            .from("bling_id_mappings")
+            .insert({
+              tenant_id: tenantId,
+              entity_type: "financial",
+              local_id: newTransaction.id,
+              bling_id: blingId,
+              bling_numero: item.numeroDocumento || null,
+              sync_direction: "bling_to_local",
+              sync_status: 'synced',
+              last_synced_at: new Date().toISOString(),
+            });
+
+          counts.created++;
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        errors.push({ 
+          entity: "financial", 
+          message: msg, 
+          details: `${item._type === 'receivable' ? 'Receber' : 'Pagar'} #${blingId}` 
+        });
+        counts.errors++;
+      }
+    }
+
+    console.log(`[bling-sync] Financial sync complete: ${counts.created} created, ${counts.updated} updated, ${counts.errors} errors`);
+
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    console.error(`[bling-sync] Financial sync error: ${msg}`);
+    errors.push({ entity: "financial", message: msg });
+  }
+
+  return { counts, errors, preview, dependencies };
 }
