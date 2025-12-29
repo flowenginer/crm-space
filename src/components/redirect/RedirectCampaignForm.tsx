@@ -43,7 +43,7 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
     queryFn: async () => {
       const { data, error } = await supabase
         .from('whatsapp_channels')
-        .select('id, name, is_active')
+        .select('id, name, phone, status')
         .eq('tenant_id', profile?.tenant_id);
       if (error) throw error;
       return data || [];
@@ -257,7 +257,7 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
             </p>
           ) : (
             <div className="space-y-3">
-              {channels.filter(c => c.is_active).map((channel) => (
+              {channels.filter(c => c.status === 'connected').map((channel) => (
                 <div
                   key={channel.id}
                   className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"
@@ -269,7 +269,7 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
                   />
                   <div className="flex-1">
                     <p className="font-medium">{channel.name}</p>
-                    <p className="text-sm text-muted-foreground">{channel.phone_number}</p>
+                    <p className="text-sm text-muted-foreground">{channel.phone}</p>
                   </div>
                 </div>
               ))}

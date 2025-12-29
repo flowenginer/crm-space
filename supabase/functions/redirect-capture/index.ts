@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
         *,
         channels:redirect_campaign_channels(
           *,
-          channel:whatsapp_channels(id, name, phone_number, is_active)
+          channel:whatsapp_channels(id, name, phone, status)
         )
       `)
       .eq('id', campaign_id)
@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
 
     // 2. Filtrar canais ativos
     const activeChannels = campaign.channels
-      ?.filter((c: any) => c.is_active && c.channel?.is_active)
+      ?.filter((c: any) => c.is_active && c.channel?.status === 'connected')
       .sort((a: any, b: any) => a.position - b.position) || [];
 
     if (activeChannels.length === 0) {
@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
     }
 
     // 7. Formatar número do canal para wa.me
-    let redirectPhone = selectedChannel.phone_number.replace(/\D/g, '');
+    let redirectPhone = selectedChannel.phone.replace(/\D/g, '');
     
     // Garantir que começa com código do país
     if (!redirectPhone.startsWith('55') && redirectPhone.length === 11) {

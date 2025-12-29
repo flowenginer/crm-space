@@ -35,7 +35,8 @@ export interface RedirectCampaignChannel {
   channel?: {
     id: string;
     name: string;
-    is_active: boolean;
+    phone: string;
+    status: string | null;
   };
 }
 
@@ -72,7 +73,7 @@ export function useRedirectCampaigns() {
           *,
           channels:redirect_campaign_channels(
             *,
-            channel:whatsapp_channels(id, name, is_active)
+            channel:whatsapp_channels(id, name, phone, status)
           )
         `)
         .eq('tenant_id', tenantId)
@@ -100,7 +101,7 @@ export function useRedirectCampaign(id: string | undefined) {
           *,
           channels:redirect_campaign_channels(
             *,
-            channel:whatsapp_channels(id, name, is_active)
+            channel:whatsapp_channels(id, name, phone, status)
           )
         `)
         .eq('id', id)
@@ -275,7 +276,7 @@ export function useRedirectCampaignLogs(campaignId: string | undefined) {
         .select(`
           *,
           contact:contacts(id, full_name, phone),
-          channel:whatsapp_channels(id, name, phone_number)
+          channel:whatsapp_channels(id, name, phone)
         `)
         .eq('campaign_id', campaignId)
         .eq('tenant_id', tenantId)
