@@ -7057,6 +7057,205 @@ export type Database = {
           },
         ]
       }
+      redirect_campaign_channels: {
+        Row: {
+          campaign_id: string
+          channel_id: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          position: number | null
+          tenant_id: string
+        }
+        Insert: {
+          campaign_id: string
+          channel_id: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          position?: number | null
+          tenant_id?: string
+        }
+        Update: {
+          campaign_id?: string
+          channel_id?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          position?: number | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redirect_campaign_channels_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "redirect_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redirect_campaign_channels_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      redirect_campaigns: {
+        Row: {
+          background_color: string | null
+          button_color: string | null
+          button_text: string | null
+          created_at: string | null
+          current_channel_index: number | null
+          id: string
+          is_active: boolean | null
+          logo_url: string | null
+          name: string
+          slug: string
+          subtitle: string | null
+          tenant_id: string
+          title: string | null
+          total_clicks: number | null
+          total_leads: number | null
+          updated_at: string | null
+          welcome_message: string | null
+        }
+        Insert: {
+          background_color?: string | null
+          button_color?: string | null
+          button_text?: string | null
+          created_at?: string | null
+          current_channel_index?: number | null
+          id?: string
+          is_active?: boolean | null
+          logo_url?: string | null
+          name: string
+          slug: string
+          subtitle?: string | null
+          tenant_id: string
+          title?: string | null
+          total_clicks?: number | null
+          total_leads?: number | null
+          updated_at?: string | null
+          welcome_message?: string | null
+        }
+        Update: {
+          background_color?: string | null
+          button_color?: string | null
+          button_text?: string | null
+          created_at?: string | null
+          current_channel_index?: number | null
+          id?: string
+          is_active?: boolean | null
+          logo_url?: string | null
+          name?: string
+          slug?: string
+          subtitle?: string | null
+          tenant_id?: string
+          title?: string | null
+          total_clicks?: number | null
+          total_leads?: number | null
+          updated_at?: string | null
+          welcome_message?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redirect_campaigns_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      redirect_logs: {
+        Row: {
+          campaign_id: string
+          channel_id: string | null
+          contact_id: string | null
+          country_code: string | null
+          created_at: string | null
+          id: string
+          ip_address: string | null
+          phone: string
+          referrer: string | null
+          tenant_id: string
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+        }
+        Insert: {
+          campaign_id: string
+          channel_id?: string | null
+          contact_id?: string | null
+          country_code?: string | null
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          phone: string
+          referrer?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          channel_id?: string | null
+          contact_id?: string | null
+          country_code?: string | null
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          phone?: string
+          referrer?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redirect_logs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "redirect_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redirect_logs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redirect_logs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redirect_logs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       required_fields_rules: {
         Row: {
           created_at: string

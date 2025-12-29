@@ -64,3 +64,6 @@ verify_jwt = true
 
 [functions.bling-webhook]
 verify_jwt = false
+
+[functions.redirect-capture]
+verify_jwt = false
