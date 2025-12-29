@@ -363,6 +363,214 @@ export type Database = {
           },
         ]
       }
+      bling_id_mappings: {
+        Row: {
+          bling_id: string
+          bling_numero: string | null
+          created_at: string | null
+          entity_type: string
+          error_message: string | null
+          id: string
+          last_synced_at: string | null
+          local_id: string
+          sync_direction: string | null
+          sync_status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          bling_id: string
+          bling_numero?: string | null
+          created_at?: string | null
+          entity_type: string
+          error_message?: string | null
+          id?: string
+          last_synced_at?: string | null
+          local_id: string
+          sync_direction?: string | null
+          sync_status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          bling_id?: string
+          bling_numero?: string | null
+          created_at?: string | null
+          entity_type?: string
+          error_message?: string | null
+          id?: string
+          last_synced_at?: string | null
+          local_id?: string
+          sync_direction?: string | null
+          sync_status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bling_id_mappings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bling_integration_config: {
+        Row: {
+          access_token: string | null
+          auto_sync_enabled: boolean | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          is_configured: boolean | null
+          last_sync_at: string | null
+          next_sync_at: string | null
+          refresh_token: string | null
+          sync_contacts: boolean | null
+          sync_interval_hours: number | null
+          sync_orders: boolean | null
+          sync_products: boolean | null
+          sync_quotes: boolean | null
+          sync_statuses: boolean | null
+          tenant_id: string
+          token_expires_at: string | null
+          updated_at: string | null
+          webhook_secret: string | null
+          webhook_url: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          auto_sync_enabled?: boolean | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_configured?: boolean | null
+          last_sync_at?: string | null
+          next_sync_at?: string | null
+          refresh_token?: string | null
+          sync_contacts?: boolean | null
+          sync_interval_hours?: number | null
+          sync_orders?: boolean | null
+          sync_products?: boolean | null
+          sync_quotes?: boolean | null
+          sync_statuses?: boolean | null
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string | null
+          webhook_secret?: string | null
+          webhook_url?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          auto_sync_enabled?: boolean | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_configured?: boolean | null
+          last_sync_at?: string | null
+          next_sync_at?: string | null
+          refresh_token?: string | null
+          sync_contacts?: boolean | null
+          sync_interval_hours?: number | null
+          sync_orders?: boolean | null
+          sync_products?: boolean | null
+          sync_quotes?: boolean | null
+          sync_statuses?: boolean | null
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string | null
+          webhook_secret?: string | null
+          webhook_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bling_integration_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bling_sync_logs: {
+        Row: {
+          completed_at: string | null
+          created_count: number | null
+          details: Json | null
+          direction: string | null
+          entity_type: string | null
+          error_count: number | null
+          errors: Json | null
+          id: string
+          skipped_count: number | null
+          started_at: string | null
+          status: string | null
+          sync_type: string
+          tenant_id: string
+          total_records: number | null
+          triggered_by: string | null
+          updated_count: number | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_count?: number | null
+          details?: Json | null
+          direction?: string | null
+          entity_type?: string | null
+          error_count?: number | null
+          errors?: Json | null
+          id?: string
+          skipped_count?: number | null
+          started_at?: string | null
+          status?: string | null
+          sync_type: string
+          tenant_id?: string
+          total_records?: number | null
+          triggered_by?: string | null
+          updated_count?: number | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_count?: number | null
+          details?: Json | null
+          direction?: string | null
+          entity_type?: string | null
+          error_count?: number | null
+          errors?: Json | null
+          id?: string
+          skipped_count?: number | null
+          started_at?: string | null
+          status?: string | null
+          sync_type?: string
+          tenant_id?: string
+          total_records?: number | null
+          triggered_by?: string | null
+          updated_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bling_sync_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bling_sync_logs_triggered_by_fkey"
+            columns: ["triggered_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bulk_dispatch_contacts: {
         Row: {
           active_rescue_id: string | null
