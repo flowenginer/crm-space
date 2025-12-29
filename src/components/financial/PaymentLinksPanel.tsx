@@ -25,8 +25,6 @@ import {
   Loader2, 
   Copy, 
   ExternalLink,
-  ChevronDown,
-  ChevronUp,
   CreditCard,
   Wallet,
   Clock,
@@ -34,11 +32,23 @@ import {
   XCircle,
   RefreshCw,
   Search,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Trash2
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useAllPaymentLinks, useCreatePaymentLink, useIsPaymentGatewayConfigured, PaymentLink } from '@/hooks/usePaymentLinks';
+import { useAllPaymentLinks, useCreatePaymentLink, useDeletePaymentLink, useIsPaymentGatewayConfigured, PaymentLink } from '@/hooks/usePaymentLinks';
 
 // Rede Logo SVG inline
 const RedeLogo = ({ className }: { className?: string }) => (
@@ -61,6 +71,7 @@ export function PaymentLinksPanel() {
   const { isConfigured, isLoading: configLoading, config } = useIsPaymentGatewayConfigured();
   const { data: paymentLinks = [], isLoading, refetch } = useAllPaymentLinks();
   const createPaymentLink = useCreatePaymentLink();
+  const deletePaymentLink = useDeletePaymentLink();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -492,6 +503,38 @@ export function PaymentLinksPanel() {
                               </Button>
                             </>
                           )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Excluir link"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Excluir link de pagamento?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Esta ação não pode ser desfeita. O link será removido permanentemente.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => deletePaymentLink.mutate(link.id)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  {deletePaymentLink.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                  ) : null}
+                                  Excluir
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </TableCell>
                     </TableRow>

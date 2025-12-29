@@ -182,13 +182,10 @@ Deno.serve(async (req) => {
       console.log('[REDE] API connectivity test - Network error (may be expected for sandbox):', testError);
     }
 
-    // Gerar URL de checkout interno
-    // O link será processado por uma página de checkout que coletará os dados do cartão
+    // Gerar URL de checkout com domínio personalizado
     const paymentLinkId = crypto.randomUUID();
-    const checkoutUrl = `${SUPABASE_URL.replace('.supabase.co', '.lovable.app')}/checkout/${paymentLinkId}`;
-    
-    // Para ambiente de produção, você pode usar um domínio personalizado
-    const shortUrl = `https://pay.link/${paymentLinkId.substring(0, 8)}`;
+    const customDomain = 'https://crm.lojaspacesports.com.br';
+    const checkoutUrl = `${customDomain}/checkout/${paymentLinkId}`;
 
     // Save payment link to database
     const { data: paymentLink, error: insertError } = await supabase
