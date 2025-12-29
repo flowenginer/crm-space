@@ -332,17 +332,16 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
               {connectedChannels.map((channel) => (
                 <div
                   key={channel.id}
-                  className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"
-                  onClick={() => toggleChannel(channel.id)}
+                  className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-muted/50"
                 >
                   <Checkbox
                     checked={selectedChannels.includes(channel.id)}
-                    onCheckedChange={(checked) => {
-                      // Prevenir propagação dupla - apenas toggle via onClick do div pai
-                    }}
-                    onClick={(e) => e.stopPropagation()}
+                    onCheckedChange={() => toggleChannel(channel.id)}
                   />
-                  <div className="flex-1">
+                  <div 
+                    className="flex-1 cursor-pointer"
+                    onClick={() => toggleChannel(channel.id)}
+                  >
                     <p className="font-medium">{channel.name}</p>
                     <p className="text-sm text-muted-foreground">{channel.phone}</p>
                   </div>
