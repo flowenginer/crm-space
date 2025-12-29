@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentTenantId } from './useTenant';
 import { toast } from 'sonner';
+import { syncQuoteToBling } from '@/lib/blingSync';
 
 export interface Quote {
   id: string;
@@ -341,6 +342,24 @@ export function useCreateQuote() {
           })
           .eq('id', data.contact_id);
       }
+
+      // Sync to Bling (async, don't block)
+      syncQuoteToBling(
+        quote.id,
+        {
+          contact_id: data.contact_id,
+          total: total,
+          discount_amount: data.discount_amount,
+          shipping_cost: data.shipping_cost,
+          notes: data.notes,
+        },
+        data.items.map(item => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          discount_amount: item.discount_amount,
+        }))
+      ).catch(err => console.log('[Bling] Quote sync skipped:', err.message));
 
       return quote;
     },

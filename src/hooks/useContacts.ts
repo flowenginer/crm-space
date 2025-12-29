@@ -4,6 +4,7 @@ import { normalizePhoneForStorage, getPhoneSearchVariations } from '@/utils/phon
 import { getStateFromPhone } from '@/utils/ddd';
 import { toast } from 'sonner';
 import { getUserPrimaryDepartment } from './useUserPrimaryDepartment';
+import { syncContactToBling } from '@/lib/blingSync';
 
 export interface Contact {
   id: string;
@@ -220,6 +221,24 @@ export function useCreateContact() {
           }
         }
         throw error;
+      }
+      
+      // Sync to Bling (async, don't block)
+      if (data) {
+        syncContactToBling(data.id, {
+          full_name: data.full_name,
+          phone: data.phone,
+          email: data.email,
+          cpf_cnpj: data.cpf_cnpj,
+          person_type: data.person_type,
+          street: data.street,
+          number: data.number,
+          complement: data.complement,
+          neighborhood: data.neighborhood,
+          zip_code: data.zip_code,
+          city: data.city,
+          state: data.state,
+        }).catch(err => console.log('[Bling] Contact sync skipped:', err.message));
       }
       
       return data;

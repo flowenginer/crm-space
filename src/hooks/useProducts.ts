@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useCurrentTenantId } from './useTenant';
 import type { Json } from '@/integrations/supabase/types';
+import { syncProductToBling } from '@/lib/blingSync';
 
 export type PackagingType = 'stack' | 'box' | 'side_by_side' | 'layered' | 'custom';
 
@@ -263,6 +264,22 @@ export function useCreateProduct() {
         .single();
 
       if (error) throw error;
+      
+      // Sync to Bling (async, don't block)
+      if (result) {
+        syncProductToBling(result.id, {
+          name: result.name,
+          sku: result.sku,
+          base_price: result.base_price,
+          cost_price: result.cost_price,
+          short_description: result.short_description,
+          ncm: result.ncm,
+          cest: result.cest,
+          origem: result.origem,
+          is_active: result.is_active,
+        }).catch(err => console.log('[Bling] Product sync skipped:', err.message));
+      }
+      
       return result;
     },
     onSuccess: () => {
