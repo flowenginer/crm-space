@@ -74,3 +74,6 @@ verify_jwt = true
 
 [functions.process-satisfaction]
 verify_jwt = false
+
+[functions.bling-oauth]
+verify_jwt = false

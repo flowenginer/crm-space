@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, CreditCard, Truck, Facebook, MessageCircle } from 'lucide-react';
+import { Loader2, CreditCard, Truck, Facebook, MessageCircle, Package } from 'lucide-react';
 import { usePaymentGatewayConfig } from '@/hooks/usePaymentLinks';
 import { useShippingConfig } from '@/hooks/useShippingConfig';
+import { useBlingConfig } from '@/hooks/useBlingIntegration';
+import { toast } from 'sonner';
 import {
   IntegrationCard,
   IntegrationModal,
@@ -11,6 +14,7 @@ import {
   MelhorEnvioForm,
   MetaAdsForm,
   WhatsAppProviderForm,
+  BlingIntegrationForm,
 } from './integrations';
 
 interface ProviderWithConfig {
@@ -24,11 +28,27 @@ interface ProviderWithConfig {
   is_configured?: boolean;
 }
 
-type IntegrationType = 'rede' | 'melhor-envio' | 'meta-ads' | string | null;
+type IntegrationType = 'rede' | 'melhor-envio' | 'meta-ads' | 'bling' | string | null;
 
 export function IntegrationSettings() {
+  const [searchParams] = useSearchParams();
   const [openModal, setOpenModal] = useState<IntegrationType>(null);
   const [selectedProvider, setSelectedProvider] = useState<ProviderWithConfig | null>(null);
+
+  // Fetch Bling config
+  const { data: blingConfig } = useBlingConfig();
+
+  // Handle Bling OAuth callback
+  useEffect(() => {
+    const blingParam = searchParams.get('bling');
+    if (blingParam === 'callback') {
+      const success = searchParams.get('success');
+      if (success === 'true') {
+        toast.success('Bling conectado com sucesso!');
+        setOpenModal('bling');
+      }
+    }
+  }, [searchParams]);
 
   // Fetch payment gateway config
   const { data: paymentConfig } = usePaymentGatewayConfig();
@@ -132,6 +152,17 @@ export function IntegrationSettings() {
           onClick={() => setOpenModal('meta-ads')}
         />
 
+        {/* ERP - Bling */}
+        <IntegrationCard
+          icon={Package}
+          name="Bling ERP"
+          description={blingConfig?.is_configured ? 'Conectado' : 'ERP completo'}
+          category="ERP"
+          isConfigured={!!blingConfig?.is_configured}
+          color="#0066CC"
+          onClick={() => setOpenModal('bling')}
+        />
+
         {/* WhatsApp Providers */}
         {providers?.map((provider) => (
           <IntegrationCard
@@ -176,6 +207,16 @@ export function IntegrationSettings() {
         color="#1877F2"
       >
         <MetaAdsForm />
+      </IntegrationModal>
+
+      <IntegrationModal
+        open={openModal === 'bling'}
+        onOpenChange={(open) => !open && setOpenModal(null)}
+        icon={Package}
+        name="Bling ERP"
+        color="#0066CC"
+      >
+        <BlingIntegrationForm onSuccess={handleCloseModal} />
       </IntegrationModal>
 
       {selectedProvider && (

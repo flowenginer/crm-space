@@ -4,3 +4,4 @@ export { RedePaymentForm } from './forms/RedePaymentForm';
 export { MelhorEnvioForm } from './forms/MelhorEnvioForm';
 export { MetaAdsForm } from './forms/MetaAdsForm';
 export { WhatsAppProviderForm } from './forms/WhatsAppProviderForm';
+export { BlingIntegrationForm } from './forms/BlingIntegrationForm';
