@@ -86,13 +86,13 @@ export function NodePalette() {
   };
   
   return (
-    <div className="w-64 bg-card border-r border-border overflow-y-auto">
-      <div className="p-4 border-b border-border">
+    <div className="w-64 h-full bg-card border-r border-border flex flex-col">
+      <div className="p-4 border-b border-border shrink-0">
         <h3 className="font-semibold text-foreground">Blocos</h3>
         <p className="text-xs text-muted-foreground mt-1">Arraste para o canvas</p>
       </div>
       
-      <div className="p-2">
+      <div className="flex-1 overflow-y-auto p-2">
         {Object.entries(categoryLabels).map(([category, label]) => (
           <div key={category} className="mb-2">
             {/* Header da categoria */}
@@ -111,12 +111,6 @@ export function NodePalette() {
               ) : (
                 <LucideIcons.ChevronRight size={16} className="text-muted-foreground" />
               )}
-              <span 
-                className="text-sm font-medium"
-                style={{ color: categoryColors[category] }}
-              >
-                {label}
-              </span>
             </button>
             
             {/* Lista de nós */}

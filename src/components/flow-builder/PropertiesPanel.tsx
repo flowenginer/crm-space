@@ -30,7 +30,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
   
   if (!node) {
     return (
-      <div className="w-80 bg-card border-l border-border p-4 flex items-center justify-center">
+      <div className="w-80 h-full bg-card border-l border-border p-4 flex items-center justify-center">
         <p className="text-muted-foreground text-center text-sm">
           Selecione um bloco para editar suas propriedades
         </p>
@@ -39,9 +39,9 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
   }
   
   return (
-    <div className="w-80 bg-card border-l border-border overflow-y-auto">
+    <div className="w-80 h-full bg-card border-l border-border flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
+      <div className="p-4 border-b border-border flex items-center justify-between shrink-0">
         <h3 className="font-semibold text-foreground">{node.name || node.nodeSubtype}</h3>
         <Button variant="ghost" size="sm" onClick={onClose}>
           <X size={16} />
@@ -49,7 +49,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
       </div>
       
       {/* Form */}
-      <div className="p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Nome do nó */}
         <div className="space-y-2">
           <Label>Nome do bloco</Label>
