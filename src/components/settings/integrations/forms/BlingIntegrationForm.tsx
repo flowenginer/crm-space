@@ -109,16 +109,15 @@ export function BlingIntegrationForm({ onSuccess }: BlingIntegrationFormProps) {
       return;
     }
 
-    // Build OAuth URL and redirect
-    const redirectUri = `${window.location.origin}/settings?tab=integrations&bling=callback`;
     const tenantId = config?.tenant_id || '00000000-0000-0000-0000-000000000001';
+    const redirectAfterAuth = `${window.location.origin}/settings?tab=integrations`;
     
-    const authUrl = new URL('https://www.bling.com.br/Api/v3/oauth/authorize');
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('client_id', clientId);
-    authUrl.searchParams.set('state', btoa(JSON.stringify({ tenant_id: tenantId, redirect_uri: redirectUri })));
+    // Redirecionar para a edge function que gerencia o OAuth
+    const authorizeUrl = new URL('https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/bling-auth/authorize');
+    authorizeUrl.searchParams.set('tenant_id', tenantId);
+    authorizeUrl.searchParams.set('redirect_uri', redirectAfterAuth);
 
-    window.location.href = authUrl.toString();
+    window.location.href = authorizeUrl.toString();
   };
 
   const handleSaveSyncSettings = async () => {
