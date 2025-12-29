@@ -85,7 +85,7 @@ export function RedePaymentSettings() {
 
   const handleTestConnection = async () => {
     if (!formData.clientId || !formData.clientSecret) {
-      toast.error('Preencha o Client ID e Client Secret');
+      toast.error('Preencha o PV e a Chave de Integração');
       return;
     }
 
@@ -157,7 +157,7 @@ export function RedePaymentSettings() {
 
   const handleSave = async () => {
     if (!formData.clientId || !formData.clientSecret) {
-      toast.error('Preencha o Client ID e Client Secret');
+      toast.error('Preencha o PV e a Chave de Integração');
       return;
     }
 
@@ -251,19 +251,19 @@ export function RedePaymentSettings() {
               </Select>
             </div>
 
-            {/* Row 2: Client ID & Secret - 2 columns */}
+            {/* Row 2: PV & Chave de Integração - 2 columns */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Client ID *</Label>
+                <Label className="text-xs">PV (Ponto de Venda) *</Label>
                 <Input
                   value={formData.clientId}
                   onChange={(e) => setFormData(prev => ({ ...prev, clientId: e.target.value }))}
-                  placeholder="8d3d08f3-7188..."
+                  placeholder="105157163"
                   className="h-8 text-sm"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Client Secret *</Label>
+                <Label className="text-xs">Chave de Integração *</Label>
                 <Input
                   type="password"
                   value={formData.clientSecret}
@@ -275,14 +275,14 @@ export function RedePaymentSettings() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Obtenha em{' '}
+              O PV é o número do seu estabelecimento. A Chave de Integração pode ser obtida no{' '}
               <a 
                 href="https://developer.userede.com.br/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-[#FF6600] hover:underline inline-flex items-center gap-0.5"
               >
-                developer.userede.com.br
+                Portal do Desenvolvedor Rede
                 <ExternalLink size={10} />
               </a>
             </p>
