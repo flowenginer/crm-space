@@ -93,8 +93,11 @@ function FlowEditorInner() {
               id: c.id,
               source: c.source_node_id,
               target: c.target_node_id,
-              sourceHandle: c.source_handle || undefined,
+              // Se source_handle é 'default', deixar undefined para match com Handle sem id
+              sourceHandle: c.source_handle === 'default' ? undefined : c.source_handle,
               animated: true,
+              type: 'default',
+              style: { strokeDasharray: '5,5', stroke: 'hsl(var(--muted-foreground))' },
             }));
             setEdges(loadedEdges);
             setIsDataReady(true);
@@ -123,7 +126,12 @@ function FlowEditorInner() {
   // Conectar nós
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge({ ...connection, animated: true }, eds));
+      setEdges((eds) => addEdge({ 
+        ...connection, 
+        animated: true,
+        type: 'default',
+        style: { strokeDasharray: '5,5', stroke: 'hsl(var(--muted-foreground))' },
+      }, eds));
     },
     [setEdges]
   );
@@ -377,16 +385,25 @@ function FlowEditorInner() {
       // 3. Deletar conexões antigas
       await supabase.from('flow_connections').delete().eq('flow_id', flowId);
       
-      // 4. Inserir conexões em lote (IDs já são estáveis)
+      // 4. Inserir conexões em lote (IDs já são estáveis) - com deduplicação
       if (edges.length > 0) {
-        const connectionsToInsert = edges
+        // Deduplicar conexões antes de salvar
+        const uniqueConnections = edges
           .filter(edge => edge.source && edge.target)
-          .map(edge => ({
-            flow_id: flowId,
-            source_node_id: edge.source,
-            target_node_id: edge.target,
-            source_handle: edge.sourceHandle || 'default',
-          }));
+          .reduce((acc, edge) => {
+            const key = `${edge.source}-${edge.target}-${edge.sourceHandle || 'default'}`;
+            if (!acc.has(key)) {
+              acc.set(key, {
+                flow_id: flowId,
+                source_node_id: edge.source,
+                target_node_id: edge.target,
+                source_handle: edge.sourceHandle || 'default',
+              });
+            }
+            return acc;
+          }, new Map<string, { flow_id: string; source_node_id: string; target_node_id: string; source_handle: string }>());
+
+        const connectionsToInsert = [...uniqueConnections.values()];
         
         if (connectionsToInsert.length > 0) {
           const { error: connError } = await supabase
