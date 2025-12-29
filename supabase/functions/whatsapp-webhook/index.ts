@@ -1616,7 +1616,7 @@ serve(async (req) => {
     // Atualizar nome do contato se tiver um pushName real e nome atual for genérico
     if (contact) {
       const currentName = contact.full_name || '';
-      const hasGenericName = currentName.startsWith('WhatsApp ') || !currentName;
+      const hasGenericName = currentName.startsWith('WhatsApp ') || currentName.startsWith('Lead ') || !currentName;
       const hasBetterName = isValidContactName(normalizedMessage.fromName);
       
       if (hasGenericName && hasBetterName) {
