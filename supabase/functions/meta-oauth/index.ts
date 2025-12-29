@@ -128,21 +128,34 @@ serve(async (req) => {
                 <button class="btn" onclick="window.close()">Fechar</button>
               </div>
               <script>
-                const errorData = { type: 'META_OAUTH_ERROR', error: '${error}' };
+                const errorData = { type: 'META_OAUTH_ERROR', error: ${JSON.stringify(String(error))} };
                 
-                // Try postMessage first
-                if (window.opener) {
-                  window.opener.postMessage(errorData, '*');
-                  setTimeout(() => window.close(), 1000);
-                } else {
-                  // Fallback to localStorage
-                  localStorage.setItem('meta_oauth_result', JSON.stringify(errorData));
+                // Always save to localStorage first as fallback
+                try { localStorage.setItem('meta_oauth_result', JSON.stringify(errorData)); } catch (e) {}
+                
+                // Try postMessage to opener
+                if (window.opener && !window.opener.closed) {
+                  try {
+                    window.opener.postMessage(errorData, '*');
+                    setTimeout(() => window.close(), 1000);
+                  } catch (e) {}
                 }
               </script>
             </body>
           </html>
         `;
-        return new Response(errorHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+
+        const htmlHeaders = {
+          ...corsHeaders,
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Vary': '*',
+          'X-Content-Type-Options': 'nosniff'
+        };
+
+        return new Response(errorHtml, { status: 200, headers: htmlHeaders });
       }
 
       if (!code) {
@@ -171,6 +184,7 @@ serve(async (req) => {
           <html>
             <head>
               <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
               <title>Erro</title>
               <style>
                 body { 
@@ -193,17 +207,29 @@ serve(async (req) => {
               </div>
               <script>
                 const errorData = { type: 'META_OAUTH_ERROR', error: 'Failed to get access token' };
-                if (window.opener) {
-                  window.opener.postMessage(errorData, '*');
-                  setTimeout(() => window.close(), 1000);
-                } else {
-                  localStorage.setItem('meta_oauth_result', JSON.stringify(errorData));
+                try { localStorage.setItem('meta_oauth_result', JSON.stringify(errorData)); } catch (e) {}
+                if (window.opener && !window.opener.closed) {
+                  try {
+                    window.opener.postMessage(errorData, '*');
+                    setTimeout(() => window.close(), 1000);
+                  } catch (e) {}
                 }
               </script>
             </body>
           </html>
         `;
-        return new Response(tokenErrorHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+
+        const htmlHeaders = {
+          ...corsHeaders,
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Vary': '*',
+          'X-Content-Type-Options': 'nosniff'
+        };
+
+        return new Response(tokenErrorHtml, { status: 200, headers: htmlHeaders });
       }
 
       // Get long-lived token
@@ -357,21 +383,18 @@ p { color: #666; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
       
       // Force fresh response with explicit anti-cache headers
       console.log('[Meta OAuth] Returning HTML response, size:', successHtml.length, 'bytes');
-      
-      const htmlHeaders = new Headers({
+
+      const htmlHeaders = {
+        ...corsHeaders,
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
         'Pragma': 'no-cache',
         'Expires': '0',
         'Vary': '*',
-        'X-Content-Type-Options': 'nosniff',
-        'X-Frame-Options': 'SAMEORIGIN'
-      });
-      
-      return new Response(successHtml, { 
-        status: 200,
-        headers: htmlHeaders
-      });
+        'X-Content-Type-Options': 'nosniff'
+      };
+
+      return new Response(successHtml, { status: 200, headers: htmlHeaders });
     }
 
     if (action === 'manual-connect') {
