@@ -84,6 +84,43 @@ async function logExecution(
   }
 }
 
+async function sendWhatsAppMessage(
+  supabase: any,
+  channelId: string,
+  phone: string,
+  content: string,
+  type: 'text' | 'image' | 'audio' | 'video' | 'document' = 'text',
+  mediaUrl?: string,
+  filename?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    console.log('[execute-flow-node] Enviando mensagem WhatsApp:', { channelId: channelId?.substring(0, 8), phone, type });
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'send',
+        channelId,
+        phone,
+        content,
+        type,
+        mediaUrl,
+        filename
+      }
+    });
+    
+    if (error) {
+      console.error('[execute-flow-node] WhatsApp send error:', error);
+      return { success: false, error: error.message || 'Erro ao invocar whatsapp-instance' };
+    }
+    
+    console.log('[execute-flow-node] WhatsApp send response:', data);
+    return { success: data?.success ?? true, messageId: data?.messageId, error: data?.error };
+  } catch (err) {
+    console.error('[execute-flow-node] WhatsApp send exception:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Erro desconhecido' };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -279,16 +316,76 @@ async function executeAction(
   const config = node.config;
 
   switch (node.node_subtype) {
-    case 'send_text':
+    case 'send_text': {
       let message = (config.message as string) || '';
       message = replaceVariables(message, execution);
 
-      // TODO: Integrar com WhatsApp API para enviar mensagem real
-      console.log('[execute-flow-node] Enviando mensagem:', message);
-      
-      await logExecution(supabase, execution.id, node.id, 'info',
-        `Mensagem enviada: ${message.substring(0, 50)}...`);
+      const textResult = await sendWhatsAppMessage(
+        supabase,
+        execution.channel_id,
+        execution.contact?.phone || '',
+        message,
+        'text'
+      );
+
+      if (textResult.success) {
+        // Salvar mensagem no histórico
+        await supabase.from('messages').insert({
+          conversation_id: execution.conversation_id,
+          content: message,
+          sender_type: 'system',
+          message_type: 'text',
+          whatsapp_message_id: textResult.messageId,
+          status: 'sent',
+          tenant_id: execution.tenant_id
+        });
+        await logExecution(supabase, execution.id, node.id, 'info',
+          `Mensagem enviada: ${message.substring(0, 50)}...`);
+      } else {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          `Erro ao enviar mensagem: ${textResult.error}`);
+      }
       break;
+    }
+
+    case 'send_image':
+    case 'send_video':
+    case 'send_audio':
+    case 'send_document': {
+      const mediaType = node.node_subtype.replace('send_', '') as 'image' | 'video' | 'audio' | 'document';
+      const mediaUrl = (config.media_url as string) || (config.url as string) || '';
+      let caption = (config.caption as string) || '';
+      caption = replaceVariables(caption, execution);
+
+      const mediaResult = await sendWhatsAppMessage(
+        supabase,
+        execution.channel_id,
+        execution.contact?.phone || '',
+        caption,
+        mediaType,
+        mediaUrl,
+        config.filename as string
+      );
+
+      if (mediaResult.success) {
+        await supabase.from('messages').insert({
+          conversation_id: execution.conversation_id,
+          content: caption || `[${mediaType}]`,
+          sender_type: 'system',
+          message_type: mediaType,
+          media_url: mediaUrl,
+          whatsapp_message_id: mediaResult.messageId,
+          status: 'sent',
+          tenant_id: execution.tenant_id
+        });
+        await logExecution(supabase, execution.id, node.id, 'info',
+          `${mediaType} enviado com sucesso`);
+      } else {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          `Erro ao enviar ${mediaType}: ${mediaResult.error}`);
+      }
+      break;
+    }
 
     case 'add_tag':
       if (config.tag_id) {
