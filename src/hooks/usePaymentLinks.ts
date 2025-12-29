@@ -212,3 +212,28 @@ export const useIsPaymentGatewayConfigured = () => {
     config,
   };
 };
+
+// Delete payment link
+export const useDeletePaymentLink = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (paymentLinkId: string) => {
+      const { error } = await supabase
+        .from('payment_links')
+        .delete()
+        .eq('id', paymentLinkId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payment-links'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-payment-links'] });
+      toast.success('Link de pagamento excluído com sucesso!');
+    },
+    onError: (error: Error) => {
+      console.error('Error deleting payment link:', error);
+      toast.error(`Erro ao excluir link: ${error.message}`);
+    },
+  });
+};
