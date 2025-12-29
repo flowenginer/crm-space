@@ -73,14 +73,39 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 3. Selecionar canal via round-robin
-    const channelIndex = campaign.current_channel_index % activeChannels.length;
-    const selectedChannelLink = activeChannels[channelIndex];
+    // 3. Selecionar canal baseado no modo de distribuição
+    let selectedChannelLink;
+    const distributionMode = campaign.distribution_mode || 'equal';
+    
+    if (distributionMode === 'percentage') {
+      // Distribuição por porcentagem
+      const random = Math.floor(Math.random() * 100) + 1;
+      let accumulator = 0;
+      
+      for (const channelLink of activeChannels) {
+        accumulator += channelLink.percentage || 0;
+        if (random <= accumulator) {
+          selectedChannelLink = channelLink;
+          break;
+        }
+      }
+      
+      // Fallback para o primeiro canal se nenhum foi selecionado
+      if (!selectedChannelLink) {
+        selectedChannelLink = activeChannels[0];
+      }
+      
+      console.log('[redirect-capture] Distribuição por porcentagem - Random:', random, '- Canal:', selectedChannelLink.channel.name);
+    } else {
+      // Distribuição igual (round-robin)
+      const channelIndex = campaign.current_channel_index % activeChannels.length;
+      selectedChannelLink = activeChannels[channelIndex];
+      console.log('[redirect-capture] Round-robin - Index:', channelIndex, '- Canal:', selectedChannelLink.channel.name);
+    }
+    
     const selectedChannel = selectedChannelLink.channel;
 
-    console.log('[redirect-capture] Canal selecionado:', selectedChannel.name, '- Index:', channelIndex);
-
-    // 4. Atualizar índice round-robin
+    // 4. Atualizar índice round-robin e contador de cliques
     await supabase
       .from('redirect_campaigns')
       .update({ 
