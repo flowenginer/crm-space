@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Palette, Users, Percent } from 'lucide-react';
+import { Loader2, Palette, Users, Percent, Eye } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -455,6 +455,80 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
           </CardContent>
         </Card>
       )}
+
+      {/* Preview da Landing Page */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Eye className="h-5 w-5" />
+            Preview da Landing Page
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div 
+            className="rounded-xl overflow-hidden border shadow-sm mx-auto max-w-sm"
+            style={{ backgroundColor: watch('background_color') || '#FFFFFF' }}
+          >
+            <div className="p-6">
+              <div className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
+                {/* Logo */}
+                {watch('logo_url') ? (
+                  <div className="flex justify-center">
+                    <img 
+                      src={watch('logo_url')} 
+                      alt="Logo" 
+                      className="h-12 object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex justify-center">
+                    <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center">
+                      <span className="text-xl font-bold text-gray-400">S</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Título e Subtítulo */}
+                <div className="text-center space-y-1">
+                  <h1 className="text-lg font-bold text-gray-900">
+                    {watch('title') || 'Fale com nosso time!'}
+                  </h1>
+                  {watch('subtitle') && (
+                    <p className="text-sm text-gray-600">{watch('subtitle')}</p>
+                  )}
+                </div>
+
+                {/* Simulação do input */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 p-3 border rounded-lg bg-gray-50">
+                    <span className="text-sm text-gray-500">🇧🇷 +55</span>
+                    <span className="text-sm text-gray-400">(00) 00000-0000</span>
+                  </div>
+                  
+                  <button
+                    type="button"
+                    className="w-full py-3 px-4 rounded-lg text-white font-medium text-sm transition-colors"
+                    style={{ backgroundColor: watch('button_color') || '#8B5CF6' }}
+                  >
+                    {watch('button_text') || 'Falar com Vendedor'}
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-center text-xs text-gray-400 mt-3">
+                Seus dados estão seguros conosco
+              </p>
+            </div>
+          </div>
+          
+          <p className="text-xs text-muted-foreground text-center mt-4">
+            Este é um preview aproximado de como a landing page aparecerá para os visitantes
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Ações */}
       <div className="flex justify-end gap-3">

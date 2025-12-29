@@ -13,7 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { Plus, ExternalLink, MousePointer, Users } from 'lucide-react';
+import { Plus, ExternalLink, MousePointer, Users, Eye, TrendingUp } from 'lucide-react';
 import { RedirectCampaignCard } from '@/components/redirect/RedirectCampaignCard';
 import { RedirectCampaignForm } from '@/components/redirect/RedirectCampaignForm';
 import {
@@ -42,6 +42,7 @@ export default function Redirect() {
 
   const totalClicks = campaigns.reduce((sum, c) => sum + c.total_clicks, 0);
   const totalLeads = campaigns.reduce((sum, c) => sum + c.total_leads, 0);
+  const totalViews = campaigns.reduce((sum, c) => sum + ((c as any).views_count || 0), 0);
 
   const handleCreateOrUpdate = async (data: any) => {
     if (editingCampaign) {
@@ -91,7 +92,7 @@ export default function Redirect() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -101,6 +102,20 @@ export default function Redirect() {
               <div>
                 <p className="text-sm text-muted-foreground">Campanhas Ativas</p>
                 <p className="text-2xl font-bold">{campaigns.filter(c => c.is_active).length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900/30">
+                <Eye className="h-6 w-6 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total de Visitantes</p>
+                <p className="text-2xl font-bold">{totalViews}</p>
               </div>
             </div>
           </CardContent>
@@ -201,17 +216,43 @@ export default function Redirect() {
             <div className="grid grid-cols-2 gap-4">
               <Card>
                 <CardContent className="pt-4">
-                  <p className="text-sm text-muted-foreground">Cliques</p>
-                  <p className="text-2xl font-bold">{viewingStatsCampaign?.total_clicks}</p>
+                  <div className="flex items-center gap-2">
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Visitantes</p>
+                  </div>
+                  <p className="text-2xl font-bold">{(viewingStatsCampaign as any)?.views_count || 0}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4">
-                  <p className="text-sm text-muted-foreground">Leads</p>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Leads</p>
+                  </div>
                   <p className="text-2xl font-bold">{viewingStatsCampaign?.total_leads}</p>
                 </CardContent>
               </Card>
             </div>
+            
+            {/* Conversion rate */}
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                    <p className="text-sm text-muted-foreground">Taxa de Conversão</p>
+                  </div>
+                  <p className="text-xl font-bold text-green-600">
+                    {((viewingStatsCampaign as any)?.views_count || 0) > 0 
+                      ? ((viewingStatsCampaign?.total_leads || 0) / ((viewingStatsCampaign as any)?.views_count || 1) * 100).toFixed(1)
+                      : 0}%
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Leads / Visitantes
+                </p>
+              </CardContent>
+            </Card>
 
             {/* Recent logs */}
             <div>

@@ -28,7 +28,8 @@ import {
   BarChart3,
   Users,
   MousePointer,
-  Phone
+  Phone,
+  Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { RedirectCampaign } from '@/hooks/useRedirectCampaigns';
@@ -123,19 +124,26 @@ export function RedirectCampaignCard({
 
         <CardContent className="space-y-4">
           {/* Estatísticas */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
-              <MousePointer className="h-4 w-4 text-muted-foreground" />
+          <div className="grid grid-cols-3 gap-2">
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+              <Eye className="h-4 w-4 text-muted-foreground" />
               <div>
-                <p className="text-sm text-muted-foreground">Cliques</p>
-                <p className="font-semibold">{campaign.total_clicks}</p>
+                <p className="text-xs text-muted-foreground">Visitantes</p>
+                <p className="font-semibold text-sm">{(campaign as any).views_count || 0}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+              <MousePointer className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-xs text-muted-foreground">Cliques</p>
+                <p className="font-semibold text-sm">{campaign.total_clicks}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
               <Users className="h-4 w-4 text-muted-foreground" />
               <div>
-                <p className="text-sm text-muted-foreground">Leads</p>
-                <p className="font-semibold">{campaign.total_leads}</p>
+                <p className="text-xs text-muted-foreground">Leads</p>
+                <p className="font-semibold text-sm">{campaign.total_leads}</p>
               </div>
             </div>
           </div>

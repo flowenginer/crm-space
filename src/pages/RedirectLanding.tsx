@@ -51,6 +51,16 @@ export default function RedirectLanding() {
     utm_content: searchParams.get('utm_content'),
   };
 
+  // Gerar visitor_id único para rastrear visualizações
+  const generateVisitorId = () => {
+    const stored = sessionStorage.getItem('visitor_id');
+    if (stored) return stored;
+    
+    const id = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    sessionStorage.setItem('visitor_id', id);
+    return id;
+  };
+
   useEffect(() => {
     const loadCampaign = async () => {
       if (!slug) {
@@ -74,6 +84,19 @@ export default function RedirectLanding() {
         }
 
         setCampaign(data);
+
+        // Registrar visualização única
+        const visitorId = generateVisitorId();
+        await supabase
+          .from('redirect_campaign_views')
+          .upsert(
+            { 
+              campaign_id: data.id, 
+              visitor_id: visitorId,
+              tenant_id: data.tenant_id
+            },
+            { onConflict: 'campaign_id,visitor_id', ignoreDuplicates: true }
+          );
       } catch (err) {
         console.error('Erro ao carregar campanha:', err);
         setError('Erro ao carregar a página');
