@@ -4,7 +4,7 @@ import { LucideIcon } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { FlowNodeData, NodeType } from '@/types/flow';
 import { cn } from '@/lib/utils';
-
+import { useTags } from '@/hooks/useTags';
 interface BaseNodeProps {
   data: FlowNodeData;
   selected: boolean;
@@ -26,6 +26,7 @@ const isDelayWithTwoOutputs = (data: FlowNodeData) => {
 };
 
 export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
+  const { data: tags } = useTags();
   const IconComponent = iconMap[data.icon || 'Circle'] || LucideIcons.Circle;
   const color = data.color || nodeColors[data.nodeType];
   const hasTwoOutputs = data.nodeType === 'condition' || isDelayWithTwoOutputs(data);
@@ -57,7 +58,7 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
       {/* Body */}
       <div className="px-3 py-2">
         <p className="text-xs text-muted-foreground truncate">
-          {getNodeDescription(data)}
+          {getNodeDescription(data, tags)}
         </p>
       </div>
       
@@ -122,7 +123,10 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
   );
 });
 
-function getNodeDescription(data: FlowNodeData): string {
+function getNodeDescription(
+  data: FlowNodeData, 
+  tags?: Array<{ id: string; name: string; color: string }>
+): string {
   const config = data.config as Record<string, unknown>;
   
   switch (data.nodeSubtype) {
@@ -136,10 +140,21 @@ function getNodeDescription(data: FlowNodeData): string {
       return `Aguardar ${config?.amount || 0} ${config?.unit || 'segundos'}`;
     case 'wait_reply':
       return `Timeout: ${config?.timeout_minutes || 60} min`;
-    case 'add_tag':
-      return 'Adicionar tag';
-    case 'remove_tag':
-      return 'Remover tag';
+    case 'add_tag': {
+      const tagId = config?.tag_id as string;
+      const tag = tags?.find(t => t.id === tagId);
+      return tag ? `Adicionar: ${tag.name}` : 'Selecione uma tag';
+    }
+    case 'remove_tag': {
+      const tagId = config?.tag_id as string;
+      const tag = tags?.find(t => t.id === tagId);
+      return tag ? `Remover: ${tag.name}` : 'Selecione uma tag';
+    }
+    case 'has_tag': {
+      const tagId = config?.tag_id as string;
+      const tag = tags?.find(t => t.id === tagId);
+      return tag ? `Tem tag: ${tag.name}` : 'Selecione uma tag';
+    }
     case 'assign_agent':
       return 'Atribuir atendente';
     case 'if_else':

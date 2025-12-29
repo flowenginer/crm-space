@@ -65,17 +65,20 @@ function FlowEditorInner() {
           },
         }));
         setNodes(loadedNodes);
-      }
-      
-      if (savedConnections && savedConnections.length > 0) {
-        const loadedEdges = savedConnections.map(c => ({
-          id: c.id,
-          source: c.source_node_id,
-          target: c.target_node_id,
-          sourceHandle: c.source_handle,
-          animated: true,
-        }));
-        setEdges(loadedEdges);
+        
+        // Carregar edges após os nós estarem renderizados
+        if (savedConnections && savedConnections.length > 0) {
+          setTimeout(() => {
+            const loadedEdges = savedConnections.map(c => ({
+              id: c.id,
+              source: c.source_node_id,
+              target: c.target_node_id,
+              sourceHandle: c.source_handle || undefined,
+              animated: true,
+            }));
+            setEdges(loadedEdges);
+          }, 50);
+        }
       }
       
       setLoaded(true);
