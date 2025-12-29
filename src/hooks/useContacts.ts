@@ -33,6 +33,14 @@ export interface Contact {
   country: string | null;
   person_type: string | null;
   origin: string | null;
+  origin_campaign: string | null;
+  referral_data: {
+    utm_source?: string | null;
+    utm_medium?: string | null;
+    utm_campaign?: string | null;
+    utm_term?: string | null;
+    utm_content?: string | null;
+  } | null;
   custom_fields: Record<string, unknown> | null;
   assignee?: { id: string; full_name: string | null } | null;
   department?: { id: string; name: string } | null;
@@ -68,6 +76,8 @@ const CONTACT_FIELDS = `
   country,
   person_type,
   origin,
+  origin_campaign,
+  referral_data,
   custom_fields
 `;
 
