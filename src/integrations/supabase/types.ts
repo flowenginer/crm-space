@@ -5462,6 +5462,9 @@ export type Database = {
       payment_links: {
         Row: {
           amount: number
+          authorization_code: string | null
+          card_brand: string | null
+          card_last_digits: string | null
           contact_id: string | null
           conversation_id: string | null
           created_at: string | null
@@ -5477,6 +5480,7 @@ export type Database = {
           id: string
           installments_used: number | null
           max_installments: number | null
+          nsu: string | null
           order_id: string | null
           paid_amount: number | null
           paid_at: string | null
@@ -5487,11 +5491,15 @@ export type Database = {
           quote_id: string | null
           status: string | null
           tenant_id: string | null
+          transaction_id: string | null
           updated_at: string | null
           webhook_received_at: string | null
         }
         Insert: {
           amount: number
+          authorization_code?: string | null
+          card_brand?: string | null
+          card_last_digits?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
@@ -5507,6 +5515,7 @@ export type Database = {
           id?: string
           installments_used?: number | null
           max_installments?: number | null
+          nsu?: string | null
           order_id?: string | null
           paid_amount?: number | null
           paid_at?: string | null
@@ -5517,11 +5526,15 @@ export type Database = {
           quote_id?: string | null
           status?: string | null
           tenant_id?: string | null
+          transaction_id?: string | null
           updated_at?: string | null
           webhook_received_at?: string | null
         }
         Update: {
           amount?: number
+          authorization_code?: string | null
+          card_brand?: string | null
+          card_last_digits?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
@@ -5537,6 +5550,7 @@ export type Database = {
           id?: string
           installments_used?: number | null
           max_installments?: number | null
+          nsu?: string | null
           order_id?: string | null
           paid_amount?: number | null
           paid_at?: string | null
@@ -5547,6 +5561,7 @@ export type Database = {
           quote_id?: string | null
           status?: string | null
           tenant_id?: string | null
+          transaction_id?: string | null
           updated_at?: string | null
           webhook_received_at?: string | null
         }
@@ -9195,6 +9210,53 @@ export type Database = {
           },
         ]
       }
+      payment_links_public: {
+        Row: {
+          amount: number | null
+          created_at: string | null
+          customer_name: string | null
+          description: string | null
+          expires_at: string | null
+          id: string | null
+          max_installments: number | null
+          payment_methods: string[] | null
+          status: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string | null
+          customer_name?: string | null
+          description?: string | null
+          expires_at?: string | null
+          id?: string | null
+          max_installments?: number | null
+          payment_methods?: string[] | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string | null
+          customer_name?: string | null
+          description?: string | null
+          expires_at?: string | null
+          id?: string | null
+          max_installments?: number | null
+          payment_methods?: string[] | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_links_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       accept_invitation: {
@@ -9898,6 +9960,22 @@ export type Database = {
           base_tenant_id: string
           base_tenant_name: string
           total_tenants: number
+        }[]
+      }
+      get_public_payment_link: {
+        Args: { link_id: string }
+        Returns: {
+          amount: number
+          company_name: string
+          created_at: string
+          customer_name: string
+          description: string
+          expires_at: string
+          id: string
+          logo_url: string
+          max_installments: number
+          payment_methods: string[]
+          status: string
         }[]
       }
       get_returning_leads_metrics: {

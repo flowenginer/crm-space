@@ -73,3 +73,6 @@ verify_jwt = false
 
 [functions.execute-flow-node]
 verify_jwt = false
+
+[functions.process-rede-payment]
+verify_jwt = false

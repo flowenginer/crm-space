@@ -18,6 +18,9 @@ import Auth from "@/pages/Auth";
 import Register from "@/pages/Register";
 import TenantOnboarding from "@/pages/TenantOnboarding";
 
+// Public pages
+import Checkout from "@/pages/Checkout";
+
 // Main pages
 import Dashboard from "@/pages/Dashboard";
 import Conversations from "@/pages/Conversations";
@@ -85,8 +88,9 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
             <Routes>
-            {/* Public landing page for redirect */}
+            {/* Public pages */}
             <Route path="/r/:slug" element={<RedirectLanding />} />
+            <Route path="/checkout/:paymentLinkId" element={<Checkout />} />
 
             {/* Auth routes */}
             <Route path="/auth" element={<Auth />} />
