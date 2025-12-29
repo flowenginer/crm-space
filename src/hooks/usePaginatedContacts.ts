@@ -30,6 +30,8 @@ const CONTACT_FIELDS = `
   country,
   person_type,
   origin,
+  origin_campaign,
+  referral_data,
   custom_fields
 `;
 
@@ -255,7 +257,7 @@ export function usePaginatedContacts(filters: ContactFilters, pagination: Pagina
       console.log(`[usePaginatedContacts] Retornando ${contactsWithTags.length} contatos, total: ${totalCount}`);
 
       return {
-        contacts: contactsWithTags as Contact[],
+        contacts: contactsWithTags as unknown as Contact[],
         totalCount: Number(totalCount),
       };
     },

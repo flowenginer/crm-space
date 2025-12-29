@@ -26,7 +26,7 @@ import { useContactConversationHistory, type ContactConversation } from '@/hooks
 import { useERPEnabled } from '@/hooks/useERPEnabled';
 import { fetchAddressByCEP } from '@/utils/cep';
 import { ConversationHistoryModal } from './ConversationHistoryModal';
-import { Loader2, Search, FileText, Package, DollarSign, CalendarIcon, MessageSquare, Bot, Eye } from 'lucide-react';
+import { Loader2, Search, FileText, Package, DollarSign, CalendarIcon, MessageSquare, Bot, Eye, Target } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -664,6 +664,56 @@ export function ContactFormModal({
                   />
                 </div>
               </div>
+
+              {/* Dados de Aquisição (UTMs) - só aparece se tiver dados */}
+              {mode === 'edit' && initialData?.referral_data && Object.keys(initialData.referral_data).length > 0 && (
+                <div className="border rounded-lg p-4 space-y-3 bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-4 h-4 text-primary" />
+                    <Label className="font-semibold">Dados de Aquisição</Label>
+                  </div>
+                  
+                  {initialData.origin_campaign && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Campanha de Origem:</span>
+                      <span className="font-medium">{initialData.origin_campaign}</span>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {initialData.referral_data.utm_source && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">utm_source:</span>
+                        <Badge variant="outline">{initialData.referral_data.utm_source}</Badge>
+                      </div>
+                    )}
+                    {initialData.referral_data.utm_medium && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">utm_medium:</span>
+                        <Badge variant="outline">{initialData.referral_data.utm_medium}</Badge>
+                      </div>
+                    )}
+                    {initialData.referral_data.utm_campaign && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">utm_campaign:</span>
+                        <Badge variant="outline">{initialData.referral_data.utm_campaign}</Badge>
+                      </div>
+                    )}
+                    {initialData.referral_data.utm_term && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">utm_term:</span>
+                        <Badge variant="outline">{initialData.referral_data.utm_term}</Badge>
+                      </div>
+                    )}
+                    {initialData.referral_data.utm_content && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">utm_content:</span>
+                        <Badge variant="outline">{initialData.referral_data.utm_content}</Badge>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </TabsContent>
 
             {/* History Tab - Always visible in edit mode */}
