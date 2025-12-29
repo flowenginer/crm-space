@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { useOrdersAdvanced, useContactOrderPositions, useUpdateOrderStatus, useDeleteOrder, Order } from '@/hooks/useOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { Link } from 'react-router-dom';
+import { BlingIntegrationBanner } from '@/components/bling/BlingIntegrationBanner';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   AlertDialog,
@@ -268,6 +269,9 @@ export default function Orders() {
   return (
     <>
       <div className="space-y-6 p-6">
+        {/* Bling Integration Banner */}
+        <BlingIntegrationBanner entityType="orders" />
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Pedidos</h1>

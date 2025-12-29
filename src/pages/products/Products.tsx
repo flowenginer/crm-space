@@ -48,6 +48,7 @@ import {
 import { toast } from 'sonner';
 import { ProductModal } from '@/components/products/ProductModal';
 import { ProductDetailsModal } from '@/components/products/ProductDetailsModal';
+import { BlingIntegrationBanner } from '@/components/bling/BlingIntegrationBanner';
 import type { ProductWithCatalog } from '@/hooks/useProducts';
 
 export default function Products() {
@@ -132,6 +133,9 @@ export default function Products() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
+      {/* Bling Integration Banner */}
+      <BlingIntegrationBanner entityType="products" />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
