@@ -24,11 +24,22 @@ serve(async (req) => {
     // Get user from auth header
     const authHeader = req.headers.get('Authorization');
     let userId: string | null = null;
+    let tenantId: string | null = null;
     
     if (authHeader) {
       const token = authHeader.replace('Bearer ', '');
       const { data: { user } } = await supabase.auth.getUser(token);
       userId = user?.id || null;
+      
+      // Get tenant_id from profile
+      if (userId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', userId)
+          .single();
+        tenantId = profile?.tenant_id || null;
+      }
     }
 
     if (action === 'get-login-url') {
@@ -236,8 +247,8 @@ serve(async (req) => {
         .eq('user_id', userId)
         .like('account_id', 'pending_%');
 
-      // Upsert the account
-      const { data, error } = await supabase.from('meta_ad_accounts').upsert({
+      // Upsert the account with tenant_id
+      const upsertData: Record<string, unknown> = {
         user_id: userId,
         account_id: accountData.id || accountId,
         account_name: accountData.name || `Conta ${accountId}`,
@@ -247,7 +258,16 @@ serve(async (req) => {
         currency: accountData.currency || 'BRL',
         timezone: accountData.timezone_name || 'America/Sao_Paulo',
         is_active: true
-      }, { onConflict: 'account_id' }).select().single();
+      };
+      
+      if (tenantId) {
+        upsertData.tenant_id = tenantId;
+      }
+
+      const { data, error } = await supabase.from('meta_ad_accounts').upsert(
+        upsertData,
+        { onConflict: 'account_id' }
+      ).select().single();
 
       if (error) {
         console.error('[Meta OAuth] Save error:', error);
@@ -284,8 +304,8 @@ serve(async (req) => {
         .eq('user_id', userId)
         .like('account_id', 'pending_%');
 
-      // Upsert the account
-      const { data, error } = await supabase.from('meta_ad_accounts').upsert({
+      // Upsert the account with tenant_id
+      const upsertData: Record<string, unknown> = {
         user_id: userId,
         account_id: accountId,
         account_name: accountName,
@@ -295,7 +315,16 @@ serve(async (req) => {
         currency: currency || 'BRL',
         timezone: timezone || 'America/Sao_Paulo',
         is_active: true
-      }, { onConflict: 'account_id' }).select().single();
+      };
+      
+      if (tenantId) {
+        upsertData.tenant_id = tenantId;
+      }
+
+      const { data, error } = await supabase.from('meta_ad_accounts').upsert(
+        upsertData,
+        { onConflict: 'account_id' }
+      ).select().single();
 
       if (error) {
         console.error('[Meta OAuth] Save error:', error);
