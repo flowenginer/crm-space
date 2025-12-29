@@ -96,18 +96,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const REDE_CLIENT_ID = Deno.env.get('REDE_CLIENT_ID');
-    const REDE_CLIENT_SECRET = Deno.env.get('REDE_CLIENT_SECRET');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (!REDE_CLIENT_ID || !REDE_CLIENT_SECRET) {
-      console.error('[REDE] Missing credentials - PV:', !!REDE_CLIENT_ID, 'Key:', !!REDE_CLIENT_SECRET);
-      return new Response(
-        JSON.stringify({ error: 'Credenciais REDE não configuradas. Configure o PV e a Chave de Integração.' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       console.error('[REDE] Missing Supabase credentials');
@@ -139,6 +129,42 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (!tenantId) {
+      console.error('[REDE] User not authenticated or no tenant');
+      return new Response(
+        JSON.stringify({ error: 'Usuário não autenticado' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Buscar configuração do gateway do tenant
+    const { data: settings, error: settingsError } = await supabase
+      .from('company_settings')
+      .select('payment_gateway_config')
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (settingsError) {
+      console.error('[REDE] Error fetching settings:', settingsError);
+      return new Response(
+        JSON.stringify({ error: 'Erro ao buscar configurações' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const gatewayConfig = settings?.payment_gateway_config;
+    const REDE_CLIENT_ID = gatewayConfig?.client_id;
+    const REDE_CLIENT_SECRET = gatewayConfig?.client_secret;
+    const isProduction = gatewayConfig?.environment === 'production';
+
+    if (!REDE_CLIENT_ID || !REDE_CLIENT_SECRET) {
+      console.error('[REDE] Missing credentials - PV:', !!REDE_CLIENT_ID, 'Key:', !!REDE_CLIENT_SECRET);
+      return new Response(
+        JSON.stringify({ error: 'Credenciais REDE não configuradas. Configure o PV e a Chave de Integração em Configurações > Integrações.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const body: CreatePaymentRequest = await req.json();
     console.log('[REDE] Creating payment link:', JSON.stringify(body, null, 2));
 
@@ -165,14 +191,6 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // Get company settings for environment
-    const { data: settings } = await supabase
-      .from('company_settings')
-      .select('payment_gateway_config')
-      .single();
-
-    const isProduction = settings?.payment_gateway_config?.environment === 'production';
     
     // Obter access token via OAuth 2.0
     let accessToken: string;
