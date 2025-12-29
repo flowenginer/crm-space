@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -38,61 +38,25 @@ export function MetaConnect() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [oauthData, setOauthData] = useState<{ accessToken: string; expiresIn: number } | null>(null);
   const queryClient = useQueryClient();
+  
+  // Ref para controlar o intervalo de polling
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const popupWindowRef = useRef<Window | null>(null);
 
-  // Reference to popup for polling
-  const popupRef = useCallback((popup: Window | null) => {
-    if (!popup) return;
-    
-    // Poll localStorage while popup is open (for same-origin fallback check)
-    const pollInterval = setInterval(() => {
-      try {
-        const storedData = localStorage.getItem('meta_oauth_result');
-        if (storedData) {
-          const data = JSON.parse(storedData) as OAuthMessage;
-          if (data.type === 'META_OAUTH_SUCCESS' || data.type === 'META_OAUTH_ERROR') {
-            console.log('[MetaConnect] Found OAuth data in localStorage');
-            localStorage.removeItem('meta_oauth_result');
-            clearInterval(pollInterval);
-            
-            if (data.type === 'META_OAUTH_SUCCESS') {
-              setIsLoading(false);
-              if (data.adAccounts && data.adAccounts.length > 0) {
-                setAdAccounts(data.adAccounts);
-                setOauthData({
-                  accessToken: data.accessToken!,
-                  expiresIn: data.expiresIn || 5184000
-                });
-                setSelectedAccountId(data.adAccounts[0].id);
-                setStep('selecting');
-              } else {
-                toast.error('Nenhuma conta de anúncios encontrada.');
-              }
-            } else {
-              setIsLoading(false);
-              toast.error(`Erro na autenticação: ${data.error}`);
-            }
-          }
-        }
-      } catch (e) {
-        // Ignore errors
-      }
-      
-      if (popup.closed) {
-        clearInterval(pollInterval);
-        if (step === 'initial') {
-          setIsLoading(false);
-        }
-      }
-    }, 500);
-    
-    return () => clearInterval(pollInterval);
-  }, [step]);
+  // Cleanup do polling
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, []);
 
-  // Handle localStorage fallback for OAuth data
+  // Processar dados OAuth
   const processOAuthData = useCallback((data: OAuthMessage) => {
     if (data.type === 'META_OAUTH_SUCCESS') {
       console.log('[MetaConnect] OAuth success, accounts:', data.adAccounts?.length);
       setIsLoading(false);
+      stopPolling();
       
       if (data.adAccounts && data.adAccounts.length > 0) {
         setAdAccounts(data.adAccounts);
@@ -108,12 +72,59 @@ export function MetaConnect() {
     } else if (data.type === 'META_OAUTH_ERROR') {
       console.error('[MetaConnect] OAuth error:', data.error);
       setIsLoading(false);
+      stopPolling();
       toast.error(`Erro na autenticação: ${data.error}`);
     }
-  }, []);
+  }, [stopPolling]);
 
+  // Iniciar polling do localStorage
+  const startPolling = useCallback((popup: Window) => {
+    popupWindowRef.current = popup;
+    
+    // Verificar imediatamente se há dados de tentativa anterior
+    const existingData = localStorage.getItem('meta_oauth_result');
+    if (existingData) {
+      try {
+        const data = JSON.parse(existingData) as OAuthMessage;
+        if (data.type === 'META_OAUTH_SUCCESS' || data.type === 'META_OAUTH_ERROR') {
+          console.log('[MetaConnect] Found existing OAuth data in localStorage');
+          localStorage.removeItem('meta_oauth_result');
+          processOAuthData(data);
+          return;
+        }
+      } catch (e) {
+        localStorage.removeItem('meta_oauth_result');
+      }
+    }
+    
+    // Iniciar polling
+    pollingIntervalRef.current = setInterval(() => {
+      try {
+        const storedData = localStorage.getItem('meta_oauth_result');
+        if (storedData) {
+          const data = JSON.parse(storedData) as OAuthMessage;
+          if (data.type === 'META_OAUTH_SUCCESS' || data.type === 'META_OAUTH_ERROR') {
+            console.log('[MetaConnect] Found OAuth data in localStorage via polling');
+            localStorage.removeItem('meta_oauth_result');
+            processOAuthData(data);
+            return;
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+      
+      // Verificar se popup foi fechado
+      if (popup.closed) {
+        console.log('[MetaConnect] Popup closed, stopping polling');
+        stopPolling();
+        setIsLoading(false);
+      }
+    }, 500);
+  }, [processOAuthData, stopPolling]);
+
+  // Listener para postMessage e storage events
   useEffect(() => {
-    // Listen for postMessage
     const messageHandler = (event: MessageEvent) => {
       const data = event.data as OAuthMessage;
       if (data.type === 'META_OAUTH_SUCCESS' || data.type === 'META_OAUTH_ERROR') {
@@ -121,9 +132,6 @@ export function MetaConnect() {
       }
     };
     
-    window.addEventListener('message', messageHandler);
-    
-    // Listen for localStorage changes (fallback)
     const storageHandler = (event: StorageEvent) => {
       if (event.key === 'meta_oauth_result' && event.newValue) {
         try {
@@ -136,16 +144,22 @@ export function MetaConnect() {
       }
     };
     
+    window.addEventListener('message', messageHandler);
     window.addEventListener('storage', storageHandler);
     
     return () => {
       window.removeEventListener('message', messageHandler);
       window.removeEventListener('storage', storageHandler);
+      stopPolling();
     };
-  }, [processOAuthData]);
+  }, [processOAuthData, stopPolling]);
 
   const handleConnectWithFacebook = async () => {
     setIsLoading(true);
+    
+    // Limpar dados anteriores
+    localStorage.removeItem('meta_oauth_result');
+    stopPolling();
     
     try {
       const session = await supabase.auth.getSession();
@@ -173,9 +187,6 @@ export function MetaConnect() {
       if (!response.ok) {
         throw new Error(data.error || 'Erro ao iniciar autenticação');
       }
-
-      // Clear any previous OAuth data
-      localStorage.removeItem('meta_oauth_result');
       
       // Open popup for Facebook login
       const width = 600;
@@ -195,8 +206,8 @@ export function MetaConnect() {
         return;
       }
 
-      // Start polling for OAuth result
-      popupRef(popup);
+      // Iniciar polling para resultado OAuth
+      startPolling(popup);
 
     } catch (error: any) {
       console.error('[MetaConnect] Error:', error);
@@ -268,6 +279,8 @@ export function MetaConnect() {
     setSelectedAccountId('');
     setOauthData(null);
     setIsLoading(false);
+    stopPolling();
+    localStorage.removeItem('meta_oauth_result');
   };
 
   const handleOpenChange = (open: boolean) => {
