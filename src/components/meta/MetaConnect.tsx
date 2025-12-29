@@ -138,7 +138,7 @@ export function MetaConnect() {
     }, 300); // Polling mais frequente (300ms)
   }, [processOAuthData, stopPolling, checkLocalStorageForOAuthData]);
 
-  // Listener para postMessage e storage events
+  // Listener para postMessage, storage events e window focus
   useEffect(() => {
     const messageHandler = (event: MessageEvent) => {
       const data = event.data as OAuthMessage;
@@ -159,15 +159,27 @@ export function MetaConnect() {
       }
     };
     
+    // Also refresh accounts when window gains focus (user comes back from popup)
+    const focusHandler = () => {
+      if (isLoading) {
+        // Check localStorage when window gets focus
+        checkLocalStorageForOAuthData();
+      }
+      // Always refresh accounts list on focus
+      queryClient.invalidateQueries({ queryKey: ['meta-accounts'] });
+    };
+    
     window.addEventListener('message', messageHandler);
     window.addEventListener('storage', storageHandler);
+    window.addEventListener('focus', focusHandler);
     
     return () => {
       window.removeEventListener('message', messageHandler);
       window.removeEventListener('storage', storageHandler);
+      window.removeEventListener('focus', focusHandler);
       stopPolling();
     };
-  }, [processOAuthData, stopPolling]);
+  }, [processOAuthData, stopPolling, isLoading, checkLocalStorageForOAuthData, queryClient]);
 
   const handleConnectWithFacebook = async () => {
     setIsLoading(true);
@@ -301,6 +313,8 @@ export function MetaConnect() {
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       handleClose();
+      // Always refresh accounts when dialog closes
+      queryClient.invalidateQueries({ queryKey: ['meta-accounts'] });
     } else {
       setIsOpen(true);
     }
