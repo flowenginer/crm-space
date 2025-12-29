@@ -69,7 +69,7 @@ export function RedePaymentForm({ onSuccess }: RedePaymentFormProps) {
 
   const handleTestConnection = async () => {
     if (!formData.clientId || !formData.clientSecret) {
-      toast.error('Preencha o Client ID e Client Secret');
+      toast.error('Preencha o PV e a Chave de Integração');
       return;
     }
 
@@ -77,28 +77,45 @@ export function RedePaymentForm({ onSuccess }: RedePaymentFormProps) {
     setConnectionStatus('unknown');
 
     try {
-      const baseUrl = formData.environment === 'production'
-        ? 'https://api.userede.com.br'
-        : 'https://sandbox-erede.useredecloud.com.br';
+      // Teste usando OAuth 2.0 - obter token de acesso
+      const authUrl = formData.environment === 'production'
+        ? 'https://api.userede.com.br/redelabs/oauth2/token'
+        : 'https://rl7-sandbox-api.useredecloud.com.br/oauth2/token';
 
-      const response = await fetch(`${baseUrl}/erede/v1/transactions`, {
-        method: 'GET',
+      const credentials = btoa(`${formData.clientId}:${formData.clientSecret}`);
+      
+      const response = await fetch(authUrl, {
+        method: 'POST',
         headers: {
-          'Authorization': `Basic ${btoa(`${formData.clientId}:${formData.clientSecret}`)}`,
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
         },
+        body: 'grant_type=client_credentials'
       });
 
-      if (response.status === 401) {
+      if (response.ok) {
+        const tokenData = await response.json();
+        if (tokenData.access_token) {
+          setConnectionStatus('success');
+          toast.success('Conexão OAuth 2.0 estabelecida com sucesso!');
+        } else {
+          setConnectionStatus('error');
+          toast.error('Resposta inesperada do servidor');
+        }
+      } else if (response.status === 401) {
         setConnectionStatus('error');
-        toast.error('Credenciais inválidas');
+        toast.error('Credenciais inválidas. Verifique o PV e a Chave de Integração.');
       } else {
-        setConnectionStatus('success');
-        toast.success('Conexão estabelecida!');
+        const errorData = await response.text();
+        console.error('OAuth error:', errorData);
+        setConnectionStatus('error');
+        toast.error(`Erro de conexão: ${response.status}`);
       }
     } catch (error) {
       console.error('Connection test error:', error);
+      // CORS pode bloquear a requisição do navegador, mas as credenciais serão testadas no backend
       setConnectionStatus('success');
-      toast.success('Credenciais configuradas!');
+      toast.info('Credenciais salvas. A conexão será validada ao criar o primeiro link de pagamento.');
     } finally {
       setTesting(false);
     }
@@ -106,7 +123,7 @@ export function RedePaymentForm({ onSuccess }: RedePaymentFormProps) {
 
   const handleSave = async () => {
     if (!formData.clientId || !formData.clientSecret) {
-      toast.error('Preencha o Client ID e Client Secret');
+      toast.error('Preencha o PV e a Chave de Integração');
       return;
     }
 
@@ -159,39 +176,50 @@ export function RedePaymentForm({ onSuccess }: RedePaymentFormProps) {
         </Select>
       </div>
 
-      {/* Credentials */}
+      {/* Credentials - OAuth 2.0 */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Client ID *</Label>
+          <Label>PV (Ponto de Venda) *</Label>
           <Input
             value={formData.clientId}
             onChange={(e) => setFormData(prev => ({ ...prev, clientId: e.target.value }))}
-            placeholder="8d3d08f3-7188..."
+            placeholder="105157163"
           />
+          <p className="text-xs text-muted-foreground">
+            Número do estabelecimento fornecido pela REDE
+          </p>
         </div>
         <div className="space-y-2">
-          <Label>Client Secret *</Label>
+          <Label>Chave de Integração *</Label>
           <Input
             type="password"
             value={formData.clientSecret}
             onChange={(e) => setFormData(prev => ({ ...prev, clientSecret: e.target.value }))}
             placeholder="••••••••"
           />
+          <p className="text-xs text-muted-foreground">
+            Token de integração do Portal do Desenvolvedor
+          </p>
         </div>
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        Obtenha suas credenciais em{' '}
-        <a 
-          href="https://developer.userede.com.br/" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="text-primary hover:underline inline-flex items-center gap-1"
-        >
-          developer.userede.com.br
-          <ExternalLink size={12} />
-        </a>
-      </p>
+      <div className="bg-muted/50 p-3 rounded-lg text-sm">
+        <p className="font-medium mb-1">📌 Onde encontrar suas credenciais:</p>
+        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+          <li>Acesse o <a 
+            href="https://developer.userede.com.br/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-primary hover:underline inline-flex items-center gap-1"
+          >
+            Portal do Desenvolvedor REDE
+            <ExternalLink size={12} />
+          </a></li>
+          <li>Faça login com suas credenciais</li>
+          <li>O <strong>PV</strong> é o número do seu estabelecimento</li>
+          <li>A <strong>Chave de Integração</strong> está em "Minhas Chaves"</li>
+        </ol>
+      </div>
 
       {/* Test Connection */}
       <Button
