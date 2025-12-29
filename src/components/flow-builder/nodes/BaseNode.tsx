@@ -150,6 +150,9 @@ function getNodeDescription(data: FlowNodeData): string {
       return 'Novo contato detectado';
     case 'first_message':
       return 'Primeira mensagem';
+    case 'redirect_lead':
+      const campaignName = config?.campaign_name || 'qualquer campanha';
+      return config?.campaign_id ? `Campanha: ${campaignName}` : 'Lead via redirect';
     case 'end':
       return 'Finaliza o fluxo';
     case 'go_to_flow':

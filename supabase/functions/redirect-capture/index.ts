@@ -155,6 +155,31 @@ Deno.serve(async (req) => {
           .from('redirect_campaigns')
           .update({ total_leads: campaign.total_leads + 1 })
           .eq('id', campaign_id);
+
+        // Disparar fluxos de automação para o novo lead
+        try {
+          await supabase.functions.invoke('process-flow-triggers', {
+            body: {
+              trigger_type: 'redirect_lead',
+              tenant_id,
+              contact_id: contactId,
+              channel_id: selectedChannel.id,
+              metadata: {
+                campaign_id,
+                campaign_name: campaign.name,
+                utm_source: utms.utm_source,
+                utm_medium: utms.utm_medium,
+                utm_campaign: utms.utm_campaign,
+                utm_term: utms.utm_term,
+                utm_content: utms.utm_content,
+                referrer,
+              }
+            }
+          });
+          console.log('[redirect-capture] Trigger de fluxo disparado');
+        } catch (triggerError) {
+          console.error('[redirect-capture] Erro ao disparar trigger:', triggerError);
+        }
       }
     }
 
