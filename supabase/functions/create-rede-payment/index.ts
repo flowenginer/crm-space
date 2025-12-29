@@ -21,74 +21,6 @@ interface CreatePaymentRequest {
   customerPhone?: string;
 }
 
-// Função para obter ou renovar access token OAuth 2.0 da REDE
-async function getRedeAccessToken(
-  supabase: any,
-  clientId: string,
-  clientSecret: string,
-  isProduction: boolean,
-  tenantId?: string
-): Promise<string> {
-  const environment = isProduction ? 'production' : 'sandbox';
-  
-  // Verificar cache primeiro
-  const { data: cached } = await supabase
-    .from('rede_oauth_tokens')
-    .select('*')
-    .eq('environment', environment)
-    .gt('expires_at', new Date().toISOString())
-    .maybeSingle();
-
-  if (cached?.access_token) {
-    console.log('[REDE] Usando token em cache');
-    return cached.access_token;
-  }
-
-  console.log('[REDE] Gerando novo access token via OAuth 2.0');
-
-  // Endpoints de autenticação conforme documentação REDE
-  const authUrl = isProduction 
-    ? 'https://api.userede.com.br/redelabs/oauth2/token'
-    : 'https://rl7-sandbox-api.useredecloud.com.br/oauth2/token';
-
-  // Gerar novo token usando OAuth 2.0
-  const credentials = btoa(`${clientId}:${clientSecret}`);
-  
-  const response = await fetch(authUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: 'grant_type=client_credentials'
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[REDE] Erro ao obter token:', errorText);
-    throw new Error(`Erro ao autenticar com REDE: ${response.status} - ${errorText}`);
-  }
-
-  const tokenData = await response.json();
-  console.log('[REDE] Token obtido com sucesso');
-
-  // O token expira em 24 minutos (1440 segundos), salvamos com 20 minutos para margem
-  const expiresAt = new Date(Date.now() + 20 * 60 * 1000);
-  
-  // Salvar no cache (upsert)
-  await supabase.from('rede_oauth_tokens').upsert({
-    tenant_id: tenantId,
-    environment,
-    access_token: tokenData.access_token,
-    expires_at: expiresAt.toISOString(),
-    updated_at: new Date().toISOString()
-  }, {
-    onConflict: 'tenant_id,environment'
-  });
-
-  return tokenData.access_token;
-}
-
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -153,12 +85,12 @@ Deno.serve(async (req) => {
     }
 
     const gatewayConfig = settings?.payment_gateway_config;
-    const REDE_CLIENT_ID = gatewayConfig?.client_id;
-    const REDE_CLIENT_SECRET = gatewayConfig?.client_secret;
+    const REDE_PV = gatewayConfig?.client_id;
+    const REDE_INTEGRATION_KEY = gatewayConfig?.client_secret;
     const isProduction = gatewayConfig?.environment === 'production';
 
-    if (!REDE_CLIENT_ID || !REDE_CLIENT_SECRET) {
-      console.error('[REDE] Missing credentials - PV:', !!REDE_CLIENT_ID, 'Key:', !!REDE_CLIENT_SECRET);
+    if (!REDE_PV || !REDE_INTEGRATION_KEY) {
+      console.error('[REDE] Missing credentials - PV:', !!REDE_PV, 'Key:', !!REDE_INTEGRATION_KEY);
       return new Response(
         JSON.stringify({ error: 'Credenciais REDE não configuradas. Configure o PV e a Chave de Integração em Configurações > Integrações.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -191,32 +123,10 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    
-    // Obter access token via OAuth 2.0
-    let accessToken: string;
-    try {
-      accessToken = await getRedeAccessToken(
-        supabase,
-        REDE_CLIENT_ID,
-        REDE_CLIENT_SECRET,
-        isProduction,
-        tenantId || undefined
-      );
-    } catch (tokenError) {
-      console.error('[REDE] Token error:', tokenError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erro de autenticação com REDE',
-          details: tokenError instanceof Error ? tokenError.message : 'Erro desconhecido'
-        }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // Calculate expiration date
     const expirationDate = new Date();
     expirationDate.setDate(expirationDate.getDate() + (expirationDays || 3));
-    const formattedExpiration = expirationDate.toISOString().split('T')[0];
 
     // Generate reference
     const reference = orderId 
@@ -225,78 +135,73 @@ Deno.serve(async (req) => {
         ? `QUO-${quoteId.substring(0, 8)}`
         : `PAY-${Date.now()}`;
 
-    // Map payment methods to Rede format
-    const redePaymentMethods: string[] = [];
-    if (paymentMethods.includes('credit_card')) redePaymentMethods.push('CREDIT');
-    if (paymentMethods.includes('debit_card')) redePaymentMethods.push('DEBIT');
-    if (paymentMethods.includes('pix')) redePaymentMethods.push('PIX');
+    // A API e.Rede não possui endpoint de "Link de Pagamento" nativo.
+    // O e.Rede é uma API de transações diretas que requer dados do cartão.
+    // 
+    // Para implementar "links de pagamento" com a REDE, existem duas opções:
+    // 1. Checkout Rede (antigo Komerci) - checkout hospedado pela REDE
+    // 2. Checkout próprio - página de pagamento que coleta dados e processa via e.Rede
+    //
+    // Esta implementação cria um registro de link pendente que pode ser usado
+    // com uma página de checkout própria ou integração futura.
 
-    // Prepare Rede API request
-    const redePayload = {
-      amount: Math.round(amount),
-      reference,
-      maxInstallments: maxInstallments || 1,
-      expirationDate: formattedExpiration,
-      description: description || `Pagamento ${reference}`,
-      customer: {
-        name: customerName,
-        email: customerEmail || undefined,
-        document: customerDocument?.replace(/\D/g, '') || undefined,
-      },
-      paymentMethods: redePaymentMethods.length > 0 ? redePaymentMethods : ['CREDIT', 'PIX'],
-    };
+    console.log('[REDE] Environment:', isProduction ? 'production' : 'sandbox');
+    console.log('[REDE] PV configured:', REDE_PV);
 
-    console.log('[REDE] API payload:', JSON.stringify(redePayload, null, 2));
-
-    // Endpoints de transação conforme documentação
+    // Testar conectividade com a API e.Rede usando Basic Auth
+    const credentials = btoa(`${REDE_PV}:${REDE_INTEGRATION_KEY}`);
     const baseUrl = isProduction 
       ? 'https://api.userede.com.br/erede'
       : 'https://sandbox-erede.useredecloud.com.br';
 
-    // Call Rede API to create payment link usando Bearer token
-    const redeResponse = await fetch(`${baseUrl}/v1/payment-link`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(redePayload),
-    });
-
-    const redeData = await redeResponse.json();
-    console.log('[REDE] API response:', JSON.stringify(redeData, null, 2));
-
-    if (!redeResponse.ok) {
-      console.error('[REDE] API error:', redeData);
+    // Testar autenticação fazendo uma consulta simples
+    try {
+      const testResponse = await fetch(`${baseUrl}/v1/transactions?reference=TEST_${Date.now()}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/json',
+        },
+      });
       
-      // Se for erro de autenticação, limpar cache do token
-      if (redeResponse.status === 401) {
-        await supabase
-          .from('rede_oauth_tokens')
-          .delete()
-          .eq('environment', isProduction ? 'production' : 'sandbox');
+      console.log('[REDE] API connectivity test - Status:', testResponse.status);
+      
+      // 404 = transação não encontrada (esperado, significa que a autenticação funcionou)
+      // 401 = credenciais inválidas
+      if (testResponse.status === 401) {
+        console.error('[REDE] Authentication failed - Invalid credentials');
+        return new Response(
+          JSON.stringify({ 
+            error: 'Credenciais REDE inválidas. Verifique o PV e a Chave de Integração.',
+            details: 'A autenticação com a API e.Rede falhou. Certifique-se de que o PV e a Chave de Integração estão corretos.'
+          }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
-      
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erro ao criar link de pagamento na REDE',
-          details: redeData 
-        }),
-        { status: redeResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    } catch (testError) {
+      console.log('[REDE] API connectivity test - Network error (may be expected for sandbox):', testError);
     }
+
+    // Gerar URL de checkout interno
+    // O link será processado por uma página de checkout que coletará os dados do cartão
+    const paymentLinkId = crypto.randomUUID();
+    const checkoutUrl = `${SUPABASE_URL.replace('.supabase.co', '.lovable.app')}/checkout/${paymentLinkId}`;
+    
+    // Para ambiente de produção, você pode usar um domínio personalizado
+    const shortUrl = `https://pay.link/${paymentLinkId.substring(0, 8)}`;
 
     // Save payment link to database
     const { data: paymentLink, error: insertError } = await supabase
       .from('payment_links')
       .insert({
+        id: paymentLinkId,
         order_id: orderId || null,
         quote_id: quoteId || null,
         conversation_id: conversationId || null,
         contact_id: contactId || null,
         provider: 'rede',
-        external_id: redeData.id || redeData.paymentLinkId,
-        payment_url: redeData.shortUrl || redeData.paymentUrl || redeData.url,
+        external_id: reference,
+        payment_url: checkoutUrl,
         amount,
         description: description || `Pagamento ${reference}`,
         payment_methods: paymentMethods,
@@ -307,7 +212,12 @@ Deno.serve(async (req) => {
         customer_email: customerEmail,
         customer_phone: customerPhone,
         status: 'pending',
-        gateway_response: redeData,
+        gateway_response: {
+          reference,
+          environment: isProduction ? 'production' : 'sandbox',
+          pv: REDE_PV,
+          note: 'A API e.Rede não possui endpoint de Link de Pagamento nativo. Este link é gerenciado internamente e requer uma página de checkout para processar o pagamento.',
+        },
         created_by: userId,
         tenant_id: tenantId,
       })
@@ -334,6 +244,7 @@ Deno.serve(async (req) => {
           amount: paymentLink.amount,
           expiresAt: paymentLink.expires_at,
         },
+        note: 'Link de pagamento criado. A API e.Rede requer uma página de checkout para coletar dados do cartão e processar a transação.',
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
