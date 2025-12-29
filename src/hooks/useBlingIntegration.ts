@@ -4,11 +4,21 @@ import { toast } from 'sonner';
 
 export type BlingImportEntityType = 'products' | 'contacts' | 'orders' | 'financial';
 
+export interface BlingDependency {
+  type: 'account' | 'category' | 'cost_center';
+  name: string;
+  blingId: string;
+  existsLocally: boolean;
+}
+
 export interface BlingPreviewItem {
   id: string;
   name: string;
   code?: string;
   isNew: boolean;
+  date?: string;
+  value?: number;
+  dependencies?: BlingDependency[];
 }
 
 export interface BlingPreviewResult {
@@ -18,6 +28,7 @@ export interface BlingPreviewResult {
     new: number;
     existing: number;
   };
+  dependencies?: BlingDependency[];
 }
 
 export interface BlingImportResult {
@@ -25,6 +36,7 @@ export interface BlingImportResult {
   updated: number;
   skipped: number;
   errors: number;
+  dependenciesCreated?: number;
 }
 
 export interface BlingConfig {
@@ -495,10 +507,16 @@ export function useBlingImport() {
   return useMutation({
     mutationFn: async ({ 
       entityType, 
-      mode 
+      mode,
+      selectedIds,
+      createDependencies,
+      dateRange,
     }: { 
       entityType: BlingImportEntityType; 
       mode: 'all' | 'new_only' | 'update_existing';
+      selectedIds?: string[];
+      createDependencies?: boolean;
+      dateRange?: { startDate: string; endDate: string };
     }): Promise<BlingImportResult> => {
       const { data: config } = await supabase
         .from('bling_integration_config')
@@ -518,6 +536,10 @@ export function useBlingImport() {
           entity_type: syncEntityType,
           direction: 'bling_to_local',
           import_mode: mode,
+          selected_ids: selectedIds,
+          create_dependencies: createDependencies,
+          start_date: dateRange?.startDate,
+          end_date: dateRange?.endDate,
         },
       });
 
@@ -528,6 +550,7 @@ export function useBlingImport() {
         updated: data?.summary?.updated || 0,
         skipped: data?.summary?.skipped || 0,
         errors: data?.summary?.errors || 0,
+        dependenciesCreated: data?.summary?.dependencies_created || 0,
       };
     },
     onSuccess: (data) => {
@@ -536,12 +559,20 @@ export function useBlingImport() {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['financial-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-categories'] });
       queryClient.invalidateQueries({ queryKey: ['bling-sync-logs'] });
       queryClient.invalidateQueries({ queryKey: ['bling-config'] });
 
-      toast.success(
-        `Importação concluída: ${data.created} criados, ${data.updated} atualizados${data.errors > 0 ? `, ${data.errors} erros` : ''}`
-      );
+      const parts = [`${data.created} criados`, `${data.updated} atualizados`];
+      if (data.dependenciesCreated && data.dependenciesCreated > 0) {
+        parts.push(`${data.dependenciesCreated} dependências`);
+      }
+      if (data.errors > 0) {
+        parts.push(`${data.errors} erros`);
+      }
+
+      toast.success(`Importação concluída: ${parts.join(', ')}`);
     },
     onError: (error) => {
       console.error('Import error:', error);
