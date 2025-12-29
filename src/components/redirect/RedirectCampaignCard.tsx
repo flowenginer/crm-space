@@ -61,7 +61,7 @@ export function RedirectCampaignCard({
     window.open(publicUrl, '_blank');
   };
 
-  const activeChannels = campaign.channels?.filter(c => c.is_active && c.channel?.is_active) || [];
+  const activeChannels = campaign.channels?.filter(c => c.is_active && c.channel?.status === 'connected') || [];
 
   return (
     <>
