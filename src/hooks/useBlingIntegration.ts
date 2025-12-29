@@ -2,6 +2,31 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+export type BlingImportEntityType = 'products' | 'contacts' | 'orders' | 'financial';
+
+export interface BlingPreviewItem {
+  id: string;
+  name: string;
+  code?: string;
+  isNew: boolean;
+}
+
+export interface BlingPreviewResult {
+  items: BlingPreviewItem[];
+  summary: {
+    total: number;
+    new: number;
+    existing: number;
+  };
+}
+
+export interface BlingImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: number;
+}
+
 export interface BlingConfig {
   id: string;
   tenant_id: string;
@@ -407,5 +432,139 @@ export function useInitializeBlingStatusMappings() {
       console.error('Error initializing status mappings:', error);
       toast.error('Erro ao criar mapeamentos padrão');
     },
+  });
+}
+
+// Hook to preview data from Bling before importing
+export function useBlingPreview(entityType: BlingImportEntityType) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (): Promise<BlingPreviewResult> => {
+      const { data: config } = await supabase
+        .from('bling_integration_config')
+        .select('tenant_id')
+        .maybeSingle();
+
+      if (!config?.tenant_id) {
+        throw new Error('Bling not configured');
+      }
+
+      // Map financial to a supported type for the edge function
+      const syncEntityType = entityType === 'financial' ? 'all' : entityType;
+
+      const { data, error } = await supabase.functions.invoke('bling-sync', {
+        body: {
+          tenant_id: config.tenant_id,
+          entity_type: syncEntityType,
+          direction: 'bling_to_local',
+          preview_only: true,
+        },
+      });
+
+      if (error) throw error;
+
+      // Transform the response into preview format
+      const items: BlingPreviewItem[] = (data?.preview || []).map((item: any) => ({
+        id: item.id?.toString() || item.bling_id?.toString() || '',
+        name: item.nome || item.name || item.fantasia || item.razaoSocial || 'Sem nome',
+        code: item.codigo || item.numero || undefined,
+        isNew: !item.exists_locally,
+      }));
+
+      return {
+        items,
+        summary: {
+          total: data?.summary?.total || items.length,
+          new: data?.summary?.new || items.filter((i: BlingPreviewItem) => i.isNew).length,
+          existing: data?.summary?.existing || items.filter((i: BlingPreviewItem) => !i.isNew).length,
+        },
+      };
+    },
+    onError: (error) => {
+      console.error('Error fetching preview:', error);
+      toast.error('Erro ao carregar preview do Bling');
+    },
+  });
+}
+
+// Hook to import data from Bling
+export function useBlingImport() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      entityType, 
+      mode 
+    }: { 
+      entityType: BlingImportEntityType; 
+      mode: 'all' | 'new_only' | 'update_existing';
+    }): Promise<BlingImportResult> => {
+      const { data: config } = await supabase
+        .from('bling_integration_config')
+        .select('tenant_id')
+        .maybeSingle();
+
+      if (!config?.tenant_id) {
+        throw new Error('Bling not configured');
+      }
+
+      // Map financial to a supported type for the edge function
+      const syncEntityType = entityType === 'financial' ? 'all' : entityType;
+
+      const { data, error } = await supabase.functions.invoke('bling-sync', {
+        body: {
+          tenant_id: config.tenant_id,
+          entity_type: syncEntityType,
+          direction: 'bling_to_local',
+          import_mode: mode,
+        },
+      });
+
+      if (error) throw error;
+
+      return {
+        created: data?.summary?.created || 0,
+        updated: data?.summary?.updated || 0,
+        skipped: data?.summary?.skipped || 0,
+        errors: data?.summary?.errors || 0,
+      };
+    },
+    onSuccess: (data) => {
+      // Invalidate relevant queries based on what was imported
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['bling-sync-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['bling-config'] });
+
+      toast.success(
+        `Importação concluída: ${data.created} criados, ${data.updated} atualizados${data.errors > 0 ? `, ${data.errors} erros` : ''}`
+      );
+    },
+    onError: (error) => {
+      console.error('Import error:', error);
+      toast.error('Erro ao importar dados do Bling');
+    },
+  });
+}
+
+// Hook to check if entity has Bling mapping
+export function useBlingMapping(entityType: 'contact' | 'product' | 'order' | 'quote', localId: string) {
+  return useQuery({
+    queryKey: ['bling-mapping', entityType, localId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('bling_id_mappings')
+        .select('bling_id, bling_numero, last_synced_at, sync_status')
+        .eq('entity_type', entityType)
+        .eq('local_id', localId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!localId,
   });
 }

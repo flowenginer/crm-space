@@ -50,6 +50,7 @@ import { CategoryManagement } from '@/components/financial/CategoryManagement';
 import { TransferModal } from '@/components/financial/TransferModal';
 import { FinancialCharts } from '@/components/financial/FinancialCharts';
 import { PaymentLinksPanel } from '@/components/financial/PaymentLinksPanel';
+import { BlingIntegrationBanner } from '@/components/bling/BlingIntegrationBanner';
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof Clock }> = {
   pending: { label: 'Pendente', variant: 'outline', icon: Clock },
@@ -129,6 +130,9 @@ export default function Financial() {
   return (
     <>
       <div className="space-y-6 p-6">
+        {/* Bling Integration Banner */}
+        <BlingIntegrationBanner entityType="financial" />
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Financeiro</h1>

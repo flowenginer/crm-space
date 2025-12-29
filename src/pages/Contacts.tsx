@@ -61,6 +61,7 @@ import { useTeam } from '@/hooks/useTeam';
 import { useLeadStatuses } from '@/hooks/useLeadKanban';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Skeleton } from '@/components/ui/skeleton';
+import { BlingIntegrationBanner } from '@/components/bling/BlingIntegrationBanner';
 
 const brazilianStates = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
@@ -469,6 +470,9 @@ export default function Contacts() {
 
   return (
     <div className="space-y-6">
+      {/* Bling Integration Banner */}
+      <BlingIntegrationBanner entityType="contacts" />
+
       {/* Modal de Solicitação de Acesso */}
       {blockedContact && blockedByAgent && (
         <ContactRequestModal
