@@ -19,7 +19,8 @@ import {
   Users,
   Package,
   FileText,
-  ShoppingCart
+  ShoppingCart,
+  ArrowLeftRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
@@ -41,6 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { BlingStatusMappingPanel } from './BlingStatusMappingPanel';
 
 interface BlingIntegrationFormProps {
   onSuccess?: () => void;
@@ -369,6 +371,20 @@ export function BlingIntegrationForm({ onSuccess }: BlingIntegrationFormProps) {
                 />
               </div>
             </div>
+          </div>
+
+          <Separator />
+
+          {/* Status Mapping Panel */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
+              <h3 className="font-medium text-foreground">Mapeamento de Status</h3>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Configure como os status do Bling correspondem aos status locais
+            </p>
+            <BlingStatusMappingPanel />
           </div>
 
           <Separator />
