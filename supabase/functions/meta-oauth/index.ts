@@ -43,12 +43,11 @@ serve(async (req) => {
     }
 
     if (action === 'get-login-url') {
-      // Generate Facebook OAuth URL with cache-busting timestamp
-      const timestamp = Date.now();
-      const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback&t=${timestamp}`;
+      // Generate Facebook OAuth URL - URL must match exactly what's configured in Meta Developer
+      const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback`;
       const state = crypto.randomUUID();
       
-      console.log('[Meta OAuth] Generated login URL with timestamp:', timestamp);
+      console.log('[Meta OAuth] Generated login URL with redirectUri:', redirectUri);
       
       // Store state temporarily for verification
       if (userId) {
@@ -151,10 +150,7 @@ serve(async (req) => {
       }
 
       // Exchange code for access token - must match the redirect URI used in get-login-url
-      const callbackTimestamp = url.searchParams.get('t') || '';
-      const redirectUri = callbackTimestamp 
-        ? `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback&t=${callbackTimestamp}`
-        : `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback`;
+      const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth?action=callback`;
       
       console.log('[Meta OAuth] Token exchange with redirectUri:', redirectUri);
       const tokenResponse = await fetch(
