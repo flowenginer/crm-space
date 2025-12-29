@@ -61,6 +61,7 @@ import AcceptInvite from "@/pages/AcceptInvite";
 import SuperAdminPanel from "@/pages/SuperAdminPanel";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import NotFound from "@/pages/NotFound";
+import MetaOAuthCallback from "@/pages/MetaOAuthCallback";
 
 // Platform Admin Pages
 import {
@@ -87,6 +88,7 @@ const App = () => (
             <Route path="/auth/register" element={<Register />} />
             <Route path="/onboarding" element={<TenantOnboarding />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
+            <Route path="/meta-oauth-callback" element={<MetaOAuthCallback />} />
 
             {/* Protected routes with MainLayout */}
             <Route element={<MainLayout />}>
