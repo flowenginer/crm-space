@@ -26,6 +26,7 @@ import {
   useDeleteMetaAccount 
 } from '@/hooks/useMetaAds';
 import { MetaConnect } from '@/components/meta/MetaConnect';
+import { MetaSyncStatus } from '@/components/meta/MetaSyncStatus';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   PieChart, Pie, Cell, Tooltip
@@ -346,11 +347,16 @@ export default function MetaAdsManager() {
           </div>
         </div>
 
-        {/* Last sync info */}
-        {selectedAccount?.last_sync_at && (
-          <p className="text-sm text-muted-foreground">
-            Última sincronização: {format(new Date(selectedAccount.last_sync_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-          </p>
+        {/* Sync Status Badge */}
+        {selectedAccount && (
+          <div className="flex items-center gap-2">
+            <MetaSyncStatus 
+              lastSyncAt={selectedAccount.last_sync_at}
+              lastAutoSyncAt={(selectedAccount as any).last_auto_sync_at}
+              autoSyncEnabled={(selectedAccount as any).auto_sync_enabled ?? true}
+              isSyncing={isSyncing}
+            />
+          </div>
         )}
 
         {/* No accounts state */}

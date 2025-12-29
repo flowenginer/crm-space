@@ -4223,13 +4223,16 @@ export type Database = {
           access_token: string
           account_id: string
           account_name: string | null
+          auto_sync_enabled: boolean | null
           business_id: string | null
           created_at: string | null
           currency: string | null
           id: string
           is_active: boolean | null
+          last_auto_sync_at: string | null
           last_sync_at: string | null
           refresh_token: string | null
+          sync_interval_hours: number | null
           tenant_id: string | null
           timezone: string | null
           token_expires_at: string | null
@@ -4240,13 +4243,16 @@ export type Database = {
           access_token: string
           account_id: string
           account_name?: string | null
+          auto_sync_enabled?: boolean | null
           business_id?: string | null
           created_at?: string | null
           currency?: string | null
           id?: string
           is_active?: boolean | null
+          last_auto_sync_at?: string | null
           last_sync_at?: string | null
           refresh_token?: string | null
+          sync_interval_hours?: number | null
           tenant_id?: string | null
           timezone?: string | null
           token_expires_at?: string | null
@@ -4257,13 +4263,16 @@ export type Database = {
           access_token?: string
           account_id?: string
           account_name?: string | null
+          auto_sync_enabled?: boolean | null
           business_id?: string | null
           created_at?: string | null
           currency?: string | null
           id?: string
           is_active?: boolean | null
+          last_auto_sync_at?: string | null
           last_sync_at?: string | null
           refresh_token?: string | null
+          sync_interval_hours?: number | null
           tenant_id?: string | null
           timezone?: string | null
           token_expires_at?: string | null
@@ -4600,6 +4609,70 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      meta_sync_logs: {
+        Row: {
+          campaigns_synced: number | null
+          completed_at: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          insights_synced: number | null
+          meta_account_id: string
+          started_at: string | null
+          status: string
+          sync_type: string
+          tenant_id: string
+        }
+        Insert: {
+          campaigns_synced?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          insights_synced?: number | null
+          meta_account_id: string
+          started_at?: string | null
+          status?: string
+          sync_type?: string
+          tenant_id?: string
+        }
+        Update: {
+          campaigns_synced?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          insights_synced?: number | null
+          meta_account_id?: string
+          started_at?: string | null
+          status?: string
+          sync_type?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_sync_logs_meta_account_id_fkey"
+            columns: ["meta_account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_sync_logs_meta_account_id_fkey"
+            columns: ["meta_account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_sync_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notification_settings: {
         Row: {

@@ -24,6 +24,9 @@ verify_jwt = false
 [functions.meta-sync]
 verify_jwt = true
 
+[functions.meta-auto-sync]
+verify_jwt = false
+
 [functions.cleanup-webhook-logs]
 verify_jwt = false
 
