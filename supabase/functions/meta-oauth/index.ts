@@ -230,116 +230,133 @@ serve(async (req) => {
         state: state
       };
       
-      const successHtml = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Conexão Realizada</title>
-            <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body { 
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 20px;
-              }
-              .container {
-                background: white;
-                border-radius: 16px;
-                padding: 40px;
-                max-width: 400px;
-                text-align: center;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-              }
-              .icon { font-size: 64px; margin-bottom: 20px; }
-              h1 { color: #16a34a; font-size: 24px; margin-bottom: 12px; }
-              p { color: #666; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
-              .status { 
-                background: #f0fdf4; 
-                border: 1px solid #bbf7d0; 
-                border-radius: 8px; 
-                padding: 12px; 
-                margin-bottom: 20px;
-                color: #166534;
-                font-size: 13px;
-              }
-              .btn {
-                background: #3b82f6;
-                color: white;
-                border: none;
-                padding: 12px 24px;
-                border-radius: 8px;
-                font-size: 14px;
-                cursor: pointer;
-                transition: background 0.2s;
-              }
-              .btn:hover { background: #2563eb; }
-              .accounts { 
-                text-align: left; 
-                font-size: 12px; 
-                color: #666; 
-                margin-top: 16px;
-                padding: 12px;
-                background: #f9fafb;
-                border-radius: 8px;
-              }
-              .accounts strong { color: #333; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="icon">✅</div>
-              <h1>Conexão Realizada!</h1>
-              <div id="status" class="status">Processando...</div>
-              <p id="message">Aguarde enquanto processamos sua conexão.</p>
-              <button class="btn" id="closeBtn" style="display: none;" onclick="window.close()">Fechar esta janela</button>
-              <div class="accounts">
-                <strong>Contas encontradas:</strong> ${(adAccountsData.data || []).length}
-              </div>
-            </div>
-            <script>
-              const oauthData = ${JSON.stringify(successData)};
-              const statusEl = document.getElementById('status');
-              const messageEl = document.getElementById('message');
-              const closeBtn = document.getElementById('closeBtn');
-              
-              function showSuccess(method) {
-                statusEl.textContent = '✓ Dados enviados com sucesso!';
-                messageEl.textContent = method === 'postMessage' 
-                  ? 'Esta janela será fechada automaticamente...'
-                  : 'Volte para a aba do CRM para selecionar sua conta.';
-                closeBtn.style.display = 'inline-block';
-              }
-              
-              // Try postMessage first
-              if (window.opener) {
-                try {
-                  window.opener.postMessage(oauthData, '*');
-                  showSuccess('postMessage');
-                  setTimeout(() => {
-                    try { window.close(); } catch(e) {}
-                  }, 1500);
-                } catch(e) {
-                  // Fallback to localStorage
-                  localStorage.setItem('meta_oauth_result', JSON.stringify(oauthData));
-                  showSuccess('localStorage');
-                }
-              } else {
-                // No opener - use localStorage
-                localStorage.setItem('meta_oauth_result', JSON.stringify(oauthData));
-                showSuccess('localStorage');
-              }
-            </script>
-          </body>
-        </html>
-      `;
+      // Escape JSON for safe embedding in HTML script
+      const jsonString = JSON.stringify(successData)
+        .replace(/</g, '\\u003c')
+        .replace(/>/g, '\\u003e')
+        .replace(/&/g, '\\u0026')
+        .replace(/'/g, '\\u0027');
       
-      return new Response(successHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      const accountCount = (adAccountsData.data || []).length;
+      
+      const successHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conexão Realizada</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.container {
+  background: white;
+  border-radius: 16px;
+  padding: 40px;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.icon { font-size: 64px; margin-bottom: 20px; }
+h1 { color: #16a34a; font-size: 24px; margin-bottom: 12px; }
+p { color: #666; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+.status { 
+  background: #f0fdf4; 
+  border: 1px solid #bbf7d0; 
+  border-radius: 8px; 
+  padding: 12px; 
+  margin-bottom: 20px;
+  color: #166534;
+  font-size: 13px;
+}
+.btn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn:hover { background: #2563eb; }
+.accounts { 
+  text-align: left; 
+  font-size: 12px; 
+  color: #666; 
+  margin-top: 16px;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+.accounts strong { color: #333; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="icon">✅</div>
+  <h1>Conexão Realizada!</h1>
+  <div id="status" class="status">Processando...</div>
+  <p id="message">Aguarde enquanto processamos sua conexão.</p>
+  <button class="btn" id="closeBtn" style="display: none;" onclick="window.close()">Fechar esta janela</button>
+  <div class="accounts">
+    <strong>Contas encontradas:</strong> ${accountCount}
+  </div>
+</div>
+<script>
+(function() {
+  var oauthData = ${jsonString};
+  var statusEl = document.getElementById('status');
+  var messageEl = document.getElementById('message');
+  var closeBtn = document.getElementById('closeBtn');
+  
+  function showSuccess(method) {
+    statusEl.textContent = 'Dados enviados com sucesso!';
+    messageEl.textContent = method === 'postMessage' 
+      ? 'Esta janela será fechada automaticamente...'
+      : 'Volte para a aba do CRM para selecionar sua conta.';
+    closeBtn.style.display = 'inline-block';
+  }
+  
+  // Always save to localStorage first as fallback
+  try {
+    localStorage.setItem('meta_oauth_result', JSON.stringify(oauthData));
+  } catch(e) {
+    console.error('localStorage error:', e);
+  }
+  
+  // Try postMessage to opener
+  if (window.opener && !window.opener.closed) {
+    try {
+      window.opener.postMessage(oauthData, '*');
+      showSuccess('postMessage');
+      setTimeout(function() {
+        try { window.close(); } catch(e) {}
+      }, 1500);
+    } catch(e) {
+      showSuccess('localStorage');
+    }
+  } else {
+    showSuccess('localStorage');
+  }
+})();
+</script>
+</body>
+</html>`;
+      
+      return new Response(successHtml, { 
+        headers: { 
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
+        } 
+      });
     }
 
     if (action === 'manual-connect') {
