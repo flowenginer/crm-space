@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.bling-oauth]
 verify_jwt = false
+
+[functions.bling-sync]
+verify_jwt = true
