@@ -140,7 +140,7 @@ serve(async (req) => {
             </body>
           </html>
         `;
-        return new Response(errorHtml, { headers: { 'Content-Type': 'text/html' } });
+        return new Response(errorHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       }
 
       if (!code) {
@@ -199,7 +199,7 @@ serve(async (req) => {
             </body>
           </html>
         `;
-        return new Response(tokenErrorHtml, { headers: { 'Content-Type': 'text/html' } });
+        return new Response(tokenErrorHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       }
 
       // Get long-lived token
@@ -339,7 +339,7 @@ serve(async (req) => {
         </html>
       `;
       
-      return new Response(successHtml, { headers: { 'Content-Type': 'text/html' } });
+      return new Response(successHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
     if (action === 'manual-connect') {
