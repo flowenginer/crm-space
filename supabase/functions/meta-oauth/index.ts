@@ -11,6 +11,23 @@ const META_APP_SECRET = Deno.env.get('META_APP_SECRET');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
+function createHtmlResponse(html: string, status = 200) {
+  const headers = new Headers();
+  // IMPORTANT: use lowercase header names; Supabase edge runtime can override otherwise
+  headers.set('content-type', 'text/html; charset=utf-8');
+  headers.set('cache-control', 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0');
+  headers.set('pragma', 'no-cache');
+  headers.set('expires', '0');
+  headers.set('vary', '*');
+  headers.set('x-content-type-options', 'nosniff');
+
+  // Keep CORS to avoid surprises if this gets requested via fetch
+  headers.set('access-control-allow-origin', corsHeaders['Access-Control-Allow-Origin']);
+  headers.set('access-control-allow-headers', corsHeaders['Access-Control-Allow-Headers']);
+
+  return new Response(html, { status, headers });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -145,21 +162,12 @@ serve(async (req) => {
           </html>
         `;
 
-        const htmlHeaders = {
-          ...corsHeaders,
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-          'Vary': '*',
-          'X-Content-Type-Options': 'nosniff'
-        };
-
-        return new Response(errorHtml, { status: 200, headers: htmlHeaders });
+        return createHtmlResponse(errorHtml, 200);
       }
 
       if (!code) {
-        return new Response('Missing code', { status: 400, headers: corsHeaders });
+        const missingHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>OAuth callback</title></head><body>Missing code</body></html>`;
+        return createHtmlResponse(missingHtml, 400);
       }
 
       // Exchange code for access token - must match the redirect URI used in get-login-url
@@ -219,17 +227,7 @@ serve(async (req) => {
           </html>
         `;
 
-        const htmlHeaders = {
-          ...corsHeaders,
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-          'Vary': '*',
-          'X-Content-Type-Options': 'nosniff'
-        };
-
-        return new Response(tokenErrorHtml, { status: 200, headers: htmlHeaders });
+        return createHtmlResponse(tokenErrorHtml, 200);
       }
 
       // Get long-lived token
@@ -383,18 +381,7 @@ p { color: #666; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
       
       // Force fresh response with explicit anti-cache headers
       console.log('[Meta OAuth] Returning HTML response, size:', successHtml.length, 'bytes');
-
-      const htmlHeaders = {
-        ...corsHeaders,
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-        'Vary': '*',
-        'X-Content-Type-Options': 'nosniff'
-      };
-
-      return new Response(successHtml, { status: 200, headers: htmlHeaders });
+      return createHtmlResponse(successHtml, 200);
     }
 
     if (action === 'manual-connect') {
