@@ -117,7 +117,9 @@ export function BlingIntegrationForm({ onSuccess }: BlingIntegrationFormProps) {
     authorizeUrl.searchParams.set('tenant_id', tenantId);
     authorizeUrl.searchParams.set('redirect_uri', redirectAfterAuth);
 
-    window.location.href = authorizeUrl.toString();
+    // Abrir em nova janela para evitar bloqueio de iframe
+    window.open(authorizeUrl.toString(), '_blank', 'noopener,noreferrer');
+    toast.info('Uma nova janela foi aberta para autorização no Bling. Após autorizar, retorne a esta página.');
   };
 
   const handleSaveSyncSettings = async () => {
