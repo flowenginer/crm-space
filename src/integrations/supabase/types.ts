@@ -10229,8 +10229,10 @@ export type Database = {
           notes: string
           number: string
           origin: string
+          origin_campaign: string
           person_type: string
           phone: string
+          referral_data: Json
           state: string
           street: string
           total_count: number
