@@ -1,0 +1,985 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const BLING_API_URL = "https://www.bling.com.br/Api/v3";
+
+interface SyncRequest {
+  tenant_id: string;
+  entity_type?: "contacts" | "orders" | "products" | "quotes" | "all";
+  direction?: "local_to_bling" | "bling_to_local" | "bidirectional";
+  triggered_by?: string;
+}
+
+interface BlingContact {
+  id: number;
+  nome: string;
+  codigo?: string;
+  fantasia?: string;
+  tipo: string; // F = Física, J = Jurídica
+  cpfCnpj?: string;
+  email?: string;
+  telefone?: string;
+  celular?: string;
+  endereco?: {
+    endereco?: string;
+    numero?: string;
+    complemento?: string;
+    bairro?: string;
+    cep?: string;
+    municipio?: string;
+    uf?: string;
+  };
+}
+
+interface BlingProduct {
+  id: number;
+  nome: string;
+  codigo?: string;
+  preco: number;
+  precoCusto?: number;
+  descricaoCurta?: string;
+  imagemURL?: string;
+  tipo?: string;
+  situacao?: string;
+  formato?: string;
+  ncm?: string;
+  cest?: string;
+  origem?: number;
+}
+
+interface BlingOrder {
+  id: number;
+  numero?: number;
+  data?: string;
+  contato?: { id: number; nome?: string };
+  situacao?: { id: number; valor?: number };
+  total?: number;
+  desconto?: number;
+  frete?: number;
+  observacoes?: string;
+  itens?: Array<{
+    produto?: { id: number };
+    quantidade: number;
+    valor: number;
+    desconto?: number;
+  }>;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const body: SyncRequest = await req.json();
+    const { tenant_id, entity_type = "all", direction = "bidirectional", triggered_by } = body;
+
+    if (!tenant_id) {
+      return new Response(
+        JSON.stringify({ error: "Missing tenant_id" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[bling-sync] Starting sync for tenant ${tenant_id}, type: ${entity_type}, direction: ${direction}`);
+
+    // Get Bling config and check token
+    const { data: config, error: configError } = await supabase
+      .from("bling_integration_config")
+      .select("*")
+      .eq("tenant_id", tenant_id)
+      .single();
+
+    if (configError || !config?.access_token) {
+      return new Response(
+        JSON.stringify({ error: "Bling not configured or not connected" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if token needs refresh
+    let accessToken = config.access_token;
+    if (config.token_expires_at && new Date(config.token_expires_at) < new Date()) {
+      console.log(`[bling-sync] Token expired, refreshing...`);
+      const refreshResult = await refreshToken(supabase, tenant_id, config);
+      if (!refreshResult.success) {
+        return new Response(
+          JSON.stringify({ error: "Token expired and refresh failed" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      accessToken = refreshResult.access_token!;
+    }
+
+    // Create sync log
+    const { data: syncLog, error: logError } = await supabase
+      .from("bling_sync_logs")
+      .insert({
+        tenant_id,
+        sync_type: "manual",
+        entity_type,
+        direction,
+        status: "running",
+        triggered_by,
+      })
+      .select()
+      .single();
+
+    if (logError) {
+      console.error(`[bling-sync] Error creating sync log: ${logError.message}`);
+    }
+
+    const results = {
+      contacts: { created: 0, updated: 0, skipped: 0, errors: 0 },
+      orders: { created: 0, updated: 0, skipped: 0, errors: 0 },
+      products: { created: 0, updated: 0, skipped: 0, errors: 0 },
+      quotes: { created: 0, updated: 0, skipped: 0, errors: 0 },
+    };
+    const errors: Array<{ entity: string; message: string; details?: string }> = [];
+
+    // Sync based on config flags and request
+    const entitiesToSync: Array<"contacts" | "orders" | "products" | "quotes"> = 
+      entity_type === "all" 
+        ? ["contacts", "orders", "products", "quotes"].filter(e => {
+            if (e === "contacts") return config.sync_contacts;
+            if (e === "orders") return config.sync_orders;
+            if (e === "products") return config.sync_products;
+            if (e === "quotes") return config.sync_quotes;
+            return false;
+          }) as Array<"contacts" | "orders" | "products" | "quotes">
+        : [entity_type];
+
+    for (const entityType of entitiesToSync) {
+      try {
+        if (entityType === "contacts") {
+          const contactResults = await syncContacts(supabase, tenant_id, accessToken, direction);
+          results.contacts = contactResults.counts;
+          errors.push(...contactResults.errors);
+        } else if (entityType === "products") {
+          const productResults = await syncProducts(supabase, tenant_id, accessToken, direction);
+          results.products = productResults.counts;
+          errors.push(...productResults.errors);
+        } else if (entityType === "orders") {
+          const orderResults = await syncOrders(supabase, tenant_id, accessToken, direction);
+          results.orders = orderResults.counts;
+          errors.push(...orderResults.errors);
+        } else if (entityType === "quotes") {
+          // Quotes sync - similar to orders but for proposals
+          const quoteResults = await syncQuotes(supabase, tenant_id, accessToken, direction);
+          results.quotes = quoteResults.counts;
+          errors.push(...quoteResults.errors);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        console.error(`[bling-sync] Error syncing ${entityType}: ${errorMessage}`);
+        errors.push({ entity: entityType, message: errorMessage });
+      }
+    }
+
+    // Calculate totals
+    const totalRecords = Object.values(results).reduce((sum, r) => sum + r.created + r.updated + r.skipped, 0);
+    const totalCreated = Object.values(results).reduce((sum, r) => sum + r.created, 0);
+    const totalUpdated = Object.values(results).reduce((sum, r) => sum + r.updated, 0);
+    const totalSkipped = Object.values(results).reduce((sum, r) => sum + r.skipped, 0);
+    const totalErrors = errors.length;
+
+    // Update sync log
+    if (syncLog) {
+      await supabase
+        .from("bling_sync_logs")
+        .update({
+          status: totalErrors > 0 && totalCreated === 0 && totalUpdated === 0 ? "failed" : "completed",
+          completed_at: new Date().toISOString(),
+          total_records: totalRecords,
+          created_count: totalCreated,
+          updated_count: totalUpdated,
+          skipped_count: totalSkipped,
+          error_count: totalErrors,
+          errors: errors,
+          details: results,
+        })
+        .eq("id", syncLog.id);
+    }
+
+    // Update last_sync_at in config
+    await supabase
+      .from("bling_integration_config")
+      .update({ last_sync_at: new Date().toISOString() })
+      .eq("tenant_id", tenant_id);
+
+    console.log(`[bling-sync] Completed: ${totalCreated} created, ${totalUpdated} updated, ${totalErrors} errors`);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        results,
+        summary: {
+          total_records: totalRecords,
+          created: totalCreated,
+          updated: totalUpdated,
+          skipped: totalSkipped,
+          errors: totalErrors,
+        },
+        error_details: errors,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`[bling-sync] Error: ${errorMessage}`);
+    return new Response(
+      JSON.stringify({ error: errorMessage }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
+
+// Helper to refresh token
+async function refreshToken(supabase: any, tenantId: string, config: any) {
+  try {
+    const tokenResponse = await fetch("https://www.bling.com.br/Api/v3/oauth/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": `Basic ${btoa(`${config.client_id}:${config.client_secret}`)}`,
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: config.refresh_token,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      return { success: false };
+    }
+
+    const tokens = await tokenResponse.json();
+    const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+
+    await supabase
+      .from("bling_integration_config")
+      .update({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_expires_at: tokenExpiresAt,
+      })
+      .eq("tenant_id", tenantId);
+
+    return { success: true, access_token: tokens.access_token };
+  } catch {
+    return { success: false };
+  }
+}
+
+// Helper for Bling API calls
+async function blingApi(endpoint: string, accessToken: string, method = "GET", body?: any) {
+  const response = await fetch(`${BLING_API_URL}${endpoint}`, {
+    method,
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Bling API error: ${response.status} - ${errorText}`);
+  }
+
+  return response.json();
+}
+
+// Sync Contacts
+async function syncContacts(supabase: any, tenantId: string, accessToken: string, direction: string) {
+  const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
+  const errors: Array<{ entity: string; message: string; details?: string }> = [];
+
+  try {
+    // Import from Bling to Local
+    if (direction === "bling_to_local" || direction === "bidirectional") {
+      console.log(`[bling-sync] Importing contacts from Bling...`);
+      
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await blingApi(`/contatos?pagina=${page}&limite=100`, accessToken);
+        const blingContacts: BlingContact[] = response.data || [];
+
+        if (blingContacts.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        for (const blingContact of blingContacts) {
+          try {
+            // Check if mapping exists
+            const { data: existingMapping } = await supabase
+              .from("bling_id_mappings")
+              .select("local_id")
+              .eq("tenant_id", tenantId)
+              .eq("entity_type", "contact")
+              .eq("bling_id", String(blingContact.id))
+              .maybeSingle();
+
+            const contactData = {
+              full_name: blingContact.nome || "Sem nome",
+              phone: blingContact.celular || blingContact.telefone || "0000000000",
+              email: blingContact.email || null,
+              cpf_cnpj: blingContact.cpfCnpj || null,
+              person_type: blingContact.tipo === "J" ? "company" : "individual",
+              street: blingContact.endereco?.endereco || null,
+              number: blingContact.endereco?.numero || null,
+              complement: blingContact.endereco?.complemento || null,
+              neighborhood: blingContact.endereco?.bairro || null,
+              zip_code: blingContact.endereco?.cep || null,
+              city: blingContact.endereco?.municipio || null,
+              state: blingContact.endereco?.uf || null,
+              tenant_id: tenantId,
+            };
+
+            if (existingMapping?.local_id) {
+              // Update existing
+              await supabase
+                .from("contacts")
+                .update(contactData)
+                .eq("id", existingMapping.local_id);
+              counts.updated++;
+            } else {
+              // Check by CPF/CNPJ or phone
+              const { data: existingContact } = await supabase
+                .from("contacts")
+                .select("id")
+                .eq("tenant_id", tenantId)
+                .or(`cpf_cnpj.eq.${blingContact.cpfCnpj},phone.eq.${blingContact.celular || blingContact.telefone}`)
+                .maybeSingle();
+
+              if (existingContact) {
+                // Update and create mapping
+                await supabase
+                  .from("contacts")
+                  .update(contactData)
+                  .eq("id", existingContact.id);
+
+                await supabase
+                  .from("bling_id_mappings")
+                  .insert({
+                    tenant_id: tenantId,
+                    entity_type: "contact",
+                    local_id: existingContact.id,
+                    bling_id: String(blingContact.id),
+                    sync_direction: "bling_to_local",
+                  });
+                counts.updated++;
+              } else {
+                // Create new
+                const { data: newContact, error: insertError } = await supabase
+                  .from("contacts")
+                  .insert(contactData)
+                  .select("id")
+                  .single();
+
+                if (insertError) {
+                  throw new Error(insertError.message);
+                }
+
+                await supabase
+                  .from("bling_id_mappings")
+                  .insert({
+                    tenant_id: tenantId,
+                    entity_type: "contact",
+                    local_id: newContact.id,
+                    bling_id: String(blingContact.id),
+                    sync_direction: "bling_to_local",
+                  });
+                counts.created++;
+              }
+            }
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : "Unknown error";
+            errors.push({ entity: "contact", message: msg, details: blingContact.nome });
+            counts.errors++;
+          }
+        }
+
+        page++;
+        if (blingContacts.length < 100) hasMore = false;
+      }
+    }
+
+    // Export from Local to Bling
+    if (direction === "local_to_bling" || direction === "bidirectional") {
+      console.log(`[bling-sync] Exporting contacts to Bling...`);
+
+      // Get contacts without Bling mapping
+      const { data: localContacts } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .not("id", "in", `(SELECT local_id FROM bling_id_mappings WHERE entity_type = 'contact' AND tenant_id = '${tenantId}')`);
+
+      // Simpler approach - get all contacts and filter
+      const { data: allContacts } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .limit(500);
+
+      const { data: existingMappings } = await supabase
+        .from("bling_id_mappings")
+        .select("local_id")
+        .eq("tenant_id", tenantId)
+        .eq("entity_type", "contact");
+
+      const mappedIds = new Set((existingMappings || []).map((m: any) => m.local_id));
+      const contactsToExport = (allContacts || []).filter((c: any) => !mappedIds.has(c.id));
+
+      for (const contact of contactsToExport) {
+        try {
+          const blingData = {
+            nome: contact.full_name,
+            tipo: contact.person_type === "company" ? "J" : "F",
+            cpfCnpj: contact.cpf_cnpj || undefined,
+            email: contact.email || undefined,
+            celular: contact.phone,
+            endereco: contact.street ? {
+              endereco: contact.street,
+              numero: contact.number || "S/N",
+              complemento: contact.complement,
+              bairro: contact.neighborhood,
+              cep: contact.zip_code?.replace(/\D/g, ""),
+              municipio: contact.city,
+              uf: contact.state,
+            } : undefined,
+          };
+
+          const response = await blingApi("/contatos", accessToken, "POST", blingData);
+          const blingId = response.data?.id;
+
+          if (blingId) {
+            await supabase
+              .from("bling_id_mappings")
+              .insert({
+                tenant_id: tenantId,
+                entity_type: "contact",
+                local_id: contact.id,
+                bling_id: String(blingId),
+                sync_direction: "local_to_bling",
+              });
+            counts.created++;
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          errors.push({ entity: "contact", message: msg, details: contact.full_name });
+          counts.errors++;
+        }
+      }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    errors.push({ entity: "contacts", message: msg });
+  }
+
+  return { counts, errors };
+}
+
+// Sync Products
+async function syncProducts(supabase: any, tenantId: string, accessToken: string, direction: string) {
+  const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
+  const errors: Array<{ entity: string; message: string; details?: string }> = [];
+
+  try {
+    // Import from Bling to Local
+    if (direction === "bling_to_local" || direction === "bidirectional") {
+      console.log(`[bling-sync] Importing products from Bling...`);
+
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await blingApi(`/produtos?pagina=${page}&limite=100`, accessToken);
+        const blingProducts: BlingProduct[] = response.data || [];
+
+        if (blingProducts.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        for (const blingProduct of blingProducts) {
+          try {
+            const { data: existingMapping } = await supabase
+              .from("bling_id_mappings")
+              .select("local_id")
+              .eq("tenant_id", tenantId)
+              .eq("entity_type", "product")
+              .eq("bling_id", String(blingProduct.id))
+              .maybeSingle();
+
+            const productData = {
+              name: blingProduct.nome,
+              sku: blingProduct.codigo || null,
+              base_price: blingProduct.preco || 0,
+              cost_price: blingProduct.precoCusto || null,
+              short_description: blingProduct.descricaoCurta || null,
+              main_image_url: blingProduct.imagemURL || null,
+              ncm: blingProduct.ncm || null,
+              cest: blingProduct.cest || null,
+              origem: blingProduct.origem || null,
+              is_active: blingProduct.situacao === "A",
+              tenant_id: tenantId,
+            };
+
+            if (existingMapping?.local_id) {
+              await supabase
+                .from("products")
+                .update(productData)
+                .eq("id", existingMapping.local_id);
+              counts.updated++;
+            } else {
+              // Check by SKU
+              const { data: existingProduct } = await supabase
+                .from("products")
+                .select("id")
+                .eq("tenant_id", tenantId)
+                .eq("sku", blingProduct.codigo)
+                .maybeSingle();
+
+              if (existingProduct) {
+                await supabase
+                  .from("products")
+                  .update(productData)
+                  .eq("id", existingProduct.id);
+
+                await supabase
+                  .from("bling_id_mappings")
+                  .insert({
+                    tenant_id: tenantId,
+                    entity_type: "product",
+                    local_id: existingProduct.id,
+                    bling_id: String(blingProduct.id),
+                    sync_direction: "bling_to_local",
+                  });
+                counts.updated++;
+              } else {
+                const { data: newProduct, error: insertError } = await supabase
+                  .from("products")
+                  .insert(productData)
+                  .select("id")
+                  .single();
+
+                if (insertError) throw new Error(insertError.message);
+
+                await supabase
+                  .from("bling_id_mappings")
+                  .insert({
+                    tenant_id: tenantId,
+                    entity_type: "product",
+                    local_id: newProduct.id,
+                    bling_id: String(blingProduct.id),
+                    sync_direction: "bling_to_local",
+                  });
+                counts.created++;
+              }
+            }
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : "Unknown error";
+            errors.push({ entity: "product", message: msg, details: blingProduct.nome });
+            counts.errors++;
+          }
+        }
+
+        page++;
+        if (blingProducts.length < 100) hasMore = false;
+      }
+    }
+
+    // Export from Local to Bling
+    if (direction === "local_to_bling" || direction === "bidirectional") {
+      console.log(`[bling-sync] Exporting products to Bling...`);
+
+      const { data: allProducts } = await supabase
+        .from("products")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .limit(500);
+
+      const { data: existingMappings } = await supabase
+        .from("bling_id_mappings")
+        .select("local_id")
+        .eq("tenant_id", tenantId)
+        .eq("entity_type", "product");
+
+      const mappedIds = new Set((existingMappings || []).map((m: any) => m.local_id));
+      const productsToExport = (allProducts || []).filter((p: any) => !mappedIds.has(p.id));
+
+      for (const product of productsToExport) {
+        try {
+          const blingData = {
+            nome: product.name,
+            codigo: product.sku || undefined,
+            preco: product.base_price,
+            precoCusto: product.cost_price || undefined,
+            tipo: "P", // Produto
+            situacao: product.is_active ? "A" : "I",
+            formato: "S", // Simples
+            ncm: product.ncm || undefined,
+            cest: product.cest || undefined,
+            origem: product.origem || 0,
+          };
+
+          const response = await blingApi("/produtos", accessToken, "POST", blingData);
+          const blingId = response.data?.id;
+
+          if (blingId) {
+            await supabase
+              .from("bling_id_mappings")
+              .insert({
+                tenant_id: tenantId,
+                entity_type: "product",
+                local_id: product.id,
+                bling_id: String(blingId),
+                sync_direction: "local_to_bling",
+              });
+            counts.created++;
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          errors.push({ entity: "product", message: msg, details: product.name });
+          counts.errors++;
+        }
+      }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    errors.push({ entity: "products", message: msg });
+  }
+
+  return { counts, errors };
+}
+
+// Sync Orders
+async function syncOrders(supabase: any, tenantId: string, accessToken: string, direction: string) {
+  const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
+  const errors: Array<{ entity: string; message: string; details?: string }> = [];
+
+  try {
+    // Import from Bling to Local
+    if (direction === "bling_to_local" || direction === "bidirectional") {
+      console.log(`[bling-sync] Importing orders from Bling...`);
+
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await blingApi(`/pedidos/vendas?pagina=${page}&limite=100`, accessToken);
+        const blingOrders: BlingOrder[] = response.data || [];
+
+        if (blingOrders.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        for (const blingOrder of blingOrders) {
+          try {
+            const { data: existingMapping } = await supabase
+              .from("bling_id_mappings")
+              .select("local_id, bling_numero")
+              .eq("tenant_id", tenantId)
+              .eq("entity_type", "order")
+              .eq("bling_id", String(blingOrder.id))
+              .maybeSingle();
+
+            // Get contact mapping if exists
+            let contactId = null;
+            if (blingOrder.contato?.id) {
+              const { data: contactMapping } = await supabase
+                .from("bling_id_mappings")
+                .select("local_id")
+                .eq("tenant_id", tenantId)
+                .eq("entity_type", "contact")
+                .eq("bling_id", String(blingOrder.contato.id))
+                .maybeSingle();
+              contactId = contactMapping?.local_id;
+            }
+
+            const orderData = {
+              order_number: `BLING-${blingOrder.numero || blingOrder.id}`,
+              contact_id: contactId,
+              status: "confirmed",
+              total: blingOrder.total || 0,
+              discount_amount: blingOrder.desconto || 0,
+              shipping_cost: blingOrder.frete || 0,
+              notes: blingOrder.observacoes || null,
+              tenant_id: tenantId,
+            };
+
+            if (existingMapping?.local_id) {
+              await supabase
+                .from("orders")
+                .update(orderData)
+                .eq("id", existingMapping.local_id);
+              counts.updated++;
+            } else {
+              const { data: newOrder, error: insertError } = await supabase
+                .from("orders")
+                .insert(orderData)
+                .select("id")
+                .single();
+
+              if (insertError) throw new Error(insertError.message);
+
+              await supabase
+                .from("bling_id_mappings")
+                .insert({
+                  tenant_id: tenantId,
+                  entity_type: "order",
+                  local_id: newOrder.id,
+                  bling_id: String(blingOrder.id),
+                  bling_numero: String(blingOrder.numero || ""),
+                  sync_direction: "bling_to_local",
+                });
+              counts.created++;
+            }
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : "Unknown error";
+            errors.push({ entity: "order", message: msg, details: `Pedido ${blingOrder.numero}` });
+            counts.errors++;
+          }
+        }
+
+        page++;
+        if (blingOrders.length < 100) hasMore = false;
+      }
+    }
+
+    // Export from Local to Bling
+    if (direction === "local_to_bling" || direction === "bidirectional") {
+      console.log(`[bling-sync] Exporting orders to Bling...`);
+
+      const { data: allOrders } = await supabase
+        .from("orders")
+        .select("*, contact:contacts(*)")
+        .eq("tenant_id", tenantId)
+        .in("status", ["confirmed", "processing", "shipped"])
+        .limit(200);
+
+      const { data: existingMappings } = await supabase
+        .from("bling_id_mappings")
+        .select("local_id")
+        .eq("tenant_id", tenantId)
+        .eq("entity_type", "order");
+
+      const mappedIds = new Set((existingMappings || []).map((m: any) => m.local_id));
+      const ordersToExport = (allOrders || []).filter((o: any) => !mappedIds.has(o.id));
+
+      for (const order of ordersToExport) {
+        try {
+          // Get contact Bling ID
+          let contatoId = null;
+          if (order.contact_id) {
+            const { data: contactMapping } = await supabase
+              .from("bling_id_mappings")
+              .select("bling_id")
+              .eq("tenant_id", tenantId)
+              .eq("entity_type", "contact")
+              .eq("local_id", order.contact_id)
+              .maybeSingle();
+            contatoId = contactMapping?.bling_id ? parseInt(contactMapping.bling_id) : null;
+          }
+
+          // Get order items
+          const { data: orderItems } = await supabase
+            .from("order_items")
+            .select("*, product:products(*)")
+            .eq("order_id", order.id);
+
+          const itens = [];
+          for (const item of orderItems || []) {
+            // Get product Bling ID
+            const { data: productMapping } = await supabase
+              .from("bling_id_mappings")
+              .select("bling_id")
+              .eq("tenant_id", tenantId)
+              .eq("entity_type", "product")
+              .eq("local_id", item.product_id)
+              .maybeSingle();
+
+            if (productMapping?.bling_id) {
+              itens.push({
+                produto: { id: parseInt(productMapping.bling_id) },
+                quantidade: item.quantity,
+                valor: item.unit_price,
+                desconto: item.discount_amount || 0,
+              });
+            }
+          }
+
+          const blingData: any = {
+            data: new Date().toISOString().split("T")[0],
+            desconto: order.discount_amount || 0,
+            frete: order.shipping_cost || 0,
+            observacoes: order.notes || "",
+            itens,
+          };
+
+          if (contatoId) {
+            blingData.contato = { id: contatoId };
+          }
+
+          const response = await blingApi("/pedidos/vendas", accessToken, "POST", blingData);
+          const blingId = response.data?.id;
+          const blingNumero = response.data?.numero;
+
+          if (blingId) {
+            await supabase
+              .from("bling_id_mappings")
+              .insert({
+                tenant_id: tenantId,
+                entity_type: "order",
+                local_id: order.id,
+                bling_id: String(blingId),
+                bling_numero: blingNumero ? String(blingNumero) : null,
+                sync_direction: "local_to_bling",
+              });
+            counts.created++;
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          errors.push({ entity: "order", message: msg, details: order.order_number });
+          counts.errors++;
+        }
+      }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    errors.push({ entity: "orders", message: msg });
+  }
+
+  return { counts, errors };
+}
+
+// Sync Quotes (similar structure to orders)
+async function syncQuotes(supabase: any, tenantId: string, accessToken: string, direction: string) {
+  const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
+  const errors: Array<{ entity: string; message: string; details?: string }> = [];
+
+  try {
+    // Export from Local to Bling (quotes typically originate locally)
+    if (direction === "local_to_bling" || direction === "bidirectional") {
+      console.log(`[bling-sync] Exporting quotes to Bling...`);
+
+      const { data: allQuotes } = await supabase
+        .from("quotes")
+        .select("*, contact:contacts(*)")
+        .eq("tenant_id", tenantId)
+        .in("status", ["draft", "sent", "pending"])
+        .limit(200);
+
+      const { data: existingMappings } = await supabase
+        .from("bling_id_mappings")
+        .select("local_id")
+        .eq("tenant_id", tenantId)
+        .eq("entity_type", "quote");
+
+      const mappedIds = new Set((existingMappings || []).map((m: any) => m.local_id));
+      const quotesToExport = (allQuotes || []).filter((q: any) => !mappedIds.has(q.id));
+
+      for (const quote of quotesToExport) {
+        try {
+          // Get contact Bling ID
+          let contatoId = null;
+          if (quote.contact_id) {
+            const { data: contactMapping } = await supabase
+              .from("bling_id_mappings")
+              .select("bling_id")
+              .eq("tenant_id", tenantId)
+              .eq("entity_type", "contact")
+              .eq("local_id", quote.contact_id)
+              .maybeSingle();
+            contatoId = contactMapping?.bling_id ? parseInt(contactMapping.bling_id) : null;
+          }
+
+          // Get quote items
+          const { data: quoteItems } = await supabase
+            .from("quote_items")
+            .select("*, product:products(*)")
+            .eq("quote_id", quote.id);
+
+          const itens = [];
+          for (const item of quoteItems || []) {
+            const { data: productMapping } = await supabase
+              .from("bling_id_mappings")
+              .select("bling_id")
+              .eq("tenant_id", tenantId)
+              .eq("entity_type", "product")
+              .eq("local_id", item.product_id)
+              .maybeSingle();
+
+            if (productMapping?.bling_id) {
+              itens.push({
+                produto: { id: parseInt(productMapping.bling_id) },
+                quantidade: item.quantity,
+                valor: item.unit_price,
+                desconto: item.discount_amount || 0,
+              });
+            }
+          }
+
+          // Bling uses "propostas comerciais" for quotes
+          const blingData: any = {
+            data: new Date().toISOString().split("T")[0],
+            desconto: quote.discount_amount || 0,
+            frete: quote.shipping_cost || 0,
+            observacoes: quote.notes || "",
+            itens,
+          };
+
+          if (contatoId) {
+            blingData.contato = { id: contatoId };
+          }
+
+          // Note: Bling may use different endpoint for proposals
+          // Using pedidos/vendas with situacao for quotes
+          const response = await blingApi("/pedidos/vendas", accessToken, "POST", blingData);
+          const blingId = response.data?.id;
+          const blingNumero = response.data?.numero;
+
+          if (blingId) {
+            await supabase
+              .from("bling_id_mappings")
+              .insert({
+                tenant_id: tenantId,
+                entity_type: "quote",
+                local_id: quote.id,
+                bling_id: String(blingId),
+                bling_numero: blingNumero ? String(blingNumero) : null,
+                sync_direction: "local_to_bling",
+              });
+            counts.created++;
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          errors.push({ entity: "quote", message: msg, details: quote.quote_number });
+          counts.errors++;
+        }
+      }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    errors.push({ entity: "quotes", message: msg });
+  }
+
+  return { counts, errors };
+}

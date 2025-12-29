@@ -216,18 +216,49 @@ export function useBlingLogs(limit = 10) {
   });
 }
 
-// Hook to trigger manual sync (placeholder for Phase 2)
+// Hook to trigger manual sync
 export function useTriggerBlingSync() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (entityType?: string) => {
-      // This will be implemented in Phase 2
-      toast.info('Sincronização será implementada na Fase 2');
-      return { message: 'Sync not yet implemented' };
+    mutationFn: async (entityType?: 'contacts' | 'orders' | 'products' | 'quotes' | 'all') => {
+      // Get config to get tenant_id
+      const { data: config } = await supabase
+        .from('bling_integration_config')
+        .select('tenant_id')
+        .maybeSingle();
+
+      if (!config?.tenant_id) {
+        throw new Error('Bling not configured');
+      }
+
+      const { data, error } = await supabase.functions.invoke('bling-sync', {
+        body: {
+          tenant_id: config.tenant_id,
+          entity_type: entityType || 'all',
+          direction: 'bidirectional',
+        },
+      });
+
+      if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['bling-sync-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['bling-config'] });
+      
+      const summary = data?.summary;
+      if (summary) {
+        toast.success(
+          `Sincronização concluída: ${summary.created} criados, ${summary.updated} atualizados${summary.errors > 0 ? `, ${summary.errors} erros` : ''}`
+        );
+      } else {
+        toast.success('Sincronização concluída');
+      }
+    },
+    onError: (error) => {
+      console.error('Sync error:', error);
+      toast.error('Erro ao sincronizar com Bling');
     },
   });
 }
