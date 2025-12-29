@@ -196,6 +196,10 @@ export default function Contacts() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
   
+  // Estado para exclusão em massa
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  
   // Estado para seletor de canal WhatsApp
   const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [selectedContactForChat, setSelectedContactForChat] = useState<Contact | null>(null);
@@ -281,6 +285,47 @@ export default function Contacts() {
       setContactToDelete(null);
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao excluir contato');
+    }
+  };
+
+  // Função para exclusão em massa
+  const handleBulkDelete = () => {
+    if (!isAdmin) {
+      toast.error('Apenas administradores podem excluir contatos');
+      return;
+    }
+    if (selectedContacts.length === 0) {
+      toast.error('Nenhum contato selecionado');
+      return;
+    }
+    setBulkDeleteConfirmOpen(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    if (selectedContacts.length === 0) return;
+    
+    setIsBulkDeleting(true);
+    let deleted = 0;
+    let errors = 0;
+
+    for (const contactId of selectedContacts) {
+      try {
+        await deleteContactPermanently.mutateAsync(contactId);
+        deleted++;
+      } catch (error) {
+        errors++;
+        console.error(`Erro ao excluir contato ${contactId}:`, error);
+      }
+    }
+
+    setIsBulkDeleting(false);
+    setBulkDeleteConfirmOpen(false);
+    setSelectedContacts([]);
+
+    if (errors > 0) {
+      toast.warning(`${deleted} contato(s) excluído(s), ${errors} erro(s)`);
+    } else {
+      toast.success(`${deleted} contato(s) excluído(s) com sucesso!`);
     }
   };
 
@@ -710,7 +755,10 @@ export default function Contacts() {
               <Download size={16} />
               Exportar
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-destructive/80 hover:bg-destructive rounded-lg text-sm font-medium transition-colors">
+            <button 
+              onClick={handleBulkDelete}
+              className="flex items-center gap-2 px-4 py-2 bg-destructive/80 hover:bg-destructive rounded-lg text-sm font-medium transition-colors"
+            >
               <Trash2 size={16} />
               Excluir
             </button>
@@ -1335,6 +1383,51 @@ export default function Contacts() {
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : null}
               Excluir Permanentemente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de confirmação de exclusão em massa */}
+      <AlertDialog open={bulkDeleteConfirmOpen} onOpenChange={setBulkDeleteConfirmOpen}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Excluir {selectedContacts.length} Contato(s)
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Você está prestes a excluir <strong>{selectedContacts.length} contato(s)</strong> permanentemente.
+                </p>
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm">
+                  <p className="font-medium text-destructive mb-2">Esta ação irá excluir de cada contato:</p>
+                  <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                    <li>Todas as conversas e mensagens</li>
+                    <li>Todos os orçamentos</li>
+                    <li>Todos os pedidos</li>
+                    <li>Histórico financeiro</li>
+                    <li>Tags e notas</li>
+                  </ul>
+                </div>
+                <p className="font-semibold text-destructive">
+                  Esta ação NÃO pode ser desfeita!
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmBulkDelete}
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={isBulkDeleting}
+            >
+              {isBulkDeleting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Excluir {selectedContacts.length} Contato(s)
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
