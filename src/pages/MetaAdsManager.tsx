@@ -27,9 +27,10 @@ import {
 } from '@/hooks/useMetaAds';
 import { MetaConnect } from '@/components/meta/MetaConnect';
 import { MetaSyncStatus } from '@/components/meta/MetaSyncStatus';
+import { SpendDistributionChart } from '@/components/meta/SpendDistributionChart';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
-  PieChart, Pie, Cell, Tooltip
+  Tooltip
 } from 'recharts';
 import { DashboardGrid, DashboardCardConfig } from '@/components/dashboard/DashboardGrid';
 
@@ -497,25 +498,11 @@ export default function MetaAdsManager() {
                       {campaignsLoading ? (
                         <Skeleton className="h-[300px] w-full" />
                       ) : pieData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                          <PieChart>
-                            <Pie
-                              data={pieData}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              outerRadius={100}
-                              fill="#8884d8"
-                              dataKey="value"
-                              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            >
-                              {pieData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                              ))}
-                            </Pie>
-                            <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                          </PieChart>
-                        </ResponsiveContainer>
+                        <SpendDistributionChart 
+                          data={pieData} 
+                          colors={COLORS} 
+                          formatCurrency={formatCurrency} 
+                        />
                       ) : (
                         <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                           Nenhum dado disponível
