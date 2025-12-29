@@ -39,11 +39,57 @@ export function MetaConnect() {
   const [oauthData, setOauthData] = useState<{ accessToken: string; expiresIn: number } | null>(null);
   const queryClient = useQueryClient();
 
-  // Handle OAuth popup messages
-  const handleMessage = useCallback((event: MessageEvent) => {
-    // Verify origin for security (accept messages from our supabase functions)
-    const data = event.data as OAuthMessage;
+  // Reference to popup for polling
+  const popupRef = useCallback((popup: Window | null) => {
+    if (!popup) return;
     
+    // Poll localStorage while popup is open (for same-origin fallback check)
+    const pollInterval = setInterval(() => {
+      try {
+        const storedData = localStorage.getItem('meta_oauth_result');
+        if (storedData) {
+          const data = JSON.parse(storedData) as OAuthMessage;
+          if (data.type === 'META_OAUTH_SUCCESS' || data.type === 'META_OAUTH_ERROR') {
+            console.log('[MetaConnect] Found OAuth data in localStorage');
+            localStorage.removeItem('meta_oauth_result');
+            clearInterval(pollInterval);
+            
+            if (data.type === 'META_OAUTH_SUCCESS') {
+              setIsLoading(false);
+              if (data.adAccounts && data.adAccounts.length > 0) {
+                setAdAccounts(data.adAccounts);
+                setOauthData({
+                  accessToken: data.accessToken!,
+                  expiresIn: data.expiresIn || 5184000
+                });
+                setSelectedAccountId(data.adAccounts[0].id);
+                setStep('selecting');
+              } else {
+                toast.error('Nenhuma conta de anúncios encontrada.');
+              }
+            } else {
+              setIsLoading(false);
+              toast.error(`Erro na autenticação: ${data.error}`);
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+      
+      if (popup.closed) {
+        clearInterval(pollInterval);
+        if (step === 'initial') {
+          setIsLoading(false);
+        }
+      }
+    }, 500);
+    
+    return () => clearInterval(pollInterval);
+  }, [step]);
+
+  // Handle localStorage fallback for OAuth data
+  const processOAuthData = useCallback((data: OAuthMessage) => {
     if (data.type === 'META_OAUTH_SUCCESS') {
       console.log('[MetaConnect] OAuth success, accounts:', data.adAccounts?.length);
       setIsLoading(false);
@@ -67,9 +113,36 @@ export function MetaConnect() {
   }, []);
 
   useEffect(() => {
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [handleMessage]);
+    // Listen for postMessage
+    const messageHandler = (event: MessageEvent) => {
+      const data = event.data as OAuthMessage;
+      if (data.type === 'META_OAUTH_SUCCESS' || data.type === 'META_OAUTH_ERROR') {
+        processOAuthData(data);
+      }
+    };
+    
+    window.addEventListener('message', messageHandler);
+    
+    // Listen for localStorage changes (fallback)
+    const storageHandler = (event: StorageEvent) => {
+      if (event.key === 'meta_oauth_result' && event.newValue) {
+        try {
+          const data = JSON.parse(event.newValue) as OAuthMessage;
+          processOAuthData(data);
+          localStorage.removeItem('meta_oauth_result');
+        } catch (e) {
+          console.error('[MetaConnect] Error parsing localStorage data:', e);
+        }
+      }
+    };
+    
+    window.addEventListener('storage', storageHandler);
+    
+    return () => {
+      window.removeEventListener('message', messageHandler);
+      window.removeEventListener('storage', storageHandler);
+    };
+  }, [processOAuthData]);
 
   const handleConnectWithFacebook = async () => {
     setIsLoading(true);
@@ -101,6 +174,9 @@ export function MetaConnect() {
         throw new Error(data.error || 'Erro ao iniciar autenticação');
       }
 
+      // Clear any previous OAuth data
+      localStorage.removeItem('meta_oauth_result');
+      
       // Open popup for Facebook login
       const width = 600;
       const height = 700;
@@ -119,16 +195,8 @@ export function MetaConnect() {
         return;
       }
 
-      // Monitor popup close
-      const checkPopup = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkPopup);
-          // If still loading after popup closed, user probably cancelled
-          if (step === 'initial') {
-            setIsLoading(false);
-          }
-        }
-      }, 500);
+      // Start polling for OAuth result
+      popupRef(popup);
 
     } catch (error: any) {
       console.error('[MetaConnect] Error:', error);
