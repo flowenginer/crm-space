@@ -449,10 +449,12 @@ export function useInitializeBlingStatusMappings() {
 
 // Hook to preview data from Bling before importing
 export function useBlingPreview(entityType: BlingImportEntityType) {
-  const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: async (): Promise<BlingPreviewResult> => {
+    mutationFn: async (filters?: { 
+      startDate?: string; 
+      endDate?: string;
+      mode?: 'all' | 'new_only' | 'update_existing';
+    }): Promise<BlingPreviewResult> => {
       const { data: config } = await supabase
         .from('bling_integration_config')
         .select('tenant_id')
@@ -462,15 +464,15 @@ export function useBlingPreview(entityType: BlingImportEntityType) {
         throw new Error('Bling not configured');
       }
 
-      // Map financial to a supported type for the edge function
-      const syncEntityType = entityType === 'financial' ? 'all' : entityType;
-
       const { data, error } = await supabase.functions.invoke('bling-sync', {
         body: {
           tenant_id: config.tenant_id,
-          entity_type: syncEntityType,
+          entity_type: entityType, // Send the actual entity type (including 'financial')
           direction: 'bling_to_local',
           preview_only: true,
+          start_date: filters?.startDate,
+          end_date: filters?.endDate,
+          import_mode: filters?.mode,
         },
       });
 
@@ -479,9 +481,12 @@ export function useBlingPreview(entityType: BlingImportEntityType) {
       // Transform the response into preview format
       const items: BlingPreviewItem[] = (data?.preview || []).map((item: any) => ({
         id: item.id?.toString() || item.bling_id?.toString() || '',
-        name: item.nome || item.name || item.fantasia || item.razaoSocial || 'Sem nome',
+        name: item.nome || item.name || item.fantasia || item.razaoSocial || item.descricao || 'Sem nome',
         code: item.codigo || item.numero || undefined,
         isNew: !item.exists_locally,
+        date: item.data || item.dataEmissao || item.vencimento || undefined,
+        value: item.valor || item.total || undefined,
+        dependencies: item.dependencies,
       }));
 
       return {
@@ -491,6 +496,7 @@ export function useBlingPreview(entityType: BlingImportEntityType) {
           new: data?.summary?.new || items.filter((i: BlingPreviewItem) => i.isNew).length,
           existing: data?.summary?.existing || items.filter((i: BlingPreviewItem) => !i.isNew).length,
         },
+        dependencies: data?.dependencies,
       };
     },
     onError: (error) => {
@@ -527,13 +533,10 @@ export function useBlingImport() {
         throw new Error('Bling not configured');
       }
 
-      // Map financial to a supported type for the edge function
-      const syncEntityType = entityType === 'financial' ? 'all' : entityType;
-
       const { data, error } = await supabase.functions.invoke('bling-sync', {
         body: {
           tenant_id: config.tenant_id,
-          entity_type: syncEntityType,
+          entity_type: entityType, // Send actual entity type (including 'financial')
           direction: 'bling_to_local',
           import_mode: mode,
           selected_ids: selectedIds,
