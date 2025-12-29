@@ -76,16 +76,71 @@ serve(async (req) => {
       
       if (error) {
         console.error('[Meta OAuth] Error:', error);
-        return new Response(`
+        const errorHtml = `
+          <!DOCTYPE html>
           <html>
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Erro na Conexão</title>
+              <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { 
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  min-height: 100vh;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  padding: 20px;
+                }
+                .container {
+                  background: white;
+                  border-radius: 16px;
+                  padding: 40px;
+                  max-width: 400px;
+                  text-align: center;
+                  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                }
+                .icon { font-size: 48px; margin-bottom: 20px; }
+                h1 { color: #dc2626; font-size: 24px; margin-bottom: 12px; }
+                p { color: #666; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+                .btn {
+                  background: #3b82f6;
+                  color: white;
+                  border: none;
+                  padding: 12px 24px;
+                  border-radius: 8px;
+                  font-size: 14px;
+                  cursor: pointer;
+                  transition: background 0.2s;
+                }
+                .btn:hover { background: #2563eb; }
+              </style>
+            </head>
             <body>
+              <div class="container">
+                <div class="icon">❌</div>
+                <h1>Erro na Autenticação</h1>
+                <p>${error}</p>
+                <button class="btn" onclick="window.close()">Fechar</button>
+              </div>
               <script>
-                window.opener.postMessage({ type: 'META_OAUTH_ERROR', error: '${error}' }, '*');
-                window.close();
+                const errorData = { type: 'META_OAUTH_ERROR', error: '${error}' };
+                
+                // Try postMessage first
+                if (window.opener) {
+                  window.opener.postMessage(errorData, '*');
+                  setTimeout(() => window.close(), 1000);
+                } else {
+                  // Fallback to localStorage
+                  localStorage.setItem('meta_oauth_result', JSON.stringify(errorData));
+                }
               </script>
             </body>
           </html>
-        `, { headers: { 'Content-Type': 'text/html' } });
+        `;
+        return new Response(errorHtml, { headers: { 'Content-Type': 'text/html' } });
       }
 
       if (!code) {
@@ -107,16 +162,44 @@ serve(async (req) => {
 
       if (!tokenData.access_token) {
         console.error('[Meta OAuth] No access token:', tokenData);
-        return new Response(`
+        const tokenErrorHtml = `
+          <!DOCTYPE html>
           <html>
+            <head>
+              <meta charset="UTF-8">
+              <title>Erro</title>
+              <style>
+                body { 
+                  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+                }
+                .container { background: white; border-radius: 16px; padding: 40px; text-align: center; }
+                .icon { font-size: 48px; margin-bottom: 20px; }
+                h1 { color: #dc2626; margin-bottom: 12px; }
+                .btn { background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; }
+              </style>
+            </head>
             <body>
+              <div class="container">
+                <div class="icon">❌</div>
+                <h1>Erro ao obter token</h1>
+                <p>Não foi possível obter o token de acesso.</p>
+                <button class="btn" onclick="window.close()">Fechar</button>
+              </div>
               <script>
-                window.opener.postMessage({ type: 'META_OAUTH_ERROR', error: 'Failed to get access token' }, '*');
-                window.close();
+                const errorData = { type: 'META_OAUTH_ERROR', error: 'Failed to get access token' };
+                if (window.opener) {
+                  window.opener.postMessage(errorData, '*');
+                  setTimeout(() => window.close(), 1000);
+                } else {
+                  localStorage.setItem('meta_oauth_result', JSON.stringify(errorData));
+                }
               </script>
             </body>
           </html>
-        `, { headers: { 'Content-Type': 'text/html' } });
+        `;
+        return new Response(tokenErrorHtml, { headers: { 'Content-Type': 'text/html' } });
       }
 
       // Get long-lived token
@@ -138,23 +221,125 @@ serve(async (req) => {
       const adAccountsData = await adAccountsResponse.json();
       console.log('[Meta OAuth] Ad accounts:', adAccountsData);
 
-      // Return HTML that posts message to opener
-      return new Response(`
+      // Return HTML that posts message to opener with localStorage fallback
+      const successData = {
+        type: 'META_OAUTH_SUCCESS',
+        accessToken: accessToken,
+        expiresIn: expiresIn,
+        adAccounts: adAccountsData.data || [],
+        state: state
+      };
+      
+      const successHtml = `
+        <!DOCTYPE html>
         <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Conexão Realizada</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+              }
+              .container {
+                background: white;
+                border-radius: 16px;
+                padding: 40px;
+                max-width: 400px;
+                text-align: center;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+              }
+              .icon { font-size: 64px; margin-bottom: 20px; }
+              h1 { color: #16a34a; font-size: 24px; margin-bottom: 12px; }
+              p { color: #666; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+              .status { 
+                background: #f0fdf4; 
+                border: 1px solid #bbf7d0; 
+                border-radius: 8px; 
+                padding: 12px; 
+                margin-bottom: 20px;
+                color: #166534;
+                font-size: 13px;
+              }
+              .btn {
+                background: #3b82f6;
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 14px;
+                cursor: pointer;
+                transition: background 0.2s;
+              }
+              .btn:hover { background: #2563eb; }
+              .accounts { 
+                text-align: left; 
+                font-size: 12px; 
+                color: #666; 
+                margin-top: 16px;
+                padding: 12px;
+                background: #f9fafb;
+                border-radius: 8px;
+              }
+              .accounts strong { color: #333; }
+            </style>
+          </head>
           <body>
+            <div class="container">
+              <div class="icon">✅</div>
+              <h1>Conexão Realizada!</h1>
+              <div id="status" class="status">Processando...</div>
+              <p id="message">Aguarde enquanto processamos sua conexão.</p>
+              <button class="btn" id="closeBtn" style="display: none;" onclick="window.close()">Fechar esta janela</button>
+              <div class="accounts">
+                <strong>Contas encontradas:</strong> ${(adAccountsData.data || []).length}
+              </div>
+            </div>
             <script>
-              window.opener.postMessage({ 
-                type: 'META_OAUTH_SUCCESS', 
-                accessToken: '${accessToken}',
-                expiresIn: ${expiresIn},
-                adAccounts: ${JSON.stringify(adAccountsData.data || [])},
-                state: '${state}'
-              }, '*');
-              window.close();
+              const oauthData = ${JSON.stringify(successData)};
+              const statusEl = document.getElementById('status');
+              const messageEl = document.getElementById('message');
+              const closeBtn = document.getElementById('closeBtn');
+              
+              function showSuccess(method) {
+                statusEl.textContent = '✓ Dados enviados com sucesso!';
+                messageEl.textContent = method === 'postMessage' 
+                  ? 'Esta janela será fechada automaticamente...'
+                  : 'Volte para a aba do CRM para selecionar sua conta.';
+                closeBtn.style.display = 'inline-block';
+              }
+              
+              // Try postMessage first
+              if (window.opener) {
+                try {
+                  window.opener.postMessage(oauthData, '*');
+                  showSuccess('postMessage');
+                  setTimeout(() => {
+                    try { window.close(); } catch(e) {}
+                  }, 1500);
+                } catch(e) {
+                  // Fallback to localStorage
+                  localStorage.setItem('meta_oauth_result', JSON.stringify(oauthData));
+                  showSuccess('localStorage');
+                }
+              } else {
+                // No opener - use localStorage
+                localStorage.setItem('meta_oauth_result', JSON.stringify(oauthData));
+                showSuccess('localStorage');
+              }
             </script>
           </body>
         </html>
-      `, { headers: { 'Content-Type': 'text/html' } });
+      `;
+      
+      return new Response(successHtml, { headers: { 'Content-Type': 'text/html' } });
     }
 
     if (action === 'manual-connect') {
