@@ -1447,7 +1447,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   // Build filters for server-side filtering and sorting
   const conversationFilters: ConversationFilters = useMemo(() => ({
     assignment: (quickFilter === 'pinned' || quickFilter === 'shared') ? 'all' : quickFilter === 'pending' ? 'pending' : quickFilter,
-    sortBy: (sortFilter === 'newest' || sortFilter === 'oldest' || sortFilter === 'unread') ? sortFilter : 'newest',
+    sortBy: sortFilter,
     channelId: channelFilter !== 'all' ? channelFilter : undefined,
     isUnread: sortFilter === 'unread' ? true : undefined,
     // Filtros avançados - aplicados no servidor
