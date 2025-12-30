@@ -26,6 +26,7 @@ export function UTMBreakdownDialog({ open, onOpenChange, campaignId, campaignNam
       "UTM Source": row.utm_source || "(direto)",
       "UTM Medium": row.utm_medium || "(none)",
       "UTM Campaign": row.utm_campaign || "(none)",
+      "UTM Content": row.utm_content || "(none)",
       Visitas: row.visits,
       Leads: row.leads,
       "Taxa Conv. (%)": row.visits > 0 ? ((row.leads / row.visits) * 100).toFixed(1) : "0.0",
@@ -124,6 +125,7 @@ export function UTMBreakdownDialog({ open, onOpenChange, campaignId, campaignNam
                     <TableHead>UTM Source</TableHead>
                     <TableHead>UTM Medium</TableHead>
                     <TableHead>UTM Campaign</TableHead>
+                    <TableHead>UTM Content</TableHead>
                     <TableHead className="text-right">Visitas</TableHead>
                     <TableHead className="text-right">Leads</TableHead>
                     <TableHead className="text-right">Taxa Conv.</TableHead>
@@ -132,7 +134,7 @@ export function UTMBreakdownDialog({ open, onOpenChange, campaignId, campaignNam
                 <TableBody>
                   {data?.breakdown.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         Nenhum dado disponível
                       </TableCell>
                     </TableRow>
@@ -160,6 +162,9 @@ export function UTMBreakdownDialog({ open, onOpenChange, campaignId, campaignNam
                           </TableCell>
                           <TableCell className={!row.utm_campaign ? "text-muted-foreground" : ""}>
                             {row.utm_campaign || "(none)"}
+                          </TableCell>
+                          <TableCell className={!row.utm_content ? "text-muted-foreground" : ""}>
+                            {row.utm_content || "(none)"}
                           </TableCell>
                           <TableCell className="text-right font-medium">{row.visits}</TableCell>
                           <TableCell className="text-right font-medium">{row.leads}</TableCell>
