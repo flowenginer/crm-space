@@ -13,7 +13,7 @@ import type { ABTest, CreateABTestInput } from '@/hooks/useABTests';
 
 interface ABTestFormProps {
   abTest?: ABTest | null;
-  onSubmit: (data: CreateABTestInput) => Promise<void>;
+  onSubmit: (data: CreateABTestInput) => void;
   onCancel: () => void;
   isLoading?: boolean;
 }

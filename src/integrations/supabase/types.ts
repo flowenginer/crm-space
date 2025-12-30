@@ -7299,6 +7299,9 @@ export type Database = {
       redirect_campaigns: {
         Row: {
           background_color: string | null
+          background_image_opacity: number | null
+          background_image_position: string | null
+          background_image_url: string | null
           button_color: string | null
           button_text: string | null
           created_at: string | null
@@ -7324,6 +7327,9 @@ export type Database = {
         }
         Insert: {
           background_color?: string | null
+          background_image_opacity?: number | null
+          background_image_position?: string | null
+          background_image_url?: string | null
           button_color?: string | null
           button_text?: string | null
           created_at?: string | null
@@ -7349,6 +7355,9 @@ export type Database = {
         }
         Update: {
           background_color?: string | null
+          background_image_opacity?: number | null
+          background_image_position?: string | null
+          background_image_url?: string | null
           button_color?: string | null
           button_text?: string | null
           created_at?: string | null
