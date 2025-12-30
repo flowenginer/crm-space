@@ -91,6 +91,8 @@ export function useRedirectCampaigns() {
       return data as RedirectCampaign[];
     },
     enabled: !!tenantId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,   // 10 minutes
   });
 }
 
@@ -120,6 +122,8 @@ export function useRedirectCampaign(id: string | undefined) {
       return data as RedirectCampaign;
     },
     enabled: !!id && !!tenantId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 }
 
@@ -301,5 +305,7 @@ export function useRedirectCampaignLogs(campaignId: string | undefined) {
       return data;
     },
     enabled: !!campaignId && !!tenantId,
+    staleTime: 2 * 60 * 1000, // 2 minutes for logs
+    gcTime: 5 * 60 * 1000,
   });
 }
