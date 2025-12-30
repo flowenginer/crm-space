@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
 
     console.log('[redirect-capture] Processando lead:', { campaign_id, phone: phone.substring(0, 5) + '***' });
 
-    // 1. Buscar campanha com canais
+    // 1. Buscar campanha com canais e novos campos
     const { data: campaign, error: campaignError } = await supabase
       .from('redirect_campaigns')
       .select(`
@@ -159,6 +159,7 @@ Deno.serve(async (req) => {
 
     // 5. Buscar ou criar contato
     let contactId: string | null = null;
+    let isNewContact = false;
     
     // Tentar encontrar contato existente pelo telefone
     const { data: existingContact } = await supabase
@@ -172,18 +173,25 @@ Deno.serve(async (req) => {
       contactId = existingContact.id;
       console.log('[redirect-capture] Contato existente:', contactId);
     } else {
-      // Criar novo contato
+      // Criar novo contato com department_id se definido
+      const contactData: any = {
+        tenant_id,
+        phone,
+        full_name: `Lead ${phone.slice(-4)}`,
+        origin: determineOrigin(utms),
+        origin_campaign: utms.utm_campaign || campaign.name,
+        referral_data: utms,
+        lead_status: 'new',
+      };
+
+      // Adicionar department_id se a campanha tiver
+      if (campaign.department_id) {
+        contactData.department_id = campaign.department_id;
+      }
+
       const { data: newContact, error: contactError } = await supabase
         .from('contacts')
-        .insert({
-          tenant_id,
-          phone,
-          full_name: `Lead ${phone.slice(-4)}`,
-          origin: determineOrigin(utms),
-          origin_campaign: utms.utm_campaign || campaign.name,
-          referral_data: utms,
-          lead_status: 'new',
-        })
+        .insert(contactData)
         .select('id')
         .single();
 
@@ -191,6 +199,7 @@ Deno.serve(async (req) => {
         console.error('[redirect-capture] Erro ao criar contato:', contactError);
       } else {
         contactId = newContact.id;
+        isNewContact = true;
         console.log('[redirect-capture] Novo contato criado:', contactId);
 
         // Incrementar total de leads
@@ -198,6 +207,23 @@ Deno.serve(async (req) => {
           .from('redirect_campaigns')
           .update({ total_leads: campaign.total_leads + 1 })
           .eq('id', campaign_id);
+
+        // Adicionar TAG ao contato se definida
+        if (campaign.tag_id && contactId) {
+          const { error: tagError } = await supabase
+            .from('contact_tags')
+            .insert({
+              contact_id: contactId,
+              tag_id: campaign.tag_id,
+              tenant_id,
+            });
+
+          if (tagError) {
+            console.error('[redirect-capture] Erro ao adicionar tag:', tagError);
+          } else {
+            console.log('[redirect-capture] Tag adicionada ao contato');
+          }
+        }
 
         // Disparar fluxos de automação para o novo lead
         try {
@@ -249,23 +275,14 @@ Deno.serve(async (req) => {
       console.error('[redirect-capture] Erro ao registrar log:', logError);
     }
 
-    // 7. Formatar número do canal para wa.me
-    let redirectPhone = selectedChannel.phone.replace(/\D/g, '');
-    
-    // Garantir que começa com código do país
-    if (!redirectPhone.startsWith('55') && redirectPhone.length === 11) {
-      redirectPhone = '55' + redirectPhone;
-    }
+    console.log('[redirect-capture] Lead capturado com sucesso');
 
-    console.log('[redirect-capture] Redirecionando para:', redirectPhone);
-
+    // 7. Retornar sucesso com mensagem de obrigado (sem redirect para WhatsApp)
     return new Response(
       JSON.stringify({
         success: true,
-        redirect_phone: redirectPhone,
-        channel_name: selectedChannel.name,
-        welcome_message: campaign.welcome_message,
         contact_id: contactId,
+        thank_you_message: campaign.thank_you_message || 'Obrigado! Entraremos em contato em breve.',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -9,7 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Palette, Users, Percent, Eye } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
+import { Loader2, Palette, Users, Percent, Eye, Building2, Tag } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -23,8 +25,11 @@ const campaignSchema = z.object({
   button_text: z.string().optional(),
   button_color: z.string().optional(),
   background_color: z.string().optional(),
-  welcome_message: z.string().optional(),
   logo_url: z.string().optional(),
+  logo_size: z.number().min(40).max(200).optional(),
+  thank_you_message: z.string().optional(),
+  department_id: z.string().optional(),
+  tag_id: z.string().optional(),
 });
 
 type CampaignFormData = z.infer<typeof campaignSchema>;
@@ -47,6 +52,8 @@ interface RedirectCampaignFormProps {
 
 export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }: RedirectCampaignFormProps) {
   const { profile } = useAuth();
+  
+  // Buscar canais de WhatsApp
   const { data: channels = [] } = useQuery({
     queryKey: ['whatsapp-channels', profile?.tenant_id],
     queryFn: async () => {
@@ -59,10 +66,43 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
     },
     enabled: !!profile?.tenant_id,
   });
+
+  // Buscar departamentos
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments', profile?.tenant_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('departments')
+        .select('id, name')
+        .eq('tenant_id', profile?.tenant_id)
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.tenant_id,
+  });
+
+  // Buscar tags
+  const [tags, setTags] = useState<Array<{ id: string; name: string; color: string | null }>>([]);
+  useEffect(() => {
+    const fetchTags = async () => {
+      if (!profile?.tenant_id) return;
+      const { data } = await supabase
+        .from('tags')
+        .select('id, name, color')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('is_active', true)
+        .order('name') as { data: Array<{ id: string; name: string; color: string | null }> | null };
+      if (data) setTags(data);
+    };
+    fetchTags();
+  }, [profile?.tenant_id]);
   
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [distributionMode, setDistributionMode] = useState<'equal' | 'percentage'>('equal');
   const [channelPercentages, setChannelPercentages] = useState<Record<string, number>>({});
+  const [logoSize, setLogoSize] = useState(64);
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CampaignFormData>({
     resolver: zodResolver(campaignSchema),
@@ -71,11 +111,14 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
       slug: campaign?.slug || '',
       title: campaign?.title || 'Fale com nosso time!',
       subtitle: campaign?.subtitle || '',
-      button_text: campaign?.button_text || 'Falar com Vendedor',
+      button_text: campaign?.button_text || 'Enviar',
       button_color: campaign?.button_color || '#8B5CF6',
       background_color: campaign?.background_color || '#FFFFFF',
-      welcome_message: campaign?.welcome_message || 'Olá! Vi seu anúncio e gostaria de mais informações.',
       logo_url: campaign?.logo_url || '',
+      logo_size: (campaign as any)?.logo_size || 64,
+      thank_you_message: (campaign as any)?.thank_you_message || 'Obrigado! Entraremos em contato em breve.',
+      department_id: (campaign as any)?.department_id || '',
+      tag_id: (campaign as any)?.tag_id || '',
     },
   });
 
@@ -92,6 +135,11 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
         percentages[c.channel_id] = (c as any).percentage || 0;
       });
       setChannelPercentages(percentages);
+    }
+    
+    // Carregar tamanho da logo
+    if ((campaign as any)?.logo_size) {
+      setLogoSize((campaign as any).logo_size);
     }
   }, [campaign]);
 
@@ -163,7 +211,8 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
 
   const handleFormSubmit = (data: CampaignFormData) => {
     onSubmit({ 
-      ...data, 
+      ...data,
+      logo_size: logoSize,
       channel_ids: selectedChannels,
       distribution_mode: distributionMode,
       channel_percentages: channelPercentages
@@ -218,6 +267,25 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
                 placeholder="https://..."
               />
             </div>
+
+            {/* Slider de tamanho da logo */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Tamanho do Logo</Label>
+                <span className="text-sm text-muted-foreground">{logoSize}px</span>
+              </div>
+              <Slider
+                value={[logoSize]}
+                onValueChange={(value) => setLogoSize(value[0])}
+                min={40}
+                max={200}
+                step={4}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                Ajuste a altura do logo entre 40px e 200px
+              </p>
+            </div>
           </CardContent>
         </Card>
 
@@ -253,7 +321,7 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
               <Input
                 id="button_text"
                 {...register('button_text')}
-                placeholder="Falar com Vendedor"
+                placeholder="Enviar"
               />
             </div>
 
@@ -296,20 +364,90 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
         </Card>
       </div>
 
-      {/* Mensagem de boas-vindas */}
+      {/* Mensagem de Obrigado */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Mensagem de Boas-Vindas</CardTitle>
+          <CardTitle className="text-lg">Mensagem de Obrigado</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <Label htmlFor="welcome_message">Mensagem pré-preenchida no WhatsApp</Label>
+            <Label htmlFor="thank_you_message">Mensagem exibida após o lead se cadastrar</Label>
             <Textarea
-              id="welcome_message"
-              {...register('welcome_message')}
-              placeholder="Olá! Vi seu anúncio e gostaria de mais informações."
+              id="thank_you_message"
+              {...register('thank_you_message')}
+              placeholder="Obrigado! Entraremos em contato em breve."
               rows={3}
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Destino do Lead */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Building2 className="h-5 w-5" />
+            Destino do Lead
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Defina para qual departamento e com qual tag o lead será cadastrado
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Departamento</Label>
+              <Select
+                value={watch('department_id') || ''}
+                onValueChange={(value) => setValue('department_id', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um departamento" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                O lead será atribuído a este departamento
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Tag className="h-4 w-4" />
+                TAG (opcional)
+              </Label>
+              <Select
+                value={watch('tag_id') || ''}
+                onValueChange={(value) => setValue('tag_id', value === 'none' ? '' : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma tag" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma tag</SelectItem>
+                  {tags.map((tag) => (
+                    <SelectItem key={tag.id} value={tag.id}>
+                      <div className="flex items-center gap-2">
+                        <span 
+                          className="h-3 w-3 rounded-full" 
+                          style={{ backgroundColor: tag.color || '#888' }}
+                        />
+                        {tag.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Tag aplicada automaticamente ao lead
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -444,14 +582,6 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
                 )}
               </div>
             )}
-
-            {/* Preview do link de redirecionamento */}
-            <div className="mt-4 p-3 bg-muted/50 rounded-lg">
-              <p className="text-sm font-medium mb-1">Link de redirecionamento:</p>
-              <code className="text-xs text-muted-foreground">
-                https://wa.me/{'{{número_selecionado}}'}
-              </code>
-            </div>
           </CardContent>
         </Card>
       )}
@@ -471,13 +601,14 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
           >
             <div className="p-6">
               <div className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
-                {/* Logo */}
+                {/* Logo com tamanho dinâmico */}
                 {watch('logo_url') ? (
                   <div className="flex justify-center">
                     <img 
                       src={watch('logo_url')} 
                       alt="Logo" 
-                      className="h-12 object-contain"
+                      style={{ height: `${logoSize}px` }}
+                      className="object-contain"
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = 'none';
                       }}
@@ -485,8 +616,11 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
                   </div>
                 ) : (
                   <div className="flex justify-center">
-                    <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center">
-                      <span className="text-xl font-bold text-gray-400">S</span>
+                    <div 
+                      className="rounded-full bg-gray-100 flex items-center justify-center"
+                      style={{ height: `${logoSize}px`, width: `${logoSize}px` }}
+                    >
+                      <span className="font-bold text-gray-400" style={{ fontSize: `${logoSize / 3}px` }}>S</span>
                     </div>
                   </div>
                 )}
@@ -513,8 +647,19 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
                     className="w-full py-3 px-4 rounded-lg text-white font-medium text-sm transition-colors"
                     style={{ backgroundColor: watch('button_color') || '#8B5CF6' }}
                   >
-                    {watch('button_text') || 'Falar com Vendedor'}
+                    {watch('button_text') || 'Enviar'}
                   </button>
+                </div>
+              </div>
+
+              {/* Preview da tela de obrigado */}
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
+                <div className="text-center space-y-2">
+                  <div className="text-3xl">✅</div>
+                  <p className="text-sm font-medium text-green-800">Após enviar:</p>
+                  <p className="text-xs text-green-700">
+                    {watch('thank_you_message') || 'Obrigado! Entraremos em contato em breve.'}
+                  </p>
                 </div>
               </div>
 
