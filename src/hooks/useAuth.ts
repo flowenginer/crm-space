@@ -34,7 +34,6 @@ export function useAuth() {
 
     if (!error && data) {
       setProfile(data as Profile);
-      // Also set tenantId from profile
       if (data.tenant_id) {
         setTenantId(data.tenant_id);
       }
@@ -69,37 +68,28 @@ export function useAuth() {
   useEffect(() => {
     let previousUserId: string | null = null;
     
-    // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         const currentUserId = session?.user?.id ?? null;
         
-        // Only log and process if there's an actual change
         console.log('[useAuth] onAuthStateChange:', event, 'userId:', currentUserId);
         
-        // CRITICAL: Clear React Query cache on SIGNED_OUT
         if (event === 'SIGNED_OUT') {
           console.log('[useAuth] SIGNED_OUT - Clearing all query cache');
           resetQueryCache();
           previousUserId = null;
         }
         
-        // Only reset cache on SIGNED_IN if user actually changed (not TOKEN_REFRESHED with same user)
         if (event === 'SIGNED_IN') {
-          // Only reset if this is a DIFFERENT user than before (user switch scenario)
           if (previousUserId !== null && previousUserId !== currentUserId) {
             console.log('[useAuth] User changed - Resetting query cache and state');
             reset();
             resetQueryCache();
           } else if (previousUserId === null) {
-            // Fresh login (no previous user) - just clear cache, not the whole store
             console.log('[useAuth] Fresh login - Clearing query cache only');
             resetQueryCache();
           }
         }
-        
-        // TOKEN_REFRESHED should NOT reset cache - it's the same session
-        // This was causing constant refreshes when the token auto-renewed
         
         previousUserId = currentUserId;
         
@@ -107,46 +97,56 @@ export function useAuth() {
         setUser(session?.user as any ?? null);
         setIsLoading(false);
 
-        // Defer Supabase calls with setTimeout to prevent deadlock
+        // Execute auth setup without setTimeout for faster loading
         if (session?.user) {
-          setTimeout(async () => {
+          (async () => {
             try {
-              // Auto-activate on login: set available, online, and clear locks
-              await supabase
-                .from('profiles')
-                .update({
-                  is_available: true,
-                  is_online: true,
-                  availability_locked_by: null,
-                  unavailable_until: null,
-                  unavailability_reason: null,
-                })
-                .eq('id', session.user.id);
+              const userId = session.user.id;
               
-              // Fetch profile first, then tenant and roles
-              const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', session.user.id)
-                .single();
+              // Parallel fetch: profile, roles, and update availability simultaneously
+              const [profileResult, rolesResult] = await Promise.all([
+                supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', userId)
+                  .single(),
+                supabase
+                  .from('user_roles')
+                  .select('role')
+                  .eq('user_id', userId),
+                // Fire-and-forget: update availability status
+                supabase
+                  .from('profiles')
+                  .update({
+                    is_available: true,
+                    is_online: true,
+                    availability_locked_by: null,
+                    unavailable_until: null,
+                    unavailability_reason: null,
+                  })
+                  .eq('id', userId),
+              ]);
               
-              if (profileError) {
-                console.error('[useAuth] Error fetching profile:', profileError);
+              // Process roles
+              if (!rolesResult.error && rolesResult.data) {
+                setRoles(rolesResult.data.map((r) => r.role as AppRole));
+              }
+              
+              // Process profile
+              if (profileResult.error) {
+                console.error('[useAuth] Error fetching profile:', profileResult.error);
                 return;
               }
               
+              const profileData = profileResult.data;
               if (profileData) {
                 console.log('[useAuth] Profile loaded:', profileData.id, 'tenant:', profileData.tenant_id);
                 setProfile(profileData as Profile);
                 
-                // NOTE: Não bloquear login por estar no tenant "default".
-                // Este tenant é válido (ex: Space Sports) e bloquear aqui derruba usuários corretamente vinculados.
-                // (Mantemos apenas a validação de tenant inativo mais abaixo.)
                 if (profileData.tenant_id) {
                   setTenantId(profileData.tenant_id);
                   const tenantData = await fetchTenant(profileData.tenant_id);
                   
-                  // FASE 2: Validar se o tenant está ativo
                   if (tenantData && tenantData.is_active === false) {
                     console.log('[useAuth] Tenant is deactivated, logging out');
                     reset();
@@ -156,12 +156,10 @@ export function useAuth() {
                   }
                 }
               }
-              
-              fetchRoles(session.user.id);
             } catch (err) {
               console.error('[useAuth] Error in auth state handler:', err);
             }
-          }, 0);
+          })();
         } else {
           setProfile(null);
           setTenant(null);
@@ -178,23 +176,35 @@ export function useAuth() {
       setIsLoading(false);
 
       if (session?.user) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
+        const userId = session.user.id;
         
+        // Parallel fetch: profile and roles
+        const [profileResult, rolesResult] = await Promise.all([
+          supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single(),
+          supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', userId),
+        ]);
+        
+        // Process roles
+        if (!rolesResult.error && rolesResult.data) {
+          setRoles(rolesResult.data.map((r) => r.role as AppRole));
+        }
+        
+        // Process profile
+        const profileData = profileResult.data;
         if (profileData) {
           setProfile(profileData as Profile);
           
-          // NOTE: Não bloquear login por estar no tenant "default".
-          // Este tenant é válido (ex: Space Sports) e bloquear aqui derruba usuários corretamente vinculados.
-          // (Mantemos apenas a validação de tenant inativo mais abaixo.)
           if (profileData.tenant_id) {
             setTenantId(profileData.tenant_id);
             const tenantData = await fetchTenant(profileData.tenant_id);
             
-            // FASE 2: Validar se o tenant está ativo (check inicial)
             if (tenantData && tenantData.is_active === false) {
               console.log('[useAuth] Tenant is deactivated on initial load, logging out');
               reset();
@@ -204,8 +214,6 @@ export function useAuth() {
             }
           }
         }
-        
-        fetchRoles(session.user.id);
       }
     });
 
@@ -237,7 +245,6 @@ export function useAuth() {
   };
 
   const signOut = async () => {
-    // Clear query cache BEFORE signing out to prevent any stale data
     resetQueryCache();
     const { error } = await supabase.auth.signOut();
     if (!error) {

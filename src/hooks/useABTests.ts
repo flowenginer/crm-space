@@ -71,6 +71,8 @@ export function useABTests() {
       return data as ABTest[];
     },
     enabled: !!tenantId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,   // 10 minutes
   });
 }
 
@@ -100,6 +102,8 @@ export function useABTest(id: string | undefined) {
       return data as ABTest;
     },
     enabled: !!id && !!tenantId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 }
 
