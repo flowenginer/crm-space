@@ -37,7 +37,6 @@ async function executeAction(
       .from('conversations')
       .update({
         department_id: config.department_id,
-        assigned_to: null,
       })
       .eq('id', conversationId)
     console.log('[process-rescue-messages] Conversation transferred to department:', config.department_id)
