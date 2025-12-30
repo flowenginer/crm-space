@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -13,7 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { Plus, ExternalLink, MousePointer, Users, Eye, TrendingUp, Split } from 'lucide-react';
+import { Plus, ExternalLink, MousePointer, Users, Eye, TrendingUp, Split, RefreshCw } from 'lucide-react';
 import { RedirectCampaignCard } from '@/components/redirect/RedirectCampaignCard';
 import { RedirectCampaignForm } from '@/components/redirect/RedirectCampaignForm';
 import { ABTestCard } from '@/components/redirect/ABTestCard';
@@ -38,6 +38,10 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { supabase } from '@/integrations/supabase/client';
+import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 export default function Redirect() {
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -47,9 +51,13 @@ export default function Redirect() {
   const [editingCampaign, setEditingCampaign] = useState<RedirectCampaign | null>(null);
   const [editingABTest, setEditingABTest] = useState<ABTest | null>(null);
   const [viewingStatsCampaign, setViewingStatsCampaign] = useState<RedirectCampaign | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const { data: campaigns = [], isLoading } = useRedirectCampaigns();
-  const { data: abTests = [] } = useABTests();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: campaigns = [], isLoading, refetch: refetchCampaigns } = useRedirectCampaigns();
+  const { data: abTests = [], refetch: refetchABTests } = useABTests();
   const createCampaign = useCreateRedirectCampaign();
   const updateCampaign = useUpdateRedirectCampaign();
   const createABTest = useCreateABTest();
@@ -57,6 +65,41 @@ export default function Redirect() {
   const deleteABTest = useDeleteABTest();
   const deleteCampaign = useDeleteRedirectCampaign();
   const { data: logs = [] } = useRedirectCampaignLogs(viewingStatsCampaign?.id);
+
+  // Realtime subscription para atualizações automáticas
+  useEffect(() => {
+    const channel = supabase
+      .channel('redirect-realtime')
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'redirect_logs' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['redirect-campaigns'] });
+          queryClient.invalidateQueries({ queryKey: ['redirect-logs'] });
+        }
+      )
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'redirect_campaign_views' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['redirect-campaigns'] });
+          queryClient.invalidateQueries({ queryKey: ['redirect-all-views'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([refetchCampaigns(), refetchABTests()]);
+      toast({ title: "Dados atualizados!" });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const totalClicks = campaigns.reduce((sum, c) => sum + c.total_clicks, 0);
   const totalLeads = campaigns.reduce((sum, c) => sum + c.total_leads, 0);
@@ -104,6 +147,15 @@ export default function Redirect() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="icon"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            title="Atualizar dados"
+          >
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+          </Button>
           <Button variant="outline" onClick={() => setIsABTestFormOpen(true)}>
             <Split className="mr-2 h-4 w-4" />
             Teste A/B
