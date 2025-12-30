@@ -56,7 +56,7 @@ export interface CreateCampaignInput {
   thank_you_message?: string;
   department_id?: string;
   tag_id?: string;
-  channel_ids: string[];
+  channel_ids?: string[];
   distribution_mode?: 'equal' | 'percentage';
   channel_percentages?: Record<string, number>;
 }
@@ -160,7 +160,7 @@ export function useCreateRedirectCampaign() {
       if (campaignError) throw campaignError;
 
       // Vincular canais com porcentagens
-      if (input.channel_ids.length > 0) {
+      if (input.channel_ids && input.channel_ids.length > 0) {
         const channelInserts = input.channel_ids.map((channel_id, index) => ({
           campaign_id: campaign.id,
           channel_id,
