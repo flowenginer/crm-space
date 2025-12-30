@@ -76,3 +76,6 @@ verify_jwt = false
 
 [functions.process-rede-payment]
 verify_jwt = false
+
+[functions.distribute-lead]
+verify_jwt = false
