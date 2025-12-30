@@ -13,9 +13,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { Plus, ExternalLink, MousePointer, Users, Eye, TrendingUp } from 'lucide-react';
+import { Plus, ExternalLink, MousePointer, Users, Eye, TrendingUp, Split } from 'lucide-react';
 import { RedirectCampaignCard } from '@/components/redirect/RedirectCampaignCard';
 import { RedirectCampaignForm } from '@/components/redirect/RedirectCampaignForm';
+import { ABTestCard } from '@/components/redirect/ABTestCard';
+import { ABTestForm } from '@/components/redirect/ABTestForm';
 import {
   useRedirectCampaigns,
   useCreateRedirectCampaign,
@@ -24,6 +26,13 @@ import {
   useRedirectCampaignLogs,
   type RedirectCampaign,
 } from '@/hooks/useRedirectCampaigns';
+import {
+  useABTests,
+  useCreateABTest,
+  useUpdateABTest,
+  useDeleteABTest,
+  type ABTest,
+} from '@/hooks/useABTests';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -31,12 +40,18 @@ import { Badge } from '@/components/ui/badge';
 
 export default function Redirect() {
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isABTestFormOpen, setIsABTestFormOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<RedirectCampaign | null>(null);
+  const [editingABTest, setEditingABTest] = useState<ABTest | null>(null);
   const [viewingStatsCampaign, setViewingStatsCampaign] = useState<RedirectCampaign | null>(null);
 
   const { data: campaigns = [], isLoading } = useRedirectCampaigns();
+  const { data: abTests = [] } = useABTests();
   const createCampaign = useCreateRedirectCampaign();
   const updateCampaign = useUpdateRedirectCampaign();
+  const createABTest = useCreateABTest();
+  const updateABTest = useUpdateABTest();
+  const deleteABTest = useDeleteABTest();
   const deleteCampaign = useDeleteRedirectCampaign();
   const { data: logs = [] } = useRedirectCampaignLogs(viewingStatsCampaign?.id);
 
@@ -85,10 +100,16 @@ export default function Redirect() {
             Crie landing pages para capturar leads e redirecionar para WhatsApp
           </p>
         </div>
-        <Button onClick={() => setIsFormOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nova Campanha
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsABTestFormOpen(true)}>
+            <Split className="mr-2 h-4 w-4" />
+            Teste A/B
+          </Button>
+          <Button onClick={() => setIsFormOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Campanha
+          </Button>
+        </div>
       </div>
 
       {/* Stats cards */}
@@ -174,6 +195,17 @@ export default function Redirect() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Testes A/B primeiro */}
+          {abTests.map((abTest) => (
+            <ABTestCard
+              key={abTest.id}
+              abTest={abTest}
+              onEdit={(ab) => { setEditingABTest(ab); setIsABTestFormOpen(true); }}
+              onDelete={deleteABTest.mutateAsync}
+              onToggleActive={(id, isActive) => updateABTest.mutateAsync({ id, is_active: isActive })}
+            />
+          ))}
+          {/* Campanhas */}
           {campaigns.map((campaign) => (
             <RedirectCampaignCard
               key={campaign.id}
@@ -200,6 +232,31 @@ export default function Redirect() {
             onSubmit={handleCreateOrUpdate}
             onCancel={handleCloseForm}
             isLoading={createCampaign.isPending || updateCampaign.isPending}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* A/B Test Form Dialog */}
+      <Dialog open={isABTestFormOpen} onOpenChange={(open) => { setIsABTestFormOpen(open); if (!open) setEditingABTest(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingABTest ? 'Editar Teste A/B' : 'Novo Teste A/B'}
+            </DialogTitle>
+          </DialogHeader>
+          <ABTestForm
+            abTest={editingABTest}
+            onSubmit={async (data) => {
+              if (editingABTest) {
+                await updateABTest.mutateAsync({ id: editingABTest.id, ...data });
+              } else {
+                await createABTest.mutateAsync(data);
+              }
+              setIsABTestFormOpen(false);
+              setEditingABTest(null);
+            }}
+            onCancel={() => { setIsABTestFormOpen(false); setEditingABTest(null); }}
+            isLoading={createABTest.isPending || updateABTest.isPending}
           />
         </DialogContent>
       </Dialog>
