@@ -176,11 +176,19 @@ export default function RedirectLanding() {
         <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6">
           {/* Logo com tamanho dinâmico */}
           {campaign.logo_url ? (
-            <div className="flex justify-center">
+            <div 
+              className="flex justify-center items-center w-full"
+              style={{ height: `${logoHeight}px` }}
+            >
               <img 
                 src={campaign.logo_url} 
                 alt="Logo" 
-                style={{ height: `${logoHeight}px` }}
+                style={{ 
+                  height: '100%', 
+                  width: 'auto',
+                  maxWidth: '100%',
+                  display: 'block'
+                }}
                 className="object-contain"
               />
             </div>

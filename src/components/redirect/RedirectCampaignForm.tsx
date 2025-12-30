@@ -424,14 +424,18 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
               <div className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
                 {/* Logo com tamanho dinâmico */}
                 {watch('logo_url') ? (
-                  <div className="flex justify-center">
+                  <div 
+                    className="flex justify-center items-center w-full"
+                    style={{ height: `${logoSize}px` }}
+                  >
                     <img 
                       src={watch('logo_url')} 
                       alt="Logo" 
                       style={{ 
-                        height: `${logoSize}px`, 
+                        height: '100%', 
                         width: 'auto',
-                        maxWidth: '100%'
+                        maxWidth: '100%',
+                        display: 'block'
                       }}
                       className="object-contain"
                       onError={(e) => {
