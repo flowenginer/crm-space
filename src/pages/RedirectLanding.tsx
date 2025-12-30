@@ -22,6 +22,10 @@ interface CampaignData {
   background_image_url: string | null;
   background_image_opacity: number | null;
   background_image_position: string | null;
+  // Campos de rastreamento/pixels
+  facebook_pixel_id: string | null;
+  gtm_container_id: string | null;
+  google_analytics_id: string | null;
 }
 
 interface CaptureResult {
@@ -109,6 +113,64 @@ export default function RedirectLanding() {
     loadCampaign();
   }, [slug]);
 
+  // Injetar scripts de rastreamento (Facebook Pixel, GTM, GA4)
+  useEffect(() => {
+    if (!campaign) return;
+
+    // Facebook Pixel
+    if (campaign.facebook_pixel_id) {
+      const fbScript = document.createElement('script');
+      fbScript.innerHTML = `
+        !function(f,b,e,v,n,t,s)
+        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)}(window, document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init', '${campaign.facebook_pixel_id}');
+        fbq('track', 'PageView');
+      `;
+      document.head.appendChild(fbScript);
+    }
+
+    // Google Tag Manager
+    if (campaign.gtm_container_id) {
+      const gtmScript = document.createElement('script');
+      gtmScript.innerHTML = `
+        (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+        new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+        'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer','${campaign.gtm_container_id}');
+      `;
+      document.head.appendChild(gtmScript);
+
+      // noscript fallback
+      const noscript = document.createElement('noscript');
+      noscript.innerHTML = `<iframe src="https://www.googletagmanager.com/ns.html?id=${campaign.gtm_container_id}" height="0" width="0" style="display:none;visibility:hidden"></iframe>`;
+      document.body.insertBefore(noscript, document.body.firstChild);
+    }
+
+    // Google Analytics 4
+    if (campaign.google_analytics_id) {
+      const gaScript = document.createElement('script');
+      gaScript.async = true;
+      gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${campaign.google_analytics_id}`;
+      document.head.appendChild(gaScript);
+
+      const gaConfigScript = document.createElement('script');
+      gaConfigScript.innerHTML = `
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', '${campaign.google_analytics_id}');
+      `;
+      document.head.appendChild(gaConfigScript);
+    }
+  }, [campaign]);
+
   const handlePhoneChange = (fullPhone: string, code: string) => {
     setPhone(fullPhone);
     setCountryCode(code);
@@ -136,6 +198,32 @@ export default function RedirectLanding() {
 
       if (!data?.success) {
         throw new Error(data?.error || 'Erro ao processar');
+      }
+
+      // Disparar eventos de conversão
+      // Facebook Pixel - Lead event
+      if (campaign.facebook_pixel_id && (window as any).fbq) {
+        (window as any).fbq('track', 'Lead', {
+          content_name: campaign.name,
+          content_category: 'redirect_campaign',
+        });
+      }
+
+      // Google Analytics 4 - generate_lead event
+      if (campaign.google_analytics_id && (window as any).gtag) {
+        (window as any).gtag('event', 'generate_lead', {
+          campaign_name: campaign.name,
+          campaign_id: campaign.id,
+        });
+      }
+
+      // GTM DataLayer - lead_captured event
+      if (campaign.gtm_container_id && (window as any).dataLayer) {
+        (window as any).dataLayer.push({
+          event: 'lead_captured',
+          campaign_name: campaign.name,
+          campaign_id: campaign.id,
+        });
       }
 
       // Mostrar mensagem de obrigado
