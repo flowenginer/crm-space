@@ -317,12 +317,43 @@ async function executeAction(
 
   switch (node.node_subtype) {
     case 'send_text': {
+      let channelId = execution.channel_id;
+      
+      // Fallback: se não tem canal, buscar um aleatório
+      if (!channelId) {
+        console.log('[execute-flow-node] Canal não definido na execução, buscando aleatório...');
+        const { data: channels } = await supabase
+          .from('whatsapp_channels')
+          .select('id, name')
+          .eq('tenant_id', execution.tenant_id)
+          .eq('status', 'connected')
+          .eq('is_deleted', false);
+        
+        if (channels && channels.length > 0) {
+          const randomIndex = Math.floor(Math.random() * channels.length);
+          channelId = channels[randomIndex].id;
+          console.log('[execute-flow-node] Canal aleatório selecionado:', channels[randomIndex].name);
+          
+          // Atualizar execução com o canal selecionado
+          await supabase
+            .from('flow_executions')
+            .update({ channel_id: channelId })
+            .eq('id', execution.id);
+        }
+      }
+      
+      if (!channelId) {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          'Nenhum canal WhatsApp disponível para enviar mensagem');
+        break;
+      }
+
       let message = (config.message as string) || '';
       message = replaceVariables(message, execution);
 
       const textResult = await sendWhatsAppMessage(
         supabase,
-        execution.channel_id,
+        channelId,
         execution.contact?.phone || '',
         message,
         'text'
@@ -352,6 +383,36 @@ async function executeAction(
     case 'send_video':
     case 'send_audio':
     case 'send_document': {
+      let mediaChannelId = execution.channel_id;
+      
+      // Fallback: se não tem canal, buscar um aleatório
+      if (!mediaChannelId) {
+        console.log('[execute-flow-node] Canal não definido para mídia, buscando aleatório...');
+        const { data: channels } = await supabase
+          .from('whatsapp_channels')
+          .select('id, name')
+          .eq('tenant_id', execution.tenant_id)
+          .eq('status', 'connected')
+          .eq('is_deleted', false);
+        
+        if (channels && channels.length > 0) {
+          const randomIndex = Math.floor(Math.random() * channels.length);
+          mediaChannelId = channels[randomIndex].id;
+          console.log('[execute-flow-node] Canal aleatório para mídia:', channels[randomIndex].name);
+          
+          await supabase
+            .from('flow_executions')
+            .update({ channel_id: mediaChannelId })
+            .eq('id', execution.id);
+        }
+      }
+      
+      if (!mediaChannelId) {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          'Nenhum canal WhatsApp disponível para enviar mídia');
+        break;
+      }
+
       const mediaType = node.node_subtype.replace('send_', '') as 'image' | 'video' | 'audio' | 'document';
       const mediaUrl = (config.media_url as string) || (config.url as string) || '';
       let caption = (config.caption as string) || '';
@@ -359,7 +420,7 @@ async function executeAction(
 
       const mediaResult = await sendWhatsAppMessage(
         supabase,
-        execution.channel_id,
+        mediaChannelId,
         execution.contact?.phone || '',
         caption,
         mediaType,

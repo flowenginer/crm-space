@@ -172,6 +172,29 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Determinar canal para execução
+      let actualChannelId = channel_id || null;
+
+      // Se não tem canal definido, buscar um aleatório para poder enviar mensagens
+      if (!actualChannelId) {
+        console.log('[process-flow-triggers] Canal não definido, buscando canal aleatório...');
+        
+        const { data: availableChannels } = await supabase
+          .from('whatsapp_channels')
+          .select('id, name')
+          .eq('tenant_id', tenant_id)
+          .eq('status', 'connected')
+          .eq('is_deleted', false);
+        
+        if (availableChannels && availableChannels.length > 0) {
+          const randomIndex = Math.floor(Math.random() * availableChannels.length);
+          actualChannelId = availableChannels[randomIndex].id;
+          console.log('[process-flow-triggers] Canal aleatório selecionado:', availableChannels[randomIndex].name, '(ID:', actualChannelId?.substring(0, 8), ')');
+        } else {
+          console.log('[process-flow-triggers] Nenhum canal disponível para automação');
+        }
+      }
+
       // Criar execução do fluxo
       const { data: execution, error: execError } = await supabase
         .from('flow_executions')
@@ -179,7 +202,7 @@ Deno.serve(async (req) => {
           flow_id: flow.id,
           conversation_id: actualConversationId,
           contact_id,
-          channel_id: channel_id || null,
+          channel_id: actualChannelId,
           status: 'running',
           variables: {
             trigger_type,
