@@ -103,52 +103,47 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 2. Filtrar canais ativos
+    // 2. Filtrar canais ativos (opcional - não bloqueia se não houver)
     const activeChannels = campaign.channels
       ?.filter((c: any) => c.is_active && c.channel?.status === 'connected')
       .sort((a: any, b: any) => a.position - b.position) || [];
 
-    if (activeChannels.length === 0) {
-      console.error('[redirect-capture] Nenhum canal ativo');
-      return new Response(
-        JSON.stringify({ success: false, error: 'Nenhum canal disponível' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      );
-    }
-
-    // 3. Selecionar canal baseado no modo de distribuição
-    let selectedChannelLink;
-    const distributionMode = campaign.distribution_mode || 'equal';
+    // 3. Selecionar canal se disponível (opcional)
+    let selectedChannel: any = null;
     
-    if (distributionMode === 'percentage') {
-      // Distribuição por porcentagem
-      const random = Math.floor(Math.random() * 100) + 1;
-      let accumulator = 0;
+    if (activeChannels.length > 0) {
+      let selectedChannelLink;
+      const distributionMode = campaign.distribution_mode || 'equal';
       
-      for (const channelLink of activeChannels) {
-        accumulator += channelLink.percentage || 0;
-        if (random <= accumulator) {
-          selectedChannelLink = channelLink;
-          break;
+      if (distributionMode === 'percentage') {
+        const random = Math.floor(Math.random() * 100) + 1;
+        let accumulator = 0;
+        
+        for (const channelLink of activeChannels) {
+          accumulator += channelLink.percentage || 0;
+          if (random <= accumulator) {
+            selectedChannelLink = channelLink;
+            break;
+          }
         }
+        
+        if (!selectedChannelLink) {
+          selectedChannelLink = activeChannels[0];
+        }
+        
+        console.log('[redirect-capture] Distribuição por porcentagem - Canal:', selectedChannelLink.channel.name);
+      } else {
+        const channelIndex = campaign.current_channel_index % activeChannels.length;
+        selectedChannelLink = activeChannels[channelIndex];
+        console.log('[redirect-capture] Round-robin - Canal:', selectedChannelLink.channel.name);
       }
       
-      // Fallback para o primeiro canal se nenhum foi selecionado
-      if (!selectedChannelLink) {
-        selectedChannelLink = activeChannels[0];
-      }
-      
-      console.log('[redirect-capture] Distribuição por porcentagem - Random:', random, '- Canal:', selectedChannelLink.channel.name);
+      selectedChannel = selectedChannelLink.channel;
     } else {
-      // Distribuição igual (round-robin)
-      const channelIndex = campaign.current_channel_index % activeChannels.length;
-      selectedChannelLink = activeChannels[channelIndex];
-      console.log('[redirect-capture] Round-robin - Index:', channelIndex, '- Canal:', selectedChannelLink.channel.name);
+      console.log('[redirect-capture] Nenhum canal configurado - continuando sem canal');
     }
-    
-    const selectedChannel = selectedChannelLink.channel;
 
-    // 4. Atualizar índice round-robin e contador de cliques
+    // 4. Atualizar contador de cliques
     await supabase
       .from('redirect_campaigns')
       .update({ 
@@ -232,7 +227,7 @@ Deno.serve(async (req) => {
               trigger_type: 'redirect_lead',
               tenant_id,
               contact_id: contactId,
-              channel_id: selectedChannel.id,
+              channel_id: selectedChannel?.id || null,
               metadata: {
                 campaign_id,
                 campaign_name: campaign.name,
@@ -259,7 +254,7 @@ Deno.serve(async (req) => {
         campaign_id,
         tenant_id,
         contact_id: contactId,
-        channel_id: selectedChannel.id,
+        channel_id: selectedChannel?.id || null,
         phone,
         country_code,
         utm_source: utms.utm_source,
