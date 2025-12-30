@@ -7167,37 +7167,58 @@ export type Database = {
       }
       redirect_ab_tests: {
         Row: {
+          auto_winner: boolean | null
           created_at: string
           distribution_type: string
+          end_date: string | null
+          goal_reached: boolean | null
+          goal_type: string | null
+          goal_value: number | null
           id: string
           is_active: boolean
           name: string
           slug: string
+          status: string | null
           tenant_id: string
           total_views: number
           updated_at: string
+          winner_variant_id: string | null
         }
         Insert: {
+          auto_winner?: boolean | null
           created_at?: string
           distribution_type?: string
+          end_date?: string | null
+          goal_reached?: boolean | null
+          goal_type?: string | null
+          goal_value?: number | null
           id?: string
           is_active?: boolean
           name: string
           slug: string
+          status?: string | null
           tenant_id: string
           total_views?: number
           updated_at?: string
+          winner_variant_id?: string | null
         }
         Update: {
+          auto_winner?: boolean | null
           created_at?: string
           distribution_type?: string
+          end_date?: string | null
+          goal_reached?: boolean | null
+          goal_type?: string | null
+          goal_value?: number | null
           id?: string
           is_active?: boolean
           name?: string
           slug?: string
+          status?: string | null
           tenant_id?: string
           total_views?: number
           updated_at?: string
+          winner_variant_id?: string | null
         }
         Relationships: [
           {
@@ -7205,6 +7226,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redirect_ab_tests_winner_variant_id_fkey"
+            columns: ["winner_variant_id"]
+            isOneToOne: false
+            referencedRelation: "redirect_ab_test_variants"
             referencedColumns: ["id"]
           },
         ]
