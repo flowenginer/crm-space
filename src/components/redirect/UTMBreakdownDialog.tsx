@@ -24,7 +24,6 @@ export function UTMBreakdownDialog({ open, onOpenChange, campaignId, campaignNam
 
     const exportData = data.breakdown.map((row) => ({
       "UTM Source": row.utm_source || "(direto)",
-      "UTM Medium": row.utm_medium || "(none)",
       "UTM Campaign": row.utm_campaign || "(none)",
       "UTM Content": row.utm_content || "(none)",
       Visitas: row.visits,
@@ -123,7 +122,6 @@ export function UTMBreakdownDialog({ open, onOpenChange, campaignId, campaignNam
                 <TableHeader>
                   <TableRow>
                     <TableHead>UTM Source</TableHead>
-                    <TableHead>UTM Medium</TableHead>
                     <TableHead>UTM Campaign</TableHead>
                     <TableHead>UTM Content</TableHead>
                     <TableHead className="text-right">Visitas</TableHead>
@@ -134,7 +132,7 @@ export function UTMBreakdownDialog({ open, onOpenChange, campaignId, campaignNam
                 <TableBody>
                   {data?.breakdown.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                         Nenhum dado disponível
                       </TableCell>
                     </TableRow>
@@ -156,9 +154,6 @@ export function UTMBreakdownDialog({ open, onOpenChange, campaignId, campaignNam
                                 </Badge>
                               )}
                             </div>
-                          </TableCell>
-                          <TableCell className={!row.utm_medium ? "text-muted-foreground" : ""}>
-                            {row.utm_medium || "(none)"}
                           </TableCell>
                           <TableCell className={!row.utm_campaign ? "text-muted-foreground" : ""}>
                             {row.utm_campaign || "(none)"}

@@ -4,11 +4,25 @@ import { useCurrentTenantId } from "./useTenant";
 
 export interface UTMBreakdownRow {
   utm_source: string | null;
-  utm_medium: string | null;
   utm_campaign: string | null;
   utm_content: string | null;
   visits: number;
   leads: number;
+}
+
+// Função para limpar content: usa medium como fallback se content for grande/encoded
+function getCleanContent(utm_content: string | null, utm_medium: string | null): string | null {
+  if (!utm_content) return utm_medium;
+  
+  // Se content tem URL encoding OU é muito longo, usa medium
+  const hasUrlEncoding = utm_content.includes('%');
+  const isTooLong = utm_content.length > 40;
+  
+  if (hasUrlEncoding || isTooLong) {
+    return utm_medium || utm_content;
+  }
+  
+  return utm_content;
 }
 
 export interface UTMBreakdownTotals {
@@ -46,27 +60,28 @@ export function useUTMBreakdown(campaignId: string | undefined) {
 
       if (leadsError) throw leadsError;
 
-      // Aggregate visits by UTM combination
-      const visitsMap = new Map<string, { utm_source: string | null; utm_medium: string | null; utm_campaign: string | null; utm_content: string | null; visitors: Set<string> }>();
+      // Aggregate visits by UTM combination (usando content limpo)
+      const visitsMap = new Map<string, { utm_source: string | null; utm_campaign: string | null; utm_content: string | null; visitors: Set<string> }>();
       
       (visitsData || []).forEach((v) => {
-        const key = `${v.utm_source || "(direto)"}|${v.utm_medium || "(none)"}|${v.utm_campaign || "(none)"}|${v.utm_content || "(none)"}`;
+        const cleanContent = getCleanContent(v.utm_content, v.utm_medium);
+        const key = `${v.utm_source || "(direto)"}|${v.utm_campaign || "(none)"}|${cleanContent || "(none)"}`;
         if (!visitsMap.has(key)) {
           visitsMap.set(key, {
             utm_source: v.utm_source,
-            utm_medium: v.utm_medium,
             utm_campaign: v.utm_campaign,
-            utm_content: v.utm_content,
+            utm_content: cleanContent,
             visitors: new Set(),
           });
         }
         visitsMap.get(key)!.visitors.add(v.visitor_id);
       });
 
-      // Aggregate leads by UTM combination
+      // Aggregate leads by UTM combination (usando content limpo)
       const leadsMap = new Map<string, number>();
       (leadsData || []).forEach((l) => {
-        const key = `${l.utm_source || "(direto)"}|${l.utm_medium || "(none)"}|${l.utm_campaign || "(none)"}|${l.utm_content || "(none)"}`;
+        const cleanContent = getCleanContent(l.utm_content, l.utm_medium);
+        const key = `${l.utm_source || "(direto)"}|${l.utm_campaign || "(none)"}|${cleanContent || "(none)"}`;
         leadsMap.set(key, (leadsMap.get(key) || 0) + 1);
       });
 
@@ -75,14 +90,13 @@ export function useUTMBreakdown(campaignId: string | undefined) {
       const breakdown: UTMBreakdownRow[] = [];
 
       allKeys.forEach((key) => {
-        const [source, medium, campaign, content] = key.split("|");
+        const [source, campaign, content] = key.split("|");
         const visitsEntry = visitsMap.get(key);
         const visits = visitsEntry ? visitsEntry.visitors.size : 0;
         const leads = leadsMap.get(key) || 0;
 
         breakdown.push({
           utm_source: source === "(direto)" ? null : source,
-          utm_medium: medium === "(none)" ? null : medium,
           utm_campaign: campaign === "(none)" ? null : campaign,
           utm_content: content === "(none)" ? null : content,
           visits,
