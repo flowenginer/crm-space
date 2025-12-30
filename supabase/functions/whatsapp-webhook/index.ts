@@ -1029,12 +1029,22 @@ serve(async (req) => {
           // Realmente não existe nenhuma conversa - criar nova (caso de campanha proativa)
           console.log(`[Webhook] 🆕 Creating conversation for fromMe message (external system/proactive campaign)`);
           
+          // Buscar department_id do contato (pode ter sido definido pela campanha redirect)
+          const { data: contactDept } = await supabase
+            .from("contacts")
+            .select("department_id")
+            .eq("id", contact.id)
+            .single();
+          
+          // Prioridade: contact.department_id > channel.department_id
+          const conversationDepartmentId = contactDept?.department_id || channel.department_id || null;
+          
           const { data: newConv, error: convError } = await supabase
             .from("conversations")
             .insert({
               contact_id: contact.id,
               channel_id: channel.id,
-              department_id: channel.department_id || null,
+              department_id: conversationDepartmentId,
               tenant_id: channel.tenant_id,
               status: "open",
               is_unread: false, // Mensagem enviada por nós, não é unread
@@ -1528,9 +1538,10 @@ serve(async (req) => {
     console.log(`[Webhook] Searching contact with phone variations: ${phoneVariations.join(', ')}`);
     
     // Primeiro, tentar buscar o contato existente por todas as variações (FILTRAR POR TENANT!)
+    // Incluir department_id para preservar o departamento definido pela campanha redirect
     let { data: contact } = await supabase
       .from("contacts")
-      .select("id, full_name, phone")
+      .select("id, full_name, phone, department_id")
       .in("phone", phoneVariations)
       .eq("tenant_id", channel.tenant_id)
       .limit(1)
@@ -1558,7 +1569,7 @@ serve(async (req) => {
         : `55${normalizedMessage.from.replace(/\D/g, '')}`;
       
       // Usar upsert para evitar duplicatas por race condition
-      // department_id vem do canal configurado (zero queries extras!)
+      // NÃO incluir department_id aqui - preservar o que foi definido pela campanha redirect
       const { data: upsertedContact, error: contactError } = await supabase
         .from("contacts")
         .upsert({
@@ -1568,13 +1579,13 @@ serve(async (req) => {
           origin_campaign: originCampaign,
           referral_data: referralDataJson,
           first_contact_at: new Date().toISOString(),
-          department_id: channel.department_id || null,
           tenant_id: channel.tenant_id,
+          // department_id removido intencionalmente - preservar o da campanha redirect
         }, {
           onConflict: 'phone,tenant_id',
           ignoreDuplicates: false
         })
-        .select("id, full_name, phone")
+        .select("id, full_name, phone, department_id")
         .single();
 
       if (contactError) {
@@ -1583,7 +1594,7 @@ serve(async (req) => {
           console.log(`[Webhook] Contact already exists (race condition handled), fetching...`);
           const { data: existingContact } = await supabase
             .from("contacts")
-            .select("id, full_name, phone")
+            .select("id, full_name, phone, department_id")
             .in("phone", phoneVariations)
             .eq("tenant_id", channel.tenant_id)
             .limit(1)
@@ -1879,12 +1890,17 @@ serve(async (req) => {
         // Se tem atendente atribuído, cria como "open", senão como "pending"
         const initialStatus = initialAssignedTo ? "open" : "pending";
         
+        // Usar department_id do contato (pode ter sido definido pela campanha redirect)
+        // Prioridade: contact.department_id > channel.department_id
+        const conversationDepartmentId = contact.department_id || channel.department_id || null;
+        console.log(`[Webhook] 📍 Creating conversation with department_id: ${conversationDepartmentId} (contact: ${contact.department_id}, channel: ${channel.department_id})`);
+        
         const { data: newConversation, error: convError } = await supabase
           .from("conversations")
           .insert({
             contact_id: contact.id,
             channel_id: channel.id,
-            department_id: channel.department_id || null,
+            department_id: conversationDepartmentId,
             tenant_id: channel.tenant_id,
             status: initialStatus,
             is_unread: true,
