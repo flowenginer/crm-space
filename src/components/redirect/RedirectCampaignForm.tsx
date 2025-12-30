@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Loader2, Palette, Eye, Building2, Tag, Plus } from 'lucide-react';
+import { Loader2, Palette, Eye, Building2, Tag, Plus, BarChart3 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -33,6 +33,10 @@ const campaignSchema = z.object({
   background_image_url: z.string().optional(),
   background_image_opacity: z.number().min(0.1).max(1).optional(),
   background_image_position: z.string().optional(),
+  // Campos de rastreamento/pixels
+  facebook_pixel_id: z.string().optional(),
+  gtm_container_id: z.string().optional(),
+  google_analytics_id: z.string().optional(),
 });
 
 type CampaignFormData = z.infer<typeof campaignSchema>;
@@ -108,6 +112,10 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
       background_image_url: (campaign as any)?.background_image_url || '',
       background_image_opacity: (campaign as any)?.background_image_opacity || 0.3,
       background_image_position: (campaign as any)?.background_image_position || 'cover',
+      // Pixels
+      facebook_pixel_id: (campaign as any)?.facebook_pixel_id || '',
+      gtm_container_id: (campaign as any)?.gtm_container_id || '',
+      google_analytics_id: (campaign as any)?.google_analytics_id || '',
     },
   });
 
@@ -464,6 +472,58 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
               </div>
               <p className="text-xs text-muted-foreground">
                 Tag aplicada automaticamente ao lead
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Rastreamento e Pixels */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Rastreamento e Pixels
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Configure os pixels de rastreamento para medir conversões
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="facebook_pixel_id">Facebook Pixel ID</Label>
+              <Input
+                id="facebook_pixel_id"
+                {...register('facebook_pixel_id')}
+                placeholder="123456789012345"
+              />
+              <p className="text-xs text-muted-foreground">
+                Dispara PageView e Lead automaticamente
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gtm_container_id">Google Tag Manager</Label>
+              <Input
+                id="gtm_container_id"
+                {...register('gtm_container_id')}
+                placeholder="GTM-XXXXXX"
+              />
+              <p className="text-xs text-muted-foreground">
+                Carrega o container GTM na página
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="google_analytics_id">Google Analytics 4</Label>
+              <Input
+                id="google_analytics_id"
+                {...register('google_analytics_id')}
+                placeholder="G-XXXXXXXXXX"
+              />
+              <p className="text-xs text-muted-foreground">
+                Envia evento generate_lead na conversão
               </p>
             </div>
           </div>

@@ -7308,6 +7308,9 @@ export type Database = {
           current_channel_index: number | null
           department_id: string | null
           distribution_mode: string | null
+          facebook_pixel_id: string | null
+          google_analytics_id: string | null
+          gtm_container_id: string | null
           id: string
           is_active: boolean | null
           logo_size: number | null
@@ -7336,6 +7339,9 @@ export type Database = {
           current_channel_index?: number | null
           department_id?: string | null
           distribution_mode?: string | null
+          facebook_pixel_id?: string | null
+          google_analytics_id?: string | null
+          gtm_container_id?: string | null
           id?: string
           is_active?: boolean | null
           logo_size?: number | null
@@ -7364,6 +7370,9 @@ export type Database = {
           current_channel_index?: number | null
           department_id?: string | null
           distribution_mode?: string | null
+          facebook_pixel_id?: string | null
+          google_analytics_id?: string | null
+          gtm_container_id?: string | null
           id?: string
           is_active?: boolean | null
           logo_size?: number | null

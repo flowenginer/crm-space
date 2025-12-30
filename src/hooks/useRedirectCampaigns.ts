@@ -59,6 +59,10 @@ export interface CreateCampaignInput {
   channel_ids?: string[];
   distribution_mode?: 'equal' | 'percentage';
   channel_percentages?: Record<string, number>;
+  // Campos de rastreamento/pixels
+  facebook_pixel_id?: string;
+  gtm_container_id?: string;
+  google_analytics_id?: string;
 }
 
 export interface UpdateCampaignInput extends Partial<CreateCampaignInput> {
