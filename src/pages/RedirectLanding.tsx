@@ -56,13 +56,13 @@ export default function RedirectLanding() {
     utm_content: searchParams.get('utm_content'),
   };
 
-  // Gerar visitor_id único para rastrear visualizações
+  // Gerar visitor_id único para rastrear visualizações (persistente via localStorage)
   const generateVisitorId = () => {
-    const stored = sessionStorage.getItem('visitor_id');
+    const stored = localStorage.getItem('redirect_visitor_id');
     if (stored) return stored;
     
     const id = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-    sessionStorage.setItem('visitor_id', id);
+    localStorage.setItem('redirect_visitor_id', id);
     return id;
   };
 
@@ -90,9 +90,9 @@ export default function RedirectLanding() {
 
         setCampaign(data);
 
-        // Registrar visualização única
+        // Registrar visualização única (visitante único por dispositivo)
         const visitorId = generateVisitorId();
-        await supabase
+        const { error: viewError } = await supabase
           .from('redirect_campaign_views')
           .upsert(
             { 
@@ -102,6 +102,23 @@ export default function RedirectLanding() {
             },
             { onConflict: 'campaign_id,visitor_id', ignoreDuplicates: true }
           );
+
+        if (viewError) {
+          console.error('[RedirectLanding] Erro ao registrar view única:', viewError);
+        }
+
+        // Registrar pageview (cada acesso conta)
+        const { error: pageviewError } = await supabase
+          .from('redirect_campaign_pageviews')
+          .insert({
+            campaign_id: data.id,
+            visitor_id: visitorId,
+            tenant_id: data.tenant_id
+          });
+
+        if (pageviewError) {
+          console.error('[RedirectLanding] Erro ao registrar pageview:', pageviewError);
+        }
       } catch (err) {
         console.error('Erro ao carregar campanha:', err);
         setError('Erro ao carregar a página');
