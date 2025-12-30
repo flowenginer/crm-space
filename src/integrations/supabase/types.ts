@@ -7110,6 +7110,105 @@ export type Database = {
           },
         ]
       }
+      redirect_ab_test_variants: {
+        Row: {
+          ab_test_id: string
+          campaign_id: string
+          created_at: string
+          id: string
+          leads_count: number
+          tenant_id: string
+          views_count: number
+          weight: number
+        }
+        Insert: {
+          ab_test_id: string
+          campaign_id: string
+          created_at?: string
+          id?: string
+          leads_count?: number
+          tenant_id: string
+          views_count?: number
+          weight?: number
+        }
+        Update: {
+          ab_test_id?: string
+          campaign_id?: string
+          created_at?: string
+          id?: string
+          leads_count?: number
+          tenant_id?: string
+          views_count?: number
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redirect_ab_test_variants_ab_test_id_fkey"
+            columns: ["ab_test_id"]
+            isOneToOne: false
+            referencedRelation: "redirect_ab_tests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redirect_ab_test_variants_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "redirect_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redirect_ab_test_variants_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      redirect_ab_tests: {
+        Row: {
+          created_at: string
+          distribution_type: string
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          tenant_id: string
+          total_views: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          distribution_type?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          tenant_id: string
+          total_views?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          distribution_type?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          tenant_id?: string
+          total_views?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redirect_ab_tests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       redirect_campaign_channels: {
         Row: {
           campaign_id: string
