@@ -13,6 +13,14 @@ export interface ABTest {
   total_views: number;
   created_at: string;
   updated_at: string;
+  // New fields
+  goal_type: 'visits' | 'leads' | 'time' | null;
+  goal_value: number | null;
+  goal_reached: boolean;
+  end_date: string | null;
+  winner_variant_id: string | null;
+  status: 'running' | 'paused' | 'completed';
+  auto_winner: boolean;
   variants?: ABTestVariant[];
 }
 
@@ -39,11 +47,18 @@ export interface CreateABTestInput {
   distribution_type: 'equal' | 'weighted';
   campaign_ids: string[];
   weights?: Record<string, number>;
+  // New goal fields
+  goal_type?: 'visits' | 'leads' | 'time';
+  goal_value?: number;
+  end_date?: string;
+  auto_winner?: boolean;
 }
 
 export interface UpdateABTestInput extends Partial<CreateABTestInput> {
   id: string;
   is_active?: boolean;
+  status?: 'running' | 'paused' | 'completed';
+  winner_variant_id?: string;
 }
 
 export function useABTests() {
@@ -68,11 +83,11 @@ export function useABTests() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as ABTest[];
+      return data as unknown as ABTest[];
     },
     enabled: !!tenantId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000,   // 10 minutes
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 }
 
@@ -99,7 +114,7 @@ export function useABTest(id: string | undefined) {
         .single();
 
       if (error) throw error;
-      return data as ABTest;
+      return data as unknown as ABTest;
     },
     enabled: !!id && !!tenantId,
     staleTime: 5 * 60 * 1000,
@@ -115,10 +130,9 @@ export function useCreateABTest() {
     mutationFn: async (input: CreateABTestInput) => {
       if (!profile?.tenant_id) throw new Error('Tenant não encontrado');
 
-      // Calcular pesos
       const equalWeight = Math.floor(100 / input.campaign_ids.length);
       
-      // Criar teste A/B
+      // Create A/B test with new goal fields
       const { data: abTest, error: abTestError } = await supabase
         .from('redirect_ab_tests')
         .insert({
@@ -126,13 +140,18 @@ export function useCreateABTest() {
           name: input.name,
           slug: input.slug,
           distribution_type: input.distribution_type,
+          goal_type: input.goal_type || null,
+          goal_value: input.goal_value || null,
+          end_date: input.end_date || null,
+          auto_winner: input.auto_winner || false,
+          status: 'running',
         })
         .select()
         .single();
 
       if (abTestError) throw abTestError;
 
-      // Criar variantes
+      // Create variants
       const variantInserts = input.campaign_ids.map((campaign_id) => ({
         ab_test_id: abTest.id,
         campaign_id,
@@ -175,7 +194,7 @@ export function useUpdateABTest() {
 
       const { id, campaign_ids, weights, ...updateData } = input;
 
-      // Atualizar teste A/B
+      // Update A/B test
       const { data: abTest, error: abTestError } = await supabase
         .from('redirect_ab_tests')
         .update(updateData)
@@ -186,15 +205,13 @@ export function useUpdateABTest() {
 
       if (abTestError) throw abTestError;
 
-      // Atualizar variantes se fornecido
+      // Update variants if provided
       if (campaign_ids !== undefined) {
-        // Remover variantes existentes
         await supabase
           .from('redirect_ab_test_variants')
           .delete()
           .eq('ab_test_id', id);
 
-        // Adicionar novas variantes
         if (campaign_ids.length > 0) {
           const equalWeight = Math.floor(100 / campaign_ids.length);
           
@@ -255,4 +272,34 @@ export function useDeleteABTest() {
   });
 }
 
-// Hook para incrementar views de uma variante (usado na landing page)
+// Hook to declare winner manually
+export function useDeclareWinner() {
+  const queryClient = useQueryClient();
+  const { profile } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ testId, variantId }: { testId: string; variantId: string }) => {
+      if (!profile?.tenant_id) throw new Error('Tenant não encontrado');
+
+      const { error } = await supabase
+        .from('redirect_ab_tests')
+        .update({
+          winner_variant_id: variantId,
+          status: 'completed',
+          goal_reached: true,
+        })
+        .eq('id', testId)
+        .eq('tenant_id', profile.tenant_id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ab-tests'] });
+      queryClient.invalidateQueries({ queryKey: ['ab-test'] });
+      toast.success('Campeão declarado com sucesso!');
+    },
+    onError: () => {
+      toast.error('Erro ao declarar campeão');
+    },
+  });
+}
