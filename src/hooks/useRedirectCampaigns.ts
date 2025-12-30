@@ -313,3 +313,59 @@ export function useRedirectCampaignLogs(campaignId: string | undefined) {
     gcTime: 5 * 60 * 1000,
   });
 }
+
+// Hook para buscar visitas de uma campanha específica (com UTMs)
+export function useRedirectCampaignViews(campaignId: string | undefined) {
+  const { profile } = useAuth();
+  const tenantId = profile?.tenant_id;
+
+  return useQuery({
+    queryKey: ['redirect-views', campaignId],
+    queryFn: async () => {
+      if (!campaignId || !tenantId) return [];
+
+      const { data, error } = await supabase
+        .from('redirect_campaign_views')
+        .select('*')
+        .eq('campaign_id', campaignId)
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!campaignId && !!tenantId,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+}
+
+// Hook para buscar todas as visitas (agregado)
+export function useAllRedirectCampaignViews() {
+  const { profile } = useAuth();
+  const tenantId = profile?.tenant_id;
+
+  return useQuery({
+    queryKey: ['redirect-all-views', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+
+      const { data, error } = await supabase
+        .from('redirect_campaign_views')
+        .select(`
+          *,
+          campaign:redirect_campaigns(id, name, slug)
+        `)
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!tenantId,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+}

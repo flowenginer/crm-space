@@ -7262,21 +7262,42 @@ export type Database = {
           campaign_id: string
           created_at: string | null
           id: string
+          referrer: string | null
           tenant_id: string | null
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
           visitor_id: string
         }
         Insert: {
           campaign_id: string
           created_at?: string | null
           id?: string
+          referrer?: string | null
           tenant_id?: string | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
           visitor_id: string
         }
         Update: {
           campaign_id?: string
           created_at?: string | null
           id?: string
+          referrer?: string | null
           tenant_id?: string | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
           visitor_id?: string
         }
         Relationships: [
@@ -7301,21 +7322,42 @@ export type Database = {
           campaign_id: string
           created_at: string | null
           id: string
+          referrer: string | null
           tenant_id: string | null
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
           visitor_id: string
         }
         Insert: {
           campaign_id: string
           created_at?: string | null
           id?: string
+          referrer?: string | null
           tenant_id?: string | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
           visitor_id: string
         }
         Update: {
           campaign_id?: string
           created_at?: string | null
           id?: string
+          referrer?: string | null
           tenant_id?: string | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
           visitor_id?: string
         }
         Relationships: [
