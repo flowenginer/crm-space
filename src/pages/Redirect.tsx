@@ -18,7 +18,7 @@ import { RedirectCampaignCard } from '@/components/redirect/RedirectCampaignCard
 import { RedirectCampaignForm } from '@/components/redirect/RedirectCampaignForm';
 import { ABTestCard } from '@/components/redirect/ABTestCard';
 import { ABTestForm } from '@/components/redirect/ABTestForm';
-import { VisitorsDialog } from '@/components/redirect/VisitorsDialog';
+import { UTMBreakdownDialog } from "@/components/redirect/UTMBreakdownDialog";
 import {
   useRedirectCampaigns,
   useCreateRedirectCampaign,
@@ -42,7 +42,8 @@ import { Badge } from '@/components/ui/badge';
 export default function Redirect() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isABTestFormOpen, setIsABTestFormOpen] = useState(false);
-  const [showVisitorsDialog, setShowVisitorsDialog] = useState(false);
+  const [showUTMBreakdown, setShowUTMBreakdown] = useState(false);
+  const [selectedCampaignForUTM, setSelectedCampaignForUTM] = useState<string | undefined>(undefined);
   const [editingCampaign, setEditingCampaign] = useState<RedirectCampaign | null>(null);
   const [editingABTest, setEditingABTest] = useState<ABTest | null>(null);
   const [viewingStatsCampaign, setViewingStatsCampaign] = useState<RedirectCampaign | null>(null);
@@ -132,7 +133,10 @@ export default function Redirect() {
 
         <Card 
           className="cursor-pointer hover:shadow-md transition-shadow hover:border-purple-300"
-          onClick={() => setShowVisitorsDialog(true)}
+          onClick={() => {
+            setSelectedCampaignForUTM(campaigns[0]?.id);
+            setShowUTMBreakdown(true);
+          }}
         >
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -142,7 +146,7 @@ export default function Redirect() {
               <div>
                 <p className="text-sm text-muted-foreground">Total de Visitantes</p>
                 <p className="text-2xl font-bold">{totalViews}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Clique para ver detalhes</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Clique para ver UTM Breakdown</p>
               </div>
             </div>
           </CardContent>
@@ -360,10 +364,12 @@ export default function Redirect() {
         </SheetContent>
       </Sheet>
 
-      {/* Visitors Dialog */}
-      <VisitorsDialog
-        open={showVisitorsDialog}
-        onOpenChange={setShowVisitorsDialog}
+      {/* UTM Breakdown Dialog */}
+      <UTMBreakdownDialog
+        open={showUTMBreakdown}
+        onOpenChange={setShowUTMBreakdown}
+        campaignId={selectedCampaignForUTM}
+        campaignName={campaigns?.find(c => c.id === selectedCampaignForUTM)?.name || "Todas as Campanhas"}
       />
     </div>
   );
