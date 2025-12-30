@@ -742,60 +742,99 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       const userId = currentUser?.id;
       
-      // *** CRITICAL: Buscar departamento primário e tenant_id do usuário ***
-      const userDepartmentId = userId ? await getUserPrimaryDepartment(userId) : null;
-      
-      // Buscar tenant_id do perfil do usuário
-      let tenantId: string | null = null;
-      if (userId) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('tenant_id')
-          .eq('id', userId)
-          .single();
-        tenantId = profile?.tenant_id || null;
+      if (!userId) {
+        toast.error('Usuário não autenticado. Faça login novamente.');
+        console.error('[Sidebar][StartConv] No userId found');
+        return;
       }
+      
+      // *** CRITICAL: Buscar tenant_id via RPC (source of truth) ***
+      const { data: tenantId, error: tenantError } = await supabase.rpc('get_user_tenant_id');
+      
+      if (tenantError || !tenantId) {
+        console.error('[Sidebar][StartConv] Failed to get tenant_id:', tenantError);
+        toast.error('Não foi possível identificar o tenant. Faça login novamente ou contate o suporte.');
+        return;
+      }
+      
+      console.log('[Sidebar][StartConv] tenantId obtained:', tenantId);
+      
+      // Buscar departamento primário do usuário
+      const userDepartmentId = await getUserPrimaryDepartment(userId);
 
       // Create contact if doesn't exist
       if (!contactId) {
         // Use the name from modal, or fallback to phone-based name
         const contactName = (pendingContactForConversation as any).full_name || `WhatsApp ${pendingContactForConversation.phone.slice(-4)}`;
         
+        const contactPayload = {
+          phone: pendingContactForConversation.phone,
+          full_name: contactName,
+          assigned_to: userId,
+          department_id: userDepartmentId,
+          tenant_id: tenantId,
+          lead_status: 'new',
+          origin: 'manual',
+          first_contact_at: new Date().toISOString(),
+        };
+        
+        console.log('[Sidebar][StartConv] Creating contact with payload:', contactPayload);
+        
         const { data: newContact, error: contactError } = await supabase
           .from('contacts')
-          .insert({
-            phone: pendingContactForConversation.phone,
-            full_name: contactName,
-            assigned_to: userId,
-            department_id: userDepartmentId,
-            tenant_id: tenantId, // *** CRITICAL: Include tenant_id ***
-            lead_status: 'new',
-            origin: 'manual',
-            first_contact_at: new Date().toISOString(),
-          })
+          .insert(contactPayload)
           .select('id')
           .single();
 
-        if (contactError) throw contactError;
+        if (contactError) {
+          console.error('[Sidebar][StartConv] Contact creation error:', contactError);
+          toast.error(`Erro ao criar contato: ${contactError.message || 'Erro desconhecido'}`);
+          return;
+        }
+        
         contactId = newContact.id;
+        console.log('[Sidebar][StartConv] Contact created:', contactId);
         toast.success('Novo contato criado!');
       }
 
       // Create new conversation with selected channel AND assign to user/department
+      const convPayload = {
+        contact_id: contactId,
+        status: 'open',
+        channel_id: channelId,
+        assigned_to: userId,
+        department_id: userDepartmentId,
+        tenant_id: tenantId,
+      };
+      
+      console.log('[Sidebar][StartConv] Creating conversation with payload:', convPayload);
+      
       const { data: newConv, error: convError } = await supabase
         .from('conversations')
-        .insert({
-          contact_id: contactId,
-          status: 'open',
-          channel_id: channelId,
-          assigned_to: userId,
-          department_id: userDepartmentId,
-          tenant_id: tenantId, // *** CRITICAL: Include tenant_id ***
-        })
+        .insert(convPayload)
         .select('id')
         .single();
 
-      if (convError) throw convError;
+      if (convError) {
+        console.error('[Sidebar][StartConv] Conversation creation error:', convError);
+        toast.error(`Erro ao criar conversa: ${convError.message || 'Erro desconhecido'}`);
+        return;
+      }
+      
+      console.log('[Sidebar][StartConv] Conversation created:', newConv.id);
+      
+      // *** Verificar se a conversa é acessível antes de navegar ***
+      const { data: verifyConv, error: verifyError } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('id', newConv.id)
+        .maybeSingle();
+      
+      if (verifyError || !verifyConv) {
+        console.error('[Sidebar][StartConv] Conversation not accessible after creation:', verifyError);
+        toast.error('Conversa criada, mas inacessível (problema de permissão). Contate o suporte.');
+        return;
+      }
       
       navigate(`/conversations?id=${newConv.id}`);
       toast.success('Nova conversa criada!');
@@ -805,9 +844,9 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
       setPendingContactForConversation(null);
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
-    } catch (error) {
-      console.error('Error creating conversation:', error);
-      toast.error('Erro ao criar conversa');
+    } catch (error: any) {
+      console.error('[Sidebar][StartConv] Unexpected error:', error);
+      toast.error(`Erro inesperado: ${error?.message || 'Erro desconhecido'}`);
     } finally {
       setIsStartingConversation(false);
     }
