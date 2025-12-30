@@ -13,8 +13,11 @@ export interface RedirectCampaign {
   button_text: string | null;
   button_color: string | null;
   background_color: string | null;
-  welcome_message: string | null;
   logo_url: string | null;
+  logo_size: number | null;
+  thank_you_message: string | null;
+  department_id: string | null;
+  tag_id: string | null;
   is_active: boolean;
   current_channel_index: number;
   total_clicks: number;
@@ -44,12 +47,15 @@ export interface CreateCampaignInput {
   name: string;
   slug: string;
   logo_url?: string;
+  logo_size?: number;
   title?: string;
   subtitle?: string;
   button_text?: string;
   button_color?: string;
   background_color?: string;
-  welcome_message?: string;
+  thank_you_message?: string;
+  department_id?: string;
+  tag_id?: string;
   channel_ids: string[];
   distribution_mode?: 'equal' | 'percentage';
   channel_percentages?: Record<string, number>;
@@ -133,12 +139,15 @@ export function useCreateRedirectCampaign() {
           name: input.name,
           slug: input.slug,
           logo_url: input.logo_url,
+          logo_size: input.logo_size || 64,
           title: input.title || 'Fale com nosso time!',
           subtitle: input.subtitle,
-          button_text: input.button_text || 'Falar com Vendedor',
+          button_text: input.button_text || 'Enviar',
           button_color: input.button_color || '#8B5CF6',
           background_color: input.background_color || '#FFFFFF',
-          welcome_message: input.welcome_message || 'Olá! Vi seu anúncio e gostaria de mais informações.',
+          thank_you_message: input.thank_you_message || 'Obrigado! Entraremos em contato em breve.',
+          department_id: input.department_id || null,
+          tag_id: input.tag_id || null,
           distribution_mode: input.distribution_mode || 'equal',
         })
         .select()

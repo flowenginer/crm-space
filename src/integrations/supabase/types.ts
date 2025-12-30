@@ -7204,14 +7204,18 @@ export type Database = {
           button_text: string | null
           created_at: string | null
           current_channel_index: number | null
+          department_id: string | null
           distribution_mode: string | null
           id: string
           is_active: boolean | null
+          logo_size: number | null
           logo_url: string | null
           name: string
           slug: string
           subtitle: string | null
+          tag_id: string | null
           tenant_id: string
+          thank_you_message: string | null
           title: string | null
           total_clicks: number | null
           total_leads: number | null
@@ -7225,14 +7229,18 @@ export type Database = {
           button_text?: string | null
           created_at?: string | null
           current_channel_index?: number | null
+          department_id?: string | null
           distribution_mode?: string | null
           id?: string
           is_active?: boolean | null
+          logo_size?: number | null
           logo_url?: string | null
           name: string
           slug: string
           subtitle?: string | null
+          tag_id?: string | null
           tenant_id: string
+          thank_you_message?: string | null
           title?: string | null
           total_clicks?: number | null
           total_leads?: number | null
@@ -7246,14 +7254,18 @@ export type Database = {
           button_text?: string | null
           created_at?: string | null
           current_channel_index?: number | null
+          department_id?: string | null
           distribution_mode?: string | null
           id?: string
           is_active?: boolean | null
+          logo_size?: number | null
           logo_url?: string | null
           name?: string
           slug?: string
           subtitle?: string | null
+          tag_id?: string | null
           tenant_id?: string
+          thank_you_message?: string | null
           title?: string | null
           total_clicks?: number | null
           total_leads?: number | null
@@ -7262,6 +7274,20 @@ export type Database = {
           welcome_message?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "redirect_campaigns_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redirect_campaigns_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "redirect_campaigns_tenant_id_fkey"
             columns: ["tenant_id"]

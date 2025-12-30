@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { PhoneInputWithCountry } from '@/components/redirect/PhoneInputWithCountry';
-import { RedirectCountdown } from '@/components/redirect/RedirectCountdown';
-import { Loader2 } from 'lucide-react';
+import { Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CampaignData {
@@ -11,22 +10,21 @@ interface CampaignData {
   name: string;
   slug: string;
   logo_url: string | null;
+  logo_size: number | null;
   title: string;
   subtitle: string | null;
   button_text: string;
   button_color: string;
   background_color: string;
-  welcome_message: string;
+  thank_you_message: string | null;
   is_active: boolean;
   tenant_id: string;
 }
 
 interface CaptureResult {
   success: boolean;
-  redirect_phone: string;
-  channel_name?: string;
-  welcome_message: string;
   contact_id?: string;
+  thank_you_message?: string;
 }
 
 export default function RedirectLanding() {
@@ -38,8 +36,8 @@ export default function RedirectLanding() {
   const [submitting, setSubmitting] = useState(false);
   const [phone, setPhone] = useState('');
   const [countryCode, setCountryCode] = useState('55');
-  const [showCountdown, setShowCountdown] = useState(false);
-  const [redirectData, setRedirectData] = useState<CaptureResult | null>(null);
+  const [showThankYou, setShowThankYou] = useState(false);
+  const [thankYouMessage, setThankYouMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   // Extrair UTMs
@@ -137,21 +135,15 @@ export default function RedirectLanding() {
         throw new Error(data?.error || 'Erro ao processar');
       }
 
-      setRedirectData(data);
-      setShowCountdown(true);
+      // Mostrar mensagem de obrigado
+      setThankYouMessage(data.thank_you_message || campaign.thank_you_message || 'Obrigado! Entraremos em contato em breve.');
+      setShowThankYou(true);
     } catch (err: any) {
       console.error('Erro ao capturar lead:', err);
       toast.error('Erro ao processar. Tente novamente.');
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleRedirect = () => {
-    if (!redirectData) return;
-
-    const whatsappUrl = `https://wa.me/${redirectData.redirect_phone}?text=${encodeURIComponent(redirectData.welcome_message)}`;
-    window.location.href = whatsappUrl;
   };
 
   if (loading) {
@@ -173,6 +165,8 @@ export default function RedirectLanding() {
     );
   }
 
+  const logoHeight = campaign.logo_size || 64;
+
   return (
     <div 
       className="min-h-screen flex items-center justify-center p-4"
@@ -180,29 +174,43 @@ export default function RedirectLanding() {
     >
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6">
-          {/* Logo */}
+          {/* Logo com tamanho dinâmico */}
           {campaign.logo_url ? (
             <div className="flex justify-center">
               <img 
                 src={campaign.logo_url} 
                 alt="Logo" 
-                className="h-16 object-contain"
+                style={{ height: `${logoHeight}px` }}
+                className="object-contain"
               />
             </div>
           ) : (
             <div className="flex justify-center">
-              <div className="h-16 w-16 rounded-full bg-gray-100 flex items-center justify-center">
-                <span className="text-2xl font-bold text-gray-400">S</span>
+              <div 
+                className="rounded-full bg-gray-100 flex items-center justify-center"
+                style={{ height: `${logoHeight}px`, width: `${logoHeight}px` }}
+              >
+                <span 
+                  className="font-bold text-gray-400"
+                  style={{ fontSize: `${logoHeight / 3}px` }}
+                >
+                  S
+                </span>
               </div>
             </div>
           )}
 
-          {showCountdown ? (
-            <RedirectCountdown
-              seconds={5}
-              onComplete={handleRedirect}
-              channelName={redirectData?.channel_name}
-            />
+          {showThankYou ? (
+            // Tela de Obrigado
+            <div className="text-center space-y-4 py-6">
+              <div className="flex justify-center">
+                <CheckCircle2 className="h-16 w-16 text-green-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">Obrigado!</h2>
+              <p className="text-gray-600 text-lg">
+                {thankYouMessage}
+              </p>
+            </div>
           ) : (
             <>
               {/* Título */}
