@@ -7257,6 +7257,45 @@ export type Database = {
           },
         ]
       }
+      redirect_campaign_pageviews: {
+        Row: {
+          campaign_id: string
+          created_at: string | null
+          id: string
+          tenant_id: string | null
+          visitor_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string | null
+          id?: string
+          tenant_id?: string | null
+          visitor_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string | null
+          id?: string
+          tenant_id?: string | null
+          visitor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redirect_campaign_pageviews_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "redirect_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redirect_campaign_pageviews_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       redirect_campaign_views: {
         Row: {
           campaign_id: string
