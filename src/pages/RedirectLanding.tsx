@@ -19,6 +19,9 @@ interface CampaignData {
   thank_you_message: string | null;
   is_active: boolean;
   tenant_id: string;
+  background_image_url: string | null;
+  background_image_opacity: number | null;
+  background_image_position: string | null;
 }
 
 interface CaptureResult {
@@ -169,10 +172,24 @@ export default function RedirectLanding() {
 
   return (
     <div 
-      className="min-h-screen flex items-center justify-center p-4"
+      className="min-h-screen flex items-center justify-center p-4 relative"
       style={{ backgroundColor: campaign.background_color }}
     >
-      <div className="w-full max-w-md">
+      {/* Imagem de fundo como marca d'água */}
+      {campaign.background_image_url && (
+        <div 
+          className="absolute inset-0 z-0"
+          style={{
+            backgroundImage: `url(${campaign.background_image_url})`,
+            backgroundSize: campaign.background_image_position === 'repeat' ? 'auto' : 
+                            campaign.background_image_position === 'contain' ? 'contain' : 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: campaign.background_image_position === 'repeat' ? 'repeat' : 'no-repeat',
+            opacity: campaign.background_image_opacity || 0.3,
+          }}
+        />
+      )}
+      <div className="w-full max-w-md relative z-10">
         <div className="bg-white rounded-2xl shadow-xl p-8 space-y-6">
           {/* Logo com tamanho dinâmico */}
           {campaign.logo_url ? (

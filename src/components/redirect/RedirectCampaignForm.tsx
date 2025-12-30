@@ -30,6 +30,9 @@ const campaignSchema = z.object({
   thank_you_message: z.string().optional(),
   department_id: z.string().optional(),
   tag_id: z.string().optional(),
+  background_image_url: z.string().optional(),
+  background_image_opacity: z.number().min(0.1).max(1).optional(),
+  background_image_position: z.string().optional(),
 });
 
 type CampaignFormData = z.infer<typeof campaignSchema>;
@@ -85,6 +88,8 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
   const [newTagColor, setNewTagColor] = useState('#8B5CF6');
   const [isCreatingTag, setIsCreatingTag] = useState(false);
 
+  const [backgroundImageOpacity, setBackgroundImageOpacity] = useState((campaign as any)?.background_image_opacity || 0.3);
+
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CampaignFormData>({
     resolver: zodResolver(campaignSchema),
     defaultValues: {
@@ -100,6 +105,9 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
       thank_you_message: (campaign as any)?.thank_you_message || 'Obrigado! Entraremos em contato em breve.',
       department_id: (campaign as any)?.department_id || '',
       tag_id: (campaign as any)?.tag_id || '',
+      background_image_url: (campaign as any)?.background_image_url || '',
+      background_image_opacity: (campaign as any)?.background_image_opacity || 0.3,
+      background_image_position: (campaign as any)?.background_image_position || 'cover',
     },
   });
 
@@ -130,6 +138,7 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
     onSubmit({ 
       ...data,
       logo_size: logoSize,
+      background_image_opacity: backgroundImageOpacity,
     });
   };
 
@@ -305,6 +314,60 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
                 </div>
               </div>
             </div>
+
+            {/* Imagem de Fundo */}
+            <div className="space-y-4 pt-4 border-t">
+              <Label className="text-base font-medium">Imagem de Fundo (Marca d'Água)</Label>
+              
+              <div className="space-y-2">
+                <Label htmlFor="background_image_url">URL da Imagem</Label>
+                <Input
+                  id="background_image_url"
+                  {...register('background_image_url')}
+                  placeholder="https://exemplo.com/imagem.png"
+                />
+                <p className="text-xs text-muted-foreground">
+                  A imagem aparecerá como marca d'água atrás do conteúdo
+                </p>
+              </div>
+
+              {watch('background_image_url') && (
+                <>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label>Opacidade</Label>
+                      <span className="text-sm text-muted-foreground">{Math.round(backgroundImageOpacity * 100)}%</span>
+                    </div>
+                    <Slider
+                      value={[backgroundImageOpacity * 100]}
+                      onValueChange={(value) => setBackgroundImageOpacity(value[0] / 100)}
+                      min={10}
+                      max={100}
+                      step={5}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Posição da Imagem</Label>
+                    <Select
+                      value={watch('background_image_position') || 'cover'}
+                      onValueChange={(value) => setValue('background_image_position', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cover">Cobrir toda tela</SelectItem>
+                        <SelectItem value="contain">Manter proporção</SelectItem>
+                        <SelectItem value="center">Centralizar</SelectItem>
+                        <SelectItem value="repeat">Repetir padrão</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -417,10 +480,24 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
         </CardHeader>
         <CardContent>
           <div 
-            className="rounded-xl overflow-hidden border shadow-sm mx-auto max-w-sm"
+            className="rounded-xl overflow-hidden border shadow-sm mx-auto max-w-sm relative"
             style={{ backgroundColor: watch('background_color') || '#FFFFFF' }}
           >
-            <div className="p-6">
+            {/* Imagem de fundo como marca d'água no preview */}
+            {watch('background_image_url') && (
+              <div 
+                className="absolute inset-0 z-0"
+                style={{
+                  backgroundImage: `url(${watch('background_image_url')})`,
+                  backgroundSize: watch('background_image_position') === 'repeat' ? 'auto' : 
+                                  watch('background_image_position') === 'contain' ? 'contain' : 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: watch('background_image_position') === 'repeat' ? 'repeat' : 'no-repeat',
+                  opacity: backgroundImageOpacity,
+                }}
+              />
+            )}
+            <div className="p-6 relative z-10">
               <div className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
                 {/* Logo com tamanho dinâmico */}
                 {watch('logo_url') ? (

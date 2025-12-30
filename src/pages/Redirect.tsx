@@ -200,9 +200,9 @@ export default function Redirect() {
             <ABTestCard
               key={abTest.id}
               abTest={abTest}
-              onEdit={(ab) => { setEditingABTest(ab); setIsABTestFormOpen(true); }}
-              onDelete={deleteABTest.mutateAsync}
-              onToggleActive={(id, isActive) => updateABTest.mutateAsync({ id, is_active: isActive })}
+            onEdit={(ab) => { setEditingABTest(ab); setIsABTestFormOpen(true); }}
+            onDelete={(id) => deleteABTest.mutateAsync(id).then(() => {})}
+            onToggleActive={(id, isActive) => updateABTest.mutateAsync({ id, is_active: isActive }).then(() => {})}
             />
           ))}
           {/* Campanhas */}
