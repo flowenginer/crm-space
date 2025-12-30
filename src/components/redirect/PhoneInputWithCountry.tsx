@@ -7,7 +7,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, AlertCircle } from 'lucide-react';
 
 interface Country {
   code: string;
@@ -56,6 +56,7 @@ export function PhoneInputWithCountry({
   const [selectedCountry, setSelectedCountry] = useState<Country>(countries[0]);
   const [open, setOpen] = useState(false);
   const [localPhone, setLocalPhone] = useState(value);
+  const [showError, setShowError] = useState(false);
 
   const applyMask = (rawValue: string, mask: string): string => {
     const digits = rawValue.replace(/\D/g, '');
@@ -79,6 +80,9 @@ export function PhoneInputWithCountry({
     const maskedValue = applyMask(rawValue, selectedCountry.mask);
     setLocalPhone(maskedValue);
     
+    // Limpar erro quando começar a digitar
+    if (showError) setShowError(false);
+    
     // Retorna o número completo com DDI
     const cleanPhone = maskedValue.replace(/\D/g, '');
     onChange(`${selectedCountry.ddi}${cleanPhone}`, selectedCountry.ddi);
@@ -94,12 +98,16 @@ export function PhoneInputWithCountry({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanPhone = localPhone.replace(/\D/g, '');
-    if (cleanPhone.length >= 8) {
-      onSubmit();
+    
+    if (cleanPhone.length < 8) {
+      setShowError(true);
+      setTimeout(() => setShowError(false), 3000);
+      return;
     }
+    
+    setShowError(false);
+    onSubmit();
   };
-
-  const isValidPhone = localPhone.replace(/\D/g, '').length >= 8;
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
@@ -148,11 +156,18 @@ export function PhoneInputWithCountry({
         />
       </div>
 
+      {showError && (
+        <div className="flex items-center justify-center gap-2 text-sm text-red-500 animate-pulse">
+          <AlertCircle className="h-4 w-4" />
+          <span>Por favor, digite seu número de WhatsApp</span>
+        </div>
+      )}
+
       <Button
         type="submit"
         className="w-full h-12 text-base font-semibold text-white transition-all hover:opacity-90"
         style={{ backgroundColor: buttonColor }}
-        disabled={disabled || !isValidPhone}
+        disabled={disabled}
       >
         {buttonText}
       </Button>
