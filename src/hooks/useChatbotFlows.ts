@@ -182,12 +182,16 @@ export function useCreateFlow() {
     mutationFn: async (data: { name: string; description?: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Buscar tenant_id do usuário para garantir isolamento por tenant
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+      
       const { data: flow, error } = await supabase
         .from('chatbot_flows')
         .insert({
           name: data.name,
           description: data.description || null,
           created_by: user?.id || null,
+          tenant_id: tenantId,
         })
         .select()
         .single();
@@ -241,6 +245,9 @@ export function useDuplicateFlow() {
       
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Buscar tenant_id do usuário para garantir isolamento por tenant
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+      
       // Criar cópia
       const { data: newFlow, error: flowError } = await supabase
         .from('chatbot_flows')
@@ -253,6 +260,7 @@ export function useDuplicateFlow() {
           run_once_per_contact: original.run_once_per_contact,
           priority: original.priority,
           created_by: user?.id || null,
+          tenant_id: tenantId || original.tenant_id,
         })
         .select()
         .single();
