@@ -428,7 +428,11 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
                     <img 
                       src={watch('logo_url')} 
                       alt="Logo" 
-                      style={{ height: `${logoSize}px` }}
+                      style={{ 
+                        height: `${logoSize}px`, 
+                        width: 'auto',
+                        maxWidth: '100%'
+                      }}
                       className="object-contain"
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = 'none';
