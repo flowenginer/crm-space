@@ -60,9 +60,11 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   const [newConversationPhone, setNewConversationPhone] = useState('');
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [showChannelSelector, setShowChannelSelector] = useState(false);
-  const [pendingContactForConversation, setPendingContactForConversation] = useState<{ id?: string; phone: string } | null>(null);
+  const [pendingContactForConversation, setPendingContactForConversation] = useState<{ id?: string; phone: string; full_name?: string } | null>(null);
   const [localNegotiatedValue, setLocalNegotiatedValue] = useState<string>('');
   const [showQuoteModal, setShowQuoteModal] = useState(false);
+  const [showCreateContactModal, setShowCreateContactModal] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showQuoteSelectionModal, setShowQuoteSelectionModal] = useState(false);
   const [showQuoteDetailsModal, setShowQuoteDetailsModal] = useState(false);
@@ -694,16 +696,36 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
         return;
       }
 
-      // STEP 3: No contact found - show channel selector to create both
-      console.log('[Sidebar] No contact found, showing channel selector');
+      // STEP 3: No contact found - show modal to get contact name first
+      console.log('[Sidebar] No contact found, showing name modal');
       setPendingContactForConversation({ phone: formattedPhone });
-      setShowChannelSelector(true);
+      setNewContactName('');
+      setShowCreateContactModal(true);
     } catch (error) {
       console.error('[Sidebar] Error searching contact:', error);
       toast.error('Erro ao buscar contato');
     } finally {
       setIsStartingConversation(false);
     }
+  };
+
+  // Handle confirm contact name and show channel selector
+  const handleConfirmContactName = () => {
+    if (!newContactName.trim()) {
+      toast.error('Nome é obrigatório');
+      return;
+    }
+    
+    // Update pending contact with the name
+    if (pendingContactForConversation) {
+      setPendingContactForConversation({
+        ...pendingContactForConversation,
+        full_name: newContactName.trim()
+      });
+    }
+    
+    setShowCreateContactModal(false);
+    setShowChannelSelector(true);
   };
 
   // Create conversation with selected channel
@@ -720,24 +742,43 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       const userId = currentUser?.id;
       
-      // *** CRITICAL: Buscar departamento primário do usuário ***
+      // *** CRITICAL: Buscar departamento primário e tenant_id do usuário ***
       const userDepartmentId = userId ? await getUserPrimaryDepartment(userId) : null;
+      
+      // Buscar tenant_id do perfil do usuário
+      let tenantId: string | null = null;
+      if (userId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', userId)
+          .single();
+        tenantId = profile?.tenant_id || null;
+      }
 
       // Create contact if doesn't exist
       if (!contactId) {
+        // Use the name from modal, or fallback to phone-based name
+        const contactName = (pendingContactForConversation as any).full_name || `WhatsApp ${pendingContactForConversation.phone.slice(-4)}`;
+        
         const { data: newContact, error: contactError } = await supabase
           .from('contacts')
           .insert({
             phone: pendingContactForConversation.phone,
-            full_name: `WhatsApp ${pendingContactForConversation.phone.slice(-4)}`,
-            assigned_to: userId, // *** CRITICAL: Assign to current user ***
-            department_id: userDepartmentId, // *** CRITICAL: Assign department ***
+            full_name: contactName,
+            assigned_to: userId,
+            department_id: userDepartmentId,
+            tenant_id: tenantId, // *** CRITICAL: Include tenant_id ***
+            lead_status: 'new',
+            origin: 'manual',
+            first_contact_at: new Date().toISOString(),
           })
           .select('id')
           .single();
 
         if (contactError) throw contactError;
         contactId = newContact.id;
+        toast.success('Novo contato criado!');
       }
 
       // Create new conversation with selected channel AND assign to user/department
@@ -747,8 +788,9 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
           contact_id: contactId,
           status: 'open',
           channel_id: channelId,
-          assigned_to: userId, // *** CRITICAL: Assign to current user ***
-          department_id: userDepartmentId, // *** CRITICAL: Assign department ***
+          assigned_to: userId,
+          department_id: userDepartmentId,
+          tenant_id: tenantId, // *** CRITICAL: Include tenant_id ***
         })
         .select('id')
         .single();
@@ -759,8 +801,10 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
       toast.success('Nova conversa criada!');
 
       setNewConversationPhone('');
+      setNewContactName('');
       setPendingContactForConversation(null);
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
     } catch (error) {
       console.error('Error creating conversation:', error);
       toast.error('Erro ao criar conversa');
@@ -1967,6 +2011,47 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
           />
         </>
       )}
+
+      {/* Create Contact Modal - Ask for name before channel selection */}
+      <Dialog open={showCreateContactModal} onOpenChange={setShowCreateContactModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Contato</DialogTitle>
+            <DialogDescription>
+              Este número não está cadastrado. Informe o nome do contato para continuar.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nome do contato *</label>
+              <Input
+                value={newContactName}
+                onChange={(e) => setNewContactName(e.target.value)}
+                placeholder="Digite o nome do contato"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleConfirmContactName();
+                  }
+                }}
+              />
+            </div>
+            
+            <div className="text-sm text-muted-foreground">
+              Número: {pendingContactForConversation?.phone ? `+${pendingContactForConversation.phone}` : '-'}
+            </div>
+          </div>
+          
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowCreateContactModal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmContactName} disabled={!newContactName.trim()}>
+              Continuar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Channel Selector Modal */}
       <Dialog open={showChannelSelector} onOpenChange={setShowChannelSelector}>
