@@ -21,6 +21,64 @@ interface CaptureRequest {
   user_agent?: string;
 }
 
+// Gera variações do telefone para busca (com/sem 9º dígito, com/sem código do país)
+function generatePhoneVariations(phone: string): string[] {
+  const variations: string[] = [];
+  const cleanPhone = phone.replace(/\D/g, '');
+  
+  if (!cleanPhone) return [phone];
+  
+  variations.push(cleanPhone);
+  
+  // Com/sem código do país
+  if (cleanPhone.startsWith('55')) {
+    variations.push(cleanPhone.slice(2));
+  } else {
+    variations.push(`55${cleanPhone}`);
+  }
+  
+  // Variações do 9º dígito (celulares brasileiros)
+  const hasCountry = cleanPhone.startsWith('55');
+  const ddd = hasCountry ? cleanPhone.slice(2, 4) : cleanPhone.slice(0, 2);
+  const rest = hasCountry ? cleanPhone.slice(4) : cleanPhone.slice(2);
+  
+  // Se tem 9 dígitos após o DDD e começa com 9, gerar versão sem o 9
+  if (rest.length === 9 && rest.startsWith('9')) {
+    const without9 = rest.slice(1);
+    variations.push(`55${ddd}${without9}`);
+    variations.push(`${ddd}${without9}`);
+  }
+  
+  // Se tem 8 dígitos após o DDD, gerar versão com o 9
+  if (rest.length === 8) {
+    variations.push(`55${ddd}9${rest}`);
+    variations.push(`${ddd}9${rest}`);
+  }
+  
+  return [...new Set(variations)];
+}
+
+// Normaliza telefone para formato padrão de armazenamento (55 + DDD + 9 + número)
+function normalizePhoneForStorage(phone: string): string {
+  let digits = phone.replace(/\D/g, '');
+  
+  // Adicionar código do país se não tiver
+  if (!digits.startsWith('55') && digits.length >= 10 && digits.length <= 11) {
+    digits = `55${digits}`;
+  }
+  
+  // Para celulares brasileiros (55 + DDD + 8 dígitos), adicionar o 9
+  if (digits.startsWith('55') && digits.length === 12) {
+    const ddd = digits.slice(2, 4);
+    const rest = digits.slice(4);
+    if (rest.length === 8) {
+      digits = `55${ddd}9${rest}`;
+    }
+  }
+  
+  return digits;
+}
+
 function determineOrigin(utms: CaptureRequest['utms']): string {
   const campaign = (utms.utm_campaign || '').toLowerCase();
   const source = (utms.utm_source || '').toLowerCase();
@@ -156,23 +214,32 @@ Deno.serve(async (req) => {
     let contactId: string | null = null;
     let isNewContact = false;
     
-    // Tentar encontrar contato existente pelo telefone
+    // Gerar variações do telefone para busca (com/sem 9º dígito)
+    const phoneVariations = generatePhoneVariations(phone);
+    console.log('[redirect-capture] Buscando contato por variações:', phoneVariations);
+    
+    // Tentar encontrar contato existente por qualquer variação do telefone
     const { data: existingContact } = await supabase
       .from('contacts')
-      .select('id')
+      .select('id, phone')
       .eq('tenant_id', tenant_id)
-      .eq('phone', phone)
-      .single();
+      .in('phone', phoneVariations)
+      .limit(1)
+      .maybeSingle();
 
     if (existingContact) {
       contactId = existingContact.id;
-      console.log('[redirect-capture] Contato existente:', contactId);
+      console.log('[redirect-capture] Contato existente encontrado:', contactId, 'telefone:', existingContact.phone);
     } else {
+      // Normalizar telefone para padrão de armazenamento (sempre com 9º dígito)
+      const normalizedPhone = normalizePhoneForStorage(phone);
+      console.log('[redirect-capture] Telefone normalizado:', phone, '->', normalizedPhone);
+      
       // Criar novo contato com department_id se definido
       const contactData: any = {
         tenant_id,
-        phone,
-        full_name: `Lead ${phone.slice(-4)}`,
+        phone: normalizedPhone,
+        full_name: `Lead ${normalizedPhone.slice(-4)}`,
         origin: determineOrigin(utms),
         origin_campaign: utms.utm_campaign || campaign.name,
         referral_data: utms,
