@@ -18,6 +18,7 @@ import { RedirectCampaignCard } from '@/components/redirect/RedirectCampaignCard
 import { RedirectCampaignForm } from '@/components/redirect/RedirectCampaignForm';
 import { ABTestCard } from '@/components/redirect/ABTestCard';
 import { ABTestForm } from '@/components/redirect/ABTestForm';
+import { VisitorsDialog } from '@/components/redirect/VisitorsDialog';
 import {
   useRedirectCampaigns,
   useCreateRedirectCampaign,
@@ -41,6 +42,7 @@ import { Badge } from '@/components/ui/badge';
 export default function Redirect() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isABTestFormOpen, setIsABTestFormOpen] = useState(false);
+  const [showVisitorsDialog, setShowVisitorsDialog] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<RedirectCampaign | null>(null);
   const [editingABTest, setEditingABTest] = useState<ABTest | null>(null);
   const [viewingStatsCampaign, setViewingStatsCampaign] = useState<RedirectCampaign | null>(null);
@@ -128,7 +130,10 @@ export default function Redirect() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow hover:border-purple-300"
+          onClick={() => setShowVisitorsDialog(true)}
+        >
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
               <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900/30">
@@ -137,6 +142,7 @@ export default function Redirect() {
               <div>
                 <p className="text-sm text-muted-foreground">Total de Visitantes</p>
                 <p className="text-2xl font-bold">{totalViews}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Clique para ver detalhes</p>
               </div>
             </div>
           </CardContent>
@@ -353,6 +359,12 @@ export default function Redirect() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Visitors Dialog */}
+      <VisitorsDialog
+        open={showVisitorsDialog}
+        onOpenChange={setShowVisitorsDialog}
+      />
     </div>
   );
 }

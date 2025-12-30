@@ -98,7 +98,14 @@ export default function RedirectLanding() {
             { 
               campaign_id: data.id, 
               visitor_id: visitorId,
-              tenant_id: data.tenant_id
+              tenant_id: data.tenant_id,
+              utm_source: utms.utm_source,
+              utm_medium: utms.utm_medium,
+              utm_campaign: utms.utm_campaign,
+              utm_term: utms.utm_term,
+              utm_content: utms.utm_content,
+              referrer: document.referrer || null,
+              user_agent: navigator.userAgent || null,
             },
             { onConflict: 'campaign_id,visitor_id', ignoreDuplicates: true }
           );
@@ -113,7 +120,14 @@ export default function RedirectLanding() {
           .insert({
             campaign_id: data.id,
             visitor_id: visitorId,
-            tenant_id: data.tenant_id
+            tenant_id: data.tenant_id,
+            utm_source: utms.utm_source,
+            utm_medium: utms.utm_medium,
+            utm_campaign: utms.utm_campaign,
+            utm_term: utms.utm_term,
+            utm_content: utms.utm_content,
+            referrer: document.referrer || null,
+            user_agent: navigator.userAgent || null,
           });
 
         if (pageviewError) {
