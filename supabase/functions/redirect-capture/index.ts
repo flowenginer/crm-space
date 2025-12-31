@@ -58,21 +58,31 @@ function generatePhoneVariations(phone: string): string[] {
   return [...new Set(variations)];
 }
 
-// Normaliza telefone para formato padrão de armazenamento (55 + DDD + 9 + número)
+// Normaliza telefone para formato padrão de armazenamento (55 + DDD + número)
+// IMPORTANTE: Só adiciona 9º dígito se o número de 8 dígitos começar com 9 (celular)
+// Isso evita duplicações entre contatos com/sem 9º dígito
 function normalizePhoneForStorage(phone: string): string {
   let digits = phone.replace(/\D/g, '');
+  
+  // Remover zeros à esquerda que não sejam parte do código do país
+  if (digits.startsWith('0')) {
+    digits = digits.replace(/^0+/, '');
+  }
   
   // Adicionar código do país se não tiver
   if (!digits.startsWith('55') && digits.length >= 10 && digits.length <= 11) {
     digits = `55${digits}`;
   }
   
-  // Para celulares brasileiros (55 + DDD + 8 dígitos), adicionar o 9
+  // Para celulares brasileiros (55 + DDD + 8 dígitos)
+  // Só adicionar 9 se o bloco de 8 dígitos COMEÇAR com 9 (caracteriza celular sem o nono dígito)
   if (digits.startsWith('55') && digits.length === 12) {
     const ddd = digits.slice(2, 4);
     const rest = digits.slice(4);
-    if (rest.length === 8) {
+    // Só adicionar 9 se os 8 dígitos começarem com 9 (era celular, perdeu o 9)
+    if (rest.length === 8 && rest.startsWith('9')) {
       digits = `55${ddd}9${rest}`;
+      console.log(`[redirect-capture] Adicionado 9º dígito: ${ddd}${rest} -> ${ddd}9${rest}`);
     }
   }
   

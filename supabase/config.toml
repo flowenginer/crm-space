@@ -79,3 +79,6 @@ verify_jwt = false
 
 [functions.distribute-lead]
 verify_jwt = false
+
+[functions.dedupe-redirect-contacts]
+verify_jwt = true
