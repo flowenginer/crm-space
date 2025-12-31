@@ -65,28 +65,39 @@ export function InternalChatInput({
 
   const handleSend = async () => {
     if (!message.trim() && !replyingTo) return;
+    if (sendMessage.isPending) return; // Prevenir envio duplicado
+
+    const messageToSend = message.trim();
+    setMessage(''); // Limpa imediatamente para feedback
+    onCancelReply();
 
     let currentThreadId = threadId;
     if (!currentThreadId) {
       currentThreadId = await onStartChat();
-      if (!currentThreadId) return;
+      if (!currentThreadId) {
+        setMessage(messageToSend); // Restaura se falhou
+        return;
+      }
     }
 
-    await sendMessage.mutateAsync({
-      threadId: currentThreadId,
-      content: message.trim(),
-      messageType: 'text',
-      replyToMessageId: replyingTo?.id
-    });
-
-    setMessage('');
-    onCancelReply();
+    try {
+      await sendMessage.mutateAsync({
+        threadId: currentThreadId,
+        content: messageToSend,
+        messageType: 'text',
+        replyToMessageId: replyingTo?.id
+      });
+    } catch (error) {
+      setMessage(messageToSend); // Restaura se falhou
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (!sendMessage.isPending) {
+        handleSend();
+      }
     }
   };
 
