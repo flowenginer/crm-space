@@ -1678,13 +1678,48 @@ serve(async (req) => {
     
     // Primeiro, tentar buscar o contato existente por todas as variações (FILTRAR POR TENANT!)
     // Incluir department_id para preservar o departamento definido pela campanha redirect
-    let { data: contact } = await supabase
+    // IMPORTANTE: Buscar TODOS os matches para depois escolher o melhor (priorizar telefone com 13 dígitos)
+    let { data: contactMatches } = await supabase
       .from("contacts")
       .select("id, full_name, phone, department_id")
       .in("phone", phoneVariations)
       .eq("tenant_id", channel.tenant_id)
-      .limit(1)
-      .maybeSingle();
+      .limit(10);
+    
+    // Selecionar o melhor contato: priorizar telefone com 13 dígitos (55 + DDD + 9 + 8)
+    // Isso evita duplicatas onde um contato tem o 9º dígito e outro não
+    let contact: { id: any; full_name: any; phone: any; department_id: any; } | null = null;
+    if (contactMatches && contactMatches.length > 0) {
+      if (contactMatches.length === 1) {
+        contact = contactMatches[0];
+      } else {
+        // Múltiplos contatos encontrados - escolher o melhor
+        console.log(`[Webhook] ⚠️ Found ${contactMatches.length} contacts matching phone variations`);
+        
+        // Priorizar: 1) telefone com 13 dígitos (correto), 2) mais recente
+        const sortedContacts = contactMatches.sort((a, b) => {
+          const phoneA = a.phone?.replace(/\D/g, '') || '';
+          const phoneB = b.phone?.replace(/\D/g, '') || '';
+          
+          // Priorizar 13 dígitos (formato correto brasileiro com 9º dígito)
+          const is13DigitsA = phoneA.length === 13;
+          const is13DigitsB = phoneB.length === 13;
+          
+          if (is13DigitsA && !is13DigitsB) return -1;
+          if (!is13DigitsA && is13DigitsB) return 1;
+          
+          // Se ambos têm mesmo comprimento, priorizar o normalizado (incoming)
+          const normalizedIncoming = normalizePhoneForStorageBR(normalizedMessage.from);
+          if (phoneA === normalizedIncoming) return -1;
+          if (phoneB === normalizedIncoming) return 1;
+          
+          return 0;
+        });
+        
+        contact = sortedContacts[0];
+        console.log(`[Webhook] Selected contact: ${contact?.full_name} (${contact?.phone}) from ${contactMatches.length} matches`);
+      }
+    }
 
     if (!contact) {
       // Preparar dados de origem baseado em referral (Meta Ads)
