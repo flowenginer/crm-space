@@ -368,6 +368,7 @@ Deno.serve(async (req) => {
                   campaign_name: campaign.name,
                   ...utms
                 },
+                department_id: campaign.department_id || null,
               })
               .select('id')
               .single();
