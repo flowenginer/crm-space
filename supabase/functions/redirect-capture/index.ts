@@ -22,6 +22,7 @@ interface CaptureRequest {
 }
 
 // Gera variações do telefone para busca (com/sem 9º dígito, com/sem código do país)
+// REGRA CELULAR BRASILEIRO: Celulares começam com 6, 7, 8 ou 9 no primeiro dígito após DDD
 function generatePhoneVariations(phone: string): string[] {
   const variations: string[] = [];
   const cleanPhone = phone.replace(/\D/g, '');
@@ -49,8 +50,8 @@ function generatePhoneVariations(phone: string): string[] {
     variations.push(`${ddd}${without9}`);
   }
   
-  // Se tem 8 dígitos após o DDD, gerar versão com o 9
-  if (rest.length === 8) {
+  // CORREÇÃO: Se tem 8 dígitos após o DDD e começa com [6-9], é celular - gerar versão com 9
+  if (rest.length === 8 && /^[6-9]/.test(rest)) {
     variations.push(`55${ddd}9${rest}`);
     variations.push(`${ddd}9${rest}`);
   }
@@ -59,8 +60,8 @@ function generatePhoneVariations(phone: string): string[] {
 }
 
 // Normaliza telefone para formato padrão de armazenamento (55 + DDD + número)
-// IMPORTANTE: Só adiciona 9º dígito se o número de 8 dígitos começar com 9 (celular)
-// Isso evita duplicações entre contatos com/sem 9º dígito
+// REGRA: Celulares BR (começando com 6-9 após DDD) devem ter 9 dígitos
+// Se recebemos 8 dígitos começando com [6-9], adicionamos o 9 na frente
 function normalizePhoneForStorage(phone: string): string {
   let digits = phone.replace(/\D/g, '');
   
@@ -75,12 +76,11 @@ function normalizePhoneForStorage(phone: string): string {
   }
   
   // Para celulares brasileiros (55 + DDD + 8 dígitos)
-  // Só adicionar 9 se o bloco de 8 dígitos COMEÇAR com 9 (caracteriza celular sem o nono dígito)
+  // Adicionar 9 se o bloco de 8 dígitos começar com [6-9] (celular sem o nono dígito)
   if (digits.startsWith('55') && digits.length === 12) {
     const ddd = digits.slice(2, 4);
     const rest = digits.slice(4);
-    // Só adicionar 9 se os 8 dígitos começarem com 9 (era celular, perdeu o 9)
-    if (rest.length === 8 && rest.startsWith('9')) {
+    if (rest.length === 8 && /^[6-9]/.test(rest)) {
       digits = `55${ddd}9${rest}`;
       console.log(`[redirect-capture] Adicionado 9º dígito: ${ddd}${rest} -> ${ddd}9${rest}`);
     }
@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
       ?.filter((c: any) => c.is_active && c.channel?.status === 'connected')
       .sort((a: any, b: any) => a.position - b.position) || [];
 
-    // 3. Selecionar canal se disponível (opcional)
+    // 3. Selecionar canal (OBRIGATÓRIO - fallback para canal aleatório se campanha não tiver)
     let selectedChannel: any = null;
     
     if (activeChannels.length > 0) {
@@ -208,7 +208,25 @@ Deno.serve(async (req) => {
       
       selectedChannel = selectedChannelLink.channel;
     } else {
-      console.log('[redirect-capture] Nenhum canal configurado - continuando sem canal');
+      // FALLBACK: Buscar qualquer canal conectado do tenant
+      console.log('[redirect-capture] Nenhum canal na campanha - buscando canal conectado do tenant...');
+      
+      const { data: availableChannels } = await supabase
+        .from('whatsapp_channels')
+        .select('id, name, phone, status')
+        .eq('tenant_id', tenant_id)
+        .eq('status', 'connected')
+        .eq('is_deleted', false)
+        .limit(10);
+      
+      if (availableChannels && availableChannels.length > 0) {
+        // Selecionar aleatoriamente para distribuir carga
+        const randomIndex = Math.floor(Math.random() * availableChannels.length);
+        selectedChannel = availableChannels[randomIndex];
+        console.log('[redirect-capture] Fallback: canal aleatório selecionado:', selectedChannel.name);
+      } else {
+        console.log('[redirect-capture] ⚠️ Nenhum canal conectado disponível no tenant');
+      }
     }
 
     // 4. Atualizar contador de cliques
