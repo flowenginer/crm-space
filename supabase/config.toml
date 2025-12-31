@@ -82,3 +82,6 @@ verify_jwt = false
 
 [functions.dedupe-redirect-contacts]
 verify_jwt = true
+
+[functions.resend-initial-messages]
+verify_jwt = false
