@@ -1475,8 +1475,8 @@ serve(async (req) => {
         variations.push(`${ddd}${without9}`);
       }
       
-      // If has 8 digits after DDD, try with 9 prefix
-      if (rest.length === 8) {
+      // If has 8 digits after DDD, try with 9 prefix (only if starts with 9)
+      if (rest.length === 8 && rest.startsWith('9')) {
         variations.push(`55${ddd}9${rest}`);
         variations.push(`${ddd}9${rest}`);
       }
@@ -1494,6 +1494,42 @@ serve(async (req) => {
       
       // Remove duplicates
       return [...new Set(variations)];
+    }
+    
+    // =====================================================
+    // NORMALIZE PHONE FOR STORAGE - Canonical format
+    // =====================================================
+    function normalizePhoneForStorageBR(phone: string): string {
+      // Clean JID suffixes first
+      const jidCleaned = phone
+        .replace(/:\d+(@s\.whatsapp\.net|@c\.us)?$/, '')
+        .replace("@s.whatsapp.net", "")
+        .replace("@c.us", "")
+        .replace("@lid", "");
+      
+      let digits = jidCleaned.replace(/\D/g, '');
+      
+      // Remove leading zeros
+      if (digits.startsWith('0')) {
+        digits = digits.replace(/^0+/, '');
+      }
+      
+      // Add country code if missing
+      if (!digits.startsWith('55') && digits.length >= 10 && digits.length <= 11) {
+        digits = `55${digits}`;
+      }
+      
+      // For Brazilian phones with 12 digits (55 + DDD + 8 digits)
+      // Only add 9 if the 8-digit block starts with 9 (mobile without 9th digit)
+      if (digits.startsWith('55') && digits.length === 12) {
+        const ddd = digits.slice(2, 4);
+        const rest = digits.slice(4);
+        if (rest.length === 8 && rest.startsWith('9')) {
+          digits = `55${ddd}9${rest}`;
+        }
+      }
+      
+      return digits;
     }
     
     // =====================================================
@@ -1563,10 +1599,8 @@ serve(async (req) => {
         console.log(`[Webhook] 📣 New contact from Meta Ads! Campaign: ${originCampaign}`);
       }
       
-      // Normalizar telefone para storage (formato padrão: 55 + DDD + número)
-      const normalizedPhone = normalizedMessage.from.replace(/\D/g, '').startsWith('55') 
-        ? normalizedMessage.from.replace(/\D/g, '')
-        : `55${normalizedMessage.from.replace(/\D/g, '')}`;
+      // Normalizar telefone para storage (formato canônico: 55 + DDD + número)
+      const normalizedPhone = normalizePhoneForStorageBR(normalizedMessage.from);
       
       // Usar upsert para evitar duplicatas por race condition
       // NÃO incluir department_id aqui - preservar o que foi definido pela campanha redirect

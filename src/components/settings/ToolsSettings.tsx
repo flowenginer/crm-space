@@ -32,6 +32,7 @@ import {
 import { ContactImporter } from './ContactImporter';
 import { StateIdentificationSettings } from './StateIdentificationSettings';
 import { AgentTagSyncSettings } from './AgentTagSyncSettings';
+import { DedupeRedirectSettings } from './DedupeRedirectSettings';
 
 interface AssignmentResult {
   conversationId: string;
@@ -562,6 +563,9 @@ export function ToolsSettings() {
 
       {/* Contact Importer */}
       <ContactImporter />
+
+      {/* Dedupe Redirect Contacts */}
+      <DedupeRedirectSettings />
 
       {/* State Identification */}
       <StateIdentificationSettings />
