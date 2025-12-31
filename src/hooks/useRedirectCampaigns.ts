@@ -23,6 +23,7 @@ export interface RedirectCampaign {
   total_clicks: number;
   total_leads: number;
   distribution_mode: 'equal' | 'percentage';
+  auto_distribute_channels: boolean;
   created_at: string;
   updated_at: string;
   channels?: RedirectCampaignChannel[];
@@ -59,6 +60,7 @@ export interface CreateCampaignInput {
   channel_ids?: string[];
   distribution_mode?: 'equal' | 'percentage';
   channel_percentages?: Record<string, number>;
+  auto_distribute_channels?: boolean;
   // Campos de rastreamento/pixels
   facebook_pixel_id?: string;
   gtm_container_id?: string;
@@ -157,6 +159,7 @@ export function useCreateRedirectCampaign() {
           department_id: input.department_id || null,
           tag_id: input.tag_id || null,
           distribution_mode: input.distribution_mode || 'equal',
+          auto_distribute_channels: input.auto_distribute_channels !== false,
         })
         .select()
         .single();

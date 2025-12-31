@@ -176,10 +176,11 @@ Deno.serve(async (req) => {
       ?.filter((c: any) => c.is_active && c.channel?.status === 'connected')
       .sort((a: any, b: any) => a.position - b.position) || [];
 
-    // 3. Selecionar canal (OBRIGATÓRIO - fallback para canal aleatório se campanha não tiver)
+    // 3. Selecionar canal - lógica com auto_distribute_channels
     let selectedChannel: any = null;
     
     if (activeChannels.length > 0) {
+      // Campanha tem canais configurados - usar a seleção normal
       let selectedChannelLink;
       const distributionMode = campaign.distribution_mode || 'equal';
       
@@ -207,9 +208,10 @@ Deno.serve(async (req) => {
       }
       
       selectedChannel = selectedChannelLink.channel;
-    } else {
-      // FALLBACK: Buscar qualquer canal conectado do tenant
-      console.log('[redirect-capture] Nenhum canal na campanha - buscando canal conectado do tenant...');
+    } else if (campaign.auto_distribute_channels !== false) {
+      // auto_distribute_channels = true (ou não definido = default true)
+      // FALLBACK: Buscar qualquer canal conectado do tenant e distribuir aleatoriamente
+      console.log('[redirect-capture] Auto-distribuição ativa - buscando canais conectados do tenant...');
       
       const { data: availableChannels } = await supabase
         .from('whatsapp_channels')
@@ -223,10 +225,13 @@ Deno.serve(async (req) => {
         // Selecionar aleatoriamente para distribuir carga
         const randomIndex = Math.floor(Math.random() * availableChannels.length);
         selectedChannel = availableChannels[randomIndex];
-        console.log('[redirect-capture] Fallback: canal aleatório selecionado:', selectedChannel.name);
+        console.log('[redirect-capture] Auto-distribuição: canal selecionado:', selectedChannel.name);
       } else {
         console.log('[redirect-capture] ⚠️ Nenhum canal conectado disponível no tenant');
       }
+    } else {
+      // auto_distribute_channels = false e não há canais configurados
+      console.log('[redirect-capture] ⚠️ Auto-distribuição desativada e nenhum canal configurado');
     }
 
     // 4. Atualizar contador de cliques
