@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentUser, useCurrentUserProfile } from './useCurrentUser';
-
+import { triggerFlowOnTagAdded } from '@/lib/triggerFlowOnTagAdded';
 // ============ Standalone Functions ============
 
 // Random colors for auto-created tags
@@ -199,6 +199,7 @@ export function useDeleteTag() {
 
 export function useAddTagToContact() {
   const queryClient = useQueryClient();
+  const { data: profile } = useCurrentUserProfile();
 
   return useMutation({
     mutationFn: async ({ contactId, tagId }: { contactId: string; tagId: string }) => {
@@ -207,6 +208,11 @@ export function useAddTagToContact() {
         .insert({ contact_id: contactId, tag_id: tagId });
 
       if (error) throw error;
+
+      // Disparar automações de tag_added
+      if (profile?.tenant_id) {
+        triggerFlowOnTagAdded(profile.tenant_id, contactId, tagId);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
