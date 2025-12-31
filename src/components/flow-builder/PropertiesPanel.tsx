@@ -210,6 +210,37 @@ function renderNodeConfig(
         </>
       );
       
+    case 'tag_added':
+      return (
+        <div className="space-y-2">
+          <Label>Tag que dispara o fluxo</Label>
+          <Select 
+            value={(config?.tag_id as string) || ''}
+            onValueChange={(v) => updateConfig('tag_id', v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione a tag" />
+            </SelectTrigger>
+            <SelectContent>
+              {data.tags?.map((tag) => (
+                <SelectItem key={tag.id} value={tag.id}>
+                  <span className="flex items-center gap-2">
+                    <span 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    {tag.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            O fluxo será iniciado quando esta tag for adicionada a um contato
+          </p>
+        </div>
+      );
+
     case 'add_tag':
     case 'remove_tag':
     case 'has_tag':
