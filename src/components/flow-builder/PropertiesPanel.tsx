@@ -65,7 +65,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
         </div>
         
         {/* Campos específicos por tipo */}
-        {renderNodeConfig(node, updateConfig, { tags, team, departments, campaigns })}
+        {renderNodeConfig(node, updateConfig, onUpdate, { tags, team, departments, campaigns })}
       </div>
     </div>
   );
@@ -81,6 +81,7 @@ interface DataProps {
 function renderNodeConfig(
   node: FlowNodeData, 
   updateConfig: (key: string, value: unknown) => void,
+  onUpdate: (nodeId: string, config: Record<string, unknown>) => void,
   data: DataProps
 ) {
   const config = node.config as Record<string, unknown>;
@@ -350,8 +351,11 @@ function renderNodeConfig(
           : []);
       
       const handleFieldsChange = (newFields: BodyField[]) => {
-        updateConfig('body_fields', newFields);
-        updateConfig('body', bodyFieldsToObject(newFields));
+        onUpdate(node.id, { 
+          ...node.config, 
+          body_fields: newFields,
+          body: bodyFieldsToObject(newFields)
+        });
       };
       
       return (
