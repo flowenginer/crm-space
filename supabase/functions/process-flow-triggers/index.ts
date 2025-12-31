@@ -192,14 +192,18 @@ Deno.serve(async (req) => {
 
       // Criar conversa se não existir (para redirect_lead e outros triggers)
       if (!actualConversationId && actualChannelId) {
-        // Buscar conversa existente ou criar uma
-        const { data: existingConv } = await supabase
+        // Buscar conversa existente ou criar uma - usar maybeSingle para evitar erro quando não encontra
+        const { data: existingConv, error: convSearchError } = await supabase
           .from('conversations')
           .select('id')
           .eq('contact_id', contact_id)
           .eq('channel_id', actualChannelId)
           .in('status', ['open', 'pending'])
-          .single();
+          .maybeSingle();
+
+        if (convSearchError) {
+          console.error('[process-flow-triggers] Erro ao buscar conversa existente:', convSearchError);
+        }
 
         if (existingConv) {
           actualConversationId = existingConv.id;
