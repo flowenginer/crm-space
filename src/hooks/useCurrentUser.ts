@@ -13,6 +13,7 @@ interface UserProfile {
   department_id: string | null;
   avatar_url: string | null;
   is_available: boolean | null;
+  tenant_id: string | null;
 }
 
 interface UserDepartment {
@@ -55,7 +56,7 @@ export function useCurrentUserProfile() {
       
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, role, department_id, avatar_url, is_available')
+        .select('id, full_name, role, department_id, avatar_url, is_available, tenant_id')
         .eq('id', user.id)
         .single();
       

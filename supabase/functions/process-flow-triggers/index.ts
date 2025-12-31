@@ -114,6 +114,17 @@ Deno.serve(async (req) => {
             shouldTrigger = false;
           }
           break;
+
+        case 'tag_added':
+          // Verificar se a tag adicionada corresponde à configurada no trigger
+          if (config.tag_id && metadata?.tag_id) {
+            shouldTrigger = config.tag_id === metadata.tag_id;
+            console.log(`[process-flow-triggers] tag_added: config.tag_id=${config.tag_id}, metadata.tag_id=${metadata.tag_id}, match=${shouldTrigger}`);
+          } else {
+            console.log(`[process-flow-triggers] tag_added: sem tag_id configurado ou recebido`);
+            shouldTrigger = false;
+          }
+          break;
       }
 
       if (!shouldTrigger) {
