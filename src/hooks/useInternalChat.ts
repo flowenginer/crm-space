@@ -101,7 +101,7 @@ export function useInternalChatThreads() {
       })) as InternalChatThread[];
     },
     staleTime: 30000,
-    refetchInterval: 60000 // Reduzido de 30s para 60s, realtime vai atualizar
+    refetchInterval: 60000
   });
 }
 
@@ -167,7 +167,7 @@ export function useInternalChatUnreadCount() {
       return data as number;
     },
     staleTime: 30000,
-    refetchInterval: 30000 // Aumentado de 10s para 30s
+    refetchInterval: 30000
   });
 }
 
@@ -178,9 +178,8 @@ export function useTeamMembers() {
   return useQuery({
     queryKey: ['team-members-for-chat'],
     enabled: !!user?.id,
-    staleTime: 60000, // Cache por 1 minuto
+    staleTime: 60000,
     queryFn: async () => {
-      // Query única com JOIN
       const { data, error } = await supabase
         .from('profiles')
         .select(`
@@ -250,7 +249,7 @@ export function useSendInternalMessage() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['internal-chat-messages', variables.threadId] });
-      queryClient.invalidateQueries({ queryKey: ['internal-chat-threads'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-chat-threads', user?.id] });
     },
     onError: (error) => {
       console.error('Error sending message:', error);
@@ -275,7 +274,7 @@ export function useStartInternalChat() {
       return data as string;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['internal-chat-threads'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-chat-threads', user?.id] });
     }
   });
 }
@@ -299,8 +298,8 @@ export function useMarkThreadAsRead() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['internal-chat-threads'] });
-      queryClient.invalidateQueries({ queryKey: ['internal-chat-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-chat-threads', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['internal-chat-unread-count', user?.id] });
     }
   });
 }
@@ -319,14 +318,14 @@ export function useDeleteInternalMessage() {
           deleted_at: new Date().toISOString()
         })
         .eq('id', messageId)
-        .eq('sender_id', user!.id); // Só pode deletar próprias mensagens
+        .eq('sender_id', user!.id);
 
       if (error) throw error;
       return { messageId, threadId };
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['internal-chat-messages', variables.threadId] });
-      queryClient.invalidateQueries({ queryKey: ['internal-chat-threads'] });
+      queryClient.invalidateQueries({ queryKey: ['internal-chat-threads', user?.id] });
       toast.success('Mensagem apagada');
     },
     onError: () => {
@@ -335,26 +334,67 @@ export function useDeleteInternalMessage() {
   });
 }
 
-// Hook para realtime de mensagens - OTIMIZADO
+// Global audio unlock state (persists across component remounts)
+let audioUnlocked = false;
+let audioBlockedToastShown = false;
+
+// Hook para realtime de mensagens - COM AUDIO UNLOCK E TOAST
 export function useInternalChatRealtime(threadId: string | null) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Initialize audio and set up unlock listener
   useEffect(() => {
     audioRef.current = new Audio('/notification.mp3');
     audioRef.current.volume = 0.5;
+
+    // Audio unlock on first user interaction
+    const unlockAudio = () => {
+      if (audioUnlocked || !audioRef.current) return;
+      
+      // Try to play/pause to unlock
+      const audio = audioRef.current;
+      audio.volume = 0;
+      audio.play()
+        .then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.volume = 0.5;
+          audioUnlocked = true;
+          console.log('[InternalChat] Audio unlocked successfully');
+        })
+        .catch(() => {
+          // Still not unlocked, will try again on next interaction
+        });
+    };
+
+    document.addEventListener('pointerdown', unlockAudio, { once: false });
+    document.addEventListener('keydown', unlockAudio, { once: false });
+
+    return () => {
+      document.removeEventListener('pointerdown', unlockAudio);
+      document.removeEventListener('keydown', unlockAudio);
+    };
   }, []);
 
   const playNotificationSound = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => {});
-    }
+    if (!audioRef.current) return;
+    
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch((err) => {
+      console.warn('[InternalChat] Audio play failed:', err);
+      if (!audioBlockedToastShown) {
+        audioBlockedToastShown = true;
+        // Don't show toast for audio block, just log - the message toast is enough
+      }
+    });
   }, []);
 
   useEffect(() => {
     if (!user?.id) return;
+
+    console.log('[InternalChat] Setting up realtime channel for user:', user.id);
 
     const messagesChannel = supabase
       .channel('internal-chat-messages-realtime')
@@ -365,24 +405,62 @@ export function useInternalChatRealtime(threadId: string | null) {
           schema: 'public',
           table: 'internal_chat_messages'
         },
-        (payload) => {
+        async (payload) => {
           const newMessage = payload.new as any;
+          console.log('[InternalChat] New message received:', { 
+            thread_id: newMessage.thread_id, 
+            sender_id: newMessage.sender_id,
+            content_preview: newMessage.content?.substring(0, 30)
+          });
           
-          // Invalidar apenas as queries necessárias
+          // Invalidar queries com keys completas
           queryClient.invalidateQueries({ 
             queryKey: ['internal-chat-messages', newMessage.thread_id] 
           });
-          queryClient.invalidateQueries({ queryKey: ['internal-chat-threads'] });
+          queryClient.invalidateQueries({ 
+            queryKey: ['internal-chat-threads', user.id] 
+          });
 
+          // Se não é mensagem do próprio usuário
           if (newMessage.sender_id !== user.id) {
             playNotificationSound();
-            queryClient.invalidateQueries({ queryKey: ['internal-chat-unread-count'] });
+            queryClient.invalidateQueries({ 
+              queryKey: ['internal-chat-unread-count', user.id] 
+            });
+
+            // Buscar nome do remetente e exibir toast
+            try {
+              const { data: senderProfile } = await supabase
+                .from('profiles')
+                .select('full_name')
+                .eq('id', newMessage.sender_id)
+                .single();
+
+              const senderName = senderProfile?.full_name || 'Alguém';
+              const preview = newMessage.content 
+                ? newMessage.content.substring(0, 50) + (newMessage.content.length > 50 ? '...' : '')
+                : newMessage.message_type === 'image' ? '📷 Imagem'
+                : newMessage.message_type === 'audio' ? '🎵 Áudio'
+                : newMessage.message_type === 'document' ? '📄 Documento'
+                : 'Nova mensagem';
+
+              toast(`${senderName}`, {
+                description: preview,
+                duration: 5000,
+              });
+            } catch (err) {
+              console.error('[InternalChat] Error fetching sender:', err);
+              toast('Nova mensagem no chat interno');
+            }
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[InternalChat] Realtime channel status:', status);
+      });
 
     return () => {
+      console.log('[InternalChat] Removing realtime channel');
       supabase.removeChannel(messagesChannel);
     };
   }, [user?.id, queryClient, playNotificationSound]);
