@@ -100,8 +100,8 @@ export function useInternalChatThreads() {
         unread_count: row.unread_count
       })) as InternalChatThread[];
     },
-    staleTime: 30000,
-    refetchInterval: 60000
+    staleTime: 60000, // 1 minuto - realtime cuida das atualizações
+    refetchOnWindowFocus: false // evitar refetch desnecessário
   });
 }
 
@@ -166,8 +166,8 @@ export function useInternalChatUnreadCount() {
       if (error) throw error;
       return data as number;
     },
-    staleTime: 30000,
-    refetchInterval: 30000
+    staleTime: 60000, // 1 minuto - realtime cuida das atualizações
+    refetchOnWindowFocus: false
   });
 }
 
