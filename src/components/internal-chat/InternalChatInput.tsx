@@ -58,6 +58,9 @@ export function InternalChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  
+  // CRÍTICO: useRef para bloqueio instantâneo - previne race condition
+  const isSendingRef = useRef(false);
 
   const { theme } = useTheme();
   const sendMessage = useSendInternalMessage();
@@ -65,22 +68,25 @@ export function InternalChatInput({
 
   const handleSend = async () => {
     if (!message.trim() && !replyingTo) return;
-    if (sendMessage.isPending) return; // Prevenir envio duplicado
+    
+    // Verificação instantânea com ref - bloqueia ANTES de qualquer operação async
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
 
     const messageToSend = message.trim();
-    setMessage(''); // Limpa imediatamente para feedback
+    setMessage('');
     onCancelReply();
 
-    let currentThreadId = threadId;
-    if (!currentThreadId) {
-      currentThreadId = await onStartChat();
-      if (!currentThreadId) {
-        setMessage(messageToSend); // Restaura se falhou
-        return;
-      }
-    }
-
     try {
+      let currentThreadId = threadId;
+      if (!currentThreadId) {
+        currentThreadId = await onStartChat();
+        if (!currentThreadId) {
+          setMessage(messageToSend);
+          return;
+        }
+      }
+
       await sendMessage.mutateAsync({
         threadId: currentThreadId,
         content: messageToSend,
@@ -88,20 +94,24 @@ export function InternalChatInput({
         replyToMessageId: replyingTo?.id
       });
     } catch (error) {
-      setMessage(messageToSend); // Restaura se falhou
+      setMessage(messageToSend);
+    } finally {
+      isSendingRef.current = false;
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!sendMessage.isPending) {
-        handleSend();
-      }
+      handleSend();
     }
   };
 
   const handleFileUpload = useCallback(async (file: File, type: 'image' | 'video' | 'document' | 'audio') => {
+    // Verificação instantânea com ref
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
+
     try {
       let currentThreadId = threadId;
       if (!currentThreadId) {
@@ -126,6 +136,8 @@ export function InternalChatInput({
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Erro ao enviar arquivo');
+    } finally {
+      isSendingRef.current = false;
     }
   }, [threadId, onStartChat, uploadMedia, sendMessage, replyingTo?.id, onCancelReply]);
 
