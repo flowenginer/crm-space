@@ -34,8 +34,9 @@ export function useAgentMonitorStatus() {
       if (error) throw error;
       return (data || []) as AgentStatus[];
     },
-    staleTime: 30000,
-    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    staleTime: 60000, // 1 minuto - otimizado
+    refetchInterval: 60000, // 1 minuto - reduz carga no banco
+    refetchOnWindowFocus: false,
   });
 
   // Real-time subscription - OTIMIZADO

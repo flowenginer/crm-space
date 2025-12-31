@@ -63,8 +63,9 @@ export function useAgentAvailabilityStatus() {
       } as AgentAvailabilityStatus;
     },
     enabled: !!user?.id,
-    staleTime: 10000,
-    refetchInterval: 30000,
+    staleTime: 60000, // 1 minuto - otimizado
+    refetchInterval: 60000, // 1 minuto
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -199,8 +200,9 @@ export function usePendingReleaseRequests() {
         agent_name: req.profiles?.full_name || 'Desconhecido',
       })) as ReleaseRequest[];
     },
-    staleTime: 10000,
-    refetchInterval: 30000,
+    staleTime: 60000, // 1 minuto - otimizado
+    refetchInterval: 60000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -279,7 +281,8 @@ export function useMyPendingRequest() {
       return data;
     },
     enabled: !!user?.id,
-    staleTime: 10000,
-    refetchInterval: 30000,
+    staleTime: 60000, // 1 minuto - otimizado
+    refetchInterval: 60000,
+    refetchOnWindowFocus: false,
   });
 }

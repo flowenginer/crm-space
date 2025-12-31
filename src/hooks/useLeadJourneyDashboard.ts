@@ -4,8 +4,8 @@ import { startOfDay, endOfDay } from 'date-fns';
 import { useEffect } from 'react';
 import { useConversionStatusNames } from './useConversionStatusNames';
 
-const STALE_TIME = 30000; // 30 seconds
-const REALTIME_REFETCH_INTERVAL = 30000; // 30 seconds for realtime
+const STALE_TIME = 60000; // 60 seconds - otimizado para reduzir queries
+const REALTIME_REFETCH_INTERVAL = 120000; // 2 minutos - dashboard não precisa de realtime frequente
 
 export interface DashboardFilters {
   dateFrom: Date;

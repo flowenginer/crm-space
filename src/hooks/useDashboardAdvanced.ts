@@ -4,8 +4,8 @@ import { startOfDay, endOfDay, subDays, format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 
 const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
-const STALE_TIME = 10000; // 10 seconds
-const REFETCH_INTERVAL = 30000; // 30 seconds
+const STALE_TIME = 60000; // 60 seconds - otimizado para reduzir queries
+const REFETCH_INTERVAL = 120000; // 2 minutos - dados analíticos não precisam de realtime
 
 export interface DashboardFilters {
   dateFrom: Date;
