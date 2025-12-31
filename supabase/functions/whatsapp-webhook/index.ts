@@ -1429,6 +1429,9 @@ serve(async (req) => {
     // =====================================================
     // PHONE NORMALIZATION - Generate variations to find existing contacts
     // =====================================================
+    // REGRA CELULAR BRASILEIRO: 55 + DDD (2 dígitos) + 9 dígitos (celular) ou 8 dígitos (fixo/celular antigo)
+    // Celulares começam com 6, 7, 8 ou 9 no primeiro dígito após DDD
+    // Se tem 8 dígitos e começa com [6-9], é celular que perdeu o 9º dígito
     function generatePhoneVariations(phone: string): string[] {
       const variations: string[] = [phone];
       
@@ -1475,8 +1478,9 @@ serve(async (req) => {
         variations.push(`${ddd}${without9}`);
       }
       
-      // If has 8 digits after DDD, try with 9 prefix (only if starts with 9)
-      if (rest.length === 8 && rest.startsWith('9')) {
+      // CORREÇÃO: Se tem 8 dígitos após DDD e começa com [6-9], é celular que perdeu o 9
+      // Gerar variação com 9 prefixado
+      if (rest.length === 8 && /^[6-9]/.test(rest)) {
         variations.push(`55${ddd}9${rest}`);
         variations.push(`${ddd}9${rest}`);
       }
@@ -1499,6 +1503,8 @@ serve(async (req) => {
     // =====================================================
     // NORMALIZE PHONE FOR STORAGE - Canonical format
     // =====================================================
+    // REGRA: Celulares BR (começando com 6-9 após DDD) devem ter 9 dígitos
+    // Se recebemos 8 dígitos começando com [6-9], adicionamos o 9 na frente
     function normalizePhoneForStorageBR(phone: string): string {
       // Clean JID suffixes first
       const jidCleaned = phone
@@ -1520,12 +1526,13 @@ serve(async (req) => {
       }
       
       // For Brazilian phones with 12 digits (55 + DDD + 8 digits)
-      // Only add 9 if the 8-digit block starts with 9 (mobile without 9th digit)
+      // Add 9 if the 8-digit block starts with [6-9] (mobile number missing 9th digit)
       if (digits.startsWith('55') && digits.length === 12) {
         const ddd = digits.slice(2, 4);
         const rest = digits.slice(4);
-        if (rest.length === 8 && rest.startsWith('9')) {
+        if (rest.length === 8 && /^[6-9]/.test(rest)) {
           digits = `55${ddd}9${rest}`;
+          console.log(`[Webhook] Normalized phone: added 9th digit -> ${digits}`);
         }
       }
       

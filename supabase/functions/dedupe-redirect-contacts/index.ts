@@ -22,7 +22,7 @@ interface MergeResult {
 }
 
 // Normaliza telefone para formato canônico (55 + DDD + número)
-// Mesmo critério do redirect-capture e whatsapp-webhook
+// REGRA: Celulares BR (começando com 6-9 após DDD) devem ter 9 dígitos
 function normalizePhoneForStorageBR(phone: string): string {
   let digits = phone.replace(/\D/g, '');
   
@@ -37,11 +37,11 @@ function normalizePhoneForStorageBR(phone: string): string {
   }
   
   // Para celulares brasileiros (55 + DDD + 8 dígitos)
-  // Só adicionar 9 se o bloco de 8 dígitos começar com 9
+  // Adicionar 9 se o bloco de 8 dígitos começar com [6-9] (celular sem nono dígito)
   if (digits.startsWith('55') && digits.length === 12) {
     const ddd = digits.slice(2, 4);
     const rest = digits.slice(4);
-    if (rest.length === 8 && rest.startsWith('9')) {
+    if (rest.length === 8 && /^[6-9]/.test(rest)) {
       digits = `55${ddd}9${rest}`;
     }
   }
@@ -50,6 +50,7 @@ function normalizePhoneForStorageBR(phone: string): string {
 }
 
 // Gera variações do telefone para busca (com/sem 9º dígito)
+// REGRA CELULAR BRASILEIRO: Celulares começam com 6, 7, 8 ou 9 no primeiro dígito após DDD
 function generatePhoneVariations(phone: string): string[] {
   const variations: string[] = [];
   const cleanPhone = phone.replace(/\D/g, '');
@@ -77,8 +78,8 @@ function generatePhoneVariations(phone: string): string[] {
     variations.push(`${ddd}${without9}`);
   }
   
-  // Se tem 8 dígitos após o DDD e começa com 9, gerar versão com o 9
-  if (rest.length === 8 && rest.startsWith('9')) {
+  // CORREÇÃO: Se tem 8 dígitos após o DDD e começa com [6-9], é celular - gerar versão com 9
+  if (rest.length === 8 && /^[6-9]/.test(rest)) {
     variations.push(`55${ddd}9${rest}`);
     variations.push(`${ddd}9${rest}`);
   }

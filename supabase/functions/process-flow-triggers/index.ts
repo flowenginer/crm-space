@@ -147,27 +147,51 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Criar conversa se não existir (para redirect_lead)
+      // Determinar canal para execução ANTES de criar conversa
+      let actualChannelId = channel_id || null;
+
+      // Se não tem canal definido, buscar um aleatório para poder enviar mensagens
+      if (!actualChannelId) {
+        console.log('[process-flow-triggers] Canal não definido, buscando canal conectado...');
+        
+        const { data: availableChannels } = await supabase
+          .from('whatsapp_channels')
+          .select('id, name')
+          .eq('tenant_id', tenant_id)
+          .eq('status', 'connected')
+          .eq('is_deleted', false);
+        
+        if (availableChannels && availableChannels.length > 0) {
+          const randomIndex = Math.floor(Math.random() * availableChannels.length);
+          actualChannelId = availableChannels[randomIndex].id;
+          console.log('[process-flow-triggers] Canal selecionado:', availableChannels[randomIndex].name, '(ID:', actualChannelId?.substring(0, 8), ')');
+        } else {
+          console.log('[process-flow-triggers] ⚠️ Nenhum canal disponível para automação');
+        }
+      }
+
+      // Criar conversa se não existir (para redirect_lead e outros triggers)
       let actualConversationId = conversation_id;
-      if (!actualConversationId && channel_id) {
+      if (!actualConversationId && actualChannelId) {
         // Buscar conversa existente ou criar uma
         const { data: existingConv } = await supabase
           .from('conversations')
           .select('id')
           .eq('contact_id', contact_id)
-          .eq('channel_id', channel_id)
+          .eq('channel_id', actualChannelId)
           .in('status', ['open', 'pending'])
           .single();
 
         if (existingConv) {
           actualConversationId = existingConv.id;
+          console.log('[process-flow-triggers] Conversa existente encontrada:', actualConversationId?.substring(0, 8));
         } else {
           const { data: newConv, error: convError } = await supabase
             .from('conversations')
             .insert({
               tenant_id,
               contact_id,
-              channel_id,
+              channel_id: actualChannelId,
               status: 'pending',
               referral_source: trigger_type === 'redirect_lead' ? 'redirect' : 'automation',
               referral_data: metadata || {},
@@ -180,30 +204,10 @@ Deno.serve(async (req) => {
             continue;
           }
           actualConversationId = newConv.id;
+          console.log('[process-flow-triggers] Nova conversa criada:', actualConversationId?.substring(0, 8));
         }
-      }
-
-      // Determinar canal para execução
-      let actualChannelId = channel_id || null;
-
-      // Se não tem canal definido, buscar um aleatório para poder enviar mensagens
-      if (!actualChannelId) {
-        console.log('[process-flow-triggers] Canal não definido, buscando canal aleatório...');
-        
-        const { data: availableChannels } = await supabase
-          .from('whatsapp_channels')
-          .select('id, name')
-          .eq('tenant_id', tenant_id)
-          .eq('status', 'connected')
-          .eq('is_deleted', false);
-        
-        if (availableChannels && availableChannels.length > 0) {
-          const randomIndex = Math.floor(Math.random() * availableChannels.length);
-          actualChannelId = availableChannels[randomIndex].id;
-          console.log('[process-flow-triggers] Canal aleatório selecionado:', availableChannels[randomIndex].name, '(ID:', actualChannelId?.substring(0, 8), ')');
-        } else {
-          console.log('[process-flow-triggers] Nenhum canal disponível para automação');
-        }
+      } else if (!actualConversationId && !actualChannelId) {
+        console.log('[process-flow-triggers] ⚠️ Sem canal disponível, não foi possível criar conversa');
       }
 
       // Criar execução do fluxo
