@@ -7407,6 +7407,7 @@ export type Database = {
       }
       redirect_campaigns: {
         Row: {
+          auto_distribute_channels: boolean | null
           background_color: string | null
           background_image_opacity: number | null
           background_image_position: string | null
@@ -7438,6 +7439,7 @@ export type Database = {
           welcome_message: string | null
         }
         Insert: {
+          auto_distribute_channels?: boolean | null
           background_color?: string | null
           background_image_opacity?: number | null
           background_image_position?: string | null
@@ -7469,6 +7471,7 @@ export type Database = {
           welcome_message?: string | null
         }
         Update: {
+          auto_distribute_channels?: boolean | null
           background_color?: string | null
           background_image_opacity?: number | null
           background_image_position?: string | null
