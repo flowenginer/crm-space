@@ -20,7 +20,7 @@ interface InternalChatAreaProps {
 
 export function InternalChatArea({ threadId, otherUserId, onThreadCreated }: InternalChatAreaProps) {
   const [replyingTo, setReplyingTo] = useState<InternalChatMessage | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { data: messages, isLoading } = useInternalChatMessages(threadId);
   const markAsRead = useMarkThreadAsRead();
@@ -28,9 +28,7 @@ export function InternalChatArea({ threadId, otherUserId, onThreadCreated }: Int
 
   // Scroll para o final quando novas mensagens chegam
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   // Marcar como lido quando selecionar thread
@@ -72,7 +70,7 @@ export function InternalChatArea({ threadId, otherUserId, onThreadCreated }: Int
       <InternalChatHeader otherUserId={otherUserId} />
 
       {/* Messages Area */}
-      <ScrollArea ref={scrollRef} className="flex-1 min-h-0">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-4">
           {isLoading ? (
             <div className="space-y-4">
@@ -113,6 +111,7 @@ export function InternalChatArea({ threadId, otherUserId, onThreadCreated }: Int
                   />
                 );
               })}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
