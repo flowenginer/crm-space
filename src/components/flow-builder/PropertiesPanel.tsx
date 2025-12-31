@@ -10,6 +10,7 @@ import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
 import { FlowNodeData } from '@/types/flow';
+import { WebhookBodyFields, BodyField, bodyFieldsToObject, objectToBodyFields } from './WebhookBodyFields';
 
 interface PropertiesPanelProps {
   node: FlowNodeData | null;
@@ -342,15 +343,16 @@ function renderNodeConfig(
       );
       
     case 'http_request': {
-      const bodyValue = (config?.body_raw as string) ?? 
-        (config?.body ? JSON.stringify(config.body, null, 2) : '{}');
+      // Retrocompatibilidade: converter body existente para body_fields
+      const bodyFields: BodyField[] = (config?.body_fields as BodyField[]) || 
+        (config?.body && typeof config.body === 'object' && !Array.isArray(config.body)
+          ? objectToBodyFields(config.body as Record<string, unknown>)
+          : []);
       
-      let isValidJson = true;
-      try {
-        JSON.parse(bodyValue);
-      } catch {
-        isValidJson = false;
-      }
+      const handleFieldsChange = (newFields: BodyField[]) => {
+        updateConfig('body_fields', newFields);
+        updateConfig('body', bodyFieldsToObject(newFields));
+      };
       
       return (
         <>
@@ -379,27 +381,12 @@ function renderNodeConfig(
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Body (JSON)</Label>
-            <Textarea
-              value={bodyValue}
-              onChange={(e) => {
-                // Store raw string to allow free typing
-                updateConfig('body_raw', e.target.value);
-                // Try to parse and store valid JSON
-                try {
-                  updateConfig('body', JSON.parse(e.target.value));
-                } catch {
-                  // Keep raw value, body will be parsed on execution
-                }
-              }}
-              className={`font-mono text-xs ${!isValidJson ? 'border-destructive' : ''}`}
-              rows={5}
-            />
-            {!isValidJson && (
-              <p className="text-xs text-destructive">JSON inválido</p>
-            )}
-          </div>
+          
+          <WebhookBodyFields 
+            fields={bodyFields} 
+            onChange={handleFieldsChange} 
+          />
+          
           <div className="space-y-2">
             <Label>Headers (opcional)</Label>
             <Textarea
