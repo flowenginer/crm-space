@@ -26,7 +26,26 @@ interface FlowExecution {
   channel_id: string;
   variables: Record<string, unknown>;
   tenant_id: string;
-  contact?: { full_name: string | null; phone: string; email?: string } | null;
+  contact?: {
+    full_name: string | null;
+    phone: string;
+    email?: string;
+    cpf_cnpj?: string | null;
+    birth_date?: string | null;
+    zip_code?: string | null;
+    street?: string | null;
+    number?: string | null;
+    complement?: string | null;
+    neighborhood?: string | null;
+    city?: string | null;
+    state?: string | null;
+    country?: string | null;
+    lead_status?: string | null;
+    origin?: string | null;
+    notes?: string | null;
+    lead_score?: number | null;
+    negotiated_value?: number | null;
+  } | null;
 }
 
 function formatDate(date: Date): string {
@@ -54,6 +73,7 @@ function replaceVariables(text: string, execution: FlowExecution): string {
   const firstName = fullName.split(' ')[0] || '';
 
   return text
+    // Variáveis em português
     .replace(/\{\{nome\}\}/g, fullName)
     .replace(/\{\{primeiro_nome\}\}/g, firstName)
     .replace(/\{\{telefone\}\}/g, contact?.phone || '')
@@ -62,7 +82,26 @@ function replaceVariables(text: string, execution: FlowExecution): string {
     .replace(/\{\{hora\}\}/g, formatTime(now))
     .replace(/\{\{dia_semana\}\}/g, getDayOfWeek(now))
     .replace(/\{\{ultima_resposta\}\}/g, (execution.variables?.ultima_resposta as string) || '')
-    .replace(/\{\{mensagem_original\}\}/g, (execution.variables?.mensagem_original as string) || '');
+    .replace(/\{\{mensagem_original\}\}/g, (execution.variables?.mensagem_original as string) || '')
+    // Variáveis em inglês (do WebhookBodyFields)
+    .replace(/\{\{full_name\}\}/g, fullName)
+    .replace(/\{\{first_name\}\}/g, firstName)
+    .replace(/\{\{phone\}\}/g, contact?.phone || '')
+    .replace(/\{\{cpf_cnpj\}\}/g, contact?.cpf_cnpj || '')
+    .replace(/\{\{birth_date\}\}/g, contact?.birth_date || '')
+    .replace(/\{\{zip_code\}\}/g, contact?.zip_code || '')
+    .replace(/\{\{street\}\}/g, contact?.street || '')
+    .replace(/\{\{number\}\}/g, contact?.number || '')
+    .replace(/\{\{complement\}\}/g, contact?.complement || '')
+    .replace(/\{\{neighborhood\}\}/g, contact?.neighborhood || '')
+    .replace(/\{\{city\}\}/g, contact?.city || '')
+    .replace(/\{\{state\}\}/g, contact?.state || '')
+    .replace(/\{\{country\}\}/g, contact?.country || '')
+    .replace(/\{\{lead_status\}\}/g, contact?.lead_status || '')
+    .replace(/\{\{origin\}\}/g, contact?.origin || '')
+    .replace(/\{\{notes\}\}/g, contact?.notes || '')
+    .replace(/\{\{lead_score\}\}/g, String(contact?.lead_score ?? ''))
+    .replace(/\{\{negotiated_value\}\}/g, String(contact?.negotiated_value ?? ''));
 }
 
 async function logExecution(
@@ -151,12 +190,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Buscar execução com dados do contato
+    // Buscar execução com dados do contato (incluindo campos extras para variáveis)
     const { data: execution, error: execError } = await supabase
       .from('flow_executions')
       .select(`
         *,
-        contact:contacts(full_name, phone, email)
+        contact:contacts(full_name, phone, email, cpf_cnpj, birth_date, zip_code, street, number, complement, neighborhood, city, state, country, lead_status, origin, notes, lead_score, negotiated_value)
       `)
       .eq('id', execution_id)
       .single();
@@ -533,9 +572,20 @@ async function executeAction(
     case 'http_request':
       try {
         const bodyData = config.body as Record<string, unknown> || {};
+        
+        // Substituir variáveis em cada valor string do body
+        const processedBody: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(bodyData)) {
+          if (typeof value === 'string') {
+            processedBody[key] = replaceVariables(value, execution);
+          } else {
+            processedBody[key] = value;
+          }
+        }
+        
         // Adicionar dados do contato e execução ao body
         const enrichedBody = {
-          ...bodyData,
+          ...processedBody,
           contact_id: execution.contact_id,
           contact_phone: execution.contact?.phone,
           contact_name: execution.contact?.full_name,
