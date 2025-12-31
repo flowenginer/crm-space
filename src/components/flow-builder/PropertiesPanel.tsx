@@ -48,8 +48,11 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
         </Button>
       </div>
       
-      {/* Form */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Form - stopPropagation prevents React Flow from capturing keyboard events */}
+      <div 
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+        onKeyDown={(e) => e.stopPropagation()}
+      >
         {/* Nome do nó */}
         <div className="space-y-2">
           <Label>Nome do bloco</Label>
@@ -338,7 +341,17 @@ function renderNodeConfig(
         </div>
       );
       
-    case 'http_request':
+    case 'http_request': {
+      const bodyValue = (config?.body_raw as string) ?? 
+        (config?.body ? JSON.stringify(config.body, null, 2) : '{}');
+      
+      let isValidJson = true;
+      try {
+        JSON.parse(bodyValue);
+      } catch {
+        isValidJson = false;
+      }
+      
       return (
         <>
           <div className="space-y-2">
@@ -369,20 +382,45 @@ function renderNodeConfig(
           <div className="space-y-2">
             <Label>Body (JSON)</Label>
             <Textarea
-              value={JSON.stringify(config?.body || {}, null, 2)}
+              value={bodyValue}
               onChange={(e) => {
+                // Store raw string to allow free typing
+                updateConfig('body_raw', e.target.value);
+                // Try to parse and store valid JSON
                 try {
                   updateConfig('body', JSON.parse(e.target.value));
                 } catch {
-                  // Invalid JSON, ignore
+                  // Keep raw value, body will be parsed on execution
+                }
+              }}
+              className={`font-mono text-xs ${!isValidJson ? 'border-destructive' : ''}`}
+              rows={5}
+            />
+            {!isValidJson && (
+              <p className="text-xs text-destructive">JSON inválido</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label>Headers (opcional)</Label>
+            <Textarea
+              value={(config?.headers_raw as string) ?? 
+                (config?.headers ? JSON.stringify(config.headers, null, 2) : '')}
+              onChange={(e) => {
+                updateConfig('headers_raw', e.target.value);
+                try {
+                  updateConfig('headers', JSON.parse(e.target.value));
+                } catch {
+                  // Keep raw value
                 }
               }}
               className="font-mono text-xs"
-              rows={5}
+              rows={3}
+              placeholder='{"Authorization": "Bearer ..."}'
             />
           </div>
         </>
       );
+    }
     
     case 'if_else':
     case 'contains':
