@@ -141,6 +141,82 @@ function extractValidPhoneFromPayload(msg: any, rawRemoteJid: string): string | 
 }
 
 // =====================================================
+// PHONE NORMALIZATION FUNCTIONS (para evitar duplicados)
+// =====================================================
+
+/**
+ * Gera variações do telefone para busca (com/sem 9º dígito, com/sem código do país)
+ * REGRA CELULAR BRASILEIRO: Celulares começam com 6, 7, 8 ou 9 no primeiro dígito após DDD
+ */
+function generatePhoneVariationsBR(phone: string): string[] {
+  const variations: string[] = [];
+  const cleanPhone = phone.replace(/\D/g, '');
+  
+  if (!cleanPhone) return [phone];
+  
+  variations.push(cleanPhone);
+  
+  // Com/sem código do país
+  if (cleanPhone.startsWith('55')) {
+    variations.push(cleanPhone.slice(2));
+  } else {
+    variations.push(`55${cleanPhone}`);
+  }
+  
+  // Variações do 9º dígito (celulares brasileiros)
+  const hasCountry = cleanPhone.startsWith('55');
+  const ddd = hasCountry ? cleanPhone.slice(2, 4) : cleanPhone.slice(0, 2);
+  const rest = hasCountry ? cleanPhone.slice(4) : cleanPhone.slice(2);
+  
+  // Se tem 9 dígitos após o DDD e começa com 9, gerar versão sem o 9
+  if (rest.length === 9 && rest.startsWith('9')) {
+    const without9 = rest.slice(1);
+    variations.push(`55${ddd}${without9}`);
+    variations.push(`${ddd}${without9}`);
+  }
+  
+  // CORREÇÃO: Se tem 8 dígitos após o DDD e começa com [6-9], é celular - gerar versão com 9
+  if (rest.length === 8 && /^[6-9]/.test(rest)) {
+    variations.push(`55${ddd}9${rest}`);
+    variations.push(`${ddd}9${rest}`);
+  }
+  
+  return [...new Set(variations)];
+}
+
+/**
+ * Normaliza telefone para formato padrão de armazenamento (55 + DDD + número)
+ * REGRA: Celulares BR (começando com 6-9 após DDD) devem ter 9 dígitos
+ * Se recebemos 8 dígitos começando com [6-9], adicionamos o 9 na frente
+ */
+function normalizePhoneForStorageBR(phone: string): string {
+  let digits = phone.replace(/\D/g, '');
+  
+  // Remover zeros à esquerda que não sejam parte do código do país
+  if (digits.startsWith('0')) {
+    digits = digits.replace(/^0+/, '');
+  }
+  
+  // Adicionar código do país se não tiver
+  if (!digits.startsWith('55') && digits.length >= 10 && digits.length <= 11) {
+    digits = `55${digits}`;
+  }
+  
+  // Para celulares brasileiros (55 + DDD + 8 dígitos)
+  // Adicionar 9 se o bloco de 8 dígitos começar com [6-9] (celular sem o nono dígito)
+  if (digits.startsWith('55') && digits.length === 12) {
+    const ddd = digits.slice(2, 4);
+    const rest = digits.slice(4);
+    if (rest.length === 8 && /^[6-9]/.test(rest)) {
+      digits = `55${ddd}9${rest}`;
+      console.log(`[Webhook] Normalizing phone: added 9th digit: ${ddd}${rest} -> ${ddd}9${rest}`);
+    }
+  }
+  
+  return digits;
+}
+
+// =====================================================
 // MEDIA UPLOAD FUNCTIONS
 // =====================================================
 
@@ -904,22 +980,30 @@ serve(async (req) => {
       let recipientPhone = normalizedMessage.from;
       
       // =====================================================
-      // CORREÇÃO LID: Se o telefone parece ser um LID (não é um número válido),
-      // buscar a conversa mais recente do canal para encontrar o contato real
+      // CORREÇÃO DUPLICADOS: Normalizar telefone e buscar por variações
+      // O provider pode enviar o telefone sem 9º dígito - precisamos buscar
+      // usando as mesmas variações que usamos no inbound
       // =====================================================
       let contact = null;
       let conversation = null;
       
-      // Tentar buscar contato pelo telefone diretamente (FILTRAR POR TENANT!)
+      // Gerar variações do telefone (com/sem 9º dígito)
+      const phoneVariations = generatePhoneVariationsBR(recipientPhone);
+      console.log(`[Webhook] FromMe: Searching contact with phone variations:`, phoneVariations);
+      
+      // Tentar buscar contato por QUALQUER variação do telefone (FILTRAR POR TENANT!)
       const { data: directContact } = await supabase
         .from("contacts")
-        .select("id")
-        .eq("phone", recipientPhone)
+        .select("id, phone")
+        .in("phone", phoneVariations)
         .eq("tenant_id", channel.tenant_id)
-        .single();
+        .limit(1)
+        .maybeSingle();
       
       if (directContact) {
         contact = directContact;
+        console.log(`[Webhook] FromMe: Found existing contact ${contact.id} with phone ${directContact.phone}`);
+        
         // Buscar conversa existente com esse contato (QUALQUER status - incluindo fechadas)
         // Para mensagens fromMe (BOT), usamos a conversa mais recente sem filtrar por status
         const { data: conv } = await supabase
@@ -961,43 +1045,55 @@ serve(async (req) => {
       // Resolve race condition com sistemas externos como Jet Sales
       // =====================================================
       if (!contact) {
-        console.log(`[Webhook] 🆕 Creating contact for fromMe message (external system): ${recipientPhone}`);
+        // =====================================================
+        // CORREÇÃO: Normalizar telefone antes de criar contato
+        // Isso garante que usamos o mesmo formato do redirect-capture
+        // =====================================================
+        const normalizedPhone = normalizePhoneForStorageBR(recipientPhone);
+        console.log(`[Webhook] 🆕 Creating contact for fromMe message: ${recipientPhone} -> normalized: ${normalizedPhone}`);
         
         // IMPORTANTE: Para mensagens fromMe, o pushName é o nome da EMPRESA (ex: "Space Sports")
         // e não do cliente! Sempre usar nome genérico para que seja atualizado quando cliente responder
-        const contactName = `WhatsApp ${recipientPhone}`;
+        const contactName = `WhatsApp ${normalizedPhone.slice(-4)}`;
         
+        // Usar UPSERT para evitar duplicatas em race conditions
         const { data: newContact, error: contactError } = await supabase
           .from("contacts")
-          .insert({
-            phone: recipientPhone,
+          .upsert({
+            phone: normalizedPhone,
             full_name: contactName,
             first_contact_at: new Date().toISOString(),
             origin: "whatsapp",
             department_id: channel.department_id || null,
             tenant_id: channel.tenant_id,
+          }, {
+            onConflict: "phone,tenant_id",
+            ignoreDuplicates: false
           })
           .select("id")
           .single();
         
         if (contactError) {
-          // Se erro de duplicata (race condition), buscar o existente
-          if (contactError.code === '23505') {
-            console.log(`[Webhook] Contact already exists (race condition), fetching...`);
-            const { data: existingContact } = await supabase
-              .from("contacts")
-              .select("id")
-              .eq("phone", recipientPhone)
-              .eq("tenant_id", channel.tenant_id)
-              .single();
+          console.error(`[Webhook] Error creating/upserting contact:`, contactError);
+          
+          // Fallback: buscar existente por variações
+          const { data: existingContact } = await supabase
+            .from("contacts")
+            .select("id")
+            .in("phone", phoneVariations)
+            .eq("tenant_id", channel.tenant_id)
+            .limit(1)
+            .maybeSingle();
+          
+          if (existingContact) {
             contact = existingContact;
+            console.log(`[Webhook] Found existing contact after upsert error: ${contact.id}`);
           } else {
-            console.error(`[Webhook] Error creating contact:`, contactError);
             throw contactError;
           }
         } else {
           contact = newContact;
-          console.log(`[Webhook] ✅ Contact created: ${contact.id}`);
+          console.log(`[Webhook] ✅ Contact created/upserted: ${contact.id}`);
         }
       }
 

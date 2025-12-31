@@ -269,6 +269,7 @@ Deno.serve(async (req) => {
       console.log('[redirect-capture] Telefone normalizado:', phone, '->', normalizedPhone);
       
       // Criar novo contato com department_id se definido
+      // USAR UPSERT para garantir idempotência e evitar duplicatas em race conditions
       const contactData: any = {
         tenant_id,
         phone: normalizedPhone,
@@ -286,16 +287,33 @@ Deno.serve(async (req) => {
 
       const { data: newContact, error: contactError } = await supabase
         .from('contacts')
-        .insert(contactData)
+        .upsert(contactData, {
+          onConflict: 'phone,tenant_id',
+          ignoreDuplicates: false
+        })
         .select('id')
         .single();
 
       if (contactError) {
-        console.error('[redirect-capture] Erro ao criar contato:', contactError);
+        console.error('[redirect-capture] Erro ao criar/upsert contato:', contactError);
+        
+        // Fallback: buscar por variações caso upsert falhe
+        const { data: fallbackContact } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('tenant_id', tenant_id)
+          .in('phone', phoneVariations)
+          .limit(1)
+          .maybeSingle();
+        
+        if (fallbackContact) {
+          contactId = fallbackContact.id;
+          console.log('[redirect-capture] Encontrou contato existente após erro:', contactId);
+        }
       } else {
         contactId = newContact.id;
         isNewContact = true;
-        console.log('[redirect-capture] Novo contato criado:', contactId);
+        console.log('[redirect-capture] Novo contato criado/upserted:', contactId);
 
         // Incrementar total de leads
         await supabase
