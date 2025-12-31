@@ -168,7 +168,12 @@ export function WebhookBodyFields({ fields, onChange }: WebhookBodyFieldsProps) 
         variant="outline"
         size="sm"
         className="w-full"
-        onClick={addField}
+        onClick={(e) => {
+          e.stopPropagation();
+          addField();
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        type="button"
       >
         <Plus size={14} className="mr-1" />
         Adicionar campo
