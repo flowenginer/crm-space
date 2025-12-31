@@ -338,6 +338,49 @@ Deno.serve(async (req) => {
           }
         }
 
+        // CRIAR CONVERSA ANTES de disparar o trigger para garantir que existe
+        let conversationId: string | null = null;
+        if (selectedChannel?.id && contactId) {
+          // Buscar conversa existente ou criar uma nova
+          const { data: existingConv } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('contact_id', contactId)
+            .eq('channel_id', selectedChannel.id)
+            .in('status', ['open', 'pending'])
+            .maybeSingle();
+
+          if (existingConv) {
+            conversationId = existingConv.id;
+            console.log('[redirect-capture] Conversa existente encontrada:', conversationId?.substring(0, 8));
+          } else {
+            // Criar nova conversa
+            const { data: newConv, error: convError } = await supabase
+              .from('conversations')
+              .insert({
+                tenant_id,
+                contact_id: contactId,
+                channel_id: selectedChannel.id,
+                status: 'pending',
+                referral_source: 'redirect',
+                referral_data: {
+                  campaign_id,
+                  campaign_name: campaign.name,
+                  ...utms
+                },
+              })
+              .select('id')
+              .single();
+
+            if (convError) {
+              console.error('[redirect-capture] Erro ao criar conversa:', convError);
+            } else {
+              conversationId = newConv.id;
+              console.log('[redirect-capture] Nova conversa criada:', conversationId?.substring(0, 8));
+            }
+          }
+        }
+
         // Disparar fluxos de automação para o novo lead
         try {
           await supabase.functions.invoke('process-flow-triggers', {
@@ -346,6 +389,7 @@ Deno.serve(async (req) => {
               tenant_id,
               contact_id: contactId,
               channel_id: selectedChannel?.id || null,
+              conversation_id: conversationId, // Passar conversation_id já criada
               metadata: {
                 campaign_id,
                 campaign_name: campaign.name,
@@ -358,7 +402,7 @@ Deno.serve(async (req) => {
               }
             }
           });
-          console.log('[redirect-capture] Trigger de fluxo disparado');
+          console.log('[redirect-capture] Trigger de fluxo disparado com conversation_id:', conversationId?.substring(0, 8));
         } catch (triggerError) {
           console.error('[redirect-capture] Erro ao disparar trigger:', triggerError);
         }
