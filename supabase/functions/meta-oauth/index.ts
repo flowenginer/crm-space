@@ -100,6 +100,8 @@ serve(async (req) => {
     }
 
     // New action: exchange code for token (called by frontend callback page)
+    // NOTA: Esta action é pública (verify_jwt = false) pois é chamada de uma janela popup sem auth
+    // A segurança é garantida pela validação do state que foi gerado durante get-login-url
     if (action === 'exchange-code') {
       const code = url.searchParams.get('code');
       const state = url.searchParams.get('state');
@@ -111,25 +113,39 @@ serve(async (req) => {
         });
       }
       
+      // SEGURANÇA: Validar state OBRIGATORIAMENTE antes de processar
+      if (!state) {
+        console.error('[Meta OAuth] Exchange-code chamado sem state');
+        return new Response(JSON.stringify({ error: 'State obrigatório para validação' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
       console.log('[Meta OAuth] Exchange code for token, state:', state);
       
-      // Get the stored state to find the redirect origin
-      let frontendCallbackUrl = 'https://crm.lojaspacesports.com.br/meta-oauth-callback';
+      // Buscar e validar o state no banco
+      const { data: stateData, error: stateError } = await supabase
+        .from('meta_oauth_states')
+        .select('redirect_origin, user_id, tenant_id')
+        .eq('state', state)
+        .single();
       
-      if (state) {
-        const { data: stateData } = await supabase
-          .from('meta_oauth_states')
-          .select('redirect_origin, user_id, tenant_id')
-          .eq('state', state)
-          .single();
-        
-        if (stateData?.redirect_origin) {
-          frontendCallbackUrl = `${stateData.redirect_origin}/meta-oauth-callback`;
-        }
-        
-        // Clean up old state
-        await supabase.from('meta_oauth_states').delete().eq('state', state);
+      if (stateError || !stateData) {
+        console.error('[Meta OAuth] State inválido ou expirado:', state, stateError);
+        return new Response(JSON.stringify({ error: 'State inválido ou expirado. Inicie o processo novamente.' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       }
+      
+      // State válido - continuar com o fluxo
+      let frontendCallbackUrl = stateData.redirect_origin 
+        ? `${stateData.redirect_origin}/meta-oauth-callback`
+        : 'https://crm.lojaspacesports.com.br/meta-oauth-callback';
+      
+      // Limpar o state usado (single-use)
+      await supabase.from('meta_oauth_states').delete().eq('state', state);
       
       // Exchange code for access token
       const redirectUri = frontendCallbackUrl;
