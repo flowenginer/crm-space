@@ -46,10 +46,23 @@ export function RedirectDashboard() {
     }
   }, [metaAccounts, selectedMetaAccountId]);
 
-  // Limpar seleção de anúncios ao mudar de conta
+  // Carregar seleção salva ao mudar de conta
   useEffect(() => {
-    setSelectedMetaAds([]);
-    setDraftMetaAds([]);
+    const storageKey = `redirect_dashboard_selected_ads_${selectedMetaAccountId || 'all'}`;
+    const savedAds = localStorage.getItem(storageKey);
+    if (savedAds) {
+      try {
+        const parsed = JSON.parse(savedAds);
+        setSelectedMetaAds(parsed);
+        setDraftMetaAds(parsed);
+      } catch {
+        setSelectedMetaAds([]);
+        setDraftMetaAds([]);
+      }
+    } else {
+      setSelectedMetaAds([]);
+      setDraftMetaAds([]);
+    }
   }, [selectedMetaAccountId]);
 
   // Sincronizar draft quando popover abre
@@ -132,9 +145,13 @@ export function RedirectDashboard() {
     return ads.every(ad => draftMetaAds.includes(ad.name));
   };
 
+  // Helper para gerar chave de storage por conta
+  const getStorageKey = () => `redirect_dashboard_selected_ads_${selectedMetaAccountId || 'all'}`;
+
   // Ações do popover
   const applyDraftSelection = () => {
     setSelectedMetaAds(draftMetaAds);
+    localStorage.setItem(getStorageKey(), JSON.stringify(draftMetaAds));
     setAdPopoverOpen(false);
   };
 
@@ -145,11 +162,16 @@ export function RedirectDashboard() {
 
   // Remover anúncio da seleção aplicada (badges)
   const removeFromApplied = (adName: string) => {
-    setSelectedMetaAds(prev => prev.filter(n => n !== adName));
+    setSelectedMetaAds(prev => {
+      const updated = prev.filter(n => n !== adName);
+      localStorage.setItem(getStorageKey(), JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const clearAppliedAds = () => {
     setSelectedMetaAds([]);
+    localStorage.removeItem(getStorageKey());
   };
 
   const handleExportCSV = () => {
@@ -316,8 +338,9 @@ export function RedirectDashboard() {
                     </div>
                   </div>
                   
-                  {/* Lista com scroll - altura fixa para scroll funcionar */}
-                  <div className="overflow-y-auto p-2 space-y-3" style={{ maxHeight: '400px' }}>
+                  {/* Lista com scroll */}
+                  <ScrollArea className="h-[400px]">
+                    <div className="p-2 space-y-3">
                     {filteredAdsGrouped.length === 0 ? (
                       <div className="p-4 text-center text-sm text-muted-foreground">
                         Nenhum anúncio encontrado para "{adSearchQuery}"
@@ -381,7 +404,8 @@ export function RedirectDashboard() {
                         );
                       })
                     )}
-                  </div>
+                    </div>
+                  </ScrollArea>
                   
                   {/* Footer com botões Aplicar e Cancelar */}
                   <div className="p-3 border-t flex items-center justify-end gap-2">
