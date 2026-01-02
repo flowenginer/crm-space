@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, CreditCard, Truck, Facebook, MessageCircle, Package } from 'lucide-react';
+import { Loader2, CreditCard, Truck, Facebook, MessageCircle, Package, Phone } from 'lucide-react';
 import { usePaymentGatewayConfig } from '@/hooks/usePaymentLinks';
 import { useShippingConfig } from '@/hooks/useShippingConfig';
 import { useBlingConfig } from '@/hooks/useBlingIntegration';
+import { useCloudAPIConfig } from '@/hooks/useCloudAPIConfig';
 import { toast } from 'sonner';
 import {
   IntegrationCard,
@@ -15,6 +16,7 @@ import {
   MetaAdsForm,
   WhatsAppProviderForm,
   BlingIntegrationForm,
+  CloudAPIConfigForm,
 } from './integrations';
 
 interface ProviderWithConfig {
@@ -28,7 +30,7 @@ interface ProviderWithConfig {
   is_configured?: boolean;
 }
 
-type IntegrationType = 'rede' | 'melhor-envio' | 'meta-ads' | 'bling' | string | null;
+type IntegrationType = 'rede' | 'melhor-envio' | 'meta-ads' | 'bling' | 'cloudapi' | string | null;
 
 export function IntegrationSettings() {
   const [searchParams] = useSearchParams();
@@ -38,7 +40,8 @@ export function IntegrationSettings() {
   // Fetch Bling config
   const { data: blingConfig } = useBlingConfig();
 
-  // Handle Bling OAuth callback
+  // Fetch Cloud API config
+  const { data: cloudAPIConfig } = useCloudAPIConfig();
   useEffect(() => {
     const blingParam = searchParams.get('bling');
     if (blingParam === 'callback') {
@@ -163,6 +166,17 @@ export function IntegrationSettings() {
           onClick={() => setOpenModal('bling')}
         />
 
+        {/* Cloud API - API Oficial WhatsApp */}
+        <IntegrationCard
+          icon={Phone}
+          name="Cloud API"
+          description={cloudAPIConfig ? 'Conectado' : 'API Oficial'}
+          category="WhatsApp"
+          isConfigured={!!cloudAPIConfig}
+          color="#25D366"
+          onClick={() => setOpenModal('cloudapi')}
+        />
+
         {/* WhatsApp Providers */}
         {providers?.map((provider) => (
           <IntegrationCard
@@ -217,6 +231,16 @@ export function IntegrationSettings() {
         color="#0066CC"
       >
         <BlingIntegrationForm onSuccess={handleCloseModal} />
+      </IntegrationModal>
+
+      <IntegrationModal
+        open={openModal === 'cloudapi'}
+        onOpenChange={(open) => !open && setOpenModal(null)}
+        icon={Phone}
+        name="Cloud API (API Oficial)"
+        color="#25D366"
+      >
+        <CloudAPIConfigForm onSuccess={handleCloseModal} />
       </IntegrationModal>
 
       {selectedProvider && (

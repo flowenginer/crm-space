@@ -67,6 +67,7 @@ import NotFound from "@/pages/NotFound";
 import MetaOAuthCallback from "@/pages/MetaOAuthCallback";
 import Redirect from "@/pages/Redirect";
 import RedirectLanding from "@/pages/RedirectLanding";
+import CallManagement from "@/pages/CallManagement";
 
 // Platform Admin Pages
 import {
@@ -174,6 +175,11 @@ const App = () => (
               <Route path="/settings" element={
                 <ProtectedRoute permission="settings.view">
                   <Settings />
+                </ProtectedRoute>
+              } />
+              <Route path="/call-management" element={
+                <ProtectedRoute permission="settings.view">
+                  <CallManagement />
                 </ProtectedRoute>
               } />
               <Route path="/tenant-settings" element={
