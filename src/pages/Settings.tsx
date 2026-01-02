@@ -77,6 +77,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
 
 // Hooks
 import { useTeam, useUpdateTeamMember } from '@/hooks/useTeam';
@@ -108,6 +109,7 @@ interface TabMetadata {
   icon: LucideIcon;
   permission: [string, string] | null;
   adminOnly?: boolean;
+  superAdminOnly?: boolean;
 }
 
 const TAB_METADATA: Record<string, TabMetadata> = {
@@ -128,7 +130,7 @@ const TAB_METADATA: Record<string, TabMetadata> = {
   'lead-distribution': { icon: Share2, permission: ['settings', 'update'] },
   'notifications': { icon: Bell, permission: null },
   'security': { icon: Key, permission: null },
-  'integrations': { icon: Plug, permission: ['settings', 'integrations'] },
+  'integrations': { icon: Plug, permission: ['settings', 'integrations'], superAdminOnly: true },
   'meta-ads': { icon: Facebook, permission: ['marketing', 'manage'] },
   'origin-patterns': { icon: Radar, permission: ['settings', 'update'] },
   'general': { icon: Palette, permission: ['settings', 'update'] },
@@ -141,6 +143,7 @@ const TAB_METADATA: Record<string, TabMetadata> = {
 export default function Settings() {
   const { user } = useAuth();
   const { hasPermission, isAdmin, isFullyLoaded } = usePermissions();
+  const { data: isSuperAdmin = false } = useCurrentUserIsSuperAdmin();
   const [searchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab');
   
@@ -158,6 +161,9 @@ export default function Settings() {
         
         if (!metadata) return null;
         
+        // Check super admin only tabs
+        if (metadata.superAdminOnly && !isSuperAdmin) return null;
+        
         // Check permissions
         if (!isAdmin) {
           if (metadata.adminOnly) return null;
@@ -173,10 +179,11 @@ export default function Settings() {
           icon: metadata.icon,
           permission: metadata.permission,
           adminOnly: metadata.adminOnly,
+          superAdminOnly: metadata.superAdminOnly,
         };
       })
       .filter((tab): tab is NonNullable<typeof tab> => tab !== null);
-  }, [isFullyLoaded, loadingMenuTabs, menuTabs, isAdmin, hasPermission]);
+  }, [isFullyLoaded, loadingMenuTabs, menuTabs, isAdmin, hasPermission, isSuperAdmin]);
 
   // Define a aba ativa baseada na URL ou primeira disponível
   const defaultTab = useMemo(() => {
