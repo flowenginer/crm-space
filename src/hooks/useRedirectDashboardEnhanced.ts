@@ -1,0 +1,269 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+
+export interface UTMBreakdownEnhanced {
+  utm_source: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  visits: number;
+  leads: number;
+  catalogo: number;
+  layout: number;
+  fechados: number;
+  conversionRate: number;
+}
+
+export interface RedirectDashboardEnhancedSummary {
+  totalVisits: number;
+  totalLeads: number;
+  conversionRate: number;
+  costPerLead: number;
+  totalSpend: number;
+  leadsInCatalogo: number;
+  leadsInLayout: number;
+  pedidosFechados: number;
+  uniqueSources: number;
+}
+
+export interface RedirectDashboardEnhancedData {
+  summary: RedirectDashboardEnhancedSummary;
+  utmBreakdown: UTMBreakdownEnhanced[];
+  hasUntracked: boolean;
+}
+
+interface UseRedirectDashboardEnhancedParams {
+  redirectCampaignId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+// Função para limpar content: usa medium como fallback se content for grande/encoded
+function getCleanContent(utm_content: string | null, utm_medium: string | null): string | null {
+  if (!utm_content) return utm_medium;
+  
+  const hasUrlEncoding = utm_content.includes('%');
+  const isTooLong = utm_content.length > 40;
+  
+  if (hasUrlEncoding || isTooLong) {
+    return utm_medium || utm_content;
+  }
+  
+  return utm_content;
+}
+
+export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, endDate }: UseRedirectDashboardEnhancedParams) {
+  const { profile } = useAuth();
+  const tenantId = profile?.tenant_id;
+
+  return useQuery({
+    queryKey: ['redirect-dashboard-enhanced', tenantId, redirectCampaignId, startDate, endDate],
+    queryFn: async (): Promise<RedirectDashboardEnhancedData> => {
+      if (!tenantId) throw new Error('Tenant não encontrado');
+
+      // 1. Buscar lead_statuses do tenant
+      const { data: leadStatuses, error: statusError } = await supabase
+        .from('lead_statuses')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true);
+
+      if (statusError) throw statusError;
+
+      // Encontrar IDs dos status específicos
+      const catalogoStatus = leadStatuses?.find(s => 
+        s.name.toLowerCase().includes('catálogo') || s.name.toLowerCase().includes('catalogo')
+      );
+      const layoutStatus = leadStatuses?.find(s => 
+        s.name.toLowerCase().includes('layout')
+      );
+      const fechadoStatus = leadStatuses?.find(s => 
+        s.name.toLowerCase().includes('fechado') || s.name.toLowerCase().includes('pedido fechado')
+      );
+
+      // 2. Buscar visitas agrupadas por UTM
+      let viewsQuery = supabase
+        .from('redirect_campaign_views')
+        .select('utm_source, utm_medium, utm_campaign, utm_content, visitor_id, created_at')
+        .eq('tenant_id', tenantId);
+
+      if (redirectCampaignId) {
+        viewsQuery = viewsQuery.eq('campaign_id', redirectCampaignId);
+      }
+      if (startDate) {
+        viewsQuery = viewsQuery.gte('created_at', `${startDate}T00:00:00`);
+      }
+      if (endDate) {
+        viewsQuery = viewsQuery.lte('created_at', `${endDate}T23:59:59`);
+      }
+
+      const { data: visitsData, error: visitsError } = await viewsQuery;
+      if (visitsError) throw visitsError;
+
+      // 3. Buscar leads com status do contato
+      let logsQuery = supabase
+        .from('redirect_logs')
+        .select(`
+          utm_source, 
+          utm_medium, 
+          utm_campaign, 
+          utm_content, 
+          contact_id,
+          created_at,
+          contact:contacts(id, lead_status)
+        `)
+        .eq('tenant_id', tenantId);
+
+      if (redirectCampaignId) {
+        logsQuery = logsQuery.eq('campaign_id', redirectCampaignId);
+      }
+      if (startDate) {
+        logsQuery = logsQuery.gte('created_at', `${startDate}T00:00:00`);
+      }
+      if (endDate) {
+        logsQuery = logsQuery.lte('created_at', `${endDate}T23:59:59`);
+      }
+
+      const { data: leadsData, error: leadsError } = await logsQuery;
+      if (leadsError) throw leadsError;
+
+      // 4. Buscar spend do Meta Ads (para leads que vieram de meta_ads)
+      let totalSpend = 0;
+      if (startDate && endDate) {
+        const { data: insightsData, error: insightsError } = await supabase
+          .from('meta_campaign_insights')
+          .select('spend')
+          .gte('date_start', startDate)
+          .lte('date_stop', endDate);
+
+        if (!insightsError && insightsData) {
+          totalSpend = insightsData.reduce((sum, row) => sum + (Number(row.spend) || 0), 0);
+        }
+      }
+
+      // 5. Processar visitas por UTM (contando visitantes únicos)
+      const visitsMap = new Map<string, { 
+        utm_source: string | null; 
+        utm_campaign: string | null; 
+        utm_content: string | null; 
+        visitors: Set<string> 
+      }>();
+      
+      (visitsData || []).forEach((v) => {
+        const cleanContent = getCleanContent(v.utm_content, v.utm_medium);
+        const key = `${v.utm_source || "(direto)"}|${v.utm_campaign || "(none)"}|${cleanContent || "(none)"}`;
+        if (!visitsMap.has(key)) {
+          visitsMap.set(key, {
+            utm_source: v.utm_source,
+            utm_campaign: v.utm_campaign,
+            utm_content: cleanContent,
+            visitors: new Set(),
+          });
+        }
+        visitsMap.get(key)!.visitors.add(v.visitor_id);
+      });
+
+      // 6. Processar leads por UTM com status
+      const leadsMap = new Map<string, { 
+        total: number; 
+        catalogo: number; 
+        layout: number; 
+        fechados: number 
+      }>();
+      
+      (leadsData || []).forEach((l) => {
+        const cleanContent = getCleanContent(l.utm_content, l.utm_medium);
+        const key = `${l.utm_source || "(direto)"}|${l.utm_campaign || "(none)"}|${cleanContent || "(none)"}`;
+        
+        if (!leadsMap.has(key)) {
+          leadsMap.set(key, { total: 0, catalogo: 0, layout: 0, fechados: 0 });
+        }
+        
+        const entry = leadsMap.get(key)!;
+        entry.total += 1;
+        
+        const leadStatus = (l.contact as any)?.lead_status;
+        if (catalogoStatus && leadStatus === catalogoStatus.id) {
+          entry.catalogo += 1;
+        }
+        if (layoutStatus && leadStatus === layoutStatus.id) {
+          entry.layout += 1;
+        }
+        if (fechadoStatus && leadStatus === fechadoStatus.id) {
+          entry.fechados += 1;
+        }
+      });
+
+      // 7. Merge dados
+      const allKeys = new Set([...visitsMap.keys(), ...leadsMap.keys()]);
+      const utmBreakdown: UTMBreakdownEnhanced[] = [];
+      const uniqueSources = new Set<string>();
+
+      allKeys.forEach((key) => {
+        const [source, campaign, content] = key.split("|");
+        const visitsEntry = visitsMap.get(key);
+        const leadsEntry = leadsMap.get(key);
+        
+        const visits = visitsEntry ? visitsEntry.visitors.size : 0;
+        const leads = leadsEntry?.total || 0;
+        const catalogo = leadsEntry?.catalogo || 0;
+        const layout = leadsEntry?.layout || 0;
+        const fechados = leadsEntry?.fechados || 0;
+        
+        if (source !== "(direto)") {
+          uniqueSources.add(source);
+        }
+
+        utmBreakdown.push({
+          utm_source: source === "(direto)" ? null : source,
+          utm_campaign: campaign === "(none)" ? null : campaign,
+          utm_content: content === "(none)" ? null : content,
+          visits,
+          leads,
+          catalogo,
+          layout,
+          fechados,
+          conversionRate: visits > 0 ? (leads / visits) * 100 : 0,
+        });
+      });
+
+      // Ordenar por visitas decrescente
+      utmBreakdown.sort((a, b) => b.visits - a.visits);
+
+      // 8. Calcular totais
+      const totalVisits = utmBreakdown.reduce((sum, r) => sum + r.visits, 0);
+      const totalLeads = utmBreakdown.reduce((sum, r) => sum + r.leads, 0);
+      const leadsInCatalogo = utmBreakdown.reduce((sum, r) => sum + r.catalogo, 0);
+      const leadsInLayout = utmBreakdown.reduce((sum, r) => sum + r.layout, 0);
+      const pedidosFechados = utmBreakdown.reduce((sum, r) => sum + r.fechados, 0);
+      const conversionRate = totalVisits > 0 ? (totalLeads / totalVisits) * 100 : 0;
+      
+      // CPL = Custo por lead (considerando leads do meta_ads)
+      const metaAdsLeads = utmBreakdown
+        .filter(r => r.utm_source === 'meta_ads')
+        .reduce((sum, r) => sum + r.leads, 0);
+      const costPerLead = metaAdsLeads > 0 ? totalSpend / metaAdsLeads : 0;
+
+      const hasUntracked = utmBreakdown.some(r => r.utm_source === null);
+
+      return {
+        summary: {
+          totalVisits,
+          totalLeads,
+          conversionRate,
+          costPerLead,
+          totalSpend,
+          leadsInCatalogo,
+          leadsInLayout,
+          pedidosFechados,
+          uniqueSources: uniqueSources.size,
+        },
+        utmBreakdown,
+        hasUntracked,
+      };
+    },
+    enabled: !!tenantId,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+}
