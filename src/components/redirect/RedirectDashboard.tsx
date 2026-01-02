@@ -8,10 +8,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { 
   Eye, Users, ShoppingCart, TrendingUp, Target, Layers, 
-  DollarSign, Download, AlertTriangle, Globe, Filter, X
+  DollarSign, Download, AlertTriangle, Globe, Filter, X, Search
 } from 'lucide-react';
 import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
 import { useRedirectDashboardEnhanced } from '@/hooks/useRedirectDashboardEnhanced';
@@ -26,6 +27,7 @@ export function RedirectDashboard() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
   const [selectedMetaAccountId, setSelectedMetaAccountId] = useState<string | null>(null);
   const [selectedMetaAds, setSelectedMetaAds] = useState<string[]>([]);
+  const [adSearchQuery, setAdSearchQuery] = useState('');
   const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
 
@@ -65,6 +67,22 @@ export function RedirectDashboard() {
     return Object.values(grouped).sort((a, b) => a.campaignName.localeCompare(b.campaignName));
   }, [metaAds]);
 
+  // Filtrar anúncios pela busca
+  const filteredAdsGrouped = useMemo(() => {
+    if (!adSearchQuery.trim()) return adsGroupedByCampaign;
+    
+    const query = adSearchQuery.toLowerCase();
+    return adsGroupedByCampaign
+      .map(group => ({
+        ...group,
+        ads: group.ads.filter(ad => 
+          ad.name.toLowerCase().includes(query) ||
+          group.campaignName.toLowerCase().includes(query)
+        )
+      }))
+      .filter(group => group.ads.length > 0);
+  }, [metaAds]);
+
   // Os dados já vêm filtrados do hook, não precisa mais filtrar aqui
   const filteredData = dashboardData;
 
@@ -78,6 +96,24 @@ export function RedirectDashboard() {
 
   const clearMetaAds = () => {
     setSelectedMetaAds([]);
+  };
+
+  const selectAllFromCampaign = (ads: MetaAd[]) => {
+    const adNames = ads.map(ad => ad.name);
+    setSelectedMetaAds(prev => {
+      const newSelection = new Set(prev);
+      adNames.forEach(name => newSelection.add(name));
+      return Array.from(newSelection);
+    });
+  };
+
+  const deselectAllFromCampaign = (ads: MetaAd[]) => {
+    const adNames = new Set(ads.map(ad => ad.name));
+    setSelectedMetaAds(prev => prev.filter(name => !adNames.has(name)));
+  };
+
+  const isCampaignFullySelected = (ads: MetaAd[]) => {
+    return ads.every(ad => selectedMetaAds.includes(ad.name));
   };
 
   const handleExportCSV = () => {
@@ -199,50 +235,88 @@ export function RedirectDashboard() {
                       : `${selectedMetaAds.length} anúncio(s)`}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0" align="start">
-                  <div className="p-3 border-b">
+                <PopoverContent className="w-[500px] p-0" align="start">
+                  {/* Header fixo com busca */}
+                  <div className="p-3 border-b space-y-3 sticky top-0 bg-popover z-10">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Selecionar Anúncios</span>
+                      <span className="text-sm font-medium">
+                        Selecionar Anúncios ({metaAds.length} disponíveis)
+                      </span>
                       {selectedMetaAds.length > 0 && (
-                        <Button variant="ghost" size="sm" onClick={clearMetaAds}>
+                        <Button variant="ghost" size="sm" onClick={clearMetaAds} className="h-7 text-xs">
                           <X className="h-3 w-3 mr-1" />
-                          Limpar
+                          Limpar ({selectedMetaAds.length})
                         </Button>
                       )}
                     </div>
+                    
+                    {/* Campo de busca */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar anúncios ou campanhas..."
+                        value={adSearchQuery}
+                        onChange={(e) => setAdSearchQuery(e.target.value)}
+                        className="pl-9 h-9"
+                      />
+                    </div>
                   </div>
-                  <ScrollArea className="h-[350px]">
+                  
+                  {/* Lista com scroll visível */}
+                  <ScrollArea className="h-[400px] [&_[data-radix-scroll-area-scrollbar]]:w-2.5 [&_[data-radix-scroll-area-thumb]]:bg-muted-foreground/40">
                     <div className="p-2 space-y-3">
-                      {adsGroupedByCampaign.map(group => (
-                        <div key={group.campaignName} className="space-y-1">
-                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50 rounded">
-                            {group.campaignName}
-                          </div>
-                          {group.ads.map(ad => (
-                            <div 
-                              key={ad.id} 
-                              className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer ml-2"
-                              onClick={() => toggleMetaAd(ad.name)}
-                            >
-                              <Checkbox 
-                                checked={selectedMetaAds.includes(ad.name)}
-                                onCheckedChange={() => toggleMetaAd(ad.name)}
-                              />
-                              <span className="text-sm truncate flex-1" title={ad.name}>
-                                {ad.name}
-                              </span>
-                              {ad.status && (
-                                <Badge 
-                                  variant={ad.status === 'ACTIVE' ? 'default' : 'secondary'} 
-                                  className="text-[10px] px-1"
-                                >
-                                  {ad.status === 'ACTIVE' ? 'Ativo' : ad.status}
-                                </Badge>
-                              )}
-                            </div>
-                          ))}
+                      {filteredAdsGrouped.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-muted-foreground">
+                          Nenhum anúncio encontrado para "{adSearchQuery}"
                         </div>
-                      ))}
+                      ) : (
+                        filteredAdsGrouped.map(group => {
+                          const isFullySelected = isCampaignFullySelected(group.ads);
+                          return (
+                            <div key={group.campaignName} className="space-y-1">
+                              {/* Header da campanha com ação de seleção */}
+                              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 rounded flex items-center justify-between">
+                                <span className="truncate flex-1" title={group.campaignName}>
+                                  {group.campaignName}
+                                </span>
+                                <button 
+                                  className="text-primary hover:underline text-[10px] ml-2 whitespace-nowrap"
+                                  onClick={() => isFullySelected 
+                                    ? deselectAllFromCampaign(group.ads) 
+                                    : selectAllFromCampaign(group.ads)
+                                  }
+                                >
+                                  {isFullySelected ? 'Desmarcar' : 'Selecionar'} ({group.ads.length})
+                                </button>
+                              </div>
+                              {/* Lista de anúncios */}
+                              {group.ads.map(ad => (
+                                <div 
+                                  key={ad.id} 
+                                  className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer ml-2"
+                                  onClick={() => toggleMetaAd(ad.name)}
+                                >
+                                  <Checkbox 
+                                    checked={selectedMetaAds.includes(ad.name)}
+                                    onCheckedChange={() => toggleMetaAd(ad.name)}
+                                  />
+                                  <span className="text-sm truncate flex-1" title={ad.name}>
+                                    {ad.name}
+                                  </span>
+                                  {ad.status && (
+                                    <Badge 
+                                      variant={ad.status === 'ACTIVE' ? 'default' : 'secondary'} 
+                                      className="text-[10px] px-1.5 flex-shrink-0"
+                                    >
+                                      {ad.status === 'ACTIVE' ? 'Ativo' : ad.status}
+                                    </Badge>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </ScrollArea>
                 </PopoverContent>
