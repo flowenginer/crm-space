@@ -355,24 +355,6 @@ Deno.serve(async (req) => {
       internal_email: { view: true, create: true }
     };
 
-    const supervisorPermissions = {
-      dashboard: { view: true },
-      conversations: { view: true, create: true, update: true, view_all: true, transfer: true, close: true },
-      contacts: { view: true, create: true, update: true },
-      crm: { view: true, create: true, update: true },
-      orders: { view: true, create: true, update: true },
-      quotes: { view: true, create: true, update: true },
-      products: { view: true },
-      reports: { view: true },
-      settings: { view: true },
-      users: { view: true },
-      channels: { view: true },
-      templates: { view: true, create: true, update: true },
-      live_monitor: { view: true },
-      internal_chat: { view: true },
-      internal_email: { view: true }
-    };
-
     const vendedorPermissions = {
       dashboard: { view: true },
       conversations: { view: true, create: true, update: true },
@@ -384,27 +366,9 @@ Deno.serve(async (req) => {
       internal_chat: { view: true }
     };
 
-    const designerPermissions = {
-      dashboard: { view: true },
-      templates: { view: true, create: true, update: true },
-      products: { view: true, create: true, update: true },
-      internal_chat: { view: true },
-      internal_email: { view: true }
-    };
-
-    const sacPermissions = {
-      dashboard: { view: true },
-      conversations: { view: true, create: true, update: true, close: true },
-      contacts: { view: true, create: true, update: true },
-      internal_chat: { view: true }
-    };
-
     const defaultRoles = [
       { tenant_id: tenant.id, role_key: 'admin', role_name: 'Administrador', description: 'Acesso total ao sistema', color: '#EF4444', icon: 'Shield', order_position: 1, permissions: adminPermissions },
-      { tenant_id: tenant.id, role_key: 'supervisor', role_name: 'Supervisor', description: 'Gerencia equipe de vendas', color: '#F59E0B', icon: 'UserCog', order_position: 2, permissions: supervisorPermissions },
-      { tenant_id: tenant.id, role_key: 'vendedor', role_name: 'Vendedor', description: 'Atendimento e vendas', color: '#22C55E', icon: 'ShoppingCart', order_position: 3, permissions: vendedorPermissions },
-      { tenant_id: tenant.id, role_key: 'designer', role_name: 'Designer', description: 'Criação de artes e templates', color: '#8B5CF6', icon: 'Palette', order_position: 4, permissions: designerPermissions },
-      { tenant_id: tenant.id, role_key: 'sac', role_name: 'SAC', description: 'Suporte ao cliente', color: '#3B82F6', icon: 'Headphones', order_position: 5, permissions: sacPermissions }
+      { tenant_id: tenant.id, role_key: 'vendedor', role_name: 'Vendedor', description: 'Atendimento e vendas', color: '#22C55E', icon: 'ShoppingCart', order_position: 2, permissions: vendedorPermissions }
     ];
 
     const { error: rolesDefError } = await supabaseAdmin
