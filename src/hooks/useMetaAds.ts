@@ -92,12 +92,13 @@ export interface MetaAd {
     id: string;
     campaign_id: string;
     name: string;
+    meta_account_id?: string;
   };
 }
 
-export function useMetaAdsWithCampaigns(tenantId: string | null) {
+export function useMetaAdsWithCampaigns(tenantId: string | null, metaAccountId?: string | null) {
   return useQuery({
-    queryKey: ['meta-ads-with-campaigns', tenantId],
+    queryKey: ['meta-ads-with-campaigns', tenantId, metaAccountId],
     queryFn: async () => {
       if (!tenantId) return [];
 
@@ -109,13 +110,23 @@ export function useMetaAdsWithCampaigns(tenantId: string | null) {
           name,
           status,
           campaign_id,
-          campaign:meta_campaigns(id, campaign_id, name)
+          campaign:meta_campaigns(id, campaign_id, name, meta_account_id)
         `)
         .eq('tenant_id', tenantId)
         .order('name');
 
       if (error) throw error;
-      return data as MetaAd[];
+      
+      let result = data as MetaAd[];
+      
+      // Filtrar por conta Meta Ads se especificado
+      if (metaAccountId) {
+        result = result.filter(ad => 
+          (ad.campaign as any)?.meta_account_id === metaAccountId
+        );
+      }
+      
+      return result;
     },
     enabled: !!tenantId
   });
