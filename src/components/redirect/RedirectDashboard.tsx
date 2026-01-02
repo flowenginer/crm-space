@@ -28,6 +28,7 @@ export function RedirectDashboard() {
   const [selectedMetaAccountId, setSelectedMetaAccountId] = useState<string | null>(null);
   const [selectedMetaAds, setSelectedMetaAds] = useState<string[]>([]);
   const [adSearchQuery, setAdSearchQuery] = useState('');
+  const [adPopoverOpen, setAdPopoverOpen] = useState(false);
   const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
 
@@ -229,7 +230,7 @@ export function RedirectDashboard() {
           {metaAds.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-muted-foreground">Anúncios:</span>
-              <Popover modal={false}>
+              <Popover open={adPopoverOpen} onOpenChange={setAdPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="min-w-[200px] justify-start">
                     <Filter className="h-4 w-4 mr-2" />
@@ -238,19 +239,34 @@ export function RedirectDashboard() {
                       : `${selectedMetaAds.length} anúncio(s)`}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[500px] p-0 max-h-[70vh] flex flex-col" align="start">
+                <PopoverContent 
+                  className="w-[500px] p-0" 
+                  align="start"
+                  onInteractOutside={(e) => e.preventDefault()}
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
                   {/* Header fixo com busca */}
-                  <div className="p-3 border-b space-y-3 flex-shrink-0">
+                  <div className="p-3 border-b space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">
                         Selecionar Anúncios ({metaAds.length} disponíveis)
                       </span>
-                      {selectedMetaAds.length > 0 && (
-                        <Button variant="ghost" size="sm" onClick={clearMetaAds} className="h-7 text-xs">
-                          <X className="h-3 w-3 mr-1" />
-                          Limpar ({selectedMetaAds.length})
+                      <div className="flex items-center gap-2">
+                        {selectedMetaAds.length > 0 && (
+                          <Button variant="ghost" size="sm" onClick={clearMetaAds} className="h-7 text-xs">
+                            <X className="h-3 w-3 mr-1" />
+                            Limpar ({selectedMetaAds.length})
+                          </Button>
+                        )}
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6" 
+                          onClick={() => setAdPopoverOpen(false)}
+                        >
+                          <X className="h-4 w-4" />
                         </Button>
-                      )}
+                      </div>
                     </div>
                     
                     {/* Campo de busca */}
@@ -265,8 +281,8 @@ export function RedirectDashboard() {
                     </div>
                   </div>
                   
-                  {/* Lista com scroll */}
-                  <div className="flex-1 overflow-y-auto p-2 space-y-3">
+                  {/* Lista com scroll - altura fixa para scroll funcionar */}
+                  <div className="overflow-y-auto p-2 space-y-3" style={{ maxHeight: '400px' }}>
                     {filteredAdsGrouped.length === 0 ? (
                       <div className="p-4 text-center text-sm text-muted-foreground">
                         Nenhum anúncio encontrado para "{adSearchQuery}"
