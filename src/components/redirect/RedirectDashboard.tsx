@@ -54,34 +54,37 @@ export function RedirectDashboard() {
     selectedMetaAdNames: selectedMetaAds
   });
 
-  // Agrupar anúncios por campanha para exibição
-  const adsGroupedByCampaign = useMemo(() => {
-    const grouped: Record<string, { campaignName: string; ads: MetaAd[] }> = {};
+  // Agrupar anúncios por ADSET (conjunto) para exibição
+  const adsGroupedByAdset = useMemo(() => {
+    const grouped: Record<string, { adsetName: string; campaignName: string; ads: MetaAd[] }> = {};
     metaAds.forEach(ad => {
+      const adsetName = (ad.adset as any)?.name || ad.name;
       const campaignName = (ad.campaign as any)?.name || 'Sem campanha';
-      if (!grouped[campaignName]) {
-        grouped[campaignName] = { campaignName, ads: [] };
+      const key = adsetName;
+      if (!grouped[key]) {
+        grouped[key] = { adsetName, campaignName, ads: [] };
       }
-      grouped[campaignName].ads.push(ad);
+      grouped[key].ads.push(ad);
     });
-    return Object.values(grouped).sort((a, b) => a.campaignName.localeCompare(b.campaignName));
+    return Object.values(grouped).sort((a, b) => a.adsetName.localeCompare(b.adsetName));
   }, [metaAds]);
 
   // Filtrar anúncios pela busca
   const filteredAdsGrouped = useMemo(() => {
-    if (!adSearchQuery.trim()) return adsGroupedByCampaign;
+    if (!adSearchQuery.trim()) return adsGroupedByAdset;
     
     const query = adSearchQuery.toLowerCase();
-    return adsGroupedByCampaign
+    return adsGroupedByAdset
       .map(group => ({
         ...group,
         ads: group.ads.filter(ad => 
           ad.name.toLowerCase().includes(query) ||
+          group.adsetName.toLowerCase().includes(query) ||
           group.campaignName.toLowerCase().includes(query)
         )
       }))
       .filter(group => group.ads.length > 0);
-  }, [metaAds]);
+  }, [adsGroupedByAdset, adSearchQuery]);
 
   // Os dados já vêm filtrados do hook, não precisa mais filtrar aqui
   const filteredData = dashboardData;
@@ -273,14 +276,19 @@ export function RedirectDashboard() {
                         filteredAdsGrouped.map(group => {
                           const isFullySelected = isCampaignFullySelected(group.ads);
                           return (
-                            <div key={group.campaignName} className="space-y-1">
-                              {/* Header da campanha com ação de seleção */}
-                              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 rounded flex items-center justify-between">
-                                <span className="truncate flex-1" title={group.campaignName}>
-                                  {group.campaignName}
-                                </span>
+                            <div key={group.adsetName} className="space-y-1">
+                              {/* Header do conjunto (adset) com ação de seleção */}
+                              <div className="px-2 py-1.5 text-xs font-semibold bg-muted/50 rounded flex items-center justify-between gap-2">
+                                <div className="flex flex-col min-w-0 flex-1">
+                                  <span className="truncate text-foreground" title={group.adsetName}>
+                                    {group.adsetName}
+                                  </span>
+                                  <span className="truncate text-muted-foreground text-[10px]" title={group.campaignName}>
+                                    {group.campaignName}
+                                  </span>
+                                </div>
                                 <button 
-                                  className="text-primary hover:underline text-[10px] ml-2 whitespace-nowrap"
+                                  className="text-primary hover:underline text-[10px] whitespace-nowrap flex-shrink-0"
                                   onClick={() => isFullySelected 
                                     ? deselectAllFromCampaign(group.ads) 
                                     : selectAllFromCampaign(group.ads)

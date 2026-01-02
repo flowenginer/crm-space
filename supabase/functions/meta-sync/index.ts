@@ -42,6 +42,10 @@ interface MetaAd {
     thumbnail_url?: string;
   };
   created_time?: string;
+  adset?: {
+    id: string;
+    name: string;
+  };
 }
 
 serve(async (req) => {
@@ -256,10 +260,10 @@ serve(async (req) => {
 
       for (const campaign of dbCampaigns) {
         try {
-          // Fetch ads for this campaign
+          // Fetch ads for this campaign - include adset info
           const adsResponse = await fetch(
             `https://graph.facebook.com/v21.0/${campaign.campaign_id}/ads?` +
-            `fields=id,name,status,creative{thumbnail_url},created_time` +
+            `fields=id,name,status,creative{thumbnail_url},created_time,adset{id,name}` +
             `&limit=500` +
             `&access_token=${accessToken}`
           );
@@ -275,9 +279,35 @@ serve(async (req) => {
           console.log(`[Meta Sync] Found ${ads.length} ads for campaign ${campaign.campaign_id}`);
 
           for (const ad of ads) {
+            let adsetDbId: string | null = null;
+
+            // Upsert adset if present
+            if (ad.adset?.id) {
+              const { data: adsetData, error: adsetError } = await supabase
+                .from('meta_adsets')
+                .upsert({
+                  meta_account_id: accountId,
+                  campaign_id: campaign.id,
+                  adset_id: ad.adset.id,
+                  name: ad.adset.name,
+                  status: null,
+                  updated_at: new Date().toISOString(),
+                  tenant_id: metaAccount.tenant_id
+                }, { onConflict: 'meta_account_id,adset_id' })
+                .select('id')
+                .single();
+
+              if (adsetError) {
+                console.error('[Meta Sync] Adset upsert error:', adsetError);
+              } else {
+                adsetDbId = adsetData?.id || null;
+              }
+            }
+
             const { error: upsertError } = await supabase.from('meta_ads').upsert({
               meta_account_id: accountId,
               campaign_id: campaign.id,
+              adset_id: adsetDbId,
               ad_id: ad.id,
               name: ad.name,
               status: ad.status,

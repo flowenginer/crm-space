@@ -88,6 +88,12 @@ export interface MetaAd {
   name: string;
   status: string | null;
   campaign_id: string;
+  adset_id?: string;
+  adset?: {
+    id: string;
+    adset_id: string;
+    name: string;
+  };
   campaign?: {
     id: string;
     campaign_id: string;
@@ -110,6 +116,8 @@ export function useMetaAdsWithCampaigns(tenantId: string | null, metaAccountId?:
           name,
           status,
           campaign_id,
+          adset_id,
+          adset:meta_adsets(id, adset_id, name),
           campaign:meta_campaigns(id, campaign_id, name, meta_account_id)
         `)
         .eq('tenant_id', tenantId)
