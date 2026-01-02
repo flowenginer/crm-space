@@ -13,7 +13,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Eye, Users, ShoppingCart, TrendingUp, Target, Layers, 
-  DollarSign, Download, AlertTriangle, Globe, Filter, X, Search, ChevronDown, ChevronUp, HelpCircle
+  DollarSign, Download, AlertTriangle, Globe, Filter, X, Search, ChevronDown, ChevronUp, HelpCircle,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
 import { useRedirectDashboardEnhanced } from '@/hooks/useRedirectDashboardEnhanced';
@@ -33,6 +34,12 @@ export function RedirectDashboard() {
   const [adPopoverOpen, setAdPopoverOpen] = useState(false);
   const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  
+  // Estado de ordenação das tabelas
+  type SortField = 'utm_source' | 'utm_content' | 'visits' | 'leads' | 'catalogo' | 'layout' | 'fechados' | 'conversionRate';
+  type SortDirection = 'asc' | 'desc';
+  const [sortField, setSortField] = useState<SortField>('visits');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [unmappedOpen, setUnmappedOpen] = useState(false);
 
   const { data: campaigns = [] } = useRedirectCampaigns();
@@ -177,10 +184,9 @@ export function RedirectDashboard() {
   const handleExportCSV = () => {
     if (!filteredData?.utmBreakdown.length) return;
 
-    const headers = ['UTM Source', 'UTM Campaign', 'UTM Content', 'Visitas', 'Leads', 'Catálogo', 'Layout', 'Fechados', 'Taxa Conv.'];
+    const headers = ['UTM Source', 'UTM Content', 'Visitas', 'Leads', 'Catálogo', 'Layout', 'Fechados', 'Taxa Conv.'];
     const rows = filteredData.utmBreakdown.map(row => [
       row.utm_source || '(direto)',
-      row.utm_campaign || '-',
       row.utm_content || '-',
       row.visits,
       row.leads,
@@ -249,6 +255,49 @@ export function RedirectDashboard() {
   const formatNumber = (value: number) => {
     return new Intl.NumberFormat('pt-BR').format(value);
   };
+
+  // Função para alternar ordenação
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
+  // Ordenar utmBreakdown
+  const sortedUtmBreakdown = useMemo(() => {
+    return [...utmBreakdown].sort((a, b) => {
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortDirection === 'asc' 
+          ? (aVal || '').localeCompare(bVal || '') 
+          : (bVal || '').localeCompare(aVal || '');
+      }
+      const aNum = Number(aVal) || 0;
+      const bNum = Number(bVal) || 0;
+      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+    });
+  }, [utmBreakdown, sortField, sortDirection]);
+
+  // Componente de cabeçalho ordenável
+  const SortableHeader = ({ field, label, align = 'left' }: { field: SortField; label: string; align?: 'left' | 'right' }) => (
+    <TableHead 
+      className={`cursor-pointer hover:bg-muted/50 select-none ${align === 'right' ? 'text-right' : ''}`}
+      onClick={() => toggleSort(field)}
+    >
+      <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+        {label}
+        {sortField === field ? (
+          sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-30" />
+        )}
+      </div>
+    </TableHead>
+  );
 
   return (
     <div className="space-y-6">
@@ -612,8 +661,7 @@ export function RedirectDashboard() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>UTM Source</TableHead>
-                        <TableHead>UTM Campaign</TableHead>
-                        <TableHead>UTM Content</TableHead>
+                        <TableHead className="min-w-[300px]">UTM Content</TableHead>
                         <TableHead className="text-right">Visitas</TableHead>
                         <TableHead className="text-right">Leads</TableHead>
                         <TableHead className="text-right">Catálogo</TableHead>
@@ -634,10 +682,7 @@ export function RedirectDashboard() {
                               <span className="text-muted-foreground text-xs">(direto)</span>
                             )}
                           </TableCell>
-                          <TableCell className="max-w-[150px] truncate" title={row.utm_campaign || undefined}>
-                            {row.utm_campaign || <span className="text-muted-foreground">-</span>}
-                          </TableCell>
-                          <TableCell className="max-w-[200px] truncate" title={row.utm_content || undefined}>
+                          <TableCell className="min-w-[300px]">
                             {row.utm_content || <span className="text-muted-foreground">-</span>}
                           </TableCell>
                           <TableCell className="text-right font-medium">{formatNumber(row.visits)}</TableCell>
@@ -686,19 +731,18 @@ export function RedirectDashboard() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>UTM Source</TableHead>
-                    <TableHead>UTM Campaign</TableHead>
-                    <TableHead>UTM Content</TableHead>
-                    <TableHead className="text-right">Visitas</TableHead>
-                    <TableHead className="text-right">Leads</TableHead>
-                    <TableHead className="text-right">Catálogo</TableHead>
-                    <TableHead className="text-right">Layout</TableHead>
-                    <TableHead className="text-right">Fechados</TableHead>
-                    <TableHead className="text-right">Taxa Conv.</TableHead>
+                    <SortableHeader field="utm_source" label="UTM Source" />
+                    <SortableHeader field="utm_content" label="UTM Content" />
+                    <SortableHeader field="visits" label="Visitas" align="right" />
+                    <SortableHeader field="leads" label="Leads" align="right" />
+                    <SortableHeader field="catalogo" label="Catálogo" align="right" />
+                    <SortableHeader field="layout" label="Layout" align="right" />
+                    <SortableHeader field="fechados" label="Fechados" align="right" />
+                    <SortableHeader field="conversionRate" label="Taxa Conv." align="right" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {utmBreakdown.map((row, index) => (
+                  {sortedUtmBreakdown.map((row, index) => (
                     <TableRow key={index}>
                       <TableCell>
                         {row.utm_source ? (
@@ -709,10 +753,7 @@ export function RedirectDashboard() {
                           <span className="text-muted-foreground text-xs">(direto)</span>
                         )}
                       </TableCell>
-                      <TableCell className="max-w-[150px] truncate" title={row.utm_campaign || undefined}>
-                        {row.utm_campaign || <span className="text-muted-foreground">-</span>}
-                      </TableCell>
-                      <TableCell className="max-w-[150px] truncate" title={row.utm_content || undefined}>
+                      <TableCell className="min-w-[300px]">
                         {row.utm_content || <span className="text-muted-foreground">-</span>}
                       </TableCell>
                       <TableCell className="text-right font-medium">{formatNumber(row.visits)}</TableCell>
