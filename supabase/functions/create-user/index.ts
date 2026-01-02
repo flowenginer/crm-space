@@ -122,13 +122,16 @@ serve(async (req) => {
     }
 
     // Create the user using admin API (bypasses email confirmation)
+    // CRITICAL: Pass tenant_id and skip_auto_tenant to prevent trigger from creating a new tenant
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: email.toLowerCase().trim(),
       password,
       email_confirm: true, // Auto-confirm email
       user_metadata: {
         full_name,
-        role
+        role,
+        tenant_id: requesterTenantId,    // Inherit tenant from creator
+        skip_auto_tenant: true           // Prevent handle_new_user from creating new tenant
       }
     })
 
