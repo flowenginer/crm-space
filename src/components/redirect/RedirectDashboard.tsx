@@ -592,6 +592,9 @@ export function RedirectDashboard() {
                         <TableHead>UTM Content</TableHead>
                         <TableHead className="text-right">Visitas</TableHead>
                         <TableHead className="text-right">Leads</TableHead>
+                        <TableHead className="text-right">Catálogo</TableHead>
+                        <TableHead className="text-right">Layout</TableHead>
+                        <TableHead className="text-right">Fechados</TableHead>
                         <TableHead className="text-right">Taxa Conv.</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -615,6 +618,9 @@ export function RedirectDashboard() {
                           </TableCell>
                           <TableCell className="text-right font-medium">{formatNumber(row.visits)}</TableCell>
                           <TableCell className="text-right font-medium">{formatNumber(row.leads)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatNumber(row.catalogo)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatNumber(row.layout)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatNumber(row.fechados)}</TableCell>
                           <TableCell className="text-right">
                             <Badge variant="outline">
                               {row.conversionRate.toFixed(1)}%
