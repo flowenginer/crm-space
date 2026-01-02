@@ -53,26 +53,26 @@ function getCleanContent(utm_content: string | null, utm_medium: string | null):
   return utm_content;
 }
 // Função para buscar todos os registros com paginação
+// OBS: o PostgREST do Supabase costuma ter limite máximo de 1000 linhas por request.
+// Por isso usamos pageSize=1000 e avançamos pelo tamanho retornado.
 async function fetchAllRecords<T>(
   buildQuery: () => any,
-  pageSize = 5000
+  pageSize = 1000
 ): Promise<T[]> {
   const allRecords: T[] = [];
   let offset = 0;
-  let hasMore = true;
 
-  while (hasMore) {
+  while (true) {
     const { data, error } = await buildQuery().range(offset, offset + pageSize - 1);
-    
     if (error) throw error;
-    
-    if (data && data.length > 0) {
-      allRecords.push(...data);
-      offset += pageSize;
-      hasMore = data.length === pageSize;
-    } else {
-      hasMore = false;
-    }
+
+    const chunk = (data || []) as T[];
+    if (chunk.length === 0) break;
+
+    allRecords.push(...chunk);
+    offset += chunk.length;
+
+    if (chunk.length < pageSize) break;
   }
 
   return allRecords;
