@@ -27,6 +27,7 @@ export function RedirectDashboard() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
   const [selectedMetaAccountId, setSelectedMetaAccountId] = useState<string | null>(null);
   const [selectedMetaAds, setSelectedMetaAds] = useState<string[]>([]);
+  const [draftMetaAds, setDraftMetaAds] = useState<string[]>([]);
   const [adSearchQuery, setAdSearchQuery] = useState('');
   const [adPopoverOpen, setAdPopoverOpen] = useState(false);
   const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 30), 'yyyy-MM-dd'));
@@ -46,9 +47,17 @@ export function RedirectDashboard() {
   // Limpar seleção de anúncios ao mudar de conta
   useEffect(() => {
     setSelectedMetaAds([]);
+    setDraftMetaAds([]);
   }, [selectedMetaAccountId]);
+
+  // Sincronizar draft quando popover abre
+  useEffect(() => {
+    if (adPopoverOpen) {
+      setDraftMetaAds(selectedMetaAds);
+    }
+  }, [adPopoverOpen, selectedMetaAds]);
   
-  const { data: dashboardData, isLoading } = useRedirectDashboardEnhanced({
+  const { data: dashboardData, isLoading, isFetching } = useRedirectDashboardEnhanced({
     redirectCampaignId: selectedCampaignId === 'all' ? undefined : selectedCampaignId,
     startDate,
     endDate,
@@ -90,34 +99,55 @@ export function RedirectDashboard() {
   // Os dados já vêm filtrados do hook, não precisa mais filtrar aqui
   const filteredData = dashboardData;
 
-  const toggleMetaAd = (adName: string) => {
-    setSelectedMetaAds(prev => 
+  // Funções para draft (dentro do popover)
+  const toggleDraftAd = (adName: string) => {
+    setDraftMetaAds(prev => 
       prev.includes(adName) 
         ? prev.filter(n => n !== adName)
         : [...prev, adName]
     );
   };
 
-  const clearMetaAds = () => {
-    setSelectedMetaAds([]);
+  const clearDraftAds = () => {
+    setDraftMetaAds([]);
   };
 
-  const selectAllFromCampaign = (ads: MetaAd[]) => {
+  const selectAllFromCampaignDraft = (ads: MetaAd[]) => {
     const adNames = ads.map(ad => ad.name);
-    setSelectedMetaAds(prev => {
+    setDraftMetaAds(prev => {
       const newSelection = new Set(prev);
       adNames.forEach(name => newSelection.add(name));
       return Array.from(newSelection);
     });
   };
 
-  const deselectAllFromCampaign = (ads: MetaAd[]) => {
+  const deselectAllFromCampaignDraft = (ads: MetaAd[]) => {
     const adNames = new Set(ads.map(ad => ad.name));
-    setSelectedMetaAds(prev => prev.filter(name => !adNames.has(name)));
+    setDraftMetaAds(prev => prev.filter(name => !adNames.has(name)));
   };
 
-  const isCampaignFullySelected = (ads: MetaAd[]) => {
-    return ads.every(ad => selectedMetaAds.includes(ad.name));
+  const isCampaignFullySelectedDraft = (ads: MetaAd[]) => {
+    return ads.every(ad => draftMetaAds.includes(ad.name));
+  };
+
+  // Ações do popover
+  const applyDraftSelection = () => {
+    setSelectedMetaAds(draftMetaAds);
+    setAdPopoverOpen(false);
+  };
+
+  const cancelDraftSelection = () => {
+    setDraftMetaAds(selectedMetaAds);
+    setAdPopoverOpen(false);
+  };
+
+  // Remover anúncio da seleção aplicada (badges)
+  const removeFromApplied = (adName: string) => {
+    setSelectedMetaAds(prev => prev.filter(n => n !== adName));
+  };
+
+  const clearAppliedAds = () => {
+    setSelectedMetaAds([]);
   };
 
   const handleExportCSV = () => {
@@ -148,7 +178,10 @@ export function RedirectDashboard() {
     link.click();
   };
 
-  if (isLoading) {
+  // Só mostra skeleton no primeiro carregamento (sem dados anteriores)
+  const showFullSkeleton = isLoading && !dashboardData;
+
+  if (showFullSkeleton) {
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -252,20 +285,12 @@ export function RedirectDashboard() {
                         Selecionar Anúncios ({metaAds.length} disponíveis)
                       </span>
                       <div className="flex items-center gap-2">
-                        {selectedMetaAds.length > 0 && (
-                          <Button variant="ghost" size="sm" onClick={clearMetaAds} className="h-7 text-xs">
+                        {draftMetaAds.length > 0 && (
+                          <Button variant="ghost" size="sm" onClick={clearDraftAds} className="h-7 text-xs">
                             <X className="h-3 w-3 mr-1" />
-                            Limpar ({selectedMetaAds.length})
+                            Limpar ({draftMetaAds.length})
                           </Button>
                         )}
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-6 w-6" 
-                          onClick={() => setAdPopoverOpen(false)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
                       </div>
                     </div>
                     
@@ -289,7 +314,7 @@ export function RedirectDashboard() {
                       </div>
                     ) : (
                       filteredAdsGrouped.map(group => {
-                        const isFullySelected = isCampaignFullySelected(group.ads);
+                        const isFullySelected = isCampaignFullySelectedDraft(group.ads);
                         return (
                           <div key={group.adsetName} className="space-y-1">
                             {/* Header do conjunto (adset) com ação de seleção */}
@@ -307,8 +332,8 @@ export function RedirectDashboard() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   isFullySelected 
-                                    ? deselectAllFromCampaign(group.ads) 
-                                    : selectAllFromCampaign(group.ads);
+                                    ? deselectAllFromCampaignDraft(group.ads) 
+                                    : selectAllFromCampaignDraft(group.ads);
                                 }}
                               >
                                 {isFullySelected ? 'Desmarcar' : 'Selecionar'} ({group.ads.length})
@@ -321,12 +346,12 @@ export function RedirectDashboard() {
                                 className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer ml-2"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  toggleMetaAd(ad.name);
+                                  toggleDraftAd(ad.name);
                                 }}
                               >
                                 <Checkbox 
-                                  checked={selectedMetaAds.includes(ad.name)}
-                                  onCheckedChange={() => toggleMetaAd(ad.name)}
+                                  checked={draftMetaAds.includes(ad.name)}
+                                  onCheckedChange={() => toggleDraftAd(ad.name)}
                                   onClick={(e) => e.stopPropagation()}
                                 />
                                 <span className="text-sm truncate flex-1" title={ad.name}>
@@ -347,6 +372,16 @@ export function RedirectDashboard() {
                       })
                     )}
                   </div>
+                  
+                  {/* Footer com botões Aplicar e Cancelar */}
+                  <div className="p-3 border-t flex items-center justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={cancelDraftSelection}>
+                      Cancelar
+                    </Button>
+                    <Button size="sm" onClick={applyDraftSelection}>
+                      Aplicar ({draftMetaAds.length})
+                    </Button>
+                  </div>
                 </PopoverContent>
               </Popover>
             </div>
@@ -361,7 +396,7 @@ export function RedirectDashboard() {
                 key={adName} 
                 variant="secondary" 
                 className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground max-w-[250px]"
-                onClick={() => toggleMetaAd(adName)}
+                onClick={() => removeFromApplied(adName)}
               >
                 <span className="truncate">{adName}</span>
                 <X className="h-3 w-3 ml-1 flex-shrink-0" />
