@@ -36,6 +36,7 @@ interface UseRedirectDashboardEnhancedParams {
   redirectCampaignId?: string;
   startDate?: string;
   endDate?: string;
+  selectedMetaAdNames?: string[];
 }
 
 // Função para limpar content: usa medium como fallback se content for grande/encoded
@@ -77,12 +78,22 @@ async function fetchAllRecords<T>(
   return allRecords;
 }
 
-export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, endDate }: UseRedirectDashboardEnhancedParams) {
+// Função para normalizar nome de anúncio para comparação
+function normalizeAdName(name: string): string {
+  return name
+    .replace(/\+/g, ' ')
+    .replace(/%20/g, ' ')
+    .replace(/%[0-9A-Fa-f]{2}/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, endDate, selectedMetaAdNames = [] }: UseRedirectDashboardEnhancedParams) {
   const { profile } = useAuth();
   const tenantId = profile?.tenant_id;
 
   return useQuery({
-    queryKey: ['redirect-dashboard-enhanced', tenantId, redirectCampaignId, startDate, endDate],
+    queryKey: ['redirect-dashboard-enhanced', tenantId, redirectCampaignId, startDate, endDate, selectedMetaAdNames],
     queryFn: async (): Promise<RedirectDashboardEnhancedData> => {
       if (!tenantId) throw new Error('Tenant não encontrado');
 
@@ -156,19 +167,89 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
 
       const leadsData = await fetchAllRecords<any>(buildLogsQuery);
 
-      // 4. Buscar spend do Meta Ads (para leads que vieram de meta_ads)
+      // 4. Buscar anúncios do Meta Ads e seus spends por campanha
       let totalSpend = 0;
+      let metaAdsData: any[] = [];
+      
       if (startDate && endDate) {
+        // Buscar todos os anúncios com suas campanhas
+        const { data: adsData } = await supabase
+          .from('meta_ads')
+          .select(`
+            id,
+            ad_id,
+            name,
+            campaign_id,
+            campaign:meta_campaigns(id, campaign_id, name)
+          `)
+          .eq('tenant_id', tenantId);
+        
+        metaAdsData = adsData || [];
+
+        // Buscar insights das campanhas
         const { data: insightsData, error: insightsError } = await supabase
           .from('meta_campaign_insights')
-          .select('spend')
+          .select('campaign_id, spend')
           .gte('date_start', startDate)
           .lte('date_stop', endDate);
 
         if (!insightsError && insightsData) {
-          totalSpend = insightsData.reduce((sum, row) => sum + (Number(row.spend) || 0), 0);
+          // Se houver anúncios selecionados, calcular spend proporcional
+          if (selectedMetaAdNames.length > 0) {
+            // Agrupar spend por campaign_id
+            const spendByCampaign: Record<string, number> = {};
+            insightsData.forEach(row => {
+              const cId = row.campaign_id;
+              spendByCampaign[cId] = (spendByCampaign[cId] || 0) + (Number(row.spend) || 0);
+            });
+
+            // Contar anúncios por campanha
+            const adsPerCampaign: Record<string, string[]> = {};
+            metaAdsData.forEach(ad => {
+              const campaignDbId = (ad.campaign as any)?.id;
+              if (campaignDbId) {
+                if (!adsPerCampaign[campaignDbId]) {
+                  adsPerCampaign[campaignDbId] = [];
+                }
+                adsPerCampaign[campaignDbId].push(ad.name);
+              }
+            });
+
+            // Calcular spend proporcional apenas para anúncios selecionados
+            const normalizedSelectedAds = selectedMetaAdNames.map(n => normalizeAdName(n));
+            
+            Object.entries(adsPerCampaign).forEach(([campaignDbId, adNames]) => {
+              const campaignSpend = spendByCampaign[campaignDbId] || 0;
+              const totalAdsInCampaign = adNames.length;
+              
+              if (totalAdsInCampaign > 0 && campaignSpend > 0) {
+                const spendPerAd = campaignSpend / totalAdsInCampaign;
+                const selectedAdsInThisCampaign = adNames.filter(name => 
+                  normalizedSelectedAds.some(selected => normalizeAdName(name).includes(selected) || selected.includes(normalizeAdName(name)))
+                );
+                totalSpend += spendPerAd * selectedAdsInThisCampaign.length;
+              }
+            });
+          } else {
+            // Se não houver anúncios selecionados, usar spend total
+            totalSpend = insightsData.reduce((sum, row) => sum + (Number(row.spend) || 0), 0);
+          }
         }
       }
+
+      // Normalizar nomes de anúncios selecionados para comparação
+      const normalizedSelectedAds = selectedMetaAdNames.map(n => normalizeAdName(n));
+      
+      // Função para verificar se o utm_content corresponde a um anúncio selecionado
+      const matchesSelectedAds = (utmContent: string | null): boolean => {
+        if (selectedMetaAdNames.length === 0) return true; // Se nada selecionado, mostrar tudo
+        if (!utmContent) return false;
+        
+        const normalizedContent = normalizeAdName(utmContent);
+        return normalizedSelectedAds.some(adName => 
+          normalizedContent.includes(adName) || adName.includes(normalizedContent)
+        );
+      };
 
       // 5. Processar visitas por UTM (contando visitantes únicos)
       const visitsMap = new Map<string, { 
@@ -180,6 +261,10 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
       
       (visitsData || []).forEach((v) => {
         const cleanContent = getCleanContent(v.utm_content, v.utm_medium);
+        
+        // Filtrar por anúncios selecionados
+        if (!matchesSelectedAds(cleanContent)) return;
+        
         const key = `${v.utm_source || "(direto)"}|${v.utm_campaign || "(none)"}|${cleanContent || "(none)"}`;
         if (!visitsMap.has(key)) {
           visitsMap.set(key, {
@@ -202,6 +287,10 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
       
       (leadsData || []).forEach((l) => {
         const cleanContent = getCleanContent(l.utm_content, l.utm_medium);
+        
+        // Filtrar por anúncios selecionados
+        if (!matchesSelectedAds(cleanContent)) return;
+        
         const key = `${l.utm_source || "(direto)"}|${l.utm_campaign || "(none)"}|${cleanContent || "(none)"}`;
         
         if (!leadsMap.has(key)) {

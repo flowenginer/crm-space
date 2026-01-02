@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import { format, subDays } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,96 +15,55 @@ import {
 } from 'lucide-react';
 import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
 import { useRedirectDashboardEnhanced } from '@/hooks/useRedirectDashboardEnhanced';
+import { useMetaAdsWithCampaigns, MetaAd } from '@/hooks/useMetaAds';
 import { DashboardFunnelChart } from './DashboardFunnelChart';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DateRangePicker } from '@/components/reports/DateRangePicker';
 
 export function RedirectDashboard() {
+  const { profile } = useAuth();
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
-  const [selectedUtmCampaigns, setSelectedUtmCampaigns] = useState<string[]>([]);
+  const [selectedMetaAds, setSelectedMetaAds] = useState<string[]>([]);
   const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
 
   const { data: campaigns = [] } = useRedirectCampaigns();
+  const { data: metaAds = [] } = useMetaAdsWithCampaigns(profile?.tenant_id || null);
+  
   const { data: dashboardData, isLoading } = useRedirectDashboardEnhanced({
     redirectCampaignId: selectedCampaignId === 'all' ? undefined : selectedCampaignId,
     startDate,
-    endDate
+    endDate,
+    selectedMetaAdNames: selectedMetaAds
   });
 
-  // Extrair campanhas únicas do UTM breakdown
-  const availableUtmCampaigns = useMemo(() => {
-    if (!dashboardData?.utmBreakdown) return [];
-    const campaigns = new Set<string>();
-    dashboardData.utmBreakdown.forEach(row => {
-      if (row.utm_campaign) {
-        campaigns.add(row.utm_campaign);
+  // Agrupar anúncios por campanha para exibição
+  const adsGroupedByCampaign = useMemo(() => {
+    const grouped: Record<string, { campaignName: string; ads: MetaAd[] }> = {};
+    metaAds.forEach(ad => {
+      const campaignName = (ad.campaign as any)?.name || 'Sem campanha';
+      if (!grouped[campaignName]) {
+        grouped[campaignName] = { campaignName, ads: [] };
       }
+      grouped[campaignName].ads.push(ad);
     });
-    return Array.from(campaigns).sort();
-  }, [dashboardData?.utmBreakdown]);
+    return Object.values(grouped).sort((a, b) => a.campaignName.localeCompare(b.campaignName));
+  }, [metaAds]);
 
-  // Filtrar dados com base nas campanhas selecionadas
-  const filteredData = useMemo(() => {
-    if (!dashboardData) return null;
-    
-    if (selectedUtmCampaigns.length === 0) {
-      return dashboardData;
-    }
+  // Os dados já vêm filtrados do hook, não precisa mais filtrar aqui
+  const filteredData = dashboardData;
 
-    const filteredBreakdown = dashboardData.utmBreakdown.filter(
-      row => row.utm_campaign && selectedUtmCampaigns.includes(row.utm_campaign)
-    );
-
-    // Recalcular totais
-    const totalVisits = filteredBreakdown.reduce((sum, r) => sum + r.visits, 0);
-    const totalLeads = filteredBreakdown.reduce((sum, r) => sum + r.leads, 0);
-    const leadsInCatalogo = filteredBreakdown.reduce((sum, r) => sum + r.catalogo, 0);
-    const leadsInLayout = filteredBreakdown.reduce((sum, r) => sum + r.layout, 0);
-    const pedidosFechados = filteredBreakdown.reduce((sum, r) => sum + r.fechados, 0);
-    const conversionRate = totalVisits > 0 ? (totalLeads / totalVisits) * 100 : 0;
-    const uniqueSources = new Set(filteredBreakdown.map(r => r.utm_source).filter(Boolean)).size;
-
-    // Recalcular CPL proporcional
-    const originalMetaLeads = dashboardData.utmBreakdown
-      .filter(r => r.utm_source === 'meta_ads')
-      .reduce((sum, r) => sum + r.leads, 0);
-    const filteredMetaLeads = filteredBreakdown
-      .filter(r => r.utm_source === 'meta_ads')
-      .reduce((sum, r) => sum + r.leads, 0);
-    const costPerLead = filteredMetaLeads > 0 && originalMetaLeads > 0
-      ? (dashboardData.summary.totalSpend * (filteredMetaLeads / originalMetaLeads)) / filteredMetaLeads
-      : 0;
-
-    return {
-      ...dashboardData,
-      summary: {
-        ...dashboardData.summary,
-        totalVisits,
-        totalLeads,
-        leadsInCatalogo,
-        leadsInLayout,
-        pedidosFechados,
-        conversionRate,
-        costPerLead,
-        uniqueSources,
-      },
-      utmBreakdown: filteredBreakdown,
-      hasUntracked: filteredBreakdown.some(r => r.utm_source === null),
-    };
-  }, [dashboardData, selectedUtmCampaigns]);
-
-  const toggleUtmCampaign = (campaign: string) => {
-    setSelectedUtmCampaigns(prev => 
-      prev.includes(campaign) 
-        ? prev.filter(c => c !== campaign)
-        : [...prev, campaign]
+  const toggleMetaAd = (adName: string) => {
+    setSelectedMetaAds(prev => 
+      prev.includes(adName) 
+        ? prev.filter(n => n !== adName)
+        : [...prev, adName]
     );
   };
 
-  const clearUtmCampaigns = () => {
-    setSelectedUtmCampaigns([]);
+  const clearMetaAds = () => {
+    setSelectedMetaAds([]);
   };
 
   const handleExportCSV = () => {
@@ -193,46 +153,61 @@ export function RedirectDashboard() {
             </Select>
           </div>
 
-          {/* Seletor de Campanhas UTM */}
-          {availableUtmCampaigns.length > 0 && (
+          {/* Seletor de Anúncios do Meta Ads */}
+          {metaAds.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Campanhas:</span>
+              <span className="text-sm font-medium text-muted-foreground">Anúncios:</span>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="min-w-[200px] justify-start">
                     <Filter className="h-4 w-4 mr-2" />
-                    {selectedUtmCampaigns.length === 0 
-                      ? 'Todas as campanhas' 
-                      : `${selectedUtmCampaigns.length} selecionada(s)`}
+                    {selectedMetaAds.length === 0 
+                      ? 'Todos os anúncios' 
+                      : `${selectedMetaAds.length} anúncio(s)`}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[300px] p-0" align="start">
+                <PopoverContent className="w-[400px] p-0" align="start">
                   <div className="p-3 border-b">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Selecionar Campanhas</span>
-                      {selectedUtmCampaigns.length > 0 && (
-                        <Button variant="ghost" size="sm" onClick={clearUtmCampaigns}>
+                      <span className="text-sm font-medium">Selecionar Anúncios</span>
+                      {selectedMetaAds.length > 0 && (
+                        <Button variant="ghost" size="sm" onClick={clearMetaAds}>
                           <X className="h-3 w-3 mr-1" />
                           Limpar
                         </Button>
                       )}
                     </div>
                   </div>
-                  <ScrollArea className="h-[250px]">
-                    <div className="p-2 space-y-1">
-                      {availableUtmCampaigns.map(campaign => (
-                        <div 
-                          key={campaign} 
-                          className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
-                          onClick={() => toggleUtmCampaign(campaign)}
-                        >
-                          <Checkbox 
-                            checked={selectedUtmCampaigns.includes(campaign)}
-                            onCheckedChange={() => toggleUtmCampaign(campaign)}
-                          />
-                          <span className="text-sm truncate flex-1" title={campaign}>
-                            {campaign}
-                          </span>
+                  <ScrollArea className="h-[350px]">
+                    <div className="p-2 space-y-3">
+                      {adsGroupedByCampaign.map(group => (
+                        <div key={group.campaignName} className="space-y-1">
+                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50 rounded">
+                            {group.campaignName}
+                          </div>
+                          {group.ads.map(ad => (
+                            <div 
+                              key={ad.id} 
+                              className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer ml-2"
+                              onClick={() => toggleMetaAd(ad.name)}
+                            >
+                              <Checkbox 
+                                checked={selectedMetaAds.includes(ad.name)}
+                                onCheckedChange={() => toggleMetaAd(ad.name)}
+                              />
+                              <span className="text-sm truncate flex-1" title={ad.name}>
+                                {ad.name}
+                              </span>
+                              {ad.status && (
+                                <Badge 
+                                  variant={ad.status === 'ACTIVE' ? 'default' : 'secondary'} 
+                                  className="text-[10px] px-1"
+                                >
+                                  {ad.status === 'ACTIVE' ? 'Ativo' : ad.status}
+                                </Badge>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>
@@ -243,18 +218,18 @@ export function RedirectDashboard() {
           )}
         </div>
 
-        {/* Campanhas selecionadas como badges */}
-        {selectedUtmCampaigns.length > 0 && (
+        {/* Anúncios selecionados como badges */}
+        {selectedMetaAds.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {selectedUtmCampaigns.map(campaign => (
+            {selectedMetaAds.map(adName => (
               <Badge 
-                key={campaign} 
+                key={adName} 
                 variant="secondary" 
-                className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground"
-                onClick={() => toggleUtmCampaign(campaign)}
+                className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground max-w-[250px]"
+                onClick={() => toggleMetaAd(adName)}
               >
-                {campaign}
-                <X className="h-3 w-3 ml-1" />
+                <span className="truncate">{adName}</span>
+                <X className="h-3 w-3 ml-1 flex-shrink-0" />
               </Badge>
             ))}
           </div>
