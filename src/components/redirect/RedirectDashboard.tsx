@@ -4,16 +4,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Eye, Users, ShoppingCart, TrendingUp, Target, Layers } from 'lucide-react';
-import { useRedirectDashboard } from '@/hooks/useRedirectDashboard';
-import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
+import { useMetaAdsDashboard, useAllMetaCampaigns } from '@/hooks/useMetaAdsDashboard';
 import { DashboardFunnelChart } from './DashboardFunnelChart';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export function RedirectDashboard() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
-  const { data: campaigns = [] } = useRedirectCampaigns();
-  const { data: dashboardData, isLoading } = useRedirectDashboard(
+  const { data: campaigns = [] } = useAllMetaCampaigns();
+  const { data: dashboardData, isLoading } = useMetaAdsDashboard(
     selectedCampaignId === 'all' ? undefined : selectedCampaignId
   );
 
