@@ -13,7 +13,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { Plus, ExternalLink, MousePointer, Users, Eye, TrendingUp, Split, RefreshCw } from 'lucide-react';
+import { Plus, ExternalLink, MousePointer, Users, Eye, TrendingUp, Split, RefreshCw, BarChart3 } from 'lucide-react';
+import { RedirectDashboard } from '@/components/redirect/RedirectDashboard';
 import { RedirectCampaignCard } from '@/components/redirect/RedirectCampaignCard';
 import { RedirectCampaignForm } from '@/components/redirect/RedirectCampaignForm';
 import { ABTestCard } from '@/components/redirect/ABTestCard';
@@ -47,6 +48,7 @@ export default function Redirect() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isABTestFormOpen, setIsABTestFormOpen] = useState(false);
   const [showUTMBreakdown, setShowUTMBreakdown] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
   const [selectedCampaignForUTM, setSelectedCampaignForUTM] = useState<string | undefined>(undefined);
   const [editingCampaign, setEditingCampaign] = useState<RedirectCampaign | null>(null);
   const [editingABTest, setEditingABTest] = useState<ABTest | null>(null);
@@ -155,6 +157,10 @@ export default function Redirect() {
             title="Atualizar dados"
           >
             <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+          </Button>
+          <Button variant="outline" onClick={() => setShowDashboard(true)}>
+            <BarChart3 className="mr-2 h-4 w-4" />
+            Dashboard
           </Button>
           <Button variant="outline" onClick={() => setIsABTestFormOpen(true)}>
             <Split className="mr-2 h-4 w-4" />
@@ -423,6 +429,19 @@ export default function Redirect() {
         campaignId={selectedCampaignForUTM}
         campaignName={campaigns?.find(c => c.id === selectedCampaignForUTM)?.name || "Todas as Campanhas"}
       />
+
+      {/* Dashboard Dialog */}
+      <Dialog open={showDashboard} onOpenChange={setShowDashboard}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Dashboard de Conversão
+            </DialogTitle>
+          </DialogHeader>
+          <RedirectDashboard />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
