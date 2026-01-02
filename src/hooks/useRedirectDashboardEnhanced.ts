@@ -1,7 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-
 export interface UTMBreakdownEnhanced {
   utm_source: string | null;
   utm_campaign: string | null;
@@ -381,5 +380,6 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
     enabled: !!tenantId,
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 }
