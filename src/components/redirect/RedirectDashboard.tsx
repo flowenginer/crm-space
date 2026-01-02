@@ -1,20 +1,27 @@
 import { useState } from 'react';
+import { format, subDays } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Eye, Users, ShoppingCart, TrendingUp, Target, Layers } from 'lucide-react';
+import { Eye, Users, ShoppingCart, TrendingUp, Target, Layers, MousePointerClick, Percent, DollarSign } from 'lucide-react';
 import { useMetaAdsDashboard, useAllMetaCampaigns } from '@/hooks/useMetaAdsDashboard';
 import { DashboardFunnelChart } from './DashboardFunnelChart';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { DateRangePicker } from '@/components/reports/DateRangePicker';
 
 export function RedirectDashboard() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
+  const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 30), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+
   const { data: campaigns = [] } = useAllMetaCampaigns();
-  const { data: dashboardData, isLoading } = useMetaAdsDashboard(
-    selectedCampaignId === 'all' ? undefined : selectedCampaignId
-  );
+  const { data: dashboardData, isLoading } = useMetaAdsDashboard({
+    selectedCampaignId: selectedCampaignId === 'all' ? undefined : selectedCampaignId,
+    startDate,
+    endDate
+  });
 
   if (isLoading) {
     return (
@@ -30,39 +37,60 @@ export function RedirectDashboard() {
   }
 
   const summary = dashboardData?.summary;
+  const metaInsights = dashboardData?.metaInsights;
   const byCampaign = dashboardData?.byCampaign || [];
+  const byAd = dashboardData?.byAd || [];
 
   // Dados para o gráfico de funil
   const funnelData = [
-    { name: 'Visitantes', value: summary?.totalViews || 0, color: 'hsl(var(--chart-1))' },
-    { name: 'Leads', value: summary?.totalLeads || 0, color: 'hsl(var(--chart-2))' },
-    { name: 'Catálogo', value: summary?.leadsInCatalogo || 0, color: 'hsl(var(--chart-3))' },
-    { name: 'Layout', value: summary?.leadsInLayout || 0, color: 'hsl(var(--chart-4))' },
+    { name: 'Impressões', value: metaInsights?.impressions || 0, color: 'hsl(var(--chart-1))' },
+    { name: 'Cliques', value: metaInsights?.clicks || 0, color: 'hsl(var(--chart-2))' },
+    { name: 'Leads', value: summary?.totalLeads || 0, color: 'hsl(var(--chart-3))' },
+    { name: 'Catálogo', value: summary?.leadsInCatalogo || 0, color: 'hsl(var(--chart-4))' },
     { name: 'Pedido Fechado', value: summary?.pedidosFechados || 0, color: 'hsl(var(--chart-5))' },
   ];
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(value);
+  };
+
+  const formatNumber = (value: number) => {
+    return new Intl.NumberFormat('pt-BR').format(value);
+  };
+
   return (
     <div className="space-y-6">
-      {/* Filtro de Campanha */}
-      <div className="flex items-center gap-4">
-        <span className="text-sm font-medium text-muted-foreground">Campanha:</span>
-        <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
-          <SelectTrigger className="w-[280px]">
-            <SelectValue placeholder="Selecione uma campanha" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as campanhas</SelectItem>
-            {campaigns.map(campaign => (
-              <SelectItem key={campaign.id} value={campaign.id}>
-                {campaign.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Filtros */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium text-muted-foreground">Campanha:</span>
+          <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
+            <SelectTrigger className="w-[280px]">
+              <SelectValue placeholder="Selecione uma campanha" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as campanhas</SelectItem>
+              {campaigns.map(campaign => (
+                <SelectItem key={campaign.id} value={campaign.id}>
+                  {campaign.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <DateRangePicker
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+        />
       </div>
 
-      {/* Cards de Resumo */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      {/* Cards de Métricas do Meta Ads */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
@@ -70,13 +98,58 @@ export function RedirectDashboard() {
                 <Eye className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Visitantes</p>
-                <p className="text-xl font-bold">{summary?.totalViews || 0}</p>
+                <p className="text-xs text-muted-foreground">Impressões</p>
+                <p className="text-xl font-bold">{formatNumber(metaInsights?.impressions || 0)}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-blue-100 dark:bg-blue-900/30">
+                <MousePointerClick className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Cliques</p>
+                <p className="text-xl font-bold">{formatNumber(metaInsights?.clicks || 0)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-amber-100 dark:bg-amber-900/30">
+                <Percent className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">CTR</p>
+                <p className="text-xl font-bold">{(metaInsights?.ctr || 0).toFixed(2)}%</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-emerald-100 dark:bg-emerald-900/30">
+                <DollarSign className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Investimento</p>
+                <p className="text-xl font-bold">{formatCurrency(metaInsights?.spend || 0)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Cards de Leads */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
@@ -132,27 +205,21 @@ export function RedirectDashboard() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Taxa de Conversão Geral */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
+        <Card>
+          <CardContent className="pt-6">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-full bg-emerald-100 dark:bg-emerald-900/30">
                 <TrendingUp className="h-5 w-5 text-emerald-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Taxa de Conversão Geral</p>
-                <p className="text-xs text-muted-foreground">Pedidos Fechados / Leads</p>
+                <p className="text-xs text-muted-foreground">Conversão</p>
+                <p className="text-xl font-bold">{(summary?.conversionRate || 0).toFixed(1)}%</p>
               </div>
             </div>
-            <p className="text-3xl font-bold text-emerald-600">
-              {(summary?.conversionRate || 0).toFixed(1)}%
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Gráfico de Funil */}
       <Card>
@@ -194,6 +261,49 @@ export function RedirectDashboard() {
         </Card>
       )}
 
+      {/* Tabela por Anúncio */}
+      {byAd.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Detalhamento por Anúncio</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[300px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Anúncio (Content)</TableHead>
+                    <TableHead>Plataforma (Source)</TableHead>
+                    <TableHead className="text-right">Leads</TableHead>
+                    <TableHead className="text-right">Catálogo</TableHead>
+                    <TableHead className="text-right">Layout</TableHead>
+                    <TableHead className="text-right">Fechados</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {byAd.map(ad => (
+                    <TableRow key={ad.adId}>
+                      <TableCell className="font-medium max-w-[200px] truncate" title={ad.adName}>
+                        {ad.adName}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize">
+                          {ad.platform}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{ad.leads}</TableCell>
+                      <TableCell className="text-right">{ad.catalogo}</TableCell>
+                      <TableCell className="text-right">{ad.layout}</TableCell>
+                      <TableCell className="text-right">{ad.fechados}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tabela por Campanha */}
       {byCampaign.length > 1 && (
         <Card>
@@ -206,7 +316,6 @@ export function RedirectDashboard() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Campanha</TableHead>
-                    <TableHead className="text-right">Visitantes</TableHead>
                     <TableHead className="text-right">Leads</TableHead>
                     <TableHead className="text-right">Catálogo</TableHead>
                     <TableHead className="text-right">Layout</TableHead>
@@ -231,7 +340,6 @@ export function RedirectDashboard() {
                     return (
                       <TableRow key={campaign.campaignId}>
                         <TableCell className="font-medium">{campaign.campaignName}</TableCell>
-                        <TableCell className="text-right">{campaign.views}</TableCell>
                         <TableCell className="text-right">{campaign.leads}</TableCell>
                         <TableCell className="text-right">{catalogo}</TableCell>
                         <TableCell className="text-right">{layout}</TableCell>
