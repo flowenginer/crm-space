@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { format, subDays } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
 import { useRedirectDashboardEnhanced } from '@/hooks/useRedirectDashboardEnhanced';
-import { useMetaAdsWithCampaigns, MetaAd } from '@/hooks/useMetaAds';
+import { useMetaAdsWithCampaigns, useMetaAccounts, MetaAd } from '@/hooks/useMetaAds';
 import { DashboardFunnelChart } from './DashboardFunnelChart';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -24,12 +24,26 @@ import { DateRangePicker } from '@/components/reports/DateRangePicker';
 export function RedirectDashboard() {
   const { profile } = useAuth();
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
+  const [selectedMetaAccountId, setSelectedMetaAccountId] = useState<string | null>(null);
   const [selectedMetaAds, setSelectedMetaAds] = useState<string[]>([]);
   const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
 
   const { data: campaigns = [] } = useRedirectCampaigns();
-  const { data: metaAds = [] } = useMetaAdsWithCampaigns(profile?.tenant_id || null);
+  const { data: metaAccounts = [] } = useMetaAccounts();
+  const { data: metaAds = [] } = useMetaAdsWithCampaigns(profile?.tenant_id || null, selectedMetaAccountId);
+
+  // Auto-selecionar primeira conta Meta Ads
+  useEffect(() => {
+    if (metaAccounts.length > 0 && !selectedMetaAccountId) {
+      setSelectedMetaAccountId(metaAccounts[0].id);
+    }
+  }, [metaAccounts, selectedMetaAccountId]);
+
+  // Limpar seleção de anúncios ao mudar de conta
+  useEffect(() => {
+    setSelectedMetaAds([]);
+  }, [selectedMetaAccountId]);
   
   const { data: dashboardData, isLoading } = useRedirectDashboardEnhanced({
     redirectCampaignId: selectedCampaignId === 'all' ? undefined : selectedCampaignId,
@@ -137,9 +151,9 @@ export function RedirectDashboard() {
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">Página Redirect:</span>
+            <span className="text-sm font-medium text-muted-foreground">Página:</span>
             <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Selecione uma página" />
               </SelectTrigger>
               <SelectContent>
@@ -152,6 +166,25 @@ export function RedirectDashboard() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Seletor de Conta Meta Ads */}
+          {metaAccounts.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">Conta:</span>
+              <Select value={selectedMetaAccountId || ''} onValueChange={setSelectedMetaAccountId}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Selecione uma conta" />
+                </SelectTrigger>
+                <SelectContent>
+                  {metaAccounts.map(account => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.account_name || account.account_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Seletor de Anúncios do Meta Ads */}
           {metaAds.length > 0 && (
