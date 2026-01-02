@@ -10,9 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Eye, Users, ShoppingCart, TrendingUp, Target, Layers, 
-  DollarSign, Download, AlertTriangle, Globe, Filter, X, Search
+  DollarSign, Download, AlertTriangle, Globe, Filter, X, Search, ChevronDown, ChevronUp, HelpCircle
 } from 'lucide-react';
 import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
 import { useRedirectDashboardEnhanced } from '@/hooks/useRedirectDashboardEnhanced';
@@ -32,6 +33,7 @@ export function RedirectDashboard() {
   const [adPopoverOpen, setAdPopoverOpen] = useState(false);
   const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [unmappedOpen, setUnmappedOpen] = useState(false);
 
   const { data: campaigns = [] } = useRedirectCampaigns();
   const { data: metaAccounts = [] } = useMetaAccounts();
@@ -196,7 +198,15 @@ export function RedirectDashboard() {
 
   const summary = filteredData?.summary;
   const utmBreakdown = filteredData?.utmBreakdown || [];
+  const unmappedBreakdown = filteredData?.unmappedBreakdown || [];
+  const unmappedSummary = filteredData?.unmappedSummary;
   const hasUntracked = filteredData?.hasUntracked;
+  
+  // Calcular porcentagem de tráfego não mapeado
+  const totalTraffic = (summary?.totalVisits || 0) + (unmappedSummary?.totalVisits || 0);
+  const unmappedPercentage = totalTraffic > 0 
+    ? ((unmappedSummary?.totalVisits || 0) / totalTraffic * 100).toFixed(1) 
+    : '0';
 
   // Dados para o gráfico de funil
   const funnelData = [
@@ -539,6 +549,86 @@ export function RedirectDashboard() {
             Parte do tráfego está chegando sem parâmetros UTM. Configure corretamente os links das campanhas para melhor rastreamento.
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* Card de Tráfego Não Mapeado */}
+      {selectedMetaAds.length > 0 && unmappedBreakdown.length > 0 && (
+        <Collapsible open={unmappedOpen} onOpenChange={setUnmappedOpen}>
+          <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
+            <CardHeader className="pb-3">
+              <CollapsibleTrigger asChild>
+                <div className="flex items-center justify-between cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-amber-100 dark:bg-amber-900/30">
+                      <HelpCircle className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        Tráfego Não Atribuído
+                        <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                          {unmappedPercentage}% do total
+                        </Badge>
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        {formatNumber(unmappedSummary?.totalVisits || 0)} visitas e {formatNumber(unmappedSummary?.totalLeads || 0)} leads não correspondem aos anúncios selecionados
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm">
+                    {unmappedOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    {unmappedOpen ? 'Ocultar' : 'Ver detalhes'}
+                  </Button>
+                </div>
+              </CollapsibleTrigger>
+            </CardHeader>
+            <CollapsibleContent>
+              <CardContent className="pt-0">
+                <ScrollArea className="h-[300px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>UTM Source</TableHead>
+                        <TableHead>UTM Campaign</TableHead>
+                        <TableHead>UTM Content</TableHead>
+                        <TableHead className="text-right">Visitas</TableHead>
+                        <TableHead className="text-right">Leads</TableHead>
+                        <TableHead className="text-right">Taxa Conv.</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {unmappedBreakdown.map((row, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            {row.utm_source ? (
+                              <Badge variant="outline" className="font-mono text-xs">
+                                {row.utm_source}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">(direto)</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-[150px] truncate" title={row.utm_campaign || undefined}>
+                            {row.utm_campaign || <span className="text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate" title={row.utm_content || undefined}>
+                            {row.utm_content || <span className="text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">{formatNumber(row.visits)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatNumber(row.leads)}</TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant="outline">
+                              {row.conversionRate.toFixed(1)}%
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
       )}
 
       {/* Gráfico de Funil */}
