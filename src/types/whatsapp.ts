@@ -1,7 +1,7 @@
 // =====================================================
 // ENUMS E TIPOS
 // =====================================================
-export type WhatsAppProvider = 'zapi' | 'uazapi' | 'evolution';
+export type WhatsAppProvider = 'zapi' | 'uazapi' | 'evolution' | 'cloudapi';
 
 export type MessageType = 
   | 'text' 

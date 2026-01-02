@@ -801,53 +801,114 @@ export type Database = {
       call_logs: {
         Row: {
           call_date: string
+          call_status: string | null
           call_time: string
+          call_type: string | null
+          channel_id: string | null
           contact_id: string
           conversation_id: string | null
           created_at: string | null
+          direction: string | null
+          duration_seconds: number | null
+          emotion_data: Json | null
+          end_time: string | null
+          error_code: string | null
           followup_date: string | null
           followup_message: string | null
           id: string
           notes: string | null
+          recording_storage_path: string | null
+          recording_url: string | null
           result_id: string | null
           schedule_followup: boolean | null
+          sentiment_label: string | null
+          sentiment_score: number | null
+          start_time: string | null
           tenant_id: string
+          transcription: string | null
+          transcription_language: string | null
           updated_at: string | null
           user_id: string
+          voip_call_id: string | null
+          voip_provider: string | null
+          whatsapp_call_id: string | null
         }
         Insert: {
           call_date?: string
+          call_status?: string | null
           call_time?: string
+          call_type?: string | null
+          channel_id?: string | null
           contact_id: string
           conversation_id?: string | null
           created_at?: string | null
+          direction?: string | null
+          duration_seconds?: number | null
+          emotion_data?: Json | null
+          end_time?: string | null
+          error_code?: string | null
           followup_date?: string | null
           followup_message?: string | null
           id?: string
           notes?: string | null
+          recording_storage_path?: string | null
+          recording_url?: string | null
           result_id?: string | null
           schedule_followup?: boolean | null
+          sentiment_label?: string | null
+          sentiment_score?: number | null
+          start_time?: string | null
           tenant_id?: string
+          transcription?: string | null
+          transcription_language?: string | null
           updated_at?: string | null
           user_id: string
+          voip_call_id?: string | null
+          voip_provider?: string | null
+          whatsapp_call_id?: string | null
         }
         Update: {
           call_date?: string
+          call_status?: string | null
           call_time?: string
+          call_type?: string | null
+          channel_id?: string | null
           contact_id?: string
           conversation_id?: string | null
           created_at?: string | null
+          direction?: string | null
+          duration_seconds?: number | null
+          emotion_data?: Json | null
+          end_time?: string | null
+          error_code?: string | null
           followup_date?: string | null
           followup_message?: string | null
           id?: string
           notes?: string | null
+          recording_storage_path?: string | null
+          recording_url?: string | null
           result_id?: string | null
           schedule_followup?: boolean | null
+          sentiment_label?: string | null
+          sentiment_score?: number | null
+          start_time?: string | null
           tenant_id?: string
+          transcription?: string | null
+          transcription_language?: string | null
           updated_at?: string | null
           user_id?: string
+          voip_call_id?: string | null
+          voip_provider?: string | null
+          whatsapp_call_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "call_logs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "call_logs_contact_id_fkey"
             columns: ["contact_id"]
@@ -1039,6 +1100,151 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "close_reasons_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cloudapi_configs: {
+        Row: {
+          access_token: string
+          api_version: string | null
+          app_secret: string | null
+          business_account_id: string | null
+          calling_enabled: boolean | null
+          channel_id: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          phone_number_id: string
+          sentiment_analysis_enabled: boolean | null
+          tenant_id: string
+          transcription_enabled: boolean | null
+          updated_at: string | null
+          verify_token: string
+          voip_config: Json | null
+          voip_provider: string | null
+          waba_id: string | null
+          webhook_configured: boolean | null
+        }
+        Insert: {
+          access_token: string
+          api_version?: string | null
+          app_secret?: string | null
+          business_account_id?: string | null
+          calling_enabled?: boolean | null
+          channel_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          phone_number_id: string
+          sentiment_analysis_enabled?: boolean | null
+          tenant_id: string
+          transcription_enabled?: boolean | null
+          updated_at?: string | null
+          verify_token: string
+          voip_config?: Json | null
+          voip_provider?: string | null
+          waba_id?: string | null
+          webhook_configured?: boolean | null
+        }
+        Update: {
+          access_token?: string
+          api_version?: string | null
+          app_secret?: string | null
+          business_account_id?: string | null
+          calling_enabled?: boolean | null
+          channel_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          phone_number_id?: string
+          sentiment_analysis_enabled?: boolean | null
+          tenant_id?: string
+          transcription_enabled?: boolean | null
+          updated_at?: string | null
+          verify_token?: string
+          voip_config?: Json | null
+          voip_provider?: string | null
+          waba_id?: string | null
+          webhook_configured?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cloudapi_configs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cloudapi_configs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cloudapi_webhook_logs: {
+        Row: {
+          channel_id: string | null
+          config_id: string | null
+          created_at: string | null
+          event_type: string
+          id: string
+          message_id: string | null
+          payload: Json
+          phone_number: string | null
+          processed: boolean | null
+          processing_error: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          channel_id?: string | null
+          config_id?: string | null
+          created_at?: string | null
+          event_type: string
+          id?: string
+          message_id?: string | null
+          payload: Json
+          phone_number?: string | null
+          processed?: boolean | null
+          processing_error?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          channel_id?: string | null
+          config_id?: string | null
+          created_at?: string | null
+          event_type?: string
+          id?: string
+          message_id?: string | null
+          payload?: Json
+          phone_number?: string | null
+          processed?: boolean | null
+          processing_error?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cloudapi_webhook_logs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cloudapi_webhook_logs_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "cloudapi_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cloudapi_webhook_logs_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
