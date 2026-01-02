@@ -81,6 +81,46 @@ export interface AggregatedInsights {
   conversationsStarted: number;
 }
 
+// Hook para buscar anúncios do Meta Ads
+export interface MetaAd {
+  id: string;
+  ad_id: string;
+  name: string;
+  status: string | null;
+  campaign_id: string;
+  campaign?: {
+    id: string;
+    campaign_id: string;
+    name: string;
+  };
+}
+
+export function useMetaAdsWithCampaigns(tenantId: string | null) {
+  return useQuery({
+    queryKey: ['meta-ads-with-campaigns', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+
+      const { data, error } = await supabase
+        .from('meta_ads')
+        .select(`
+          id,
+          ad_id,
+          name,
+          status,
+          campaign_id,
+          campaign:meta_campaigns(id, campaign_id, name)
+        `)
+        .eq('tenant_id', tenantId)
+        .order('name');
+
+      if (error) throw error;
+      return data as MetaAd[];
+    },
+    enabled: !!tenantId
+  });
+}
+
 export function useMetaAccounts() {
   return useQuery({
     queryKey: ['meta-accounts'],
