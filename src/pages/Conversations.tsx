@@ -2722,7 +2722,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         setMessageInput('');
         setReplyingTo(null);
         clearSelectedFiles();
-        toast.success(selectedFiles.length > 1 ? `${selectedFiles.length} arquivos enviados!` : 'Arquivo enviado!');
+        // Toast removed - user preference for cleaner chat experience
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -2755,7 +2755,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       channelId: selectedConv?.channel_id,
       contactPhone: selectedConv?.contact?.phone,
     });
-    toast.success('Mensagem apagada');
+    // Toast removed - user preference for cleaner chat experience
   };
 
   // Selection mode handlers for bulk delete
@@ -2803,7 +2803,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       });
     }
     
-    toast.success(`${selectedMessageIds.size} mensagem(ns) apagada(s)`);
+    // Toast removed - user preference for cleaner chat experience
     handleCancelSelection();
   };
 
@@ -2821,7 +2821,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         channelId: selectedConv?.channel_id,
         contactPhone: selectedConv?.contact?.phone,
       });
-      toast.success('Mensagem editada');
+      // Toast removed - user preference for cleaner chat experience
     } catch (error: any) {
       toast.error(error.message || 'Erro ao editar mensagem');
     }
@@ -2883,7 +2883,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
       if (validFiles.length > 0) {
         setSelectedFiles(prev => [...prev, ...validFiles].slice(0, maxFiles));
-        toast.success(`${validFiles.length} arquivo(s) selecionado(s)`);
+        // Toast removed - user preference for cleaner chat experience
       }
     }
   };
@@ -3012,7 +3012,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
       if (validFiles.length > 0) {
         setSelectedFiles(prev => [...prev, ...validFiles].slice(0, maxFiles));
-        toast.success(`${validFiles.length} arquivo(s) selecionado(s)`);
+        // Toast removed - user preference for cleaner chat experience
       }
     }
   };
@@ -3074,7 +3074,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url).catch(console.error);
             }
             
-            toast.success('Áudio enviado!');
+            // Toast removed - user preference for cleaner chat experience
           } catch (error) {
             console.error('Error sending audio:', error);
             toast.error('Erro ao enviar áudio');
@@ -4718,7 +4718,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl, undefined, mediaName || undefined);
                           }
                           
-                          toast.success('Mensagem e anexo enviados!');
+                          // Toast removed - user preference for cleaner chat experience
                         } catch (error) {
                           console.error('Error sending template with media:', error);
                           toast.error('Erro ao enviar mensagem');
