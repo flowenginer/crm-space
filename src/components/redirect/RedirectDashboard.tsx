@@ -211,25 +211,39 @@ export function RedirectDashboard() {
   // Só mostra skeleton no primeiro carregamento (sem dados anteriores)
   const showFullSkeleton = isLoading && !dashboardData;
 
-  if (showFullSkeleton) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => (
-            <Skeleton key={i} className="h-24" />
-          ))}
-        </div>
-        <Skeleton className="h-64" />
-      </div>
-    );
-  }
-
+  // Mover variáveis derivadas ANTES do return antecipado para evitar erro de hooks
   const summary = filteredData?.summary;
   const utmBreakdown = filteredData?.utmBreakdown || [];
   const unmappedBreakdown = filteredData?.unmappedBreakdown || [];
   const unmappedSummary = filteredData?.unmappedSummary;
   const hasUntracked = filteredData?.hasUntracked;
-  
+
+  // Ordenar utmBreakdown - useMemo ANTES do return antecipado
+  const sortedUtmBreakdown = useMemo(() => {
+    return [...utmBreakdown].sort((a, b) => {
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortDirection === 'asc' 
+          ? (aVal || '').localeCompare(bVal || '') 
+          : (bVal || '').localeCompare(aVal || '');
+      }
+      const aNum = Number(aVal) || 0;
+      const bNum = Number(bVal) || 0;
+      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+    });
+  }, [utmBreakdown, sortField, sortDirection]);
+
+  // Função para alternar ordenação
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
   // Calcular porcentagem de tráfego não mapeado
   const totalTraffic = (summary?.totalVisits || 0) + (unmappedSummary?.totalVisits || 0);
   const unmappedPercentage = totalTraffic > 0 
@@ -256,31 +270,18 @@ export function RedirectDashboard() {
     return new Intl.NumberFormat('pt-BR').format(value);
   };
 
-  // Função para alternar ordenação
-  const toggleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('desc');
-    }
-  };
-
-  // Ordenar utmBreakdown
-  const sortedUtmBreakdown = useMemo(() => {
-    return [...utmBreakdown].sort((a, b) => {
-      const aVal = a[sortField];
-      const bVal = b[sortField];
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        return sortDirection === 'asc' 
-          ? (aVal || '').localeCompare(bVal || '') 
-          : (bVal || '').localeCompare(aVal || '');
-      }
-      const aNum = Number(aVal) || 0;
-      const bNum = Number(bVal) || 0;
-      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
-    });
-  }, [utmBreakdown, sortField, sortDirection]);
+  if (showFullSkeleton) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <Skeleton key={i} className="h-24" />
+          ))}
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
 
   // Componente de cabeçalho ordenável
   const SortableHeader = ({ field, label, align = 'left' }: { field: SortField; label: string; align?: 'left' | 'right' }) => (
