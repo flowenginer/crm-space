@@ -25,9 +25,16 @@ export interface RedirectDashboardEnhancedSummary {
   uniqueSources: number;
 }
 
+export interface UnmappedSummary {
+  totalVisits: number;
+  totalLeads: number;
+}
+
 export interface RedirectDashboardEnhancedData {
   summary: RedirectDashboardEnhancedSummary;
   utmBreakdown: UTMBreakdownEnhanced[];
+  unmappedBreakdown: UTMBreakdownEnhanced[];
+  unmappedSummary: UnmappedSummary;
   hasUntracked: boolean;
 }
 
@@ -249,29 +256,39 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
       };
 
       // 5. Processar visitas por UTM (contando visitantes únicos)
+      // Mapas separados para mapeados e não mapeados
       const visitsMap = new Map<string, { 
         utm_source: string | null; 
         utm_campaign: string | null; 
         utm_content: string | null; 
         visitors: Set<string> 
       }>();
+      const unmappedVisitsMap = new Map<string, { 
+        utm_source: string | null; 
+        utm_campaign: string | null; 
+        utm_content: string | null; 
+        visitors: Set<string> 
+      }>();
+      
+      const hasAdFilter = selectedMetaAdNames.length > 0;
       
       (visitsData || []).forEach((v) => {
         const cleanContent = getCleanContent(v.utm_content, v.utm_medium);
-        
-        // Filtrar por anúncios selecionados
-        if (!matchesSelectedAds(cleanContent)) return;
-        
         const key = `${v.utm_source || "(direto)"}|${v.utm_campaign || "(none)"}|${cleanContent || "(none)"}`;
-        if (!visitsMap.has(key)) {
-          visitsMap.set(key, {
+        
+        // Determinar qual mapa usar
+        const matches = matchesSelectedAds(cleanContent);
+        const targetMap = (hasAdFilter && !matches) ? unmappedVisitsMap : visitsMap;
+        
+        if (!targetMap.has(key)) {
+          targetMap.set(key, {
             utm_source: v.utm_source,
             utm_campaign: v.utm_campaign,
             utm_content: cleanContent,
             visitors: new Set(),
           });
         }
-        visitsMap.get(key)!.visitors.add(v.visitor_id);
+        targetMap.get(key)!.visitors.add(v.visitor_id);
       });
 
       // 6. Processar leads por UTM com status
@@ -281,20 +298,26 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
         layout: number; 
         fechados: number 
       }>();
+      const unmappedLeadsMap = new Map<string, { 
+        total: number; 
+        catalogo: number; 
+        layout: number; 
+        fechados: number 
+      }>();
       
       (leadsData || []).forEach((l) => {
         const cleanContent = getCleanContent(l.utm_content, l.utm_medium);
-        
-        // Filtrar por anúncios selecionados
-        if (!matchesSelectedAds(cleanContent)) return;
-        
         const key = `${l.utm_source || "(direto)"}|${l.utm_campaign || "(none)"}|${cleanContent || "(none)"}`;
         
-        if (!leadsMap.has(key)) {
-          leadsMap.set(key, { total: 0, catalogo: 0, layout: 0, fechados: 0 });
+        // Determinar qual mapa usar
+        const matches = matchesSelectedAds(cleanContent);
+        const targetMap = (hasAdFilter && !matches) ? unmappedLeadsMap : leadsMap;
+        
+        if (!targetMap.has(key)) {
+          targetMap.set(key, { total: 0, catalogo: 0, layout: 0, fechados: 0 });
         }
         
-        const entry = leadsMap.get(key)!;
+        const entry = targetMap.get(key)!;
         entry.total += 1;
         
         const leadStatus = (l.contact as any)?.lead_status as string | null;
@@ -309,41 +332,53 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
         }
       });
 
-      // 7. Merge dados
-      const allKeys = new Set([...visitsMap.keys(), ...leadsMap.keys()]);
-      const utmBreakdown: UTMBreakdownEnhanced[] = [];
-      const uniqueSources = new Set<string>();
+      // 7. Função helper para processar breakdown
+      const processBreakdown = (
+        vMap: Map<string, { utm_source: string | null; utm_campaign: string | null; utm_content: string | null; visitors: Set<string> }>,
+        lMap: Map<string, { total: number; catalogo: number; layout: number; fechados: number }>
+      ): UTMBreakdownEnhanced[] => {
+        const allKeys = new Set([...vMap.keys(), ...lMap.keys()]);
+        const breakdown: UTMBreakdownEnhanced[] = [];
 
-      allKeys.forEach((key) => {
-        const [source, campaign, content] = key.split("|");
-        const visitsEntry = visitsMap.get(key);
-        const leadsEntry = leadsMap.get(key);
-        
-        const visits = visitsEntry ? visitsEntry.visitors.size : 0;
-        const leads = leadsEntry?.total || 0;
-        const catalogo = leadsEntry?.catalogo || 0;
-        const layout = leadsEntry?.layout || 0;
-        const fechados = leadsEntry?.fechados || 0;
-        
-        if (source !== "(direto)") {
-          uniqueSources.add(source);
-        }
+        allKeys.forEach((key) => {
+          const [source, campaign, content] = key.split("|");
+          const visitsEntry = vMap.get(key);
+          const leadsEntry = lMap.get(key);
+          
+          const visits = visitsEntry ? visitsEntry.visitors.size : 0;
+          const leads = leadsEntry?.total || 0;
+          const catalogo = leadsEntry?.catalogo || 0;
+          const layout = leadsEntry?.layout || 0;
+          const fechados = leadsEntry?.fechados || 0;
 
-        utmBreakdown.push({
-          utm_source: source === "(direto)" ? null : source,
-          utm_campaign: campaign === "(none)" ? null : campaign,
-          utm_content: content === "(none)" ? null : content,
-          visits,
-          leads,
-          catalogo,
-          layout,
-          fechados,
-          conversionRate: visits > 0 ? (leads / visits) * 100 : 0,
+          breakdown.push({
+            utm_source: source === "(direto)" ? null : source,
+            utm_campaign: campaign === "(none)" ? null : campaign,
+            utm_content: content === "(none)" ? null : content,
+            visits,
+            leads,
+            catalogo,
+            layout,
+            fechados,
+            conversionRate: visits > 0 ? (leads / visits) * 100 : 0,
+          });
         });
-      });
 
-      // Ordenar por visitas decrescente
-      utmBreakdown.sort((a, b) => b.visits - a.visits);
+        breakdown.sort((a, b) => b.visits - a.visits);
+        return breakdown;
+      };
+
+      // Processar breakdown mapeado
+      const utmBreakdown = processBreakdown(visitsMap, leadsMap);
+      
+      // Processar breakdown não mapeado
+      const unmappedBreakdown = processBreakdown(unmappedVisitsMap, unmappedLeadsMap);
+
+      // Calcular unique sources
+      const uniqueSources = new Set<string>();
+      utmBreakdown.forEach(r => {
+        if (r.utm_source) uniqueSources.add(r.utm_source);
+      });
 
       // 8. Calcular totais
       const totalVisits = utmBreakdown.reduce((sum, r) => sum + r.visits, 0);
@@ -352,6 +387,10 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
       const leadsInLayout = utmBreakdown.reduce((sum, r) => sum + r.layout, 0);
       const pedidosFechados = utmBreakdown.reduce((sum, r) => sum + r.fechados, 0);
       const conversionRate = totalVisits > 0 ? (totalLeads / totalVisits) * 100 : 0;
+      
+      // Totais não mapeados
+      const unmappedTotalVisits = unmappedBreakdown.reduce((sum, r) => sum + r.visits, 0);
+      const unmappedTotalLeads = unmappedBreakdown.reduce((sum, r) => sum + r.leads, 0);
       
       // CPL = Custo por lead (considerando leads do meta_ads)
       const metaAdsLeads = utmBreakdown
@@ -374,6 +413,11 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
           uniqueSources: uniqueSources.size,
         },
         utmBreakdown,
+        unmappedBreakdown,
+        unmappedSummary: {
+          totalVisits: unmappedTotalVisits,
+          totalLeads: unmappedTotalLeads,
+        },
         hasUntracked,
       };
     },
