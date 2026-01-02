@@ -97,25 +97,23 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
     queryFn: async (): Promise<RedirectDashboardEnhancedData> => {
       if (!tenantId) throw new Error('Tenant não encontrado');
 
-      // 1. Buscar lead_statuses do tenant
-      const { data: leadStatuses, error: statusError } = await supabase
-        .from('lead_statuses')
-        .select('id, name')
-        .eq('tenant_id', tenantId)
-        .eq('is_active', true);
-
-      if (statusError) throw statusError;
-
-      // Encontrar IDs dos status específicos
-      const catalogoStatus = leadStatuses?.find(s => 
-        s.name.toLowerCase().includes('catálogo') || s.name.toLowerCase().includes('catalogo')
-      );
-      const layoutStatus = leadStatuses?.find(s => 
-        s.name.toLowerCase().includes('layout')
-      );
-      const fechadoStatus = leadStatuses?.find(s => 
-        s.name.toLowerCase().includes('fechado') || s.name.toLowerCase().includes('pedido fechado')
-      );
+      // Funções auxiliares para identificar status pelo nome (o campo lead_status armazena o nome, não o ID)
+      const isCatalogoStatus = (status: string | null): boolean => {
+        if (!status) return false;
+        const lower = status.toLowerCase();
+        return lower.includes('catálogo') || lower.includes('catalogo');
+      };
+      
+      const isLayoutStatus = (status: string | null): boolean => {
+        if (!status) return false;
+        return status.toLowerCase().includes('layout');
+      };
+      
+      const isFechadoStatus = (status: string | null): boolean => {
+        if (!status) return false;
+        const lower = status.toLowerCase();
+        return lower.includes('fechado') || lower.includes('pedido fechado');
+      };
 
       // 2. Buscar visitas agrupadas por UTM (com paginação)
       const buildViewsQuery = () => {
@@ -300,14 +298,14 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
         const entry = leadsMap.get(key)!;
         entry.total += 1;
         
-        const leadStatus = (l.contact as any)?.lead_status;
-        if (catalogoStatus && leadStatus === catalogoStatus.id) {
+        const leadStatus = (l.contact as any)?.lead_status as string | null;
+        if (isCatalogoStatus(leadStatus)) {
           entry.catalogo += 1;
         }
-        if (layoutStatus && leadStatus === layoutStatus.id) {
+        if (isLayoutStatus(leadStatus)) {
           entry.layout += 1;
         }
-        if (fechadoStatus && leadStatus === fechadoStatus.id) {
+        if (isFechadoStatus(leadStatus)) {
           entry.fechados += 1;
         }
       });
