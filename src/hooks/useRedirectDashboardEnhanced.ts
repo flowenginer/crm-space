@@ -51,6 +51,31 @@ function getCleanContent(utm_content: string | null, utm_medium: string | null):
   
   return utm_content;
 }
+// Função para buscar todos os registros com paginação
+async function fetchAllRecords<T>(
+  buildQuery: () => any,
+  pageSize = 5000
+): Promise<T[]> {
+  const allRecords: T[] = [];
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await buildQuery().range(offset, offset + pageSize - 1);
+    
+    if (error) throw error;
+    
+    if (data && data.length > 0) {
+      allRecords.push(...data);
+      offset += pageSize;
+      hasMore = data.length === pageSize;
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return allRecords;
+}
 
 export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, endDate }: UseRedirectDashboardEnhancedParams) {
   const { profile } = useAuth();
@@ -81,51 +106,55 @@ export function useRedirectDashboardEnhanced({ redirectCampaignId, startDate, en
         s.name.toLowerCase().includes('fechado') || s.name.toLowerCase().includes('pedido fechado')
       );
 
-      // 2. Buscar visitas agrupadas por UTM
-      let viewsQuery = supabase
-        .from('redirect_campaign_views')
-        .select('utm_source, utm_medium, utm_campaign, utm_content, visitor_id, created_at')
-        .eq('tenant_id', tenantId);
+      // 2. Buscar visitas agrupadas por UTM (com paginação)
+      const buildViewsQuery = () => {
+        let query = supabase
+          .from('redirect_campaign_views')
+          .select('utm_source, utm_medium, utm_campaign, utm_content, visitor_id, created_at')
+          .eq('tenant_id', tenantId);
 
-      if (redirectCampaignId) {
-        viewsQuery = viewsQuery.eq('campaign_id', redirectCampaignId);
-      }
-      if (startDate) {
-        viewsQuery = viewsQuery.gte('created_at', `${startDate}T00:00:00`);
-      }
-      if (endDate) {
-        viewsQuery = viewsQuery.lte('created_at', `${endDate}T23:59:59`);
-      }
+        if (redirectCampaignId) {
+          query = query.eq('campaign_id', redirectCampaignId);
+        }
+        if (startDate) {
+          query = query.gte('created_at', `${startDate}T00:00:00`);
+        }
+        if (endDate) {
+          query = query.lte('created_at', `${endDate}T23:59:59`);
+        }
+        return query;
+      };
 
-      const { data: visitsData, error: visitsError } = await viewsQuery;
-      if (visitsError) throw visitsError;
+      const visitsData = await fetchAllRecords<any>(buildViewsQuery);
 
-      // 3. Buscar leads com status do contato
-      let logsQuery = supabase
-        .from('redirect_logs')
-        .select(`
-          utm_source, 
-          utm_medium, 
-          utm_campaign, 
-          utm_content, 
-          contact_id,
-          created_at,
-          contact:contacts(id, lead_status)
-        `)
-        .eq('tenant_id', tenantId);
+      // 3. Buscar leads com status do contato (com paginação)
+      const buildLogsQuery = () => {
+        let query = supabase
+          .from('redirect_logs')
+          .select(`
+            utm_source, 
+            utm_medium, 
+            utm_campaign, 
+            utm_content, 
+            contact_id,
+            created_at,
+            contact:contacts(id, lead_status)
+          `)
+          .eq('tenant_id', tenantId);
 
-      if (redirectCampaignId) {
-        logsQuery = logsQuery.eq('campaign_id', redirectCampaignId);
-      }
-      if (startDate) {
-        logsQuery = logsQuery.gte('created_at', `${startDate}T00:00:00`);
-      }
-      if (endDate) {
-        logsQuery = logsQuery.lte('created_at', `${endDate}T23:59:59`);
-      }
+        if (redirectCampaignId) {
+          query = query.eq('campaign_id', redirectCampaignId);
+        }
+        if (startDate) {
+          query = query.gte('created_at', `${startDate}T00:00:00`);
+        }
+        if (endDate) {
+          query = query.lte('created_at', `${endDate}T23:59:59`);
+        }
+        return query;
+      };
 
-      const { data: leadsData, error: leadsError } = await logsQuery;
-      if (leadsError) throw leadsError;
+      const leadsData = await fetchAllRecords<any>(buildLogsQuery);
 
       // 4. Buscar spend do Meta Ads (para leads que vieram de meta_ads)
       let totalSpend = 0;
