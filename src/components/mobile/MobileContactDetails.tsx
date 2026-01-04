@@ -1,4 +1,4 @@
-import { Phone, Mail, MapPin, Tag, Calendar, MessageSquare, Edit, ExternalLink } from "lucide-react";
+import { Phone, Mail, MapPin, Tag, Calendar, MessageSquare, Edit, ExternalLink, DollarSign, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -19,6 +19,9 @@ interface Contact {
   created_at?: string;
   notes?: string;
   tags?: Array<{ id: string; name: string; color: string }>;
+  negotiated_value?: number;
+  origin?: string;
+  origin_campaign?: string;
 }
 
 interface MobileContactDetailsProps {
@@ -166,6 +169,46 @@ export function MobileContactDetails({
               </div>
             )}
           </div>
+
+          {/* Value & Origin */}
+          {(contact.negotiated_value || contact.origin) && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                  Negociação
+                </h3>
+
+                {contact.negotiated_value && contact.negotiated_value > 0 && (
+                  <div className="flex items-center gap-3 p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+                    <DollarSign className="h-5 w-5 text-green-600" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Valor Negociado</p>
+                      <p className="font-bold text-green-600 text-lg">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(contact.negotiated_value)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {contact.origin && (
+                  <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                    <Target className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Origem</p>
+                      <p className="font-medium">{contact.origin}</p>
+                      {contact.origin_campaign && (
+                        <p className="text-xs text-muted-foreground">{contact.origin_campaign}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           <Separator />
 

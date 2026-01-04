@@ -15,7 +15,7 @@ export default function MobileConversations() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [currentPanel, setCurrentPanel] = useState(0);
 
-  // Fetch conversations
+  // Fetch conversations with contact tags
   const { data: conversations = [], isLoading: isLoadingConversations } = useQuery({
     queryKey: ["mobile-conversations", tenantId],
     queryFn: async () => {
@@ -27,6 +27,7 @@ export default function MobileConversations() {
           last_message_at,
           unread_count,
           status,
+          lead_status,
           contact:contacts!inner(
             id,
             full_name,
@@ -37,7 +38,10 @@ export default function MobileConversations() {
             state,
             lead_status,
             created_at,
-            notes
+            notes,
+            negotiated_value,
+            origin,
+            origin_campaign
           )
         `)
         .eq("tenant_id", tenantId)
@@ -46,6 +50,30 @@ export default function MobileConversations() {
         .limit(50);
 
       if (error) throw error;
+      
+      // Fetch tags for all contacts
+      const contactIds = data?.map(c => c.contact.id) || [];
+      if (contactIds.length > 0) {
+        const { data: contactTags } = await supabase
+          .from("contact_tags")
+          .select(`
+            contact_id,
+            tag:tags(id, name, color)
+          `)
+          .in("contact_id", contactIds);
+        
+        // Attach tags to contacts
+        return data?.map(conv => ({
+          ...conv,
+          contact: {
+            ...conv.contact,
+            tags: contactTags
+              ?.filter(ct => ct.contact_id === conv.contact.id)
+              .map(ct => ct.tag) || []
+          }
+        })) || [];
+      }
+      
       return data || [];
     },
     enabled: !!tenantId,
