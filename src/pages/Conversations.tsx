@@ -56,6 +56,7 @@ import {
   Clock,
   UserX,
   Users,
+  UserCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -95,6 +96,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
@@ -1306,6 +1308,7 @@ export default function Conversations() {
     return saved ? JSON.parse(saved) : false;
   });
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showCallLogModal, setShowCallLogModal] = useState(false);
   const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -3875,6 +3878,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
                 {/* Ícones de ação - sempre visíveis */}
                 <div className="flex items-center gap-0.5 flex-shrink-0">
+                  {/* Search - Desktop only inline */}
                   {showMessageSearch ? (
                     <div className="flex items-center gap-2 bg-muted rounded-lg px-2 py-1">
                       <Search size={14} className="text-muted-foreground" />
@@ -3896,13 +3900,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   ) : (
                     <button 
                       onClick={() => setShowMessageSearch(true)}
-                      className="p-2 hover:bg-muted rounded-lg transition-colors"
+                      className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex"
                     >
                       <Search size={18} className="text-muted-foreground" />
                     </button>
                   )}
+                  {/* Phone - Desktop only */}
                   <button 
-                    className="p-2 hover:bg-muted rounded-lg transition-colors"
+                    className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex"
                     onClick={() => setShowCallLogModal(true)}
                     title="Gestor de Ligações"
                   >
@@ -3916,6 +3921,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       contactName={selectedConversation.contact?.full_name || 'Cliente'}
                     />
                   )}
+                  {/* Channel selector - Desktop only */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button 
@@ -3974,6 +3980,15 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  {/* Mobile: View client details button */}
+                  <button 
+                    onClick={() => setShowMobileSidebar(true)}
+                    className="p-2 hover:bg-muted rounded-lg transition-colors flex lg:hidden"
+                    title="Ver detalhes do cliente"
+                  >
+                    <UserCircle2 size={18} className="text-muted-foreground" />
+                  </button>
+                  {/* More actions dropdown */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button className="p-2 hover:bg-muted rounded-lg transition-colors">
@@ -3981,6 +3996,20 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48 bg-popover">
+                      {/* Mobile-only items */}
+                      {isMobile && (
+                        <>
+                          <DropdownMenuItem onClick={() => setShowMessageSearch(true)}>
+                            <Search size={16} className="mr-2" />
+                            Buscar na conversa
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setShowCallLogModal(true)}>
+                            <Phone size={16} className="mr-2" />
+                            Gestor de Ligações
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
                       <DropdownMenuItem onClick={handleMarkAsUnread}>
                         <Mail size={16} className="mr-2" />
                         Marcar como não lida
@@ -4866,6 +4895,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       </div>
 
       {/* Column 3: Contact Details (Desktop Only) */}
+      {/* Column 3: Contact Details (Desktop Only) */}
       {selectedConversation && (
         <div className="hidden lg:flex flex-shrink-0">
           <ConversationSidebar 
@@ -4883,6 +4913,25 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           />
         </div>
       )}
+
+      {/* Mobile Contact Details Sheet */}
+      <Sheet open={showMobileSidebar} onOpenChange={setShowMobileSidebar}>
+        <SheetContent side="right" className="w-full sm:w-[400px] p-0 overflow-y-auto">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Detalhes do Cliente</SheetTitle>
+          </SheetHeader>
+          {selectedConversation && (
+            <ConversationSidebar 
+              conversationId={selectedConversation.id} 
+              onClose={() => setShowMobileSidebar(false)}
+              onNavigateAway={() => {
+                setShowMobileSidebar(false);
+                navigate('/conversations', { replace: true });
+              }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* Advanced Filters Modal */}
       <Dialog open={showFilters} onOpenChange={setShowFilters}>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { UserRoundPlus, Loader2 } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -25,6 +26,7 @@ interface RescueButtonProps {
 
 export function RescueButton({ conversationId, contactId, contactName }: RescueButtonProps) {
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
   
   const { data: templates = [], isLoading: loadingTemplates } = useRescueTemplates();
   const { data: activeRescue, isLoading: loadingRescue } = useActiveRescue(conversationId);
@@ -78,9 +80,10 @@ export function RescueButton({ conversationId, contactId, contactName }: RescueB
           <PopoverTrigger asChild>
             <Button
               variant="outline"
-              size="sm"
+              size={isMobile ? "icon" : "sm"}
               className={cn(
-                "gap-1.5 font-semibold border-0",
+                "font-semibold border-0",
+                isMobile ? "h-9 w-9" : "gap-1.5",
                 hasActiveRescue 
                   ? "bg-green-500 hover:bg-green-600 text-white" 
                   : "bg-yellow-500 hover:bg-yellow-600 text-white"
@@ -92,7 +95,7 @@ export function RescueButton({ conversationId, contactId, contactName }: RescueB
               ) : (
                 <UserRoundPlus size={14} />
               )}
-              <span>RESGATE</span>
+              {!isMobile && <span>RESGATE</span>}
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
