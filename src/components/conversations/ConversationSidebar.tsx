@@ -40,6 +40,7 @@ import { useUpdateOrderStatus } from '@/hooks/useOrders';
 import { useContactQuotesNotificationStatus, useToggleContactQuotesNotifications, getAutoPauseReasonText } from '@/hooks/useQuoteNotifications';
 import { useQuoteNotificationConfig } from '@/hooks/useQuoteNotificationConfig';
 import { useSegments, useCreateSegment, useUpdateContactSegment } from '@/hooks/useSegments';
+import { useRealtimeConversationDetails } from '@/hooks/useRealtimeConversationDetails';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -150,6 +151,10 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   const conversationContactId = conversation?.contact 
     ? (Array.isArray(conversation.contact) ? conversation.contact[0]?.id : conversation.contact?.id)
     : null;
+  
+  // Real-time updates for contact, tags, and conversation changes
+  useRealtimeConversationDetails(conversationId, conversationContactId);
+  
   const { quotes: contactQuotes = [], orders: contactOrders = [] } = useContactHistory(conversationContactId);
   
   // Quote notifications status and global config
