@@ -97,3 +97,9 @@ verify_jwt = true
 
 [functions.cloudapi-call-action]
 verify_jwt = true
+
+[functions.cloudapi-check-calling-status]
+verify_jwt = true
+
+[functions.cloudapi-enable-calling]
+verify_jwt = true
