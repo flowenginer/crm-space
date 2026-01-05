@@ -4,7 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, ExternalLink, Copy, Check, TestTube, Phone } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2, ExternalLink, Copy, Check, TestTube, Phone, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { 
   useCloudAPIConfig, 
   useCreateCloudAPIConfig, 
@@ -13,7 +14,7 @@ import {
   useGenerateWebhookUrl
 } from '@/hooks/useCloudAPIConfig';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { VoIPProvider } from '@/types/cloudapi';
 
@@ -22,6 +23,7 @@ interface CloudAPIConfigFormProps {
 }
 
 export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
+  const queryClient = useQueryClient();
   const { data: existingConfig, isLoading } = useCloudAPIConfig();
   const createConfig = useCreateCloudAPIConfig();
   const updateConfig = useUpdateCloudAPIConfig();
@@ -39,6 +41,52 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
         .order('name');
       if (error) throw error;
       return data || [];
+    },
+  });
+
+  // Verificar status da Calling API no Meta
+  const { data: callingStatus, isLoading: isLoadingCallingStatus, refetch: refetchCallingStatus } = useQuery({
+    queryKey: ['cloudapi-calling-status'],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await supabase.functions.invoke('cloudapi-check-calling-status', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.error) throw response.error;
+      return response.data;
+    },
+    enabled: !!existingConfig,
+    refetchOnWindowFocus: false,
+  });
+
+  // Mutation para habilitar Calling API
+  const enableCallingMutation = useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await supabase.functions.invoke('cloudapi-enable-calling', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.error) throw response.error;
+      if (response.data?.error) throw new Error(response.data.error);
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success('Calling API habilitada com sucesso!');
+      refetchCallingStatus();
+    },
+    onError: (error: any) => {
+      console.error('Error enabling calling:', error);
+      toast.error(error.message || 'Erro ao habilitar Calling API');
     },
   });
 
@@ -316,6 +364,84 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
 
         {formData.calling_enabled && (
           <div className="space-y-4 pl-4 border-l-2 border-muted">
+            {/* Status da Calling API no Meta */}
+            {existingConfig && (
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Status no Meta</Label>
+                
+                {isLoadingCallingStatus ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Verificando status...
+                  </div>
+                ) : callingStatus?.meta_calling_enabled ? (
+                  <Alert className="border-green-500/50 bg-green-500/10">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <AlertDescription className="text-green-700 dark:text-green-400">
+                      <strong>Calling API habilitada no Meta!</strong>
+                      <br />
+                      <span className="text-xs">
+                        Número: {callingStatus.display_phone_number} • 
+                        Tier: {callingStatus.messaging_limit_tier} • 
+                        Qualidade: {callingStatus.quality_rating}
+                      </span>
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <div className="space-y-3">
+                    <Alert className="border-amber-500/50 bg-amber-500/10">
+                      <AlertCircle className="h-4 w-4 text-amber-500" />
+                      <AlertDescription className="text-amber-700 dark:text-amber-400">
+                        <strong>Calling API não habilitada no Meta</strong>
+                        <br />
+                        <span className="text-xs">
+                          {callingStatus?.is_eligible_for_calling === false ? (
+                            <>
+                              Seu número está no Tier {callingStatus?.tier_number || 0}. 
+                              É necessário Tier 2+ (2.000 msgs/dia) para habilitar chamadas.
+                            </>
+                          ) : (
+                            <>
+                              Clique no botão abaixo para habilitar a Calling API no seu número.
+                              {callingStatus?.display_phone_number && ` (${callingStatus.display_phone_number})`}
+                            </>
+                          )}
+                        </span>
+                      </AlertDescription>
+                    </Alert>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => enableCallingMutation.mutate()}
+                      disabled={enableCallingMutation.isPending || callingStatus?.is_eligible_for_calling === false}
+                    >
+                      {enableCallingMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Phone className="h-4 w-4 mr-2" />
+                      )}
+                      Habilitar Calling API no Meta
+                    </Button>
+
+                    {callingStatus?.error && (
+                      <p className="text-xs text-destructive">{callingStatus.error}</p>
+                    )}
+                  </div>
+                )}
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => refetchCallingStatus()}
+                  className="text-xs"
+                >
+                  <Loader2 className={`h-3 w-3 mr-1 ${isLoadingCallingStatus ? 'animate-spin' : ''}`} />
+                  Atualizar Status
+                </Button>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Provedor VoIP (para gravação)</Label>
               <Select

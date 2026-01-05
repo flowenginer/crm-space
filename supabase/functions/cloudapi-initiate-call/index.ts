@@ -118,10 +118,34 @@ serve(async (req) => {
     if (!graphResponse.ok) {
       console.error("[InitiateCall] Meta API error:", graphData);
       const errorMessage = graphData.error?.message || graphData.error?.error_user_msg || "Unknown error";
+      const errorCode = graphData.error?.code;
+      
+      // Provide helpful error messages based on common error codes
+      let userMessage = errorMessage;
+      let suggestion = "";
+      let actionRequired = "";
+      
+      if (errorCode === 200 || errorMessage.includes("permission") || errorMessage.includes("necessary permissions")) {
+        userMessage = "Calling API não habilitada ou sem permissão";
+        suggestion = "A Calling API precisa ser habilitada explicitamente no seu Phone Number ID.";
+        actionRequired = "enable_calling";
+      } else if (errorMessage.includes("tier") || errorMessage.includes("limit")) {
+        userMessage = "Limite de tier insuficiente";
+        suggestion = "Seu número precisa ter limite de pelo menos 2.000 mensagens/dia (Tier 2+) para usar a Calling API.";
+        actionRequired = "upgrade_tier";
+      } else if (errorCode === 190 || errorMessage.includes("access token")) {
+        userMessage = "Token de acesso inválido ou expirado";
+        suggestion = "Gere um novo token de acesso permanente no Meta for Developers.";
+        actionRequired = "refresh_token";
+      }
+      
       return new Response(
         JSON.stringify({ 
-          error: `Meta API error: ${errorMessage}`, 
-          details: graphData.error || graphData
+          error: userMessage, 
+          suggestion,
+          action_required: actionRequired,
+          details: graphData.error || graphData,
+          meta_error_code: errorCode
         }),
         { status: graphResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
