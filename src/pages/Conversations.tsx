@@ -4956,6 +4956,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 handleMobilePanelChange('list');
                 navigate('/conversations', { replace: true });
               }}
+              isMobileFullWidth={true}
             />
           </div>
         </div>
