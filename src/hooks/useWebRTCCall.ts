@@ -45,11 +45,18 @@ const iceServers: RTCIceServer[] = [
 export function useWebRTCCall() {
   const [state, setState] = useState<WebRTCCallState>(initialState);
   
+  // All refs declared at the top - consistent order
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
 
-  // Cleanup function
+  // Sync localStreamRef with state (avoids stale closure in cleanup)
+  useEffect(() => {
+    localStreamRef.current = state.localStream;
+  }, [state.localStream]);
+
+  // Cleanup function - uses ref to avoid state dependency
   const cleanup = useCallback(() => {
     console.log('[WebRTC] Cleaning up call resources');
     
@@ -59,9 +66,10 @@ export function useWebRTCCall() {
       durationIntervalRef.current = null;
     }
     
-    // Stop local stream tracks
-    if (state.localStream) {
-      state.localStream.getTracks().forEach(track => track.stop());
+    // Stop local stream tracks using ref
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
     }
     
     // Close peer connection
@@ -72,7 +80,7 @@ export function useWebRTCCall() {
     
     startTimeRef.current = null;
     setState(initialState);
-  }, [state.localStream]);
+  }, []); // No dependencies - uses refs
 
   // Start duration timer
   const startDurationTimer = useCallback(() => {
