@@ -68,7 +68,7 @@ import MetaOAuthCallback from "@/pages/MetaOAuthCallback";
 import Redirect from "@/pages/Redirect";
 import RedirectLanding from "@/pages/RedirectLanding";
 import CallManagement from "@/pages/CallManagement";
-import MobileConversations from "@/pages/MobileConversations";
+
 
 // Platform Admin Pages
 import {
@@ -93,9 +93,6 @@ const App = () => (
             {/* Public pages */}
             <Route path="/r/:slug" element={<RedirectLanding />} />
             <Route path="/checkout/:paymentLinkId" element={<Checkout />} />
-
-            {/* Mobile Routes */}
-            <Route path="/mobile/conversations" element={<MobileConversations />} />
 
             {/* Auth routes */}
             <Route path="/auth" element={<Auth />} />
