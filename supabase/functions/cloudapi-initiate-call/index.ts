@@ -18,39 +18,77 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { channel_id, to, contact_id, contact_name } = await req.json();
+    const { to, contact_id, contact_name } = await req.json();
 
-    if (!channel_id || !to) {
+    if (!to) {
       return new Response(
-        JSON.stringify({ error: "channel_id and to are required" }),
+        JSON.stringify({ error: "Phone number (to) is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[InitiateCall] Starting call to ${to} via channel ${channel_id}`);
+    console.log(`[InitiateCall] Starting call to ${to}`);
 
-    // Get CloudAPI config for this channel
+    // Get authenticated user and their tenant
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Authorization required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace("Bearer ", "")
+    );
+
+    if (authError || !user) {
+      console.error("[InitiateCall] Auth error:", authError);
+      return new Response(
+        JSON.stringify({ error: "Invalid authorization" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get user's tenant_id from profile
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError || !profile?.tenant_id) {
+      console.error("[InitiateCall] Profile error:", profileError);
+      return new Response(
+        JSON.stringify({ error: "User profile not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const tenantId = profile.tenant_id;
+    console.log(`[InitiateCall] User ${user.id} from tenant ${tenantId}`);
+
+    // Get CloudAPI config for this tenant with calling enabled
     const { data: config, error: configError } = await supabase
       .from("cloudapi_configs")
       .select("*")
-      .eq("channel_id", channel_id)
+      .eq("tenant_id", tenantId)
       .eq("is_active", true)
+      .eq("calling_enabled", true)
       .single();
 
     if (configError || !config) {
       console.error("[InitiateCall] Config not found:", configError);
       return new Response(
-        JSON.stringify({ error: "CloudAPI config not found for this channel" }),
+        JSON.stringify({ 
+          error: "Cloud API não configurada para chamadas",
+          details: "Vá em Configurações → Integrações → Cloud API e habilite a API de Ligações"
+        }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (!config.calling_enabled) {
-      return new Response(
-        JSON.stringify({ error: "Calling is not enabled for this channel" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    console.log(`[InitiateCall] Using Cloud API config ${config.id} with phone_number_id ${config.phone_number_id}`);
 
     // Normalize phone number (remove non-digits, ensure + prefix)
     const normalizedPhone = to.replace(/\D/g, "");
@@ -89,22 +127,14 @@ serve(async (req) => {
 
     console.log(`[InitiateCall] Call initiated successfully:`, graphData);
 
-    // Get authenticated user
-    const authHeader = req.headers.get("Authorization");
-    let userId = null;
-    if (authHeader) {
-      const { data: { user } } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
-      userId = user?.id;
-    }
-
     // Create call log entry
     const { data: callLog, error: logError } = await supabase
       .from("call_logs")
       .insert({
-        tenant_id: config.tenant_id,
-        channel_id: channel_id,
+        tenant_id: tenantId,
+        channel_id: config.channel_id, // May be null, that's fine
         contact_id: contact_id,
-        user_id: userId || config.tenant_id, // Fallback to tenant_id if no user
+        user_id: user.id,
         whatsapp_call_id: graphData.call_id,
         call_type: "whatsapp",
         direction: "outbound",
@@ -127,6 +157,7 @@ serve(async (req) => {
         success: true,
         call_id: graphData.call_id,
         call_log_id: callLog?.id,
+        channel_id: config.channel_id,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

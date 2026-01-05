@@ -28,7 +28,7 @@ interface CallContextValue {
   answerIncomingCall: () => Promise<void>;
   rejectIncomingCall: () => Promise<void>;
   hangupCall: () => Promise<void>;
-  initiateCall: (channelId: string, toNumber: string, contactId?: string, contactName?: string) => Promise<void>;
+  initiateCall: (toNumber: string, contactId?: string, contactName?: string) => Promise<void>;
   toggleMute: () => void;
   dismissIncomingCall: () => void;
   
@@ -177,14 +177,13 @@ export function CallProvider({ children }: CallProviderProps) {
     await hangup();
   }, [hangup]);
 
-  // Initiate a new call
+  // Initiate a new call via Cloud API
   const initiateCall = useCallback(async (
-    channelId: string,
     toNumber: string,
     contactId?: string,
     contactName?: string
   ) => {
-    await initiate(channelId, toNumber, contactId, contactName);
+    await initiate(toNumber, contactId, contactName);
   }, [initiate]);
 
   const value: CallContextValue = {
