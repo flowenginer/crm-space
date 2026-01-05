@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
       .update({ last_sync_at: new Date().toISOString() })
       .eq("tenant_id", tenant_id);
 
-    console.log(`[bling-sync] Completed: ${totalCreated} created, ${totalUpdated} updated, ${totalErrors} errors`);
+    console.log(`[bling-sync] Completed: ${totalCreated} created, ${totalUpdated} updated, ${totalSkipped} skipped, ${totalErrors} errors`);
 
     // Return preview data if requested
     if (preview_only && previewData.length > 0) {

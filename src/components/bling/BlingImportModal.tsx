@@ -611,6 +611,12 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
               <div className="text-2xl font-bold text-blue-600">{result?.updated || 0}</div>
               <div className="text-sm text-muted-foreground">Atualizados</div>
             </div>
+            {(result?.skipped || 0) > 0 && (
+              <div className="text-center">
+                <div className="text-2xl font-bold text-yellow-600">{result?.skipped || 0}</div>
+                <div className="text-sm text-muted-foreground">Pulados</div>
+              </div>
+            )}
             {result?.dependenciesCreated && result.dependenciesCreated > 0 && (
               <div className="text-center">
                 <div className="text-2xl font-bold text-purple-600">{result.dependenciesCreated}</div>
