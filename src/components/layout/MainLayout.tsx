@@ -6,8 +6,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
-import { useIncomingCalls } from '@/hooks/useIncomingCalls';
-import { IncomingCallNotification } from '@/components/calls/IncomingCallNotification';
+import { CallProvider, useCallContext } from '@/providers/CallProvider';
+import { IncomingCallModal } from '@/components/calls/IncomingCallModal';
+import { ActiveCallOverlay } from '@/components/calls/ActiveCallOverlay';
 
 // Map routes to page titles
 const pageTitles: Record<string, string> = {
@@ -21,12 +22,13 @@ const pageTitles: Record<string, string> = {
   '/settings': 'Configurações',
 };
 
-export function MainLayout() {
+// Inner component that uses the CallContext
+function MainLayoutContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
   const { session, isLoading } = useAuth();
   const isMobile = useIsMobile();
-  const { incomingCall, dismissCall } = useIncomingCalls();
+  const { incomingCall, hasIncomingCall } = useCallContext();
 
   // Auto-collapse sidebar on mobile
   useEffect(() => {
@@ -109,13 +111,22 @@ export function MainLayout() {
         </main>
       </div>
 
-      {/* Incoming call notification */}
-      {incomingCall && (
-        <IncomingCallNotification 
-          call={incomingCall} 
-          onDismiss={dismissCall} 
-        />
+      {/* Incoming call modal */}
+      {hasIncomingCall && incomingCall && (
+        <IncomingCallModal call={incomingCall} />
       )}
+
+      {/* Active call overlay */}
+      <ActiveCallOverlay />
     </div>
+  );
+}
+
+// Main layout wrapper that provides CallContext
+export function MainLayout() {
+  return (
+    <CallProvider>
+      <MainLayoutContent />
+    </CallProvider>
   );
 }

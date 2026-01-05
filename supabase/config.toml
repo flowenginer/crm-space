@@ -91,3 +91,9 @@ verify_jwt = false
 
 [functions.cloudapi-webhook]
 verify_jwt = false
+
+[functions.cloudapi-initiate-call]
+verify_jwt = true
+
+[functions.cloudapi-call-action]
+verify_jwt = true

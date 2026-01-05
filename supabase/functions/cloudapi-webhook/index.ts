@@ -274,7 +274,27 @@ async function processStatuses(supabase: any, value: any) {
 }
 
 async function processCalls(supabase: any, value: any) {
+  const metadata = value.metadata;
   const calls = value.calls || [];
+  const phoneNumberId = metadata?.phone_number_id;
+
+  // Find the config for this phone_number_id
+  const { data: config } = await supabase
+    .from('cloudapi_configs')
+    .select('id, tenant_id, channel_id, calling_enabled')
+    .eq('phone_number_id', phoneNumberId)
+    .eq('is_active', true)
+    .single();
+
+  if (!config) {
+    console.log('[Calls] No config found for phone_number_id:', phoneNumberId);
+    return;
+  }
+
+  if (!config.calling_enabled) {
+    console.log('[Calls] Calling not enabled for config:', config.id);
+    return;
+  }
   
   for (const call of calls) {
     const callId = call.id;
@@ -285,23 +305,38 @@ async function processCalls(supabase: any, value: any) {
     const timestamp = new Date(parseInt(call.timestamp) * 1000);
     const duration = call.duration; // in seconds
     const errorCode = call.error?.code;
+    const mediaType = call.media_type; // audio, video
+    const session = call.session; // Contains SDP offer/answer
 
-    console.log('Processing call event:', { 
+    console.log('[Calls] Processing call event:', { 
       callId, 
       from, 
       to, 
       status, 
       direction, 
       duration,
+      mediaType,
+      hasSDP: !!session?.sdp,
       timestamp 
     });
+
+    // Find contact
+    const phone = direction === 'user_initiated' ? from : to;
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('id, full_name, avatar_url')
+      .eq('phone', phone)
+      .eq('tenant_id', config.tenant_id)
+      .single();
 
     // Find existing call log
     const { data: existingCall } = await supabase
       .from('call_logs')
-      .select('id, start_time')
+      .select('id, start_time, user_id, conversation_id')
       .eq('whatsapp_call_id', callId)
       .single();
+
+    let callLogId = existingCall?.id;
 
     if (existingCall) {
       // Update existing call
@@ -312,7 +347,9 @@ async function processCalls(supabase: any, value: any) {
 
       if (status === 'completed' || status === 'terminated') {
         updates.end_time = timestamp.toISOString();
-        updates.duration_seconds = duration;
+        if (duration) {
+          updates.duration_seconds = duration;
+        }
       }
 
       if (errorCode) {
@@ -323,20 +360,14 @@ async function processCalls(supabase: any, value: any) {
         .from('call_logs')
         .update(updates)
         .eq('id', existingCall.id);
-    } else {
-      // Find contact and create new call log
-      const phone = direction === 'user_initiated' ? from : to;
-      
-      const { data: contact } = await supabase
-        .from('contacts')
-        .select('id, tenant_id')
-        .eq('phone', phone)
-        .single();
-
-      if (contact) {
-        await supabase.from('call_logs').insert({
+    } else if (contact) {
+      // Create new call log
+      const { data: newCallLog } = await supabase
+        .from('call_logs')
+        .insert({
           contact_id: contact.id,
-          tenant_id: contact.tenant_id,
+          tenant_id: config.tenant_id,
+          channel_id: config.channel_id,
           whatsapp_call_id: callId,
           call_type: 'whatsapp',
           direction: direction === 'user_initiated' ? 'inbound' : 'outbound',
@@ -345,8 +376,52 @@ async function processCalls(supabase: any, value: any) {
           call_date: timestamp.toISOString().split('T')[0],
           call_time: timestamp.toTimeString().split(' ')[0],
           user_id: null, // Will be set when agent answers
-        });
-      }
+        })
+        .select('id')
+        .single();
+
+      callLogId = newCallLog?.id;
+    }
+
+    // Broadcast incoming calls via Realtime
+    if (status === 'ringing' && direction === 'user_initiated') {
+      console.log('[Calls] Broadcasting incoming call to agents');
+      
+      await supabase.channel('incoming-calls').send({
+        type: 'broadcast',
+        event: 'incoming_call',
+        payload: {
+          callId,
+          callLogId,
+          phone: from,
+          contactId: contact?.id,
+          contactName: contact?.full_name || from,
+          contactAvatar: contact?.avatar_url,
+          channelId: config.channel_id,
+          tenantId: config.tenant_id,
+          mediaType: mediaType || 'audio',
+          sdpOffer: session?.sdp || null,
+          sdpType: session?.sdp_type || null,
+          timestamp: timestamp.toISOString(),
+        },
+      });
+    }
+
+    // Broadcast call state changes for active calls
+    if (['accepted', 'rejected', 'terminated', 'completed', 'failed'].includes(status)) {
+      console.log('[Calls] Broadcasting call state change:', status);
+      
+      await supabase.channel('call-events').send({
+        type: 'broadcast',
+        event: 'call_state_changed',
+        payload: {
+          callId,
+          callLogId,
+          status,
+          duration,
+          timestamp: timestamp.toISOString(),
+        },
+      });
     }
   }
 }
