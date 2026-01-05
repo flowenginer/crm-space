@@ -33,7 +33,7 @@ import {
   FolderOpen,
   Building2
 } from 'lucide-react';
-import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { BlingEntityType } from './BlingIntegrationBanner';
 import { cn } from '@/lib/utils';
@@ -78,7 +78,7 @@ const entityConfig: Record<BlingEntityType, {
   contacts: {
     title: 'Importar Contatos do Bling',
     description: 'Importe clientes e fornecedores do Bling para seu ERP',
-    hasDateFilter: false,
+    hasDateFilter: true,
     hasDependencies: false,
   },
   orders: {
@@ -99,6 +99,7 @@ type ImportMode = 'all' | 'new_only' | 'update_existing';
 
 // Quick period presets
 const periodPresets = [
+  { label: 'Hoje', getValue: () => ({ from: startOfDay(new Date()), to: endOfDay(new Date()) }) },
   { label: 'Este mês', getValue: () => ({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) }) },
   { label: 'Mês anterior', getValue: () => ({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) }) },
   { label: 'Últimos 2 meses', getValue: () => ({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(new Date()) }) },
