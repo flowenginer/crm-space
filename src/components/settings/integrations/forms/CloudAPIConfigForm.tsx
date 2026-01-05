@@ -164,14 +164,17 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
         <div className="space-y-2">
           <Label htmlFor="channel_id">Vincular ao Canal</Label>
           <Select
-            value={formData.channel_id}
-            onValueChange={(value) => setFormData(prev => ({ ...prev, channel_id: value }))}
+            value={formData.channel_id || "none"}
+            onValueChange={(value) => setFormData(prev => ({ 
+              ...prev, 
+              channel_id: value === "none" ? "" : value 
+            }))}
           >
             <SelectTrigger>
               <SelectValue placeholder="Nenhum (opcional)" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Nenhum</SelectItem>
+              <SelectItem value="none">Nenhum</SelectItem>
               {channels?.map((channel) => (
                 <SelectItem key={channel.id} value={channel.id}>
                   {channel.name} {channel.phone && `(${channel.phone})`}
