@@ -46,9 +46,10 @@ interface ConversationSidebarProps {
   onNavigateAway?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  isMobileFullWidth?: boolean;
 }
 
-export function ConversationSidebar({ conversationId, onClose, onNavigateAway, isCollapsed = false, onToggleCollapse }: ConversationSidebarProps) {
+export function ConversationSidebar({ conversationId, onClose, onNavigateAway, isCollapsed = false, onToggleCollapse, isMobileFullWidth = false }: ConversationSidebarProps) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -862,7 +863,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   // Loading state
   if (loadingConversation) {
     return (
-      <div className={`${isCollapsed ? 'w-14' : 'w-[280px] xl:w-[300px] 2xl:w-[320px]'} bg-card border-l border-border flex items-center justify-center transition-all duration-300`}>
+      <div className={`${isMobileFullWidth ? 'w-full' : isCollapsed ? 'w-14' : 'w-[280px] xl:w-[300px] 2xl:w-[320px]'} bg-card border-l border-border flex items-center justify-center transition-all duration-300`}>
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -870,7 +871,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
 
   if (!conversation || !conversation.contact) {
     return (
-      <div className={`${isCollapsed ? 'w-14' : 'w-[280px] xl:w-[300px] 2xl:w-[320px]'} bg-card border-l border-border flex items-center justify-center transition-all duration-300`}>
+      <div className={`${isMobileFullWidth ? 'w-full' : isCollapsed ? 'w-14' : 'w-[280px] xl:w-[300px] 2xl:w-[320px]'} bg-card border-l border-border flex items-center justify-center transition-all duration-300`}>
         <p className="text-muted-foreground">Conversa não encontrada</p>
       </div>
     );
@@ -919,7 +920,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   };
 
   return (
-    <div className={`${isCollapsed ? 'w-14' : 'w-[280px] xl:w-[300px] 2xl:w-[320px]'} bg-card border-l border-border flex flex-col h-full overflow-hidden transition-all duration-300`}>
+    <div className={`${isMobileFullWidth ? 'w-full' : isCollapsed ? 'w-14' : 'w-[280px] xl:w-[300px] 2xl:w-[320px]'} bg-card border-l border-border flex flex-col h-full overflow-hidden transition-all duration-300`}>
       {/* Collapsed View */}
       {isCollapsed ? (
         <div className="flex flex-col items-center py-3 gap-3 h-full">
