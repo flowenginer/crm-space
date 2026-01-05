@@ -269,6 +269,87 @@ export function useWebRTCCall() {
     toast.info('Chamada encerrada');
   }, [state.callId, state.channelId, cleanup]);
 
+  // Create SDP offer for outbound call
+  const createSdpOffer = useCallback(async (localStream: MediaStream): Promise<string> => {
+    console.log('[WebRTC] Creating SDP offer for outbound call');
+    
+    const pc = new RTCPeerConnection({ iceServers });
+    peerConnectionRef.current = pc;
+
+    // Add local tracks to connection
+    localStream.getTracks().forEach(track => {
+      pc.addTrack(track, localStream);
+    });
+
+    // Handle remote stream
+    pc.ontrack = (event) => {
+      console.log('[WebRTC] Received remote track');
+      if (event.streams && event.streams[0]) {
+        setState(prev => ({
+          ...prev,
+          remoteStream: event.streams[0],
+        }));
+      }
+    };
+
+    // Handle ICE candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log('[WebRTC] ICE candidate:', event.candidate.candidate);
+      }
+    };
+
+    // Handle connection state changes
+    pc.onconnectionstatechange = () => {
+      console.log('[WebRTC] Connection state:', pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        setState(prev => ({ ...prev, status: 'active' }));
+        startDurationTimer();
+      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        cleanup();
+      }
+    };
+
+    // Create offer
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: false,
+    });
+    await pc.setLocalDescription(offer);
+
+    // Wait for ICE gathering to complete
+    await new Promise<void>((resolve) => {
+      if (pc.iceGatheringState === 'complete') {
+        resolve();
+      } else {
+        pc.onicegatheringstatechange = () => {
+          if (pc.iceGatheringState === 'complete') {
+            resolve();
+          }
+        };
+        // Timeout after 5 seconds
+        setTimeout(resolve, 5000);
+      }
+    });
+
+    console.log('[WebRTC] SDP offer created');
+    return pc.localDescription?.sdp || offer.sdp || '';
+  }, [cleanup, startDurationTimer]);
+
+  // Set SDP answer from Meta
+  const setSdpAnswer = useCallback(async (sdpAnswer: string) => {
+    if (!peerConnectionRef.current) {
+      console.error('[WebRTC] No peer connection to set answer');
+      return;
+    }
+
+    console.log('[WebRTC] Setting SDP answer');
+    await peerConnectionRef.current.setRemoteDescription({
+      type: 'answer',
+      sdp: sdpAnswer,
+    });
+  }, []);
+
   // Initiate outbound call via Cloud API (uses tenant's active config)
   const initiateCall = useCallback(async (
     toNumber: string,
@@ -290,12 +371,17 @@ export function useWebRTCCall() {
       const localStream = await getLocalStream();
       setState(prev => ({ ...prev, localStream }));
 
-      // Initiate call via edge function (finds Cloud API config by tenant)
+      // Create WebRTC peer connection and generate SDP offer
+      const sdpOffer = await createSdpOffer(localStream);
+      console.log('[WebRTC] Generated SDP offer, length:', sdpOffer.length);
+
+      // Initiate call via edge function with SDP offer
       const { data, error } = await supabase.functions.invoke('cloudapi-initiate-call', {
         body: {
           to: toNumber,
           contact_id: contactId,
           contact_name: contactName,
+          sdp_offer: sdpOffer,
         },
       });
 
@@ -311,6 +397,11 @@ export function useWebRTCCall() {
         status: 'ringing',
       }));
 
+      // If we got an SDP answer back, set it
+      if (data.sdp_answer) {
+        await setSdpAnswer(data.sdp_answer);
+      }
+
       console.log('[WebRTC] Call initiated:', data.call_id);
       toast.info('Ligando...');
 
@@ -319,7 +410,7 @@ export function useWebRTCCall() {
       toast.error(error instanceof Error ? error.message : 'Erro ao iniciar chamada');
       cleanup();
     }
-  }, [getLocalStream, cleanup]);
+  }, [getLocalStream, createSdpOffer, setSdpAnswer, cleanup]);
 
   // Toggle mute
   const toggleMute = useCallback(() => {
