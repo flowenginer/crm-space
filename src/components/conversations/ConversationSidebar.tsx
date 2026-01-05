@@ -1173,17 +1173,14 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
                     <Phone size={10} className="flex-shrink-0" />
                     <span className="truncate">{formatPhone(contact.phone)}</span>
                   </p>
-                  {conversation?.channel_id && (
-                    <InitiateCallButton
-                      channelId={conversation.channel_id}
-                      contactPhone={contact.phone}
-                      contactId={contact.id}
-                      contactName={contact.full_name || undefined}
-                      size="icon"
-                      variant="ghost"
-                      className="h-5 w-5 ml-1"
-                    />
-                  )}
+                  <InitiateCallButton
+                    contactPhone={contact.phone}
+                    contactId={contact.id}
+                    contactName={contact.full_name || undefined}
+                    size="icon"
+                    variant="ghost"
+                    className="h-5 w-5 ml-1"
+                  />
                 </div>
                 
                 <button 

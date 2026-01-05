@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface InitiateCallButtonProps {
-  channelId: string;
   contactPhone: string;
   contactId?: string;
   contactName?: string;
@@ -16,7 +15,6 @@ interface InitiateCallButtonProps {
 }
 
 export function InitiateCallButton({
-  channelId,
   contactPhone,
   contactId,
   contactName,
@@ -33,12 +31,7 @@ export function InitiateCallButton({
       return;
     }
 
-    if (!channelId) {
-      toast.error('Canal não configurado para chamadas');
-      return;
-    }
-
-    await initiateCall(channelId, contactPhone, contactId, contactName);
+    await initiateCall(contactPhone, contactId, contactName);
   };
 
   const isLoading = callState.status === 'connecting' || callState.status === 'ringing';

@@ -269,9 +269,8 @@ export function useWebRTCCall() {
     toast.info('Chamada encerrada');
   }, [state.callId, state.channelId, cleanup]);
 
-  // Initiate outbound call
+  // Initiate outbound call via Cloud API (uses tenant's active config)
   const initiateCall = useCallback(async (
-    channelId: string,
     toNumber: string,
     contactId?: string,
     contactName?: string
@@ -282,7 +281,6 @@ export function useWebRTCCall() {
       setState(prev => ({
         ...prev,
         status: 'connecting',
-        channelId,
         contactPhone: toNumber,
         contactName: contactName || toNumber,
         direction: 'outbound',
@@ -292,10 +290,9 @@ export function useWebRTCCall() {
       const localStream = await getLocalStream();
       setState(prev => ({ ...prev, localStream }));
 
-      // Initiate call via edge function
+      // Initiate call via edge function (finds Cloud API config by tenant)
       const { data, error } = await supabase.functions.invoke('cloudapi-initiate-call', {
         body: {
-          channel_id: channelId,
           to: toNumber,
           contact_id: contactId,
           contact_name: contactName,
@@ -303,13 +300,14 @@ export function useWebRTCCall() {
       });
 
       if (error || !data?.success) {
-        throw new Error(error?.message || data?.error || 'Failed to initiate call');
+        throw new Error(error?.message || data?.error || data?.details || 'Failed to initiate call');
       }
 
       setState(prev => ({
         ...prev,
         callId: data.call_id,
         callLogId: data.call_log_id,
+        channelId: data.channel_id || null,
         status: 'ringing',
       }));
 
@@ -318,7 +316,7 @@ export function useWebRTCCall() {
 
     } catch (error) {
       console.error('[WebRTC] Error initiating call:', error);
-      toast.error('Erro ao iniciar chamada');
+      toast.error(error instanceof Error ? error.message : 'Erro ao iniciar chamada');
       cleanup();
     }
   }, [getLocalStream, cleanup]);
