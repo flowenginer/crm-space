@@ -112,11 +112,6 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
       return;
     }
 
-    if (!formData.channel_id) {
-      toast.error('Selecione um canal WhatsApp');
-      return;
-    }
-
     try {
       if (existingConfig) {
         await updateConfig.mutateAsync({
@@ -163,19 +158,20 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
         </a>
       </div>
 
-      {/* Canal WhatsApp */}
+      {/* Canal WhatsApp (opcional) */}
       <div className="space-y-4">
-        <h3 className="text-sm font-medium">Canal WhatsApp</h3>
+        <h3 className="text-sm font-medium">Associação de Canal (opcional)</h3>
         <div className="space-y-2">
-          <Label htmlFor="channel_id">Vincular ao Canal *</Label>
+          <Label htmlFor="channel_id">Vincular ao Canal</Label>
           <Select
             value={formData.channel_id}
             onValueChange={(value) => setFormData(prev => ({ ...prev, channel_id: value }))}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Selecione o canal" />
+              <SelectValue placeholder="Nenhum (opcional)" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="">Nenhum</SelectItem>
               {channels?.map((channel) => (
                 <SelectItem key={channel.id} value={channel.id}>
                   {channel.name} {channel.phone && `(${channel.phone})`}
@@ -184,7 +180,7 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            A configuração será vinculada a este canal para chamadas
+            Opcional: usado apenas para logs e exibição interna. As ligações usam o Phone Number ID acima.
           </p>
         </div>
       </div>
