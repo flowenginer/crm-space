@@ -124,6 +124,30 @@ export function useBlingStatus() {
   };
 }
 
+// Hook to refresh Bling token manually
+export function useRefreshBlingToken() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('bling-token-refresh');
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['bling-config'] });
+      toast.success('Token renovado com sucesso!');
+    },
+    onError: (error: Error) => {
+      console.error('Error refreshing token:', error);
+      toast.error('Erro ao renovar token: ' + error.message);
+    },
+  });
+}
+
 // Hook to create/update Bling configuration
 export function useBlingConfigMutation() {
   const queryClient = useQueryClient();

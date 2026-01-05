@@ -28,7 +28,8 @@ import {
   useBlingConfigMutation, 
   useDisconnectBling,
   useBlingLogs,
-  useTriggerBlingSync
+  useTriggerBlingSync,
+  useRefreshBlingToken
 } from '@/hooks/useBlingIntegration';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -54,6 +55,7 @@ export function BlingIntegrationForm({ onSuccess }: BlingIntegrationFormProps) {
   const updateConfig = useBlingConfigMutation();
   const disconnectBling = useDisconnectBling();
   const triggerSync = useTriggerBlingSync();
+  const refreshToken = useRefreshBlingToken();
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -173,6 +175,11 @@ export function BlingIntegrationForm({ onSuccess }: BlingIntegrationFormProps) {
                 <p className="text-sm text-muted-foreground">
                   Integração ativa com o Bling ERP
                 </p>
+                {config?.token_expires_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Token expira em: {format(new Date(config.token_expires_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                  </p>
+                )}
               </div>
             </>
           ) : isConnected && isTokenExpired ? (
@@ -181,7 +188,7 @@ export function BlingIntegrationForm({ onSuccess }: BlingIntegrationFormProps) {
               <div>
                 <p className="font-medium text-foreground">Token Expirado</p>
                 <p className="text-sm text-muted-foreground">
-                  Reconecte para renovar o acesso
+                  Clique em "Renovar Token" para restaurar o acesso
                 </p>
               </div>
             </>
@@ -197,12 +204,36 @@ export function BlingIntegrationForm({ onSuccess }: BlingIntegrationFormProps) {
             </>
           )}
         </div>
-        {config?.last_sync_at && (
-          <Badge variant="outline" className="gap-1">
-            <Clock className="h-3 w-3" />
-            Última sync: {format(new Date(config.last_sync_at), "dd/MM HH:mm", { locale: ptBR })}
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {isConnected && isTokenExpired && (
+            <Button
+              onClick={() => refreshToken.mutate()}
+              disabled={refreshToken.isPending}
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${refreshToken.isPending ? 'animate-spin' : ''}`} />
+              Renovar Token
+            </Button>
+          )}
+          {isConnected && !isTokenExpired && (
+            <Button
+              onClick={() => refreshToken.mutate()}
+              disabled={refreshToken.isPending}
+              variant="ghost"
+              size="sm"
+              title="Renovar token antecipadamente"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshToken.isPending ? 'animate-spin' : ''}`} />
+            </Button>
+          )}
+          {config?.last_sync_at && (
+            <Badge variant="outline" className="gap-1">
+              <Clock className="h-3 w-3" />
+              Última sync: {format(new Date(config.last_sync_at), "dd/MM HH:mm", { locale: ptBR })}
+            </Badge>
+          )}
+        </div>
       </div>
 
       <Separator />
