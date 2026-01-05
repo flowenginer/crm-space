@@ -542,6 +542,34 @@ async function executeAction(
       }
       break;
 
+    case 'transfer_user':
+      if (config.user_id && execution.conversation_id) {
+        const transferUserData: Record<string, unknown> = {
+          assigned_to: config.user_id as string
+        };
+        
+        if (config.department_id) {
+          transferUserData.department_id = config.department_id as string;
+        }
+        
+        await supabase
+          .from('conversations')
+          .update(transferUserData)
+          .eq('id', execution.conversation_id);
+        
+        if (config.note) {
+          const transferNote = replaceVariables(config.note as string, execution);
+          await supabase.from('internal_notes').insert({
+            conversation_id: execution.conversation_id,
+            content: `[Transferência automática] ${transferNote}`,
+            tenant_id: execution.tenant_id,
+          });
+        }
+        
+        await logExecution(supabase, execution.id, node.id, 'info', 'Conversa transferida para usuário');
+      }
+      break;
+
     case 'close_conversation':
       if (execution.conversation_id) {
         await supabase

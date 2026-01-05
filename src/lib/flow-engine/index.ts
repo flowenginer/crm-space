@@ -337,6 +337,35 @@ export class FlowEngine {
           await this.logExecution(execution.id, node.id, 'info', 'Transferido para departamento');
         }
         break;
+
+      case 'transfer_user':
+        if (config.user_id) {
+          const transferUserData: Record<string, unknown> = {
+            assigned_to: config.user_id as string
+          };
+          
+          if (config.department_id) {
+            transferUserData.department_id = config.department_id as string;
+          }
+          
+          await supabase
+            .from('conversations')
+            .update(transferUserData)
+            .eq('id', execution.conversation_id);
+          
+          if (config.note) {
+            const transferNote = this.replaceVariables(config.note as string, execution);
+            const { data: { user } } = await supabase.auth.getUser();
+            await supabase.from('internal_notes').insert({
+              conversation_id: execution.conversation_id,
+              content: `[Transferência automática] ${transferNote}`,
+              author_id: user?.id || execution.contact_id,
+            });
+          }
+          
+          await this.logExecution(execution.id, node.id, 'info', 'Conversa transferida para usuário');
+        }
+        break;
         
       case 'close_conversation':
         await supabase
