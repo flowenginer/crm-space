@@ -18,7 +18,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { to, contact_id, contact_name } = await req.json();
+    const { to, contact_id, contact_name, sdp_offer } = await req.json();
 
     if (!to) {
       return new Response(
@@ -93,9 +93,29 @@ serve(async (req) => {
     // Format phone number - Meta expects E.164 without the "+" prefix
     const formattedPhone = to.replace(/\D/g, "");
 
-    console.log(`[InitiateCall] Calling Meta Graph API to initiate call to ${formattedPhone}`);
+    // Check if we have SDP offer for WebRTC
+    if (!sdp_offer) {
+      console.log(`[InitiateCall] No SDP offer provided - returning instructions for WebRTC setup`);
+      
+      // For now, return an error explaining that WebRTC SDP is required
+      // The WhatsApp Calling API requires a full WebRTC implementation
+      return new Response(
+        JSON.stringify({ 
+          error: "WebRTC SDP offer é obrigatório",
+          suggestion: "A Calling API do WhatsApp requer integração WebRTC completa. É necessário gerar um SDP offer no cliente antes de iniciar a chamada.",
+          action_required: "webrtc_setup",
+          documentation: "https://developers.facebook.com/docs/whatsapp/cloud-api/calling/business-initiated-calls/",
+          details: {
+            message: "A API de chamadas do WhatsApp Cloud API funciona via WebRTC. Para iniciar uma chamada business-initiated, você precisa: 1) Obter permissão do usuário via mensagem de solicitação de permissão, 2) Gerar um SDP offer via WebRTC no cliente, 3) Enviar o SDP offer para esta API, 4) Receber o SDP answer via webhook e estabelecer a conexão."
+          }
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    // Initiate call via Meta Graph API
+    console.log(`[InitiateCall] Calling Meta Graph API to initiate call to ${formattedPhone} with WebRTC SDP`);
+
+    // Initiate call via Meta Graph API with proper WebRTC format
     const apiVersion = config.api_version || "v22.0";
     const graphResponse = await fetch(
       `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}/calls`,
@@ -108,7 +128,11 @@ serve(async (req) => {
         body: JSON.stringify({
           messaging_product: "whatsapp",
           to: formattedPhone,
-          type: "audio",
+          action: "connect",
+          session: {
+            sdp_type: "offer",
+            sdp: sdp_offer
+          }
         }),
       }
     );
@@ -125,10 +149,14 @@ serve(async (req) => {
       let suggestion = "";
       let actionRequired = "";
       
-      if (errorCode === 200 || errorMessage.includes("permission") || errorMessage.includes("necessary permissions")) {
-        userMessage = "Calling API não habilitada ou sem permissão";
-        suggestion = "A Calling API precisa ser habilitada explicitamente no seu Phone Number ID.";
-        actionRequired = "enable_calling";
+      if (errorCode === 138006) {
+        userMessage = "Usuário não deu permissão para receber chamadas";
+        suggestion = "É necessário primeiro enviar uma mensagem de solicitação de permissão de chamada ao usuário e aguardar que ele aceite.";
+        actionRequired = "request_call_permission";
+      } else if (errorCode === 200 || errorMessage.includes("permission") || errorMessage.includes("necessary permissions")) {
+        userMessage = "Sem permissão para fazer chamadas";
+        suggestion = "Verifique: 1) Se a Calling API está habilitada no seu número, 2) Se o usuário deu permissão para receber chamadas, 3) Se seu token tem as permissões necessárias.";
+        actionRequired = "check_permissions";
       } else if (errorMessage.includes("tier") || errorMessage.includes("limit")) {
         userMessage = "Limite de tier insuficiente";
         suggestion = "Seu número precisa ter limite de pelo menos 2.000 mensagens/dia (Tier 2+) para usar a Calling API.";
@@ -137,6 +165,10 @@ serve(async (req) => {
         userMessage = "Token de acesso inválido ou expirado";
         suggestion = "Gere um novo token de acesso permanente no Meta for Developers.";
         actionRequired = "refresh_token";
+      } else if (errorMessage.includes("SDP") || errorMessage.includes("sdp")) {
+        userMessage = "Erro no formato do SDP WebRTC";
+        suggestion = "O SDP offer enviado não está no formato correto. Verifique se o SDP segue o padrão RFC 8866.";
+        actionRequired = "fix_sdp";
       }
       
       return new Response(
@@ -153,15 +185,18 @@ serve(async (req) => {
 
     console.log(`[InitiateCall] Call initiated successfully:`, graphData);
 
+    // Extract call ID from response
+    const callId = graphData.calls?.[0]?.id;
+
     // Create call log entry
     const { data: callLog, error: logError } = await supabase
       .from("call_logs")
       .insert({
         tenant_id: tenantId,
-        channel_id: config.channel_id, // May be null, that's fine
+        channel_id: config.channel_id,
         contact_id: contact_id,
         user_id: user.id,
-        whatsapp_call_id: graphData.call_id,
+        whatsapp_call_id: callId,
         call_type: "whatsapp",
         direction: "outbound",
         call_status: "initiating",
@@ -181,9 +216,10 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        call_id: graphData.call_id,
+        call_id: callId,
         call_log_id: callLog?.id,
         channel_id: config.channel_id,
+        message: "Chamada iniciada. Aguardando webhook de conexão do Meta."
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
