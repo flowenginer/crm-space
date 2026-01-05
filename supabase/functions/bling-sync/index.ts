@@ -662,8 +662,9 @@ async function syncContacts(
             });
             
             counts.created++;
-          } catch (error) {
+        } catch (error) {
             const msg = error instanceof Error ? error.message : "Unknown error";
+            console.error(`[bling-sync] Error importing contact ${blingContact.nome}: ${msg}`, error);
             errors.push({ entity: "contact", message: msg, details: blingContact.nome });
             counts.errors++;
           }

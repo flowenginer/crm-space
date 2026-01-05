@@ -591,7 +591,10 @@ export function useBlingImport() {
       queryClient.invalidateQueries({ queryKey: ['bling-sync-logs'] });
       queryClient.invalidateQueries({ queryKey: ['bling-config'] });
 
-      const parts = [`${data.created} criados`, `${data.updated} atualizados`];
+      const parts = [];
+      if (data.created > 0) parts.push(`${data.created} criados`);
+      if (data.updated > 0) parts.push(`${data.updated} atualizados`);
+      if (data.skipped && data.skipped > 0) parts.push(`${data.skipped} pulados`);
       if (data.dependenciesCreated && data.dependenciesCreated > 0) {
         parts.push(`${data.dependenciesCreated} dependências`);
       }
@@ -599,7 +602,7 @@ export function useBlingImport() {
         parts.push(`${data.errors} erros`);
       }
 
-      toast.success(`Importação concluída: ${parts.join(', ')}`);
+      toast.success(`Importação concluída: ${parts.length > 0 ? parts.join(', ') : 'Nenhuma alteração'}`);
     },
     onError: (error) => {
       console.error('Import error:', error);
