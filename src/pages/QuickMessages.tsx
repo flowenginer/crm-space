@@ -70,9 +70,6 @@ import {
 
 const categoryConfig = [
   { id: 'messages', icon: MessageSquare, label: 'Mensagens' },
-  { id: 'audios', icon: Mic, label: 'Áudios' },
-  { id: 'media', icon: Image, label: 'Mídias' },
-  { id: 'documents', icon: FileText, label: 'Documentos' },
   { id: 'rescue', icon: UserRoundPlus, label: 'Resgate' },
 ];
 
