@@ -98,6 +98,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileSwipeNavigation, MobilePanelIndicator, type MobilePanel } from '@/components/conversations/MobileSwipeNavigation';
 import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
@@ -1302,6 +1303,7 @@ export default function Conversations() {
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned' | 'pending' | 'shared'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(!!searchParams.get('id'));
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>(() => searchParams.get('id') ? 'chat' : 'list');
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(() => {
     const saved = localStorage.getItem('conversations-right-panel-collapsed');
@@ -2512,12 +2514,23 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     setIsInternalNoteMode(false);
     if (isMobile) {
       setShowMobileChat(true);
+      setMobilePanel('chat');
     }
   }, [searchParams, navigate, isMobile, canAccessAllConversations, profile?.id, teamMembers, queryClient, sharedConversationIds, isLoadingSharedIds]);
 
   const handleBackToList = () => {
     setShowMobileChat(false);
+    setMobilePanel('list');
   };
+
+  const handleMobilePanelChange = useCallback((panel: MobilePanel) => {
+    setMobilePanel(panel);
+    if (panel === 'list') {
+      setShowMobileChat(false);
+    } else if (panel === 'chat' || panel === 'details') {
+      setShowMobileChat(true);
+    }
+  }, []);
 
   const handleSendMessage = async () => {
     if (!selectedConversationId) return;
@@ -3140,22 +3153,28 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   };
 
   return (
-    <div className="flex h-full w-full bg-background overflow-hidden">
-      {/* Modal de Solicitação de Acesso */}
-      {blockedContact && blockedByAgent && (
-        <ContactRequestModal
-          open={showContactRequestModal}
-          onOpenChange={setShowContactRequestModal}
-          contact={blockedContact}
-          currentOwner={blockedByAgent}
-          conversationId={blockedConversationId}
-        />
-      )}
+    <MobileSwipeNavigation
+      currentPanel={mobilePanel}
+      onPanelChange={handleMobilePanelChange}
+      hasConversation={!!selectedConversation}
+      className="flex h-full w-full bg-background overflow-hidden"
+    >
+      <div className="flex h-full w-full bg-background overflow-hidden">
+        {/* Modal de Solicitação de Acesso */}
+        {blockedContact && blockedByAgent && (
+          <ContactRequestModal
+            open={showContactRequestModal}
+            onOpenChange={setShowContactRequestModal}
+            contact={blockedContact}
+            currentOwner={blockedByAgent}
+            conversationId={blockedConversationId}
+          />
+        )}
 
-      {/* Column 1: Conversations List */}
-      <div className={cn(
-        'bg-card border-r border-border flex flex-col flex-shrink-0 transition-all duration-300',
-        isMobile && showMobileChat ? 'hidden' : 'flex',
+        {/* Column 1: Conversations List */}
+        <div className={cn(
+          'bg-card border-r border-border flex flex-col flex-shrink-0 transition-all duration-300',
+          isMobile ? (mobilePanel === 'list' ? 'flex w-full' : 'hidden') : 'flex',
         isLeftPanelCollapsed 
           ? 'w-[60px] min-w-[60px] max-w-[60px]' 
           : 'w-full md:w-[360px] md:min-w-[320px] md:max-w-[360px] xl:w-[420px] xl:min-w-[380px] xl:max-w-[420px] 2xl:w-[500px] 2xl:min-w-[440px] 2xl:max-w-[500px]'
@@ -3712,7 +3731,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       {/* Column 2: Chat Area */}
       <div className={cn(
         'flex-1 flex flex-col bg-background min-w-0',
-        isMobile && !showMobileChat ? 'hidden' : 'flex'
+        isMobile ? (mobilePanel === 'chat' ? 'flex' : 'hidden') : 'flex'
       )}>
         {selectedConversation ? (
           <>
@@ -3980,13 +3999,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  {/* Mobile: View client details button */}
+                  {/* Mobile: View client details button - More visible */}
                   <button 
-                    onClick={() => setShowMobileSidebar(true)}
-                    className="p-2 hover:bg-muted rounded-lg transition-colors flex lg:hidden"
+                    onClick={() => handleMobilePanelChange('details')}
+                    className="p-2.5 hover:bg-primary/20 bg-primary/10 rounded-xl transition-colors flex lg:hidden items-center gap-1.5 border border-primary/20"
                     title="Ver detalhes do cliente"
+                    aria-label="Ver detalhes do cliente"
                   >
-                    <UserCircle2 size={18} className="text-muted-foreground" />
+                    <UserCircle2 size={20} className="text-primary" />
                   </button>
                   {/* More actions dropdown */}
                   <DropdownMenu>
@@ -4914,7 +4934,34 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         </div>
       )}
 
-      {/* Mobile Contact Details Sheet */}
+      {/* Mobile Contact Details Panel - Full screen via swipe */}
+      {isMobile && mobilePanel === 'details' && selectedConversation && (
+        <div className="fixed inset-0 z-50 bg-background flex flex-col">
+          {/* Header with back button */}
+          <div className="flex items-center gap-3 p-4 border-b border-border bg-card">
+            <button 
+              onClick={() => handleMobilePanelChange('chat')}
+              className="p-2 -ml-2 hover:bg-muted rounded-lg"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <h2 className="font-semibold text-foreground">Detalhes do Cliente</h2>
+          </div>
+          {/* Sidebar content */}
+          <div className="flex-1 overflow-y-auto">
+            <ConversationSidebar 
+              conversationId={selectedConversation.id} 
+              onClose={() => handleMobilePanelChange('chat')}
+              onNavigateAway={() => {
+                handleMobilePanelChange('list');
+                navigate('/conversations', { replace: true });
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Contact Details Sheet - Fallback via button */}
       <Sheet open={showMobileSidebar} onOpenChange={setShowMobileSidebar}>
         <SheetContent side="right" className="w-full sm:w-[400px] p-0 overflow-y-auto">
           <SheetHeader className="sr-only">
@@ -5454,6 +5501,16 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         } : null}
         conversationId={selectedConversation?.id}
       />
-    </div>
+
+      {/* Mobile Panel Indicator */}
+      {isMobile && selectedConversation && (
+        <MobilePanelIndicator
+          currentPanel={mobilePanel}
+          hasConversation={!!selectedConversation}
+          onPanelChange={handleMobilePanelChange}
+        />
+      )}
+      </div>
+    </MobileSwipeNavigation>
   );
 }
