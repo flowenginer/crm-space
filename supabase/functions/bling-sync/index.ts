@@ -357,6 +357,125 @@ async function blingApi(endpoint: string, accessToken: string, method = "GET", b
   return response.json();
 }
 
+// Helper: Normalize phone for storage (Brazilian format)
+function normalizePhoneForStorage(phone: string): string {
+  if (!phone) return '';
+  let digits = phone.replace(/\D/g, '');
+  digits = digits.replace(/^0+/, '');
+  
+  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) {
+    return digits;
+  }
+  
+  if (digits.length >= 10 && digits.length <= 11) {
+    return `55${digits}`;
+  }
+  
+  return digits;
+}
+
+// Helper: Get all phone variations for search (handles 9th digit)
+function getPhoneSearchVariations(phone: string): string[] {
+  const normalized = normalizePhoneForStorage(phone);
+  if (!normalized || normalized.length < 10) return [];
+  
+  const variations: string[] = [normalized];
+  
+  // Without country code
+  if (normalized.startsWith('55')) {
+    variations.push(normalized.slice(2));
+  }
+  
+  // With country code if missing
+  if (!normalized.startsWith('55') && normalized.length >= 10) {
+    variations.push(`55${normalized}`);
+  }
+  
+  // Handle 9th digit variations (Brazilian mobile)
+  const hasCountry = normalized.startsWith('55');
+  const baseNumber = hasCountry ? normalized.slice(2) : normalized;
+  const ddd = baseNumber.slice(0, 2);
+  const rest = baseNumber.slice(2);
+  
+  // If has 9th digit, add version without
+  if (rest.length === 9 && rest.startsWith('9')) {
+    const without9 = rest.slice(1);
+    variations.push(`55${ddd}${without9}`, `${ddd}${without9}`);
+  }
+  
+  // If missing 9th digit, add version with
+  if (rest.length === 8) {
+    const with9 = `9${rest}`;
+    variations.push(`55${ddd}${with9}`, `${ddd}${with9}`);
+  }
+  
+  return [...new Set(variations)];
+}
+
+// Helper: Find existing contact by CPF/CNPJ, phone, or name
+async function findExistingContact(
+  supabase: any, 
+  tenantId: string, 
+  cpfCnpj: string | null, 
+  phone: string | null, 
+  name: string
+): Promise<{ id: string; matchedBy: string } | null> {
+  
+  // 1. Check by CPF/CNPJ (most reliable)
+  if (cpfCnpj) {
+    const cleanCpfCnpj = cpfCnpj.replace(/\D/g, '');
+    if (cleanCpfCnpj.length >= 11) {
+      const { data } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('cpf_cnpj', cleanCpfCnpj)
+        .maybeSingle();
+      
+      if (data) {
+        console.log(`[bling-sync] Found duplicate by CPF/CNPJ: ${cleanCpfCnpj}`);
+        return { id: data.id, matchedBy: 'CPF/CNPJ' };
+      }
+    }
+  }
+  
+  // 2. Check by phone (all variations)
+  if (phone) {
+    const variations = getPhoneSearchVariations(phone);
+    for (const variation of variations) {
+      if (!variation) continue;
+      const { data } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('phone', variation)
+        .maybeSingle();
+      
+      if (data) {
+        console.log(`[bling-sync] Found duplicate by phone: ${variation}`);
+        return { id: data.id, matchedBy: 'Telefone' };
+      }
+    }
+  }
+  
+  // 3. Check by exact name (case-insensitive)
+  if (name && name.trim()) {
+    const { data } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .ilike('full_name', name.trim())
+      .maybeSingle();
+    
+    if (data) {
+      console.log(`[bling-sync] Found duplicate by name: ${name}`);
+      return { id: data.id, matchedBy: 'Nome' };
+    }
+  }
+  
+  return null;
+}
+
 // Sync Contacts
 async function syncContacts(
   supabase: any, 
@@ -402,7 +521,7 @@ async function syncContacts(
 
         for (const blingContact of blingContacts) {
           try {
-            // Check if mapping exists
+            // Check if mapping already exists
             const { data: existingMapping } = await supabase
               .from("bling_id_mappings")
               .select("local_id")
@@ -411,16 +530,32 @@ async function syncContacts(
               .eq("bling_id", String(blingContact.id))
               .maybeSingle();
 
-            const isNew = !existingMapping?.local_id;
+            const hasBlingMapping = !!existingMapping?.local_id;
+            
+            // Check for duplicates in CRM (by CPF/CNPJ, phone, or name)
+            const blingPhone = blingContact.celular || blingContact.telefone;
+            const existingContact = await findExistingContact(
+              supabase,
+              tenantId,
+              blingContact.cpfCnpj || null,
+              blingPhone || null,
+              blingContact.nome || ""
+            );
+            
+            const existsInCRM = !!existingContact;
+            const isNew = !hasBlingMapping && !existsInCRM;
 
-            // For preview mode, just collect data
+            // For preview mode, collect data with duplicate info
             if (previewOnly) {
               preview.push({
                 id: String(blingContact.id),
                 name: blingContact.nome || "Sem nome",
                 code: blingContact.cpfCnpj || blingContact.codigo || null,
+                phone: blingPhone || null,
                 isNew,
-                exists_locally: !isNew,
+                exists_locally: existsInCRM || hasBlingMapping,
+                willBeSkipped: existsInCRM,
+                skipReason: existsInCRM ? `Já existe no CRM (${existingContact.matchedBy})` : null,
               });
               continue;
             }
@@ -437,11 +572,66 @@ async function syncContacts(
               continue;
             }
 
+            // If contact exists in CRM, SKIP (preserve CRM data) and just create mapping if needed
+            if (existsInCRM) {
+              console.log(`[bling-sync] Skipping duplicate: ${blingContact.nome} (${existingContact.matchedBy})`);
+              
+              // Create mapping if it doesn't exist
+              if (!hasBlingMapping) {
+                const { data: existingBlingMapping } = await supabase
+                  .from("bling_id_mappings")
+                  .select("id")
+                  .eq("tenant_id", tenantId)
+                  .eq("entity_type", "contact")
+                  .eq("local_id", existingContact.id)
+                  .maybeSingle();
+                
+                if (!existingBlingMapping) {
+                  await supabase.from("bling_id_mappings").insert({
+                    tenant_id: tenantId,
+                    entity_type: "contact",
+                    local_id: existingContact.id,
+                    bling_id: String(blingContact.id),
+                    sync_direction: "bling_to_local",
+                  });
+                }
+              }
+              
+              counts.skipped++;
+              continue;
+            }
+
+            // If has Bling mapping, update the existing contact
+            if (hasBlingMapping) {
+              const contactData = {
+                full_name: blingContact.nome || "Sem nome",
+                phone: normalizePhoneForStorage(blingPhone || "0000000000") || "0000000000",
+                email: blingContact.email || null,
+                cpf_cnpj: blingContact.cpfCnpj?.replace(/\D/g, '') || null,
+                person_type: blingContact.tipo === "J" ? "company" : "individual",
+                street: blingContact.endereco?.endereco || null,
+                number: blingContact.endereco?.numero || null,
+                complement: blingContact.endereco?.complemento || null,
+                neighborhood: blingContact.endereco?.bairro || null,
+                zip_code: blingContact.endereco?.cep || null,
+                city: blingContact.endereco?.municipio || null,
+                state: blingContact.endereco?.uf || null,
+              };
+
+              await supabase
+                .from("contacts")
+                .update(contactData)
+                .eq("id", existingMapping.local_id);
+              counts.updated++;
+              continue;
+            }
+
+            // Create new contact (no duplicate found)
             const contactData = {
               full_name: blingContact.nome || "Sem nome",
-              phone: blingContact.celular || blingContact.telefone || "0000000000",
+              phone: normalizePhoneForStorage(blingPhone || "0000000000") || "0000000000",
               email: blingContact.email || null,
-              cpf_cnpj: blingContact.cpfCnpj || null,
+              cpf_cnpj: blingContact.cpfCnpj?.replace(/\D/g, '') || null,
               person_type: blingContact.tipo === "J" ? "company" : "individual",
               street: blingContact.endereco?.endereco || null,
               number: blingContact.endereco?.numero || null,
@@ -453,63 +643,25 @@ async function syncContacts(
               tenant_id: tenantId,
             };
 
-            if (existingMapping?.local_id) {
-              // Update existing
-              await supabase
-                .from("contacts")
-                .update(contactData)
-                .eq("id", existingMapping.local_id);
-              counts.updated++;
-            } else {
-              // Check by CPF/CNPJ or phone
-              const { data: existingContact } = await supabase
-                .from("contacts")
-                .select("id")
-                .eq("tenant_id", tenantId)
-                .or(`cpf_cnpj.eq.${blingContact.cpfCnpj},phone.eq.${blingContact.celular || blingContact.telefone}`)
-                .maybeSingle();
+            const { data: newContact, error: insertError } = await supabase
+              .from("contacts")
+              .insert(contactData)
+              .select("id")
+              .single();
 
-              if (existingContact) {
-                // Update and create mapping
-                await supabase
-                  .from("contacts")
-                  .update(contactData)
-                  .eq("id", existingContact.id);
-
-                await supabase
-                  .from("bling_id_mappings")
-                  .insert({
-                    tenant_id: tenantId,
-                    entity_type: "contact",
-                    local_id: existingContact.id,
-                    bling_id: String(blingContact.id),
-                    sync_direction: "bling_to_local",
-                  });
-                counts.updated++;
-              } else {
-                // Create new
-                const { data: newContact, error: insertError } = await supabase
-                  .from("contacts")
-                  .insert(contactData)
-                  .select("id")
-                  .single();
-
-                if (insertError) {
-                  throw new Error(insertError.message);
-                }
-
-                await supabase
-                  .from("bling_id_mappings")
-                  .insert({
-                    tenant_id: tenantId,
-                    entity_type: "contact",
-                    local_id: newContact.id,
-                    bling_id: String(blingContact.id),
-                    sync_direction: "bling_to_local",
-                  });
-                counts.created++;
-              }
+            if (insertError) {
+              throw new Error(insertError.message);
             }
+
+            await supabase.from("bling_id_mappings").insert({
+              tenant_id: tenantId,
+              entity_type: "contact",
+              local_id: newContact.id,
+              bling_id: String(blingContact.id),
+              sync_direction: "bling_to_local",
+            });
+            
+            counts.created++;
           } catch (error) {
             const msg = error instanceof Error ? error.message : "Unknown error";
             errors.push({ entity: "contact", message: msg, details: blingContact.nome });
