@@ -102,7 +102,42 @@ function renderNodeConfig(
               rows={4}
             />
             <p className="text-xs text-muted-foreground">
-              O fluxo inicia quando a mensagem contém qualquer dessas palavras
+              O fluxo inicia quando o <strong>CLIENTE</strong> envia uma mensagem contendo estas palavras
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Tipo de correspondência</Label>
+            <Select 
+              value={(config?.match_type as string) || 'contains'}
+              onValueChange={(v) => updateConfig('match_type', v)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="contains">Contém</SelectItem>
+                <SelectItem value="equals">Exatamente igual</SelectItem>
+                <SelectItem value="starts_with">Começa com</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      );
+      
+    case 'message_key':
+      return (
+        <>
+          <div className="space-y-2">
+            <Label>Mensagens-chave</Label>
+            <Textarea
+              value={(config?.keywords as string[])?.join('\n') || ''}
+              onChange={(e) => updateConfig('keywords', e.target.value.split('\n').filter(Boolean))}
+              placeholder="Uma frase por linha..."
+              rows={4}
+            />
+            <p className="text-xs text-muted-foreground">
+              O fluxo inicia quando <strong>VOCÊ/SISTEMA</strong> envia uma mensagem contendo estas palavras.
+              Ideal para confirmações de pedido, avisos automáticos, etc.
             </p>
           </div>
           <div className="space-y-2">

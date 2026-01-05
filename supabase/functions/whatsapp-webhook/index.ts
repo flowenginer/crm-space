@@ -1496,6 +1496,28 @@ serve(async (req) => {
         throw msgError;
       }
 
+      // =====================================================
+      // TRIGGER MESSAGE_KEY AUTOMATIONS (mensagens ENVIADAS)
+      // Dispara automações baseadas em mensagens enviadas pelo sistema/atendente
+      // =====================================================
+      try {
+        console.log(`[Webhook] 🤖 Checking message_key automations for sent message...`);
+        
+        await supabase.functions.invoke('process-flow-triggers', {
+          body: {
+            trigger_type: 'message_key',
+            tenant_id: channel.tenant_id,
+            contact_id: contact.id,
+            channel_id: channel.id,
+            conversation_id: conversation.id,
+            message_content: normalizedMessage.content,
+          }
+        });
+      } catch (triggerError) {
+        // Non-critical - log but don't fail the webhook
+        console.error(`[Webhook] Error invoking message_key triggers:`, triggerError);
+      }
+
       // Atualizar conversa - IMPORTANTE: NÃO alterar status!
       // Mensagens do BOT (fromMe) NÃO devem reabrir conversas fechadas
       // Apenas atualizar timestamp e preview, mantendo o status atual

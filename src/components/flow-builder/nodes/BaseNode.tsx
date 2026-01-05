@@ -130,9 +130,14 @@ function getNodeDescription(
   const config = data.config as Record<string, unknown>;
   
   switch (data.nodeSubtype) {
-    case 'keyword':
+    case 'keyword': {
       const keywords = (config?.keywords as string[])?.join(', ') || 'Nenhuma palavra';
-      return `Palavras: ${keywords}`;
+      return `Cliente envia: ${keywords}`;
+    }
+    case 'message_key': {
+      const messageKeys = (config?.keywords as string[])?.join(', ') || 'Nenhuma mensagem';
+      return `Você envia: ${messageKeys.length > 25 ? messageKeys.substring(0, 25) + '...' : messageKeys}`;
+    }
     case 'send_text':
       const msg = (config?.message as string) || '';
       return msg.length > 30 ? msg.substring(0, 30) + '...' : msg || 'Configurar mensagem';

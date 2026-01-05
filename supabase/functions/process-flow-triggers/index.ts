@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface TriggerRequest {
-  trigger_type: 'redirect_lead' | 'keyword' | 'first_message' | 'new_contact' | 'inactivity' | 'tag_added';
+  trigger_type: 'redirect_lead' | 'keyword' | 'message_key' | 'first_message' | 'new_contact' | 'inactivity' | 'tag_added';
   tenant_id: string;
   contact_id: string;
   channel_id?: string;
@@ -96,20 +96,26 @@ Deno.serve(async (req) => {
           break;
 
         case 'keyword':
+        case 'message_key':
           // Verificar se mensagem contém palavras-chave
+          // keyword = mensagem do CLIENTE | message_key = mensagem ENVIADA pelo sistema
           if (message_content) {
             const keywords = (config.keywords as string[]) || [];
             const matchType = (config.match_type as string) || 'contains';
             const msg = message_content.toLowerCase();
 
             shouldTrigger = keywords.some((kw: string) => {
-              const keyword = kw.toLowerCase();
+              const keyword = kw.toLowerCase().trim();
               switch (matchType) {
                 case 'equals': return msg === keyword;
                 case 'starts_with': return msg.startsWith(keyword);
                 default: return msg.includes(keyword);
               }
             });
+            
+            if (shouldTrigger) {
+              console.log(`[process-flow-triggers] ✅ ${trigger_type} match found for flow ${flow.name}`);
+            }
           } else {
             shouldTrigger = false;
           }
