@@ -9,6 +9,7 @@ import { useTags } from '@/hooks/useTags';
 import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
+import { useLeadStatuses } from '@/hooks/useLeadStatuses';
 import { FlowNodeData } from '@/types/flow';
 import { WebhookBodyFields, BodyField, bodyFieldsToObject, objectToBodyFields } from './WebhookBodyFields';
 
@@ -23,6 +24,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
   const { data: team } = useTeam();
   const { data: departments } = useDepartments();
   const { data: campaigns } = useRedirectCampaigns();
+  const { data: leadStatuses } = useLeadStatuses();
   
   const updateConfig = useCallback((key: string, value: unknown) => {
     if (!node) return;
@@ -65,7 +67,7 @@ export function PropertiesPanel({ node, onUpdate, onClose }: PropertiesPanelProp
         </div>
         
         {/* Campos específicos por tipo */}
-        {renderNodeConfig(node, updateConfig, onUpdate, { tags, team, departments, campaigns })}
+        {renderNodeConfig(node, updateConfig, onUpdate, { tags, team, departments, campaigns, leadStatuses })}
       </div>
     </div>
   );
@@ -76,6 +78,7 @@ interface DataProps {
   team: Array<{ id: string; full_name: string }> | undefined;
   departments: Array<{ id: string; name: string }> | undefined;
   campaigns: Array<{ id: string; name: string }> | undefined;
+  leadStatuses: Array<{ id: string; name: string; color: string | null }> | undefined;
 }
 
 function renderNodeConfig(
@@ -332,12 +335,17 @@ function renderNodeConfig(
               <SelectValue placeholder="Selecione o status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="new">Novo</SelectItem>
-              <SelectItem value="contacted">Contatado</SelectItem>
-              <SelectItem value="qualified">Qualificado</SelectItem>
-              <SelectItem value="negotiation">Em Negociação</SelectItem>
-              <SelectItem value="won">Ganho</SelectItem>
-              <SelectItem value="lost">Perdido</SelectItem>
+              {data.leadStatuses?.map((status) => (
+                <SelectItem key={status.id} value={status.name}>
+                  <span className="flex items-center gap-2">
+                    <span 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: status.color || '#6B7280' }}
+                    />
+                    {status.name}
+                  </span>
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
