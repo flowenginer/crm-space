@@ -157,6 +157,8 @@ function getNodeDescription(
     }
     case 'assign_agent':
       return 'Atribuir atendente';
+    case 'transfer_user':
+      return config?.user_id ? 'Transferir para usuário' : 'Selecione o atendente';
     case 'if_else':
       return `Se ${config?.variable || '...'} ${config?.operator || '='} ${config?.value || '...'}`;
     case 'inactivity':

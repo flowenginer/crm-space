@@ -323,6 +323,63 @@ function renderNodeConfig(
         </div>
       );
       
+    case 'transfer_user':
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Departamento (opcional)</Label>
+            <Select 
+              value={(config?.department_id as string) || 'same'}
+              onValueChange={(v) => updateConfig('department_id', v === 'same' ? null : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Manter departamento atual" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="same">Manter departamento atual</SelectItem>
+                {data.departments?.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Opcionalmente, mude o departamento ao transferir
+            </p>
+          </div>
+          
+          <div className="space-y-2">
+            <Label>Atendente</Label>
+            <Select 
+              value={(config?.user_id as string) || ''}
+              onValueChange={(v) => updateConfig('user_id', v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o atendente" />
+              </SelectTrigger>
+              <SelectContent>
+                {data.team?.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    {user.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="space-y-2">
+            <Label>Nota de transferência (opcional)</Label>
+            <Textarea
+              value={(config?.note as string) || ''}
+              onChange={(e) => updateConfig('note', e.target.value)}
+              placeholder="Motivo da transferência..."
+              rows={2}
+            />
+          </div>
+        </div>
+      );
+      
     case 'set_lead_status':
       return (
         <div className="space-y-2">
