@@ -98,7 +98,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { MobileSwipeNavigation, MobilePanelIndicator, type MobilePanel } from '@/components/conversations/MobileSwipeNavigation';
+import { MobileSwipeNavigation, type MobilePanel } from '@/components/conversations/MobileSwipeNavigation';
 import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
@@ -3730,8 +3730,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
       {/* Column 2: Chat Area */}
       <div className={cn(
-        'flex-1 flex flex-col bg-background min-w-0',
-        isMobile ? (mobilePanel === 'chat' ? 'flex' : 'hidden') : 'flex'
+        'flex-1 flex flex-col bg-background min-w-0 w-full',
+        isMobile ? (mobilePanel === 'chat' ? 'flex w-full' : 'hidden') : 'flex'
       )}>
         {selectedConversation ? (
           <>
@@ -4936,9 +4936,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
       {/* Mobile Contact Details Panel - Full screen via swipe */}
       {isMobile && mobilePanel === 'details' && selectedConversation && (
-        <div className="fixed inset-0 z-50 bg-background flex flex-col">
+        <div className="fixed inset-0 z-50 bg-background flex flex-col w-full">
           {/* Header with back button */}
-          <div className="flex items-center gap-3 p-4 border-b border-border bg-card">
+          <div className="flex items-center gap-3 p-4 border-b border-border bg-card w-full">
             <button 
               onClick={() => handleMobilePanelChange('chat')}
               className="p-2 -ml-2 hover:bg-muted rounded-lg"
@@ -4948,7 +4948,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             <h2 className="font-semibold text-foreground">Detalhes do Cliente</h2>
           </div>
           {/* Sidebar content */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto w-full">
             <ConversationSidebar 
               conversationId={selectedConversation.id} 
               onClose={() => handleMobilePanelChange('chat')}
@@ -5502,14 +5502,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         conversationId={selectedConversation?.id}
       />
 
-      {/* Mobile Panel Indicator */}
-      {isMobile && selectedConversation && (
-        <MobilePanelIndicator
-          currentPanel={mobilePanel}
-          hasConversation={!!selectedConversation}
-          onPanelChange={handleMobilePanelChange}
-        />
-      )}
       </div>
     </MobileSwipeNavigation>
   );
