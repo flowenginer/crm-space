@@ -90,13 +90,12 @@ serve(async (req) => {
 
     console.log(`[InitiateCall] Using Cloud API config ${config.id} with phone_number_id ${config.phone_number_id}`);
 
-    // Normalize phone number (remove non-digits, ensure + prefix)
-    const normalizedPhone = to.replace(/\D/g, "");
-    const formattedPhone = normalizedPhone.startsWith("+") ? normalizedPhone : `+${normalizedPhone}`;
+    // Format phone number - Meta expects E.164 without the "+" prefix
+    const formattedPhone = to.replace(/\D/g, "");
 
     console.log(`[InitiateCall] Calling Meta Graph API to initiate call to ${formattedPhone}`);
 
-    // Call Meta Graph API to initiate the call
+    // Initiate call via Meta Graph API
     const apiVersion = config.api_version || "v22.0";
     const graphResponse = await fetch(
       `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}/calls`,
@@ -107,7 +106,9 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          messaging_product: "whatsapp",
           to: formattedPhone,
+          type: "audio",
         }),
       }
     );
@@ -116,10 +117,11 @@ serve(async (req) => {
 
     if (!graphResponse.ok) {
       console.error("[InitiateCall] Meta API error:", graphData);
+      const errorMessage = graphData.error?.message || graphData.error?.error_user_msg || "Unknown error";
       return new Response(
         JSON.stringify({ 
-          error: "Failed to initiate call", 
-          details: graphData.error?.message || "Unknown error" 
+          error: `Meta API error: ${errorMessage}`, 
+          details: graphData.error || graphData
         }),
         { status: graphResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

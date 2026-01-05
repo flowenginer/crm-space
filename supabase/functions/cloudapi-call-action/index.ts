@@ -68,8 +68,11 @@ serve(async (req) => {
       );
     }
 
-    // Build request body based on action
-    let requestBody: Record<string, unknown> = { action };
+    // Build request body based on action - Meta requires messaging_product
+    let requestBody: Record<string, unknown> = { 
+      messaging_product: "whatsapp",
+      action 
+    };
 
     if (action === "answer" && sdp_answer) {
       requestBody.session = {
