@@ -196,9 +196,12 @@ Deno.serve(async (req) => {
     for (const entityType of entitiesToSync) {
       try {
         if (entityType === "contacts") {
-          const contactResults = await syncContacts(supabase, tenant_id, accessToken, direction);
+          const contactResults = await syncContacts(supabase, tenant_id, accessToken, direction, preview_only, start_date, end_date, import_mode, selected_ids);
           results.contacts = contactResults.counts;
           errors.push(...contactResults.errors);
+          if (preview_only && contactResults.preview) {
+            previewData.push(...contactResults.preview);
+          }
         } else if (entityType === "products") {
           const productResults = await syncProducts(supabase, tenant_id, accessToken, direction);
           results.products = productResults.counts;
@@ -355,9 +358,20 @@ async function blingApi(endpoint: string, accessToken: string, method = "GET", b
 }
 
 // Sync Contacts
-async function syncContacts(supabase: any, tenantId: string, accessToken: string, direction: string) {
+async function syncContacts(
+  supabase: any, 
+  tenantId: string, 
+  accessToken: string, 
+  direction: string,
+  previewOnly: boolean = false,
+  startDate?: string,
+  endDate?: string,
+  importMode: string = "all",
+  selectedIds?: string[]
+) {
   const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
   const errors: Array<{ entity: string; message: string; details?: string }> = [];
+  const preview: any[] = [];
 
   try {
     // Import from Bling to Local
@@ -368,7 +382,17 @@ async function syncContacts(supabase: any, tenantId: string, accessToken: string
       let hasMore = true;
 
       while (hasMore) {
-        const response = await blingApi(`/contatos?pagina=${page}&limite=100`, accessToken);
+        // Build endpoint with date filters if provided
+        let endpoint = `/contatos?pagina=${page}&limite=100`;
+        if (startDate) {
+          endpoint += `&dataInclusaoInicial=${startDate}`;
+        }
+        if (endDate) {
+          endpoint += `&dataInclusaoFinal=${endDate}`;
+        }
+        
+        console.log(`[bling-sync] Fetching contacts: ${endpoint}`);
+        const response = await blingApi(endpoint, accessToken);
         const blingContacts: BlingContact[] = response.data || [];
 
         if (blingContacts.length === 0) {
@@ -386,6 +410,32 @@ async function syncContacts(supabase: any, tenantId: string, accessToken: string
               .eq("entity_type", "contact")
               .eq("bling_id", String(blingContact.id))
               .maybeSingle();
+
+            const isNew = !existingMapping?.local_id;
+
+            // For preview mode, just collect data
+            if (previewOnly) {
+              preview.push({
+                id: String(blingContact.id),
+                name: blingContact.nome || "Sem nome",
+                code: blingContact.cpfCnpj || blingContact.codigo || null,
+                isNew,
+                exists_locally: !isNew,
+              });
+              continue;
+            }
+
+            // Skip if not in selected IDs (when provided)
+            if (selectedIds && selectedIds.length > 0 && !selectedIds.includes(String(blingContact.id))) {
+              counts.skipped++;
+              continue;
+            }
+
+            // Skip based on import mode
+            if (importMode === "new_only" && !isNew) {
+              counts.skipped++;
+              continue;
+            }
 
             const contactData = {
               full_name: blingContact.nome || "Sem nome",
@@ -545,7 +595,7 @@ async function syncContacts(supabase: any, tenantId: string, accessToken: string
     errors.push({ entity: "contacts", message: msg });
   }
 
-  return { counts, errors };
+  return { counts, errors, preview };
 }
 
 // Sync Products
