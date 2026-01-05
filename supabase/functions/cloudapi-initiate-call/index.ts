@@ -115,8 +115,39 @@ serve(async (req) => {
 
     console.log(`[InitiateCall] Calling Meta Graph API to initiate call to ${formattedPhone} with WebRTC SDP`);
 
-    // Initiate call via Meta Graph API with proper WebRTC format
+    // Quick permission sanity-check: verify token can access this Phone Number ID
     const apiVersion = config.api_version || "v22.0";
+    const phoneCheckResp = await fetch(
+      `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}?fields=id,display_phone_number,verified_name`,
+      {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${config.access_token}`,
+        },
+      }
+    );
+
+    const phoneCheckData = await phoneCheckResp.json().catch(() => ({}));
+
+    if (!phoneCheckResp.ok) {
+      console.error("[InitiateCall] Phone number access check failed:", phoneCheckData);
+      return new Response(
+        JSON.stringify({
+          error: "Token sem acesso ao Phone Number ID",
+          suggestion:
+            "O access_token configurado não tem permissão/escopo para operar neste phone_number_id (ou pertence a outra WABA). Gere um token permanente de um System User com acesso ao mesmo Business/WABA e com as permissões WhatsApp necessárias.",
+          action_required: "fix_access_token_or_phone_number_id",
+          details: phoneCheckData?.error || phoneCheckData,
+          meta_error_code: phoneCheckData?.error?.code,
+        }),
+        {
+          status: phoneCheckResp.status,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Initiate call via Meta Graph API with proper WebRTC format
     const graphResponse = await fetch(
       `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}/calls`,
       {
