@@ -103,3 +103,6 @@ verify_jwt = true
 
 [functions.cloudapi-enable-calling]
 verify_jwt = true
+
+[functions.bling-token-refresh]
+verify_jwt = false
