@@ -1348,6 +1348,27 @@ serve(async (req) => {
             .eq("id", matchedMessage.id);
 
           console.log(`[Webhook] Updated frontend message with whatsapp_message_id`);
+
+          // TRIGGER MESSAGE_KEY AUTOMATIONS (mensagens enviadas via frontend)
+          try {
+            console.log(`[Webhook] 🤖 Checking message_key automations for frontend message...`);
+            
+            await supabase.functions.invoke('process-flow-triggers', {
+              body: {
+                trigger_type: 'message_key',
+                tenant_id: channel.tenant_id,
+                contact_id: contact.id,
+                channel_id: channel.id,
+                conversation_id: conversation.id,
+                message_content: matchedMessage.content || normalizedMessage.content,
+              }
+            });
+            
+            console.log(`[Webhook] ✅ message_key trigger invoked for frontend message`);
+          } catch (triggerError) {
+            console.error(`[Webhook] Error invoking message_key triggers:`, triggerError);
+          }
+
           return new Response(JSON.stringify({ success: true, message: "Frontend message updated" }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
