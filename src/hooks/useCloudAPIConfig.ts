@@ -55,7 +55,33 @@ export function useCreateCloudAPIConfig() {
       transcription_enabled?: boolean;
       sentiment_analysis_enabled?: boolean;
     }) => {
+      // Buscar usuário logado
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Buscar tenant_id do perfil
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError || !profile?.tenant_id) {
+        throw new Error('Tenant não encontrado. Verifique se seu usuário está vinculado a um tenant.');
+      }
+
+      const tenantId = profile.tenant_id;
+
+      // Desativar configs anteriores do mesmo tenant
+      await supabase
+        .from('cloudapi_configs')
+        .update({ is_active: false })
+        .eq('tenant_id', tenantId);
+
       const insertData = {
+        tenant_id: tenantId,
         phone_number_id: config.phone_number_id,
         access_token: config.access_token,
         verify_token: config.verify_token,
@@ -85,9 +111,9 @@ export function useCreateCloudAPIConfig() {
       queryClient.invalidateQueries({ queryKey: ['cloudapi-config'] });
       toast.success('Configuração da Cloud API salva com sucesso!');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('Erro ao salvar configuração:', error);
-      toast.error('Erro ao salvar configuração da Cloud API');
+      toast.error(error.message || 'Erro ao salvar configuração da Cloud API');
     },
   });
 }
