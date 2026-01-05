@@ -54,6 +54,7 @@ export function useCreateCloudAPIConfig() {
       voip_config?: Json;
       transcription_enabled?: boolean;
       sentiment_analysis_enabled?: boolean;
+      channel_id?: string;
     }) => {
       // Buscar usuário logado
       const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -93,6 +94,7 @@ export function useCreateCloudAPIConfig() {
         voip_config: (config.voip_config || {}) as Json,
         transcription_enabled: config.transcription_enabled || false,
         sentiment_analysis_enabled: config.sentiment_analysis_enabled || false,
+        channel_id: config.channel_id || null,
         is_active: true,
       };
 

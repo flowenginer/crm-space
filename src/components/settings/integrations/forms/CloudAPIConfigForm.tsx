@@ -12,6 +12,8 @@ import {
   useTestCloudAPIConnection,
   useGenerateWebhookUrl
 } from '@/hooks/useCloudAPIConfig';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { VoIPProvider } from '@/types/cloudapi';
 
@@ -26,6 +28,20 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
   const testConnection = useTestCloudAPIConnection();
   const generateWebhookUrl = useGenerateWebhookUrl();
 
+  // Buscar canais WhatsApp disponíveis
+  const { data: channels } = useQuery({
+    queryKey: ['whatsapp-channels-for-cloudapi'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('whatsapp_channels')
+        .select('id, name, phone')
+        .eq('is_deleted', false)
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const [formData, setFormData] = useState({
     phone_number_id: '',
     waba_id: '',
@@ -37,6 +53,7 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
     voip_provider: '' as VoIPProvider | '',
     transcription_enabled: false,
     sentiment_analysis_enabled: false,
+    channel_id: '',
   });
 
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -55,6 +72,7 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
         voip_provider: existingConfig.voip_provider || '',
         transcription_enabled: existingConfig.transcription_enabled || false,
         sentiment_analysis_enabled: existingConfig.sentiment_analysis_enabled || false,
+        channel_id: existingConfig.channel_id || '',
       });
     }
   }, [existingConfig]);
@@ -94,17 +112,24 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
       return;
     }
 
+    if (!formData.channel_id) {
+      toast.error('Selecione um canal WhatsApp');
+      return;
+    }
+
     try {
       if (existingConfig) {
         await updateConfig.mutateAsync({
           id: existingConfig.id,
           ...formData,
           voip_provider: formData.voip_provider || null,
+          channel_id: formData.channel_id || null,
         });
       } else {
         await createConfig.mutateAsync({
           ...formData,
           voip_provider: formData.voip_provider || undefined,
+          channel_id: formData.channel_id || undefined,
         });
       }
       onSuccess?.();
@@ -136,6 +161,32 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
           <ExternalLink className="h-4 w-4" />
           Documentação Cloud API
         </a>
+      </div>
+
+      {/* Canal WhatsApp */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium">Canal WhatsApp</h3>
+        <div className="space-y-2">
+          <Label htmlFor="channel_id">Vincular ao Canal *</Label>
+          <Select
+            value={formData.channel_id}
+            onValueChange={(value) => setFormData(prev => ({ ...prev, channel_id: value }))}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione o canal" />
+            </SelectTrigger>
+            <SelectContent>
+              {channels?.map((channel) => (
+                <SelectItem key={channel.id} value={channel.id}>
+                  {channel.name} {channel.phone && `(${channel.phone})`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            A configuração será vinculada a este canal para chamadas
+          </p>
+        </div>
       </div>
 
       {/* Credenciais */}
