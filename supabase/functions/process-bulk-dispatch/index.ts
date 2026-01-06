@@ -257,6 +257,101 @@ Deno.serve(async (req) => {
   }
 });
 
+// Generate contacts from filters if not already generated
+async function generateContactsFromFilters(supabase: any, dispatch: any): Promise<number> {
+  const filters = dispatch.filters || {};
+  const tenantId = dispatch.tenant_id;
+
+  console.log(`[BulkDispatch] Generating contacts from filters:`, JSON.stringify(filters));
+
+  // Start with base query
+  let query = supabase
+    .from('contacts')
+    .select('id')
+    .eq('tenant_id', tenantId);
+
+  // Apply tag filters - need to check contact_tags table
+  if (filters.tags && filters.tags.length > 0) {
+    const { data: taggedContacts } = await supabase
+      .from('contact_tags')
+      .select('contact_id')
+      .eq('tenant_id', tenantId)
+      .in('tag_id', filters.tags);
+
+    const taggedContactIds = [...new Set(taggedContacts?.map((ct: any) => ct.contact_id) || [])];
+    if (taggedContactIds.length > 0) {
+      query = query.in('id', taggedContactIds);
+    } else {
+      console.log(`[BulkDispatch] No contacts found with specified tags`);
+      return 0;
+    }
+  }
+
+  // Apply segment filter
+  if (filters.segment_id) {
+    query = query.eq('segment_id', filters.segment_id);
+  }
+
+  // Apply date filters
+  if (filters.createdFrom) {
+    query = query.gte('created_at', filters.createdFrom);
+  }
+  if (filters.createdTo) {
+    query = query.lte('created_at', filters.createdTo);
+  }
+
+  // Apply conversation status filter
+  if (filters.conversationStatus && filters.conversationStatus.length > 0) {
+    const { data: conversations } = await supabase
+      .from('conversations')
+      .select('contact_id')
+      .eq('tenant_id', tenantId)
+      .in('status', filters.conversationStatus);
+
+    const contactIds = [...new Set(conversations?.map((c: any) => c.contact_id) || [])];
+    if (contactIds.length > 0) {
+      query = query.in('id', contactIds);
+    } else {
+      console.log(`[BulkDispatch] No contacts found with specified conversation status`);
+      return 0;
+    }
+  }
+
+  const { data: contacts, error } = await query;
+
+  if (error) {
+    console.error(`[BulkDispatch] Error fetching contacts:`, error);
+    return 0;
+  }
+
+  if (!contacts || contacts.length === 0) {
+    console.log(`[BulkDispatch] No contacts found matching filters`);
+    return 0;
+  }
+
+  console.log(`[BulkDispatch] Found ${contacts.length} contacts matching filters`);
+
+  // Insert contacts into bulk_dispatch_contacts in batches
+  const contactRecords = contacts.map((c: any) => ({
+    dispatch_id: dispatch.id,
+    contact_id: c.id,
+    tenant_id: tenantId,
+    status: 'pending',
+  }));
+
+  const batchSize = 500;
+  for (let i = 0; i < contactRecords.length; i += batchSize) {
+    const batch = contactRecords.slice(i, i + batchSize);
+    const { error: insertError } = await supabase.from('bulk_dispatch_contacts').insert(batch);
+    if (insertError) {
+      console.error(`[BulkDispatch] Error inserting contacts batch:`, insertError);
+    }
+  }
+
+  console.log(`[BulkDispatch] Generated ${contacts.length} contacts from filters`);
+  return contacts.length;
+}
+
 // @ts-ignore - Using any types for edge function flexibility
 async function processDispatch(supabase: any, dispatch: any) {
   const baseIntervalMs = dispatch.interval_seconds * 1000;
@@ -268,6 +363,36 @@ async function processDispatch(supabase: any, dispatch: any) {
   const marketingCampaign = dispatch.marketing_campaign;
 
   console.log(`[BulkDispatch] Campaign type: ${dispatch.campaign_type}, isMarketing: ${isMarketingCampaign}`);
+
+  // Check if contacts already generated, if not generate from filters
+  const { count: existingCount } = await supabase
+    .from('bulk_dispatch_contacts')
+    .select('*', { count: 'exact', head: true })
+    .eq('dispatch_id', dispatch.id);
+
+  console.log(`[BulkDispatch] Existing contacts in bulk_dispatch_contacts: ${existingCount}`);
+
+  if (!existingCount || existingCount === 0) {
+    console.log(`[BulkDispatch] No contacts found, generating from filters...`);
+    const generatedCount = await generateContactsFromFilters(supabase, dispatch);
+
+    if (generatedCount === 0) {
+      console.log(`[BulkDispatch] No contacts match filters, marking as completed`);
+      await supabase
+        .from('bulk_dispatches')
+        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .eq('id', dispatch.id);
+      return;
+    }
+
+    // Update total_contacts with actual count
+    await supabase
+      .from('bulk_dispatches')
+      .update({ total_contacts: generatedCount })
+      .eq('id', dispatch.id);
+
+    dispatch.total_contacts = generatedCount;
+  }
 
   // Validate we have the correct data for the campaign type
   if (isMarketingCampaign && !marketingCampaign) {
