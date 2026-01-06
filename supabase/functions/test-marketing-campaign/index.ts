@@ -175,8 +175,8 @@ Deno.serve(async (req) => {
 
         // Use 'code' instead of 'type' for provider identification
         const providerCode = provider?.code || 'evolution';
-        // Use 'base_url' instead of 'api_url'
-        const providerBaseUrl = provider?.base_url || 'https://evo.whatlead.com.br';
+        // Normalize base URL (remove trailing slash)
+        const providerBaseUrl = (provider?.base_url || 'https://evo.whatlead.com.br').replace(/\/+$/, '');
         // Use 'instance_token' instead of 'api_token'
         const apiToken = channel.instance_token || '';
 
@@ -189,11 +189,15 @@ Deno.serve(async (req) => {
             headers['Client-Token'] = apiToken;
             break;
 
-          case 'uazapi':
-            apiUrl = `${providerBaseUrl}${channel.instance_id}/chat/send-text`;
-            apiPayload = { to: phone, body: processedMessage };
-            headers['Authorization'] = `Bearer ${apiToken}`;
+          case 'uazapi': {
+            const cleanPhone = String(phone).replace(/\D/g, '');
+            const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+            apiUrl = `${providerBaseUrl}/send/text`;
+            apiPayload = { number: formattedPhone, text: processedMessage };
+            headers['Accept'] = 'application/json';
+            headers['token'] = apiToken;
             break;
+          }
 
           case 'evolution':
           default:
@@ -230,10 +234,14 @@ Deno.serve(async (req) => {
               audioApiUrl = `${providerBaseUrl}/send-audio`;
               audioPayload = { phone, audio: step.audio_url };
               break;
-            case 'uazapi':
-              audioApiUrl = `${providerBaseUrl}${channel.instance_id}/chat/send-audio`;
-              audioPayload = { to: phone, url: step.audio_url };
+            case 'uazapi': {
+              const cleanPhone = String(phone).replace(/\D/g, '');
+              const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+              audioApiUrl = `${providerBaseUrl}/send/media`;
+              // UAZAPI V2: áudio deve ser ptt
+              audioPayload = { number: formattedPhone, type: 'ptt', file: step.audio_url };
               break;
+            }
             case 'evolution':
             default:
               audioApiUrl = `${providerBaseUrl}/message/sendWhatsAppAudio/${channel.instance_id}`;
@@ -267,10 +275,21 @@ Deno.serve(async (req) => {
                 mediaPayload = { phone, document: step.attachment_url };
               }
               break;
-            case 'uazapi':
-              mediaApiUrl = `${providerBaseUrl}${channel.instance_id}/chat/send-media`;
-              mediaPayload = { to: phone, url: step.attachment_url };
+            case 'uazapi': {
+              const cleanPhone = String(phone).replace(/\D/g, '');
+              const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+              mediaApiUrl = `${providerBaseUrl}/send/media`;
+              mediaPayload = {
+                number: formattedPhone,
+                type: step.attachment_type || 'document',
+                file: step.attachment_url,
+              };
+              // caption apenas se não for documento/áudio
+              if (step.message && step.attachment_type !== 'audio' && step.attachment_type !== 'document') {
+                mediaPayload.caption = replaceVariables(step.message, contactName);
+              }
               break;
+            }
             case 'evolution':
             default:
               mediaApiUrl = `${providerBaseUrl}/message/sendMedia/${channel.instance_id}`;
