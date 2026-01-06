@@ -478,6 +478,7 @@ export function useBlingPreview(entityType: BlingImportEntityType) {
       startDate?: string; 
       endDate?: string;
       mode?: 'all' | 'new_only' | 'update_existing';
+      ignoreIncomplete?: boolean;
     }): Promise<BlingPreviewResult> => {
       const { data: config } = await supabase
         .from('bling_integration_config')
@@ -497,6 +498,7 @@ export function useBlingPreview(entityType: BlingImportEntityType) {
           start_date: filters?.startDate,
           end_date: filters?.endDate,
           import_mode: filters?.mode,
+          ignore_incomplete: filters?.ignoreIncomplete,
         },
       });
 
@@ -540,12 +542,14 @@ export function useBlingImport() {
       mode,
       selectedIds,
       createDependencies,
+      ignoreIncomplete,
       dateRange,
     }: { 
       entityType: BlingImportEntityType; 
       mode: 'all' | 'new_only' | 'update_existing';
       selectedIds?: string[];
       createDependencies?: boolean;
+      ignoreIncomplete?: boolean;
       dateRange?: { startDate: string; endDate: string };
     }): Promise<BlingImportResult> => {
       const { data: config } = await supabase
@@ -565,6 +569,7 @@ export function useBlingImport() {
           import_mode: mode,
           selected_ids: selectedIds,
           create_dependencies: createDependencies,
+          ignore_incomplete: ignoreIncomplete,
           start_date: dateRange?.startDate,
           end_date: dateRange?.endDate,
         },

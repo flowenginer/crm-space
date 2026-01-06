@@ -117,6 +117,7 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
   const [items, setItems] = useState<ExtendedPreviewItem[]>([]);
   const [dependencies, setDependencies] = useState<BlingDependency[]>([]);
   const [createMissingDependencies, setCreateMissingDependencies] = useState(true);
+  const [ignoreIncomplete, setIgnoreIncomplete] = useState(true);
   
   const preview = useBlingPreview(entityType);
   const importMutation = useBlingImport();
@@ -141,6 +142,7 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
       startDate: config.hasDateFilter && dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined,
       endDate: config.hasDateFilter && dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined,
       mode: importMode,
+      ignoreIncomplete: entityType === 'contacts' ? ignoreIncomplete : undefined,
     };
 
     preview.mutate(filters, {
@@ -203,6 +205,7 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
         mode: importMode,
         selectedIds,
         createDependencies: createMissingDependencies,
+        ignoreIncomplete: entityType === 'contacts' ? ignoreIncomplete : undefined,
         dateRange: config.hasDateFilter && dateRange.from && dateRange.to ? {
           startDate: format(dateRange.from, 'yyyy-MM-dd'),
           endDate: format(dateRange.to, 'yyyy-MM-dd'),
@@ -221,6 +224,7 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
     setSearchTerm('');
     setItems([]);
     setDependencies([]);
+    setIgnoreIncomplete(true);
     onOpenChange(false);
   };
 
@@ -334,6 +338,22 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
             </Label>
           </div>
         </RadioGroup>
+
+        {entityType === 'contacts' && (
+          <div className="flex items-center space-x-3 p-3 rounded-lg border bg-muted/50">
+            <Checkbox
+              id="ignoreIncomplete"
+              checked={ignoreIncomplete}
+              onCheckedChange={(checked) => setIgnoreIncomplete(!!checked)}
+            />
+            <Label htmlFor="ignoreIncomplete" className="cursor-pointer flex-1">
+              <div className="font-medium text-sm">Ignorar contatos incompletos</div>
+              <div className="text-xs text-muted-foreground">
+                Pula contatos sem telefone ou endereço básico (cidade/estado)
+              </div>
+            </Label>
+          </div>
+        )}
 
         {entityType === 'financial' && (
           <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
