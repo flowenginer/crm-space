@@ -195,7 +195,9 @@ Deno.serve(async (req) => {
             apiUrl = `${providerBaseUrl}/send/text`;
             apiPayload = { number: formattedPhone, text: processedMessage };
             headers['Accept'] = 'application/json';
+            // UAZAPI geralmente aceita o header "token" (minúsculo), mas alguns proxies exigem "Token"
             headers['token'] = apiToken;
+            headers['Token'] = apiToken;
             break;
           }
 
@@ -215,10 +217,26 @@ Deno.serve(async (req) => {
             body: JSON.stringify(apiPayload),
           });
 
-          const responseData = await response.json();
+          const raw = await response.text();
+          let responseData: any = null;
+          try {
+            responseData = raw ? JSON.parse(raw) : null;
+          } catch {
+            responseData = { raw };
+          }
+
+          console.log(`[test-marketing-campaign] Provider response`, {
+            provider: providerCode,
+            url: apiUrl,
+            status: response.status,
+            ok: response.ok,
+            body: responseData,
+          });
 
           if (!response.ok) {
-            throw new Error(responseData.message || responseData.error || 'Erro ao enviar mensagem');
+            throw new Error(
+              responseData?.message || responseData?.error || responseData?.raw || 'Erro ao enviar mensagem'
+            );
           }
 
           console.log(`[test-marketing-campaign] Step ${step.index + 1} sent successfully`);
