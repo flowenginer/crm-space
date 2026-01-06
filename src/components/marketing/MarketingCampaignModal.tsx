@@ -337,14 +337,14 @@ export function MarketingCampaignModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh]">
-        <DialogHeader>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>
             {isEditing ? 'Editar Campanha de Marketing' : 'Nova Campanha de Marketing'}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 overflow-hidden">
           {/* Left Column - Form */}
           <ScrollArea className="max-h-[60vh] pr-4">
             <div className="space-y-6">
@@ -619,24 +619,26 @@ export function MarketingCampaignModal({
           </ScrollArea>
 
           {/* Right Column - WhatsApp Preview */}
-          <div className="space-y-4">
-            <Label className="text-base font-semibold">Preview WhatsApp</Label>
-            {renderWhatsAppPreview(currentStep || { ...DEFAULT_STEP })}
-            
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p><strong>Dicas de formatação:</strong></p>
-              <p>*negrito* → <strong>negrito</strong></p>
-              <p>_itálico_ → <em>itálico</em></p>
-              <p>~riscado~ → <del>riscado</del></p>
-            </div>
+          <ScrollArea className="h-full max-h-[60vh]">
+            <div className="space-y-4 pr-4">
+              <Label className="text-base font-semibold">Preview WhatsApp</Label>
+              {renderWhatsAppPreview(currentStep || { ...DEFAULT_STEP })}
+              
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p><strong>Dicas de formatação:</strong></p>
+                <p>*negrito* → <strong>negrito</strong></p>
+                <p>_itálico_ → <em>itálico</em></p>
+                <p>~riscado~ → <del>riscado</del></p>
+              </div>
 
-            {/* Test Panel */}
-            <MarketingTestPanel
-              campaignId={campaign?.id}
-              steps={steps}
-              campaignTitle={title || 'Campanha de Teste'}
-            />
-          </div>
+              {/* Test Panel */}
+              <MarketingTestPanel
+                campaignId={campaign?.id}
+                steps={steps}
+                campaignTitle={title || 'Campanha de Teste'}
+              />
+            </div>
+          </ScrollArea>
         </div>
 
         <DialogFooter>
