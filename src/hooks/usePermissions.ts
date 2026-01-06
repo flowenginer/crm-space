@@ -115,8 +115,19 @@ export function usePermissions() {
       return profile.permissions[category][action];
     }
     
-    // Fallback to role permissions
-    return roleDefinition.permissions?.[category]?.[action] ?? false;
+    // Check role permissions - structured format: { category: { action: true } }
+    if (roleDefinition.permissions?.[category]?.[action] !== undefined) {
+      return roleDefinition.permissions[category][action];
+    }
+    
+    // Fallback: check menu format: { menu: { "category.action": true } }
+    // This handles legacy data where permissions were stored as "category.action" keys
+    const menuPermissions = roleDefinition.permissions?.menu as Record<string, boolean> | undefined;
+    if (menuPermissions?.[`${category}.${action}`] !== undefined) {
+      return menuPermissions[`${category}.${action}`];
+    }
+    
+    return false;
   };
 
   // Convenience permission checkers

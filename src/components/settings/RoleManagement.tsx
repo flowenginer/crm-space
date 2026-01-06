@@ -89,9 +89,26 @@ export function RoleManagement() {
       return;
     }
 
-    // Combinar permissões antigas com as novas permissões de menu
+    // Converter menuPermissions para formato estruturado category.action
+    // Isso garante compatibilidade com o sistema de permissões
+    const structuredPermissions: Record<string, Record<string, boolean>> = {};
+    
+    Object.entries(form.menuPermissions).forEach(([key, value]) => {
+      // key pode ser "templates.view", "dashboard.view", etc
+      const parts = key.split('.');
+      if (parts.length === 2) {
+        const [category, action] = parts;
+        if (!structuredPermissions[category]) {
+          structuredPermissions[category] = {};
+        }
+        structuredPermissions[category][action] = value;
+      }
+    });
+
+    // Combinar permissões estruturadas + manter formato menu para compatibilidade
     const combinedPermissions = {
       ...form.permissions,
+      ...structuredPermissions,
       menu: form.menuPermissions,
     };
 
