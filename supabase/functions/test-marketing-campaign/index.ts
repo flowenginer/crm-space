@@ -133,6 +133,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    console.log(`[test-marketing-campaign] Channel found:`, { 
+      id: channel.id, 
+      name: channel.name, 
+      status: channel.status,
+      type: channel.type,
+      provider: channel.provider ? { code: channel.provider.code, base_url: channel.provider.base_url } : null
+    });
+
     if (channel.status !== 'connected') {
       return new Response(
         JSON.stringify({ error: 'Canal não está conectado' }),
@@ -165,26 +173,33 @@ Deno.serve(async (req) => {
         let apiPayload: any = {};
         let headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
-        const providerType = provider?.type || 'evolution';
+        // Use 'code' instead of 'type' for provider identification
+        const providerCode = provider?.code || 'evolution';
+        // Use 'base_url' instead of 'api_url'
+        const providerBaseUrl = provider?.base_url || 'https://evo.whatlead.com.br';
+        // Use 'instance_token' instead of 'api_token'
+        const apiToken = channel.instance_token || '';
 
-        switch (providerType) {
+        console.log(`[test-marketing-campaign] Using provider: ${providerCode}, base_url: ${providerBaseUrl}`);
+
+        switch (providerCode) {
           case 'zapi':
-            apiUrl = `${provider.api_url}/send-text`;
+            apiUrl = `${providerBaseUrl}/send-text`;
             apiPayload = { phone, message: processedMessage };
-            headers['Client-Token'] = channel.api_token || '';
+            headers['Client-Token'] = apiToken;
             break;
 
           case 'uazapi':
-            apiUrl = `${provider.api_url}/chat/sendText`;
+            apiUrl = `${providerBaseUrl}/chat/send-text`;
             apiPayload = { to: phone, body: processedMessage };
-            headers['apikey'] = channel.api_token || '';
+            headers['apikey'] = apiToken;
             break;
 
           case 'evolution':
           default:
-            apiUrl = `${provider?.api_url || 'https://evo.whatlead.com.br'}/message/sendText/${channel.instance_id}`;
+            apiUrl = `${providerBaseUrl}/message/sendText/${channel.instance_id}`;
             apiPayload = { number: phone, text: processedMessage };
-            headers['apikey'] = channel.api_token || '';
+            headers['apikey'] = apiToken;
             break;
         }
 
@@ -210,18 +225,18 @@ Deno.serve(async (req) => {
           let audioApiUrl = '';
           let audioPayload: any = {};
 
-          switch (providerType) {
+          switch (providerCode) {
             case 'zapi':
-              audioApiUrl = `${provider.api_url}/send-audio`;
+              audioApiUrl = `${providerBaseUrl}/send-audio`;
               audioPayload = { phone, audio: step.audio_url };
               break;
             case 'uazapi':
-              audioApiUrl = `${provider.api_url}/chat/sendAudio`;
+              audioApiUrl = `${providerBaseUrl}/chat/send-audio`;
               audioPayload = { to: phone, url: step.audio_url };
               break;
             case 'evolution':
             default:
-              audioApiUrl = `${provider?.api_url || 'https://evo.whatlead.com.br'}/message/sendWhatsAppAudio/${channel.instance_id}`;
+              audioApiUrl = `${providerBaseUrl}/message/sendWhatsAppAudio/${channel.instance_id}`;
               audioPayload = { number: phone, audio: step.audio_url };
               break;
           }
@@ -239,26 +254,26 @@ Deno.serve(async (req) => {
           let mediaApiUrl = '';
           let mediaPayload: any = {};
 
-          switch (providerType) {
+          switch (providerCode) {
             case 'zapi':
               if (step.attachment_type === 'image') {
-                mediaApiUrl = `${provider.api_url}/send-image`;
+                mediaApiUrl = `${providerBaseUrl}/send-image`;
                 mediaPayload = { phone, image: step.attachment_url };
               } else if (step.attachment_type === 'video') {
-                mediaApiUrl = `${provider.api_url}/send-video`;
+                mediaApiUrl = `${providerBaseUrl}/send-video`;
                 mediaPayload = { phone, video: step.attachment_url };
               } else {
-                mediaApiUrl = `${provider.api_url}/send-document`;
+                mediaApiUrl = `${providerBaseUrl}/send-document`;
                 mediaPayload = { phone, document: step.attachment_url };
               }
               break;
             case 'uazapi':
-              mediaApiUrl = `${provider.api_url}/chat/sendMedia`;
+              mediaApiUrl = `${providerBaseUrl}/chat/send-media`;
               mediaPayload = { to: phone, url: step.attachment_url };
               break;
             case 'evolution':
             default:
-              mediaApiUrl = `${provider?.api_url || 'https://evo.whatlead.com.br'}/message/sendMedia/${channel.instance_id}`;
+              mediaApiUrl = `${providerBaseUrl}/message/sendMedia/${channel.instance_id}`;
               mediaPayload = {
                 number: phone,
                 mediatype: step.attachment_type || 'document',
