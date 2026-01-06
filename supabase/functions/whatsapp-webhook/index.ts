@@ -2641,6 +2641,278 @@ serve(async (req) => {
       console.error(`[Webhook] Error in rescue cancel logic:`, rescueCancelError);
     }
 
+    // =====================================================
+    // AUTO-PROCESS MARKETING ON_REPLY_ACTIONS
+    // When a client responds, execute on_reply_actions for active marketing campaigns
+    // =====================================================
+    try {
+      const { data: activeMarketingCampaigns, error: marketingError } = await supabase
+        .from('active_marketing_campaigns')
+        .select(`
+          id,
+          campaign_id,
+          conversation_id,
+          current_step,
+          tenant_id,
+          marketing_campaign:marketing_campaigns(id, steps, title)
+        `)
+        .eq('contact_id', contact.id)
+        .eq('status', 'active');
+
+      if (marketingError) {
+        console.error(`[Webhook] Error checking active marketing campaigns:`, marketingError);
+      } else if (activeMarketingCampaigns && activeMarketingCampaigns.length > 0) {
+        console.log(`[Webhook] 🎯 Client responded - processing ${activeMarketingCampaigns.length} marketing campaign(s) for contact ${contact.id}`);
+        
+        for (const activeCampaign of activeMarketingCampaigns) {
+          const marketingCampaign = activeCampaign.marketing_campaign as any;
+          const steps = marketingCampaign?.steps || [];
+          const currentStepIndex = activeCampaign.current_step || 0;
+          const currentStep = steps[currentStepIndex] as any;
+
+          if (!currentStep) {
+            console.log(`[Webhook] No current step found for campaign ${activeCampaign.campaign_id}`);
+            continue;
+          }
+
+          const onReplyActions = currentStep.on_reply_actions || [];
+          console.log(`[Webhook] Campaign ${marketingCampaign?.title}: Step ${currentStepIndex}, ${onReplyActions.length} on_reply_actions`);
+
+          if (onReplyActions.length === 0) {
+            // No actions defined, just mark as responded and cancel pending messages
+            await supabase
+              .from('active_marketing_campaigns')
+              .update({ 
+                status: 'responded',
+                responded_at: new Date().toISOString(),
+              })
+              .eq('id', activeCampaign.id);
+            
+            await supabase
+              .from('marketing_scheduled_messages')
+              .update({ 
+                status: 'cancelled',
+                cancelled_at: new Date().toISOString(),
+              })
+              .eq('active_campaign_id', activeCampaign.id)
+              .eq('status', 'pending');
+            
+            console.log(`[Webhook] ✅ Marketing campaign ${activeCampaign.id} marked as responded (no actions)`);
+            continue;
+          }
+
+          // Execute on_reply_actions
+          let shouldCancelCampaign = false;
+          let shouldSendNextMessage = false;
+
+          for (const action of onReplyActions) {
+            const actionType = action.type;
+            const config = action.config || {};
+
+            console.log(`[Webhook] Executing marketing action: ${actionType}`, config);
+
+            try {
+              switch (actionType) {
+                case 'send_next_message':
+                  shouldSendNextMessage = true;
+                  break;
+
+                case 'cancel_campaign':
+                  shouldCancelCampaign = true;
+                  break;
+
+                case 'close':
+                  await supabase
+                    .from('conversations')
+                    .update({
+                      status: 'closed',
+                      close_reason: config?.close_reason_id || 'marketing_completed',
+                      closed_at: new Date().toISOString(),
+                    })
+                    .eq('id', activeCampaign.conversation_id);
+                  console.log(`[Webhook] Conversation closed`);
+                  break;
+
+                case 'transfer_department':
+                  if (config?.department_id) {
+                    await supabase
+                      .from('conversations')
+                      .update({ department_id: config.department_id })
+                      .eq('id', activeCampaign.conversation_id);
+                    console.log(`[Webhook] Transferred to department: ${config.department_id}`);
+                  }
+                  break;
+
+                case 'transfer_agent':
+                  if (config?.agent_id) {
+                    await supabase
+                      .from('conversations')
+                      .update({ assigned_to: config.agent_id })
+                      .eq('id', activeCampaign.conversation_id);
+                    console.log(`[Webhook] Transferred to agent: ${config.agent_id}`);
+                  }
+                  break;
+
+                case 'transfer_owner':
+                  const { data: contactOwner } = await supabase
+                    .from('contacts')
+                    .select('assigned_to')
+                    .eq('id', contact.id)
+                    .single();
+                  
+                  if (contactOwner?.assigned_to) {
+                    await supabase
+                      .from('conversations')
+                      .update({ assigned_to: contactOwner.assigned_to })
+                      .eq('id', activeCampaign.conversation_id);
+                    console.log(`[Webhook] Transferred to owner: ${contactOwner.assigned_to}`);
+                  }
+                  break;
+
+                case 'add_tag':
+                  if (config?.tag_id) {
+                    await supabase
+                      .from('contact_tags')
+                      .upsert(
+                        { contact_id: contact.id, tag_id: config.tag_id, tenant_id: activeCampaign.tenant_id },
+                        { onConflict: 'contact_id,tag_id' }
+                      );
+                    console.log(`[Webhook] Tag added: ${config.tag_id}`);
+                  }
+                  break;
+
+                case 'remove_tag':
+                  if (config?.tag_id) {
+                    await supabase
+                      .from('contact_tags')
+                      .delete()
+                      .eq('contact_id', contact.id)
+                      .eq('tag_id', config.tag_id);
+                    console.log(`[Webhook] Tag removed: ${config.tag_id}`);
+                  }
+                  break;
+
+                case 'change_lead_status':
+                  if (config?.lead_status) {
+                    await supabase
+                      .from('contacts')
+                      .update({ lead_status: config.lead_status })
+                      .eq('id', contact.id);
+                    console.log(`[Webhook] Lead status changed to: ${config.lead_status}`);
+                  }
+                  break;
+
+                case 'add_segment':
+                  if (config?.segment_id) {
+                    await supabase
+                      .from('contacts')
+                      .update({ segment_id: config.segment_id })
+                      .eq('id', contact.id);
+                    console.log(`[Webhook] Segment added: ${config.segment_id}`);
+                  }
+                  break;
+
+                default:
+                  console.log(`[Webhook] Unknown marketing action type: ${actionType}`);
+              }
+            } catch (actionError) {
+              console.error(`[Webhook] Error executing action ${actionType}:`, actionError);
+            }
+          }
+
+          // Handle send_next_message action
+          if (shouldSendNextMessage && !shouldCancelCampaign) {
+            const nextStepIndex = currentStepIndex + 1;
+            const nextStep = steps[nextStepIndex] as any;
+
+            if (nextStep) {
+              // Get contact data for variable replacement
+              const { data: contactData } = await supabase
+                .from('contacts')
+                .select('full_name, phone, email')
+                .eq('id', contact.id)
+                .single();
+
+              // Simple variable replacement
+              const replaceVars = (text: string) => {
+                const now = new Date();
+                const brasiliaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+                const hour = brasiliaTime.getHours();
+                const greeting = hour >= 5 && hour < 12 ? 'Bom dia' : hour >= 12 && hour < 18 ? 'Boa tarde' : 'Boa noite';
+                
+                return text
+                  .replace(/\{\{nome\}\}/gi, contactData?.full_name || '')
+                  .replace(/\{\{telefone\}\}/gi, contactData?.phone || '')
+                  .replace(/\{\{email\}\}/gi, contactData?.email || '')
+                  .replace(/\{\{data\}\}/gi, brasiliaTime.toLocaleDateString('pt-BR'))
+                  .replace(/\{\{saudacao\}\}/gi, greeting)
+                  .replace(/\{\{atendente\}\}/gi, '');
+              };
+
+              // Schedule next message immediately
+              await supabase
+                .from('marketing_scheduled_messages')
+                .insert({
+                  active_campaign_id: activeCampaign.id,
+                  step_number: nextStepIndex,
+                  scheduled_for: new Date().toISOString(),
+                  status: 'pending',
+                  content: replaceVars(nextStep.message || ''),
+                  audio_url: nextStep.audio_url || null,
+                  attachment_url: nextStep.attachment_url || null,
+                  tenant_id: activeCampaign.tenant_id,
+                });
+
+              // Update campaign current step
+              await supabase
+                .from('active_marketing_campaigns')
+                .update({ 
+                  current_step: nextStepIndex,
+                  responded_at: new Date().toISOString(),
+                })
+                .eq('id', activeCampaign.id);
+
+              console.log(`[Webhook] ✅ Scheduled next message (step ${nextStepIndex}) immediately for campaign ${activeCampaign.id}`);
+            } else {
+              // No more steps, mark as completed
+              await supabase
+                .from('active_marketing_campaigns')
+                .update({ 
+                  status: 'completed',
+                  responded_at: new Date().toISOString(),
+                })
+                .eq('id', activeCampaign.id);
+              
+              console.log(`[Webhook] ✅ Marketing campaign ${activeCampaign.id} completed (no more steps)`);
+            }
+          } else {
+            // Cancel pending messages and mark campaign as responded/cancelled
+            await supabase
+              .from('marketing_scheduled_messages')
+              .update({ 
+                status: 'cancelled',
+                cancelled_at: new Date().toISOString(),
+              })
+              .eq('active_campaign_id', activeCampaign.id)
+              .eq('status', 'pending');
+
+            await supabase
+              .from('active_marketing_campaigns')
+              .update({ 
+                status: shouldCancelCampaign ? 'cancelled' : 'responded',
+                responded_at: new Date().toISOString(),
+              })
+              .eq('id', activeCampaign.id);
+
+            console.log(`[Webhook] ✅ Marketing campaign ${activeCampaign.id} ${shouldCancelCampaign ? 'cancelled' : 'responded'}`);
+          }
+        }
+      }
+    } catch (marketingCancelError) {
+      // Non-critical error - log but don't fail the webhook
+      console.error(`[Webhook] Error in marketing on_reply_actions logic:`, marketingCancelError);
+    }
+
     // Update channel stats
     await supabase
       .from("whatsapp_channels")

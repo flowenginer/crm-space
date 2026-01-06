@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ActionBuilder } from './ActionBuilder';
+import { MarketingTestPanel } from './MarketingTestPanel';
 import { 
   useCreateMarketingCampaign,
   useUpdateMarketingCampaign,
@@ -628,6 +629,13 @@ export function MarketingCampaignModal({
               <p>_itálico_ → <em>itálico</em></p>
               <p>~riscado~ → <del>riscado</del></p>
             </div>
+
+            {/* Test Panel */}
+            <MarketingTestPanel
+              campaignId={campaign?.id}
+              steps={steps}
+              campaignTitle={title || 'Campanha de Teste'}
+            />
           </div>
         </div>
 
