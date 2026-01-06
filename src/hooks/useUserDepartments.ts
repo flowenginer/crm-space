@@ -63,10 +63,11 @@ export function useAddUserToDepartment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ userId, departmentId, isPrimary = false }: { 
+    mutationFn: async ({ userId, departmentId, isPrimary = false, tenantId }: { 
       userId: string; 
       departmentId: string; 
-      isPrimary?: boolean 
+      isPrimary?: boolean;
+      tenantId?: string;
     }) => {
       // Se for primário, primeiro remove o primário atual
       if (isPrimary) {
@@ -76,9 +77,20 @@ export function useAddUserToDepartment() {
           .eq('user_id', userId);
       }
 
+      const insertData: any = { 
+        user_id: userId, 
+        department_id: departmentId, 
+        is_primary: isPrimary 
+      };
+      
+      // Adiciona tenant_id se fornecido
+      if (tenantId) {
+        insertData.tenant_id = tenantId;
+      }
+
       const { data, error } = await supabase
         .from('user_departments')
-        .insert({ user_id: userId, department_id: departmentId, is_primary: isPrimary })
+        .insert(insertData)
         .select()
         .single();
 

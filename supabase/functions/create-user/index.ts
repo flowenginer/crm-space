@@ -185,7 +185,8 @@ serve(async (req) => {
           .insert({
             user_id: newUser.user.id,
             department_id: dept.id,
-            is_primary: dept.is_primary || false
+            is_primary: dept.is_primary || false,
+            tenant_id: requesterTenantId
           })
         
         if (deptError) {
@@ -201,7 +202,8 @@ serve(async (req) => {
         .insert({
           user_id: newUser.user.id,
           department_id: department_id,
-          is_primary: true
+          is_primary: true,
+          tenant_id: requesterTenantId
         })
       
       if (deptError) {
