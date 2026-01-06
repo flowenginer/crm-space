@@ -591,6 +591,20 @@ async function processDispatch(supabase: any, dispatch: any) {
       let activeRecordId: string | null = null;
 
       if (isMarketingCampaign) {
+        // Apply initial department transfer if configured
+        if (marketingCampaign.initial_department_id) {
+          const { error: deptTransferError } = await supabase
+            .from('conversations')
+            .update({ department_id: marketingCampaign.initial_department_id })
+            .eq('id', conversationId);
+          
+          if (deptTransferError) {
+            console.error(`[BulkDispatch] Error transferring to initial department:`, deptTransferError);
+          } else {
+            console.log(`[BulkDispatch] Transferred conversation ${conversationId} to department ${marketingCampaign.initial_department_id}`);
+          }
+        }
+
         // Create active marketing campaign
         const { data: activeMarketing, error: marketingError } = await supabase
           .from('active_marketing_campaigns')
