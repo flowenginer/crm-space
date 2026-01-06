@@ -18,6 +18,7 @@ interface SyncRequest {
   import_mode?: "all" | "new_only" | "update_existing";
   selected_ids?: string[];
   create_dependencies?: boolean;
+  ignore_incomplete?: boolean;
 }
 
 interface BlingContact {
@@ -97,6 +98,7 @@ Deno.serve(async (req) => {
       import_mode = "all",
       selected_ids,
       create_dependencies = true,
+      ignore_incomplete = false,
     } = body;
 
     if (!tenant_id) {
@@ -196,7 +198,7 @@ Deno.serve(async (req) => {
     for (const entityType of entitiesToSync) {
       try {
         if (entityType === "contacts") {
-          const contactResults = await syncContacts(supabase, tenant_id, accessToken, direction, preview_only, start_date, end_date, import_mode, selected_ids);
+          const contactResults = await syncContacts(supabase, tenant_id, accessToken, direction, preview_only, start_date, end_date, import_mode, selected_ids, ignore_incomplete);
           results.contacts = contactResults.counts;
           errors.push(...contactResults.errors);
           if (preview_only && contactResults.preview) {
@@ -487,6 +489,29 @@ async function findExistingContact(
   return null;
 }
 
+// Check if a Bling contact has complete data (phone and basic address)
+function isContactComplete(blingContact: BlingContact): { 
+  isComplete: boolean; 
+  missingFields: string[] 
+} {
+  const missingFields: string[] = [];
+  
+  // Check phone (celular or telefone)
+  if (!blingContact.celular && !blingContact.telefone) {
+    missingFields.push('Telefone');
+  }
+  
+  // Check basic address (city and state are essential)
+  const endereco = blingContact.endereco;
+  if (!endereco?.municipio) missingFields.push('Cidade');
+  if (!endereco?.uf) missingFields.push('Estado');
+  
+  return {
+    isComplete: missingFields.length === 0,
+    missingFields,
+  };
+}
+
 // Sync Contacts
 async function syncContacts(
   supabase: any, 
@@ -497,7 +522,8 @@ async function syncContacts(
   startDate?: string,
   endDate?: string,
   importMode: string = "all",
-  selectedIds?: string[]
+  selectedIds?: string[],
+  ignoreIncomplete: boolean = false
 ) {
   const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
   const errors: Array<{ entity: string; message: string; details?: string }> = [];
@@ -558,6 +584,18 @@ async function syncContacts(
 
             // For preview mode, collect data with duplicate info
             if (previewOnly) {
+              // Check completeness if ignoreIncomplete is enabled
+              let willBeSkipped = existsInCRM;
+              let skipReason = existsInCRM ? `Já existe no CRM (${existingContact.matchedBy})` : null;
+              
+              if (ignoreIncomplete && !willBeSkipped) {
+                const completeness = isContactComplete(blingContact);
+                if (!completeness.isComplete) {
+                  willBeSkipped = true;
+                  skipReason = `Incompleto: falta ${completeness.missingFields.join(', ')}`;
+                }
+              }
+              
               preview.push({
                 id: String(blingContact.id),
                 name: blingContact.nome || "Sem nome",
@@ -565,8 +603,8 @@ async function syncContacts(
                 phone: blingPhone || null,
                 isNew,
                 exists_locally: existsInCRM || hasBlingMapping,
-                willBeSkipped: existsInCRM,
-                skipReason: existsInCRM ? `Já existe no CRM (${existingContact.matchedBy})` : null,
+                willBeSkipped,
+                skipReason,
               });
               continue;
             }
@@ -575,6 +613,16 @@ async function syncContacts(
             if (selectedIds && selectedIds.length > 0 && !selectedIds.includes(String(blingContact.id))) {
               counts.skipped++;
               continue;
+            }
+
+            // Skip incomplete contacts if ignoreIncomplete is enabled
+            if (ignoreIncomplete) {
+              const completeness = isContactComplete(blingContact);
+              if (!completeness.isComplete) {
+                console.log(`[bling-sync] Skipping incomplete contact: ${blingContact.nome} (missing: ${completeness.missingFields.join(', ')})`);
+                counts.skipped++;
+                continue;
+              }
             }
 
             // Skip based on import mode
