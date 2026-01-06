@@ -8,6 +8,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -96,6 +106,8 @@ export function UserManagement() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [userToToggle, setUserToToggle] = useState<any>(null);
+  const [showToggleDialog, setShowToggleDialog] = useState(false);
   
   const queryClient = useQueryClient();
   const { data: departments = [] } = useDepartments();
@@ -204,6 +216,26 @@ export function UserManagement() {
     },
     onError: () => {
       toast.error('Erro ao reenviar convite');
+    }
+  });
+
+  // Toggle user active status mutation
+  const toggleUserActive = useMutation({
+    mutationFn: async ({ userId, isActive }: { userId: string; isActive: boolean }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_active: isActive, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success(variables.isActive ? 'Usuário reativado!' : 'Usuário desativado!');
+      setShowToggleDialog(false);
+      setUserToToggle(null);
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar status do usuário');
     }
   });
 
@@ -486,9 +518,17 @@ export function UserManagement() {
                           {user.role !== 'admin' && (
                             <button 
                               className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
-                              title="Desativar"
+                              onClick={() => {
+                                setUserToToggle(user);
+                                setShowToggleDialog(true);
+                              }}
+                              title={user.is_active !== false ? 'Desativar' : 'Reativar'}
                             >
-                              <Trash2 size={16} className="text-destructive" />
+                              {user.is_active !== false ? (
+                                <Trash2 size={16} className="text-destructive" />
+                              ) : (
+                                <RefreshCw size={16} className="text-success" />
+                              )}
                             </button>
                           )}
                         </div>
@@ -521,6 +561,38 @@ export function UserManagement() {
         departments={departments}
         roles={roles}
       />
+
+      {/* Toggle User Status Dialog */}
+      <AlertDialog open={showToggleDialog} onOpenChange={setShowToggleDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {userToToggle?.is_active !== false ? 'Desativar Usuário' : 'Reativar Usuário'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {userToToggle?.is_active !== false 
+                ? `Tem certeza que deseja desativar ${userToToggle?.full_name}? O usuário não poderá acessar o sistema.`
+                : `Deseja reativar ${userToToggle?.full_name}? O usuário voltará a ter acesso ao sistema.`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setUserToToggle(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => toggleUserActive.mutate({
+                userId: userToToggle?.id,
+                isActive: userToToggle?.is_active === false
+              })}
+              className={userToToggle?.is_active !== false 
+                ? "bg-destructive hover:bg-destructive/90" 
+                : "bg-success hover:bg-success/90"
+              }
+            >
+              {userToToggle?.is_active !== false ? 'Desativar' : 'Reativar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
