@@ -57,6 +57,7 @@ import {
   Target,
   DollarSign,
   Trophy,
+  Power,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -108,6 +109,8 @@ export function UserManagement() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [userToToggle, setUserToToggle] = useState<any>(null);
   const [showToggleDialog, setShowToggleDialog] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<any>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   
   const queryClient = useQueryClient();
   const { data: departments = [] } = useDepartments();
@@ -236,6 +239,31 @@ export function UserManagement() {
     },
     onError: () => {
       toast.error('Erro ao atualizar status do usuário');
+    }
+  });
+
+  // Delete user permanently mutation
+  const deleteUser = useMutation({
+    mutationFn: async (userId: string) => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const response = await supabase.functions.invoke('delete-user', {
+        body: { userId },
+        headers: {
+          Authorization: `Bearer ${sessionData.session?.access_token}`
+        }
+      });
+      if (response.error) throw new Error(response.error.message);
+      if (response.data?.error) throw new Error(response.data.error);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('Usuário excluído permanentemente!');
+      setShowDeleteDialog(false);
+      setUserToDelete(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Erro ao excluir usuário');
     }
   });
 
@@ -516,20 +544,32 @@ export function UserManagement() {
                             <Edit3 size={16} className="text-primary" />
                           </button>
                           {user.role !== 'admin' && (
-                            <button 
-                              className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
-                              onClick={() => {
-                                setUserToToggle(user);
-                                setShowToggleDialog(true);
-                              }}
-                              title={user.is_active !== false ? 'Desativar' : 'Reativar'}
-                            >
-                              {user.is_active !== false ? (
+                            <>
+                              <button 
+                                className="p-2 hover:bg-warning/10 rounded-lg transition-colors"
+                                onClick={() => {
+                                  setUserToToggle(user);
+                                  setShowToggleDialog(true);
+                                }}
+                                title={user.is_active !== false ? 'Desativar' : 'Reativar'}
+                              >
+                                {user.is_active !== false ? (
+                                  <Power size={16} className="text-warning" />
+                                ) : (
+                                  <RefreshCw size={16} className="text-success" />
+                                )}
+                              </button>
+                              <button 
+                                className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
+                                onClick={() => {
+                                  setUserToDelete(user);
+                                  setShowDeleteDialog(true);
+                                }}
+                                title="Excluir permanentemente"
+                              >
                                 <Trash2 size={16} className="text-destructive" />
-                              ) : (
-                                <RefreshCw size={16} className="text-success" />
-                              )}
-                            </button>
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -589,6 +629,52 @@ export function UserManagement() {
               }
             >
               {userToToggle?.is_active !== false ? 'Desativar' : 'Reativar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete User Permanently Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive flex items-center gap-2">
+              <Trash2 size={20} />
+              Excluir Usuário Permanentemente
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                <strong>Atenção:</strong> Esta ação não pode ser desfeita!
+              </p>
+              <p>
+                Você está prestes a excluir permanentemente o usuário <strong>{userToDelete?.full_name}</strong> ({userToDelete?.email}).
+              </p>
+              <p>
+                Todos os dados do usuário serão removidos do sistema, incluindo:
+              </p>
+              <ul className="list-disc list-inside text-sm">
+                <li>Perfil e informações pessoais</li>
+                <li>Associações com departamentos</li>
+                <li>Permissões e roles</li>
+                <li>Acesso ao sistema</li>
+              </ul>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setUserToDelete(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteUser.mutate(userToDelete?.id)}
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={deleteUser.isPending}
+            >
+              {deleteUser.isPending ? (
+                <>
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                'Excluir Permanentemente'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
