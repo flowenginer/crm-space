@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { BusinessHours, DEFAULT_BUSINESS_HOURS } from '@/lib/schedule-utils';
 
 export interface CompanySettings {
   id: string;
@@ -14,6 +15,7 @@ export interface CompanySettings {
   logo_url: string | null;
   conversion_status_ids: string[];
   timezone: string | null;
+  business_hours: BusinessHours | null;
   sla_first_response_minutes: number | null;
   sla_resolution_minutes: number | null;
   max_conversations_per_agent: number | null;
@@ -42,6 +44,7 @@ export function useCompanySettings() {
             company_name: null,
             conversion_status_ids: ['78f16fc9-39f5-47ff-9774-00a0af9fa7da'], // Default: "07 - Pedido Fechado"
             timezone: 'America/Sao_Paulo',
+            business_hours: DEFAULT_BUSINESS_HOURS,
             sla_first_response_minutes: 5,
             sla_resolution_minutes: 60,
             max_conversations_per_agent: 15,
@@ -59,6 +62,7 @@ export function useCompanySettings() {
       return {
         ...data,
         conversion_status_ids: data.conversion_status_ids || ['78f16fc9-39f5-47ff-9774-00a0af9fa7da'],
+        business_hours: (data.business_hours as unknown as BusinessHours) || DEFAULT_BUSINESS_HOURS,
         gamification_source: data.gamification_source || 'crm',
       } as CompanySettings;
     },
@@ -71,6 +75,9 @@ export function useUpdateCompanySettings() {
 
   return useMutation({
     mutationFn: async (updates: Partial<CompanySettings>) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const dbUpdates: any = { ...updates };
+      
       // First, get the current settings ID
       const { data: existing } = await supabase
         .from('company_settings')
@@ -82,7 +89,7 @@ export function useUpdateCompanySettings() {
         // Update existing record
         const { data, error } = await supabase
           .from('company_settings')
-          .update(updates)
+          .update(dbUpdates)
           .eq('id', existing.id)
           .select()
           .single();
@@ -93,7 +100,7 @@ export function useUpdateCompanySettings() {
         // Create new record
         const { data, error } = await supabase
           .from('company_settings')
-          .insert(updates)
+          .insert(dbUpdates)
           .select()
           .single();
 

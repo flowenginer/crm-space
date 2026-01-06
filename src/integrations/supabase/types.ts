@@ -804,6 +804,8 @@ export type Database = {
           paused_at: string | null
           processed_count: number
           responded_count: number
+          schedule_enabled: boolean | null
+          schedule_override: Json | null
           sent_count: number
           started_at: string | null
           status: string
@@ -827,6 +829,8 @@ export type Database = {
           paused_at?: string | null
           processed_count?: number
           responded_count?: number
+          schedule_enabled?: boolean | null
+          schedule_override?: Json | null
           sent_count?: number
           started_at?: string | null
           status?: string
@@ -850,6 +854,8 @@ export type Database = {
           paused_at?: string | null
           processed_count?: number
           responded_count?: number
+          schedule_enabled?: boolean | null
+          schedule_override?: Json | null
           sent_count?: number
           started_at?: string | null
           status?: string

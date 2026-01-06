@@ -16,6 +16,13 @@ export interface BulkDispatchFilters {
   includeBlocked?: boolean;
 }
 
+export interface ScheduleOverride {
+  start: string;  // HH:mm
+  end: string;    // HH:mm
+  days: number[]; // 0=domingo, 1=segunda, ..., 6=sábado
+  timezone: string;
+}
+
 export interface BulkDispatch {
   id: string;
   name: string;
@@ -35,6 +42,8 @@ export interface BulkDispatch {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  schedule_enabled: boolean;
+  schedule_override: ScheduleOverride | null;
   // Joined data
   template?: { id: string; title: string };
   channel?: { id: string; name: string };
@@ -90,6 +99,7 @@ export function useBulkDispatches() {
       return (data || []).map(item => ({
         ...item,
         filters: (item.filters as BulkDispatchFilters) || {},
+        schedule_override: (item.schedule_override as unknown as ScheduleOverride) || null,
       })) as BulkDispatch[];
     },
   });
@@ -117,6 +127,7 @@ export function useBulkDispatch(id: string | null) {
       return {
         ...data,
         filters: (data.filters as BulkDispatchFilters) || {},
+        schedule_override: (data.schedule_override as unknown as ScheduleOverride) || null,
       } as BulkDispatch;
     },
   });
@@ -504,6 +515,8 @@ export function useCreateBulkDispatch() {
       filters: BulkDispatchFilters;
       interval_seconds: number;
       totalContacts: number; // Total exato vindo do COUNT
+      schedule_enabled?: boolean;
+      schedule_override?: ScheduleOverride | null;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -520,6 +533,8 @@ export function useCreateBulkDispatch() {
           interval_seconds: data.interval_seconds,
           total_contacts: data.totalContacts,
           created_by: user?.id,
+          schedule_enabled: data.schedule_enabled ?? true,
+          schedule_override: data.schedule_override as any,
         })
         .select()
         .single();
