@@ -4,6 +4,7 @@ export type MarketingActionType =
   // Messages
   | 'none'
   | 'send_next_message'
+  | 'cancel_campaign'  // Cancelar próximos envios para este contato
   
   // Transfers
   | 'transfer_agent'
@@ -98,6 +99,7 @@ export interface MarketingScheduledMessage {
 export const MARKETING_ACTION_LABELS: Record<MarketingActionType, string> = {
   none: 'Nenhuma ação',
   send_next_message: 'Enviar próxima mensagem',
+  cancel_campaign: 'Cancelar próximos envios',
   transfer_agent: 'Transferir para vendedor',
   transfer_department: 'Transferir para departamento',
   transfer_owner: 'Transferir para dono do contato',
@@ -114,7 +116,7 @@ export const MARKETING_ACTION_LABELS: Record<MarketingActionType, string> = {
 export const MARKETING_ACTION_CATEGORIES = [
   {
     label: 'Mensagens',
-    actions: ['send_next_message'] as MarketingActionType[],
+    actions: ['send_next_message', 'cancel_campaign'] as MarketingActionType[],
   },
   {
     label: 'Transferências',
