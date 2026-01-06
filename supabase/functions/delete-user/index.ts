@@ -58,15 +58,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if requester is admin
+    // Check if requester is admin or super_admin
     const { data: requesterRole } = await supabaseAdmin
       .from('user_roles')
       .select('role')
       .eq('user_id', requestingUser.id)
       .single();
 
-    if (!requesterRole || requesterRole.role !== 'admin') {
-      console.error('Permission denied: user is not admin');
+    const isAdmin = requesterRole?.role === 'admin' || requesterRole?.role === 'super_admin';
+    if (!requesterRole || !isAdmin) {
+      console.error('Permission denied: user is not admin. Role:', requesterRole?.role);
       return new Response(
         JSON.stringify({ error: 'Apenas administradores podem excluir usuários' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -116,14 +117,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if target user is admin (cannot delete admins)
+    // Check if target user is admin or super_admin (cannot delete admins)
     const { data: targetRole } = await supabaseAdmin
       .from('user_roles')
       .select('role')
       .eq('user_id', userId)
       .single();
 
-    if (targetRole?.role === 'admin') {
+    const targetIsAdmin = targetRole?.role === 'admin' || targetRole?.role === 'super_admin';
+    if (targetIsAdmin) {
       return new Response(
         JSON.stringify({ error: 'Não é possível excluir um administrador' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
