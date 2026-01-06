@@ -89,6 +89,7 @@ export function MarketingCampaignModal({
   const [description, setDescription] = useState('');
   const [steps, setSteps] = useState<MarketingStep[]>([{ ...DEFAULT_STEP }]);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Data hooks
   const { data: closeReasons = [] } = useCloseReasons();
@@ -145,16 +146,71 @@ export function MarketingCampaignModal({
     ));
   };
 
-  const insertVariable = (variable: string) => {
+  const insertAtCursor = (textToInsert: string) => {
+    const textarea = textareaRef.current;
     const step = steps[activeStepIndex];
-    handleStepChange(activeStepIndex, 'message', step.message + variable);
+    const currentMessage = step.message || '';
+    
+    if (textarea) {
+      const start = textarea.selectionStart || 0;
+      const end = textarea.selectionEnd || 0;
+      
+      const newMessage = 
+        currentMessage.substring(0, start) + 
+        textToInsert + 
+        currentMessage.substring(end);
+      
+      handleStepChange(activeStepIndex, 'message', newMessage);
+      
+      setTimeout(() => {
+        if (textarea) {
+          const newCursorPos = start + textToInsert.length;
+          textarea.focus();
+          textarea.setSelectionRange(newCursorPos, newCursorPos);
+        }
+      }, 0);
+    } else {
+      handleStepChange(activeStepIndex, 'message', currentMessage + textToInsert);
+    }
+  };
+
+  const insertVariable = (variable: string) => {
+    insertAtCursor(variable);
   };
 
   const applyFormatting = (format: 'bold' | 'italic' | 'strike') => {
+    const textarea = textareaRef.current;
     const step = steps[activeStepIndex];
+    const currentMessage = step.message || '';
     const formatChars = { bold: '*', italic: '_', strike: '~' };
     const char = formatChars[format];
-    handleStepChange(activeStepIndex, 'message', step.message + `${char}texto${char}`);
+    
+    if (textarea) {
+      const start = textarea.selectionStart || 0;
+      const end = textarea.selectionEnd || 0;
+      
+      if (start !== end) {
+        const selectedText = currentMessage.substring(start, end);
+        const formattedText = `${char}${selectedText}${char}`;
+        const newMessage = 
+          currentMessage.substring(0, start) + 
+          formattedText + 
+          currentMessage.substring(end);
+        
+        handleStepChange(activeStepIndex, 'message', newMessage);
+        
+        setTimeout(() => {
+          if (textarea) {
+            textarea.focus();
+            textarea.setSelectionRange(start, start + formattedText.length);
+          }
+        }, 0);
+      } else {
+        insertAtCursor(`${char}texto${char}`);
+      }
+    } else {
+      handleStepChange(activeStepIndex, 'message', currentMessage + `${char}texto${char}`);
+    }
   };
 
   const formatTimerLabel = (minutes: number): string => {
@@ -396,14 +452,12 @@ export function MarketingCampaignModal({
 
                   {/* Emoji Picker */}
                   <EmojiPickerButton
-                    onEmojiSelect={(emoji) => {
-                      const newMessage = (currentStep?.message || '') + emoji;
-                      handleStepChange(activeStepIndex, 'message', newMessage);
-                    }}
+                    onEmojiSelect={(emoji) => insertAtCursor(emoji)}
                   />
 
                   {/* Message Input */}
                   <Textarea
+                    ref={textareaRef}
                     value={currentStep?.message || ''}
                     onChange={(e) => handleStepChange(activeStepIndex, 'message', e.target.value)}
                     placeholder="Digite a mensagem..."
