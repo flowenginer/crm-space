@@ -43,10 +43,10 @@ Deno.serve(async (req) => {
     // Create admin client for privileged operations
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get requesting user's profile and role
+    // Get requesting user's profile and role (using profiles.role for consistency with create-user)
     const { data: requesterProfile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('tenant_id')
+      .select('tenant_id, role')
       .eq('id', requestingUser.id)
       .single();
 
@@ -58,16 +58,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if requester is admin or super_admin
-    const { data: requesterRole } = await supabaseAdmin
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', requestingUser.id)
-      .single();
-
-    const isAdmin = requesterRole?.role === 'admin' || requesterRole?.role === 'super_admin';
-    if (!requesterRole || !isAdmin) {
-      console.error('Permission denied: user is not admin. Role:', requesterRole?.role);
+    // Check if requester is admin (using profiles.role - same as create-user)
+    const isAdmin = requesterProfile.role === 'admin' || requesterProfile.role === 'super_admin';
+    console.log('Requester role from profiles:', requesterProfile.role, 'isAdmin:', isAdmin);
+    
+    if (!isAdmin) {
+      console.error('Permission denied: user is not admin. Role:', requesterProfile.role);
       return new Response(
         JSON.stringify({ error: 'Apenas administradores podem excluir usuários' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -93,10 +89,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get target user's profile to verify tenant
+    // Get target user's profile to verify tenant and role (using profiles.role for consistency)
     const { data: targetProfile, error: targetError } = await supabaseAdmin
       .from('profiles')
-      .select('tenant_id, full_name')
+      .select('tenant_id, full_name, role')
       .eq('id', userId)
       .single();
 
@@ -117,14 +113,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if target user is admin or super_admin (cannot delete admins)
-    const { data: targetRole } = await supabaseAdmin
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .single();
-
-    const targetIsAdmin = targetRole?.role === 'admin' || targetRole?.role === 'super_admin';
+    // Check if target user is admin (using profiles.role - cannot delete admins)
+    const targetIsAdmin = targetProfile.role === 'admin' || targetProfile.role === 'super_admin';
+    console.log('Target role from profiles:', targetProfile.role, 'isAdmin:', targetIsAdmin);
+    
     if (targetIsAdmin) {
       return new Response(
         JSON.stringify({ error: 'Não é possível excluir um administrador' }),
