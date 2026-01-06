@@ -56,13 +56,24 @@ function replaceVariables(
     .replace(/\{\{atendente\}\}/gi, agentName || '');
 }
 
-// RescueStep interface
+// RescueStep interface (Follow-up campaigns)
 interface RescueStep {
   message: string;
   timer_minutes: number;
   audio_url?: string | null;
   attachment_url?: string | null;
   attachment_type?: string | null;
+}
+
+// MarketingStep interface (Marketing campaigns)
+interface MarketingStep {
+  message: string;
+  timer_minutes: number;
+  audio_url?: string | null;
+  attachment_url?: string | null;
+  attachment_type?: string | null;
+  on_reply_actions?: { type: string; config: Record<string, unknown> }[];
+  on_no_reply_actions?: { type: string; config: Record<string, unknown> }[];
 }
 
 // Function to generate randomized interval (±30% variation)
@@ -217,9 +228,10 @@ Deno.serve(async (req) => {
 
     console.log(`[BulkDispatch] Starting processing for dispatch: ${dispatchId}`);
 
+    // Fetch dispatch with both template (rescue) and marketing_campaign
     const { data: dispatch, error: dispatchError } = await supabase
       .from('bulk_dispatches')
-      .select('*, template:rescue_templates(*), channel:whatsapp_channels(*)')
+      .select('*, template:rescue_templates(*), channel:whatsapp_channels(*), marketing_campaign:marketing_campaigns(*)')
       .eq('id', dispatchId)
       .single();
 
@@ -248,8 +260,48 @@ Deno.serve(async (req) => {
 // @ts-ignore - Using any types for edge function flexibility
 async function processDispatch(supabase: any, dispatch: any) {
   const baseIntervalMs = dispatch.interval_seconds * 1000;
-  const template = dispatch.template;
   const channel = dispatch.channel;
+
+  // Determine campaign type
+  const isMarketingCampaign = dispatch.campaign_type === 'marketing';
+  const template = dispatch.template;
+  const marketingCampaign = dispatch.marketing_campaign;
+
+  console.log(`[BulkDispatch] Campaign type: ${dispatch.campaign_type}, isMarketing: ${isMarketingCampaign}`);
+
+  // Validate we have the correct data for the campaign type
+  if (isMarketingCampaign && !marketingCampaign) {
+    console.error(`[BulkDispatch] Marketing campaign not found for dispatch ${dispatch.id}`);
+    await supabase
+      .from('bulk_dispatches')
+      .update({ status: 'error', completed_at: new Date().toISOString() })
+      .eq('id', dispatch.id);
+    return;
+  }
+
+  if (!isMarketingCampaign && !template) {
+    console.error(`[BulkDispatch] Rescue template not found for dispatch ${dispatch.id}`);
+    await supabase
+      .from('bulk_dispatches')
+      .update({ status: 'error', completed_at: new Date().toISOString() })
+      .eq('id', dispatch.id);
+    return;
+  }
+
+  // Get steps based on campaign type
+  const steps = isMarketingCampaign 
+    ? (marketingCampaign.steps as MarketingStep[]) || []
+    : (template.steps as RescueStep[]) || [];
+
+  const firstStep = steps[0];
+  if (!firstStep) {
+    console.error(`[BulkDispatch] No steps found in ${isMarketingCampaign ? 'marketing campaign' : 'template'}`);
+    await supabase
+      .from('bulk_dispatches')
+      .update({ status: 'error', completed_at: new Date().toISOString() })
+      .eq('id', dispatch.id);
+    return;
+  }
 
   // channel_id "vazio" (null/undefined) indica que deve usar o canal da conversa existente
   const useExistingChannel = !dispatch.channel_id;
@@ -347,11 +399,11 @@ async function processDispatch(supabase: any, dispatch: any) {
             })
             .eq('id', dispatch.id);
 
-      dispatch.processed_count++;
-      const skipInterval = getRandomizedInterval(baseIntervalMs);
-      console.log(`[BulkDispatch] Waiting ${skipInterval}ms before next contact`);
-      await new Promise(resolve => setTimeout(resolve, skipInterval));
-      continue;
+          dispatch.processed_count++;
+          const skipInterval = getRandomizedInterval(baseIntervalMs);
+          console.log(`[BulkDispatch] Waiting ${skipInterval}ms before next contact`);
+          await new Promise(resolve => setTimeout(resolve, skipInterval));
+          continue;
         }
       }
 
@@ -389,46 +441,97 @@ async function processDispatch(supabase: any, dispatch: any) {
           .eq('id', dispatchContact.id);
       }
 
-      // Create active rescue
-      const steps = (template.steps as RescueStep[]) || [];
-      const firstStep = steps[0];
+      let activeRecordId: string | null = null;
 
-      if (!firstStep) {
-        throw new Error('Template has no steps');
-      }
-
-      const { data: activeRescue } = await supabase
-        .from('active_rescues')
-        .insert({
-          conversation_id: conversationId,
-          contact_id: contact.id,
-          template_id: template.id,
-          status: 'active',
-          current_step: 0,
-          next_send_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (activeRescue) {
-        // Schedule first message - USING CORRECT COLUMN NAMES
-        const { error: scheduleError } = await supabase
-          .from('rescue_scheduled_messages')
+      if (isMarketingCampaign) {
+        // Create active marketing campaign
+        const { data: activeMarketing, error: marketingError } = await supabase
+          .from('active_marketing_campaigns')
           .insert({
-            rescue_id: activeRescue.id,
-            step_number: 0,
-            scheduled_for: new Date().toISOString(),
-            status: 'pending',
-            content: replaceVariables(firstStep.message, contact, ''),
-            audio_url: firstStep.audio_url || null,
-            attachment_url: firstStep.attachment_url || null,
-            attachment_type: firstStep.attachment_type || null,
-          });
+            campaign_id: marketingCampaign.id,
+            contact_id: contact.id,
+            conversation_id: conversationId,
+            dispatch_id: dispatch.id,
+            tenant_id: dispatch.tenant_id,
+            current_step: 0,
+            status: 'active',
+            next_send_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
 
-        if (scheduleError) {
-          console.error(`[BulkDispatch] Error scheduling message:`, scheduleError);
-        } else {
-          console.log(`[BulkDispatch] Scheduled message for rescue ${activeRescue.id}`);
+        if (marketingError) {
+          console.error(`[BulkDispatch] Error creating active marketing campaign:`, marketingError);
+          throw new Error(`Failed to create active marketing campaign: ${marketingError.message}`);
+        }
+
+        activeRecordId = activeMarketing?.id;
+        console.log(`[BulkDispatch] Created active marketing campaign: ${activeRecordId}`);
+
+        if (activeMarketing) {
+          // Schedule first marketing message
+          const { error: scheduleError } = await supabase
+            .from('marketing_scheduled_messages')
+            .insert({
+              active_campaign_id: activeMarketing.id,
+              step_number: 0,
+              scheduled_for: new Date().toISOString(),
+              status: 'pending',
+              content: replaceVariables(firstStep.message, contact, ''),
+              audio_url: firstStep.audio_url || null,
+              attachment_url: firstStep.attachment_url || null,
+              tenant_id: dispatch.tenant_id,
+            });
+
+          if (scheduleError) {
+            console.error(`[BulkDispatch] Error scheduling marketing message:`, scheduleError);
+          } else {
+            console.log(`[BulkDispatch] Scheduled marketing message for campaign ${activeMarketing.id}`);
+          }
+        }
+      } else {
+        // Create active rescue (follow-up)
+        const { data: activeRescue, error: rescueError } = await supabase
+          .from('active_rescues')
+          .insert({
+            conversation_id: conversationId,
+            contact_id: contact.id,
+            template_id: template.id,
+            status: 'active',
+            current_step: 0,
+            next_send_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (rescueError) {
+          console.error(`[BulkDispatch] Error creating active rescue:`, rescueError);
+          throw new Error(`Failed to create active rescue: ${rescueError.message}`);
+        }
+
+        activeRecordId = activeRescue?.id;
+        console.log(`[BulkDispatch] Created active rescue: ${activeRecordId}`);
+
+        if (activeRescue) {
+          // Schedule first rescue message
+          const { error: scheduleError } = await supabase
+            .from('rescue_scheduled_messages')
+            .insert({
+              rescue_id: activeRescue.id,
+              step_number: 0,
+              scheduled_for: new Date().toISOString(),
+              status: 'pending',
+              content: replaceVariables(firstStep.message, contact, ''),
+              audio_url: firstStep.audio_url || null,
+              attachment_url: firstStep.attachment_url || null,
+              attachment_type: firstStep.attachment_type || null,
+            });
+
+          if (scheduleError) {
+            console.error(`[BulkDispatch] Error scheduling rescue message:`, scheduleError);
+          } else {
+            console.log(`[BulkDispatch] Scheduled rescue message for rescue ${activeRescue.id}`);
+          }
         }
       }
 
@@ -438,7 +541,7 @@ async function processDispatch(supabase: any, dispatch: any) {
         .update({
           status: 'sent',
           sent_at: new Date().toISOString(),
-          active_rescue_id: activeRescue?.id,
+          active_rescue_id: isMarketingCampaign ? null : activeRecordId,
         })
         .eq('id', dispatchContact.id);
 
@@ -454,7 +557,7 @@ async function processDispatch(supabase: any, dispatch: any) {
       dispatch.processed_count++;
       dispatch.sent_count++;
 
-      console.log(`[BulkDispatch] Successfully processed contact: ${contact.full_name}`);
+      console.log(`[BulkDispatch] Successfully processed contact: ${contact.full_name} (${isMarketingCampaign ? 'marketing' : 'rescue'})`);
 
     } catch (err) {
       const error = err as Error;
