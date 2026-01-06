@@ -126,7 +126,23 @@ Deno.serve(async (req) => {
 
     if (!phone || !tenantId) {
       return new Response(
-        JSON.stringify({ error: 'Missing required parameters: phone, tenantId' }),
+        JSON.stringify({ error: 'Parâmetros obrigatórios: phone, tenantId' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // For rapid mode, steps are required
+    if (mode === 'rapid' && (!steps || steps.length === 0)) {
+      return new Response(
+        JSON.stringify({ error: 'Nenhuma etapa fornecida para teste rápido' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // For interactive send_step, step is required
+    if (mode === 'interactive' && action === 'send_step' && !step) {
+      return new Response(
+        JSON.stringify({ error: 'Etapa não fornecida para envio' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -670,13 +686,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // RAPID MODE - Send all messages
-    if (!steps?.length) {
-      return new Response(
-        JSON.stringify({ error: 'No steps provided for rapid test' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // RAPID MODE - Send all messages (validation already done above)
 
     console.log(`[test-marketing-campaign] Rapid mode: sending ${steps.length} steps`);
 
