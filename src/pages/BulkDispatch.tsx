@@ -52,7 +52,11 @@ import {
   useBulkDispatchRealtime,
   type BulkDispatchFilters,
   type BulkDispatch as BulkDispatchType,
+  type ScheduleOverride,
 } from '@/hooks/useBulkDispatch';
+import { useCompanySettings } from '@/hooks/useCompanySettings';
+import { formatBusinessHoursSummary, businessHoursToOverride } from '@/lib/schedule-utils';
+import { CompactScheduleEditor } from '@/components/settings/BusinessHoursEditor';
 import { useRescueTemplates } from '@/hooks/useRescueTemplates';
 import { useChannels } from '@/hooks/useChannels';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
@@ -99,6 +103,14 @@ export default function BulkDispatch() {
   const [channelId, setChannelId] = useState('');
   const [intervalSeconds, setIntervalSeconds] = useState(10);
   const [filters, setFilters] = useState<BulkDispatchFilters>({ includeBlocked: false });
+  const [scheduleEnabled, setScheduleEnabled] = useState(true);
+  const [useCustomSchedule, setUseCustomSchedule] = useState(false);
+  const [scheduleOverride, setScheduleOverride] = useState<ScheduleOverride>({
+    start: '08:00',
+    end: '18:00',
+    days: [1, 2, 3, 4, 5],
+    timezone: 'America/Sao_Paulo',
+  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -110,6 +122,7 @@ export default function BulkDispatch() {
   const { data: segments = [] } = useSegments();
   const { data: team = [] } = useTeam();
   const { data: departments = [] } = useDepartments();
+  const { data: companySettings } = useCompanySettings();
   
   // Contagem exata via COUNT
   const { data: totalContacts = 0, isLoading: countLoading } = usePreviewContactsCount(filters);
@@ -164,12 +177,15 @@ export default function BulkDispatch() {
         filters, 
         interval_seconds: intervalSeconds, 
         totalContacts,
+        schedule_enabled: scheduleEnabled,
+        schedule_override: useCustomSchedule ? scheduleOverride : null,
       });
       await startDispatch.mutateAsync(dispatch.id);
       toast.success('Disparo em massa iniciado!');
       setActiveTab('history');
       setSelectedDispatchId(dispatch.id);
       setName(''); setTemplateId(''); setChannelId(''); setFilters({ includeBlocked: false });
+      setScheduleEnabled(true); setUseCustomSchedule(false);
     } catch (error) {
       toast.error('Erro ao criar disparo em massa');
     }
@@ -229,6 +245,41 @@ export default function BulkDispatch() {
                 <div className="space-y-2">
                   <Label>Intervalo: {intervalSeconds >= 60 ? `${Math.floor(intervalSeconds / 60)}min ${intervalSeconds % 60}s` : `${intervalSeconds}s`}</Label>
                   <Slider value={[intervalSeconds]} onValueChange={([v]) => setIntervalSeconds(v)} min={5} max={600} step={15} />
+                </div>
+
+                {/* Schedule Section */}
+                <Separator />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Respeitar horário comercial
+                    </Label>
+                    <Switch checked={scheduleEnabled} onCheckedChange={setScheduleEnabled} />
+                  </div>
+                  {scheduleEnabled && companySettings?.business_hours && (
+                    <p className="text-sm text-muted-foreground">
+                      {formatBusinessHoursSummary(companySettings.business_hours, companySettings.timezone || 'America/Sao_Paulo')}
+                    </p>
+                  )}
+                  {scheduleEnabled && (
+                    <div className="flex items-center justify-between pt-2">
+                      <Label className="text-sm">Personalizar horário</Label>
+                      <Switch checked={useCustomSchedule} onCheckedChange={setUseCustomSchedule} />
+                    </div>
+                  )}
+                  {scheduleEnabled && useCustomSchedule && (
+                    <CompactScheduleEditor
+                      start={scheduleOverride.start}
+                      end={scheduleOverride.end}
+                      days={scheduleOverride.days}
+                      timezone={scheduleOverride.timezone}
+                      onStartChange={(v) => setScheduleOverride(s => ({ ...s, start: v }))}
+                      onEndChange={(v) => setScheduleOverride(s => ({ ...s, end: v }))}
+                      onDaysChange={(v) => setScheduleOverride(s => ({ ...s, days: v }))}
+                      onTimezoneChange={(v) => setScheduleOverride(s => ({ ...s, timezone: v }))}
+                    />
+                  )}
                 </div>
               </CardContent>
             </Card>

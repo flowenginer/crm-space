@@ -1,16 +1,19 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, Upload, Loader2, Trash2, Crown, ChevronRight } from 'lucide-react';
+import { Building2, Upload, Loader2, Trash2, Crown, ChevronRight, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanySettings, useUpdateCompanySettings } from '@/hooks/useCompanySettings';
 import { useCurrentTenant } from '@/hooks/useTenant';
 import { usePermissions } from '@/hooks/usePermissions';
+import { BusinessHoursEditor } from './BusinessHoursEditor';
+import { BusinessHours, DEFAULT_BUSINESS_HOURS } from '@/lib/schedule-utils';
 
 const BRAZILIAN_STATES = [
   { value: 'AC', label: 'Acre' },
@@ -92,8 +95,11 @@ export function CompanySettings() {
     logo_url: '',
   });
 
+  const [businessHours, setBusinessHours] = useState<BusinessHours>(DEFAULT_BUSINESS_HOURS);
+  const [timezone, setTimezone] = useState('America/Sao_Paulo');
+
   // Sync form with loaded settings
-  useState(() => {
+  useEffect(() => {
     if (settings) {
       setFormData({
         company_name: settings.company_name || '',
@@ -106,23 +112,11 @@ export function CompanySettings() {
         zip_code: settings.zip_code || '',
         logo_url: settings.logo_url || '',
       });
+      setBusinessHours(settings.business_hours || DEFAULT_BUSINESS_HOURS);
+      setTimezone(settings.timezone || 'America/Sao_Paulo');
     }
-  });
+  }, [settings]);
 
-  // Update form when settings load
-  if (settings && !formData.company_name && settings.company_name) {
-    setFormData({
-      company_name: settings.company_name || '',
-      cnpj: settings.cnpj || '',
-      phone: settings.phone || '',
-      email: settings.email || '',
-      address: settings.address || '',
-      city: settings.city || '',
-      state: settings.state || '',
-      zip_code: settings.zip_code || '',
-      logo_url: settings.logo_url || '',
-    });
-  }
 
   const handleInputChange = (field: string, value: string) => {
     let formattedValue = value;
@@ -188,7 +182,11 @@ export function CompanySettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings.mutateAsync(formData);
+      await updateSettings.mutateAsync({
+        ...formData,
+        business_hours: businessHours,
+        timezone,
+      });
       toast.success('Dados da empresa salvos com sucesso');
     } catch (error: any) {
       toast.error('Erro ao salvar: ' + error.message);
@@ -396,6 +394,26 @@ export function CompanySettings() {
                 </Select>
               </div>
             </div>
+          </div>
+
+          <Separator />
+
+          {/* Business Hours */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-primary" />
+              <Label className="text-base font-medium">Horário Comercial</Label>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Configure o horário de funcionamento da empresa. Usado para disparos em massa.
+            </p>
+            <BusinessHoursEditor
+              value={businessHours}
+              onChange={setBusinessHours}
+              timezone={timezone}
+              onTimezoneChange={setTimezone}
+              showTimezone
+            />
           </div>
 
           {/* Save Button */}
