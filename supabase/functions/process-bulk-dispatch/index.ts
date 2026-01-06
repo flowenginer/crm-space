@@ -5,6 +5,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to get greeting based on time of day
+function getGreeting(): string {
+  const now = new Date();
+  const brasiliaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const hour = brasiliaTime.getHours();
+  if (hour >= 5 && hour < 12) return 'Bom dia';
+  if (hour >= 12 && hour < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+// Helper function to get current date in pt-BR format
+function getCurrentDate(): string {
+  const now = new Date();
+  const brasiliaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  return brasiliaTime.toLocaleDateString('pt-BR');
+}
+
+// Helper function to replace variables in message
+function replaceVariables(
+  text: string,
+  contact: { full_name?: string; phone?: string; email?: string },
+  agentName?: string
+): string {
+  return text
+    .replace(/\{\{nome\}\}/gi, contact.full_name || '')
+    .replace(/\{\{telefone\}\}/gi, contact.phone || '')
+    .replace(/\{\{email\}\}/gi, contact.email || '')
+    .replace(/\{\{data\}\}/gi, getCurrentDate())
+    .replace(/\{\{saudacao\}\}/gi, getGreeting())
+    .replace(/\{\{atendente\}\}/gi, agentName || '');
+}
+
 interface RescueStep {
   message: string;
   timer_minutes: number;
@@ -228,7 +260,7 @@ async function processDispatch(supabase: any, dispatch: any) {
             step_number: 0,
             scheduled_for: new Date().toISOString(),
             status: 'pending',
-            content: firstStep.message,
+            content: replaceVariables(firstStep.message, contact, ''),
             audio_url: firstStep.audio_url || null,
             attachment_url: firstStep.attachment_url || null,
             attachment_type: firstStep.attachment_type || null,
