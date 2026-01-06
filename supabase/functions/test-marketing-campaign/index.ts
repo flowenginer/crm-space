@@ -190,9 +190,9 @@ Deno.serve(async (req) => {
             break;
 
           case 'uazapi':
-            apiUrl = `${providerBaseUrl}/chat/send-text`;
+            apiUrl = `${providerBaseUrl}${channel.instance_id}/chat/send-text`;
             apiPayload = { to: phone, body: processedMessage };
-            headers['apikey'] = apiToken;
+            headers['Authorization'] = `Bearer ${apiToken}`;
             break;
 
           case 'evolution':
@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
               audioPayload = { phone, audio: step.audio_url };
               break;
             case 'uazapi':
-              audioApiUrl = `${providerBaseUrl}/chat/send-audio`;
+              audioApiUrl = `${providerBaseUrl}${channel.instance_id}/chat/send-audio`;
               audioPayload = { to: phone, url: step.audio_url };
               break;
             case 'evolution':
@@ -268,7 +268,7 @@ Deno.serve(async (req) => {
               }
               break;
             case 'uazapi':
-              mediaApiUrl = `${providerBaseUrl}/chat/send-media`;
+              mediaApiUrl = `${providerBaseUrl}${channel.instance_id}/chat/send-media`;
               mediaPayload = { to: phone, url: step.attachment_url };
               break;
             case 'evolution':
