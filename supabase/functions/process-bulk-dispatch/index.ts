@@ -5,6 +5,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Schedule configuration interface
+interface ScheduleConfig {
+  enabled: boolean;
+  start: string;
+  end: string;
+  days: number[];
+  timezone: string;
+}
+
+interface BusinessHourDay {
+  enabled: boolean;
+  start: string;
+  end: string;
+}
+
+interface BusinessHours {
+  [key: string]: BusinessHourDay;
+}
+
 // Helper function to get greeting based on time of day
 function getGreeting(): string {
   const now = new Date();
@@ -37,12 +56,146 @@ function replaceVariables(
     .replace(/\{\{atendente\}\}/gi, agentName || '');
 }
 
+// RescueStep interface
 interface RescueStep {
   message: string;
   timer_minutes: number;
   audio_url?: string | null;
   attachment_url?: string | null;
   attachment_type?: string | null;
+}
+
+// Function to generate randomized interval (±30% variation)
+function getRandomizedInterval(baseMs: number): number {
+  const variationPercent = 0.3;
+  const minMs = Math.floor(baseMs * (1 - variationPercent));
+  const maxMs = Math.floor(baseMs * (1 + variationPercent));
+  return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+}
+
+// Get schedule configuration from dispatch or company settings
+async function getScheduleConfig(supabase: any, dispatch: any): Promise<ScheduleConfig> {
+  // If schedule is disabled for this dispatch, return disabled config
+  if (dispatch.schedule_enabled === false) {
+    return { enabled: false, start: '00:00', end: '23:59', days: [0, 1, 2, 3, 4, 5, 6], timezone: 'America/Sao_Paulo' };
+  }
+
+  // If dispatch has override, use it
+  if (dispatch.schedule_override) {
+    const override = dispatch.schedule_override;
+    return {
+      enabled: true,
+      start: override.start || '08:00',
+      end: override.end || '18:00',
+      days: override.days || [1, 2, 3, 4, 5],
+      timezone: override.timezone || 'America/Sao_Paulo',
+    };
+  }
+
+  // Fallback to company settings
+  const { data: companySettings } = await supabase
+    .from('company_settings')
+    .select('business_hours, timezone')
+    .eq('tenant_id', dispatch.tenant_id)
+    .single();
+
+  if (companySettings?.business_hours) {
+    const businessHours = companySettings.business_hours as BusinessHours;
+    const dayMap: { [key: string]: number } = {
+      sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+      thursday: 4, friday: 5, saturday: 6
+    };
+
+    // Find enabled days and their hours
+    const enabledDays: number[] = [];
+    let start = '08:00';
+    let end = '18:00';
+
+    for (const [dayName, config] of Object.entries(businessHours)) {
+      if (config.enabled && dayMap[dayName] !== undefined) {
+        enabledDays.push(dayMap[dayName]);
+        // Use first enabled day's hours as reference
+        if (enabledDays.length === 1) {
+          start = config.start;
+          end = config.end;
+        }
+      }
+    }
+
+    return {
+      enabled: true,
+      start,
+      end,
+      days: enabledDays.length > 0 ? enabledDays : [1, 2, 3, 4, 5],
+      timezone: companySettings.timezone || 'America/Sao_Paulo',
+    };
+  }
+
+  // Default: enabled Mon-Fri 08:00-18:00
+  return {
+    enabled: true,
+    start: '08:00',
+    end: '18:00',
+    days: [1, 2, 3, 4, 5],
+    timezone: 'America/Sao_Paulo',
+  };
+}
+
+// Check if current time is within schedule
+function isWithinSchedule(config: ScheduleConfig): boolean {
+  if (!config.enabled) return true;
+
+  const now = new Date();
+  const tzTime = new Date(now.toLocaleString('en-US', { timeZone: config.timezone }));
+  
+  const currentDay = tzTime.getDay();
+  const currentHour = tzTime.getHours();
+  const currentMinute = tzTime.getMinutes();
+  const currentTimeStr = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
+
+  // Check if today is an allowed day
+  if (!config.days.includes(currentDay)) {
+    return false;
+  }
+
+  // Check if current time is within allowed hours
+  return currentTimeStr >= config.start && currentTimeStr < config.end;
+}
+
+// Calculate wait time until next valid schedule slot (in ms)
+function calculateWaitTime(config: ScheduleConfig): number {
+  const now = new Date();
+  const tzTime = new Date(now.toLocaleString('en-US', { timeZone: config.timezone }));
+  
+  const currentDay = tzTime.getDay();
+  const currentHour = tzTime.getHours();
+  const currentMinute = tzTime.getMinutes();
+  const currentTimeStr = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
+
+  // If today is a valid day and we're before start time, wait until start
+  if (config.days.includes(currentDay) && currentTimeStr < config.start) {
+    const [startHour, startMinute] = config.start.split(':').map(Number);
+    const waitMinutes = (startHour - currentHour) * 60 + (startMinute - currentMinute);
+    return waitMinutes * 60 * 1000;
+  }
+
+  // Find next valid day
+  let daysToWait = 1;
+  for (let i = 1; i <= 7; i++) {
+    const nextDay = (currentDay + i) % 7;
+    if (config.days.includes(nextDay)) {
+      daysToWait = i;
+      break;
+    }
+  }
+
+  // Calculate time until start of next valid day
+  const [startHour, startMinute] = config.start.split(':').map(Number);
+  const hoursUntilMidnight = 24 - currentHour;
+  const totalHours = hoursUntilMidnight + (daysToWait - 1) * 24 + startHour;
+  const totalMinutes = totalHours * 60 - currentMinute + startMinute;
+
+  return totalMinutes * 60 * 1000;
 }
 
 Deno.serve(async (req) => {
@@ -92,14 +245,6 @@ Deno.serve(async (req) => {
   }
 });
 
-// Function to generate randomized interval (±30% variation)
-function getRandomizedInterval(baseMs: number): number {
-  const variationPercent = 0.3;
-  const minMs = Math.floor(baseMs * (1 - variationPercent));
-  const maxMs = Math.floor(baseMs * (1 + variationPercent));
-  return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
-}
-
 // @ts-ignore - Using any types for edge function flexibility
 async function processDispatch(supabase: any, dispatch: any) {
   const baseIntervalMs = dispatch.interval_seconds * 1000;
@@ -113,6 +258,10 @@ async function processDispatch(supabase: any, dispatch: any) {
     `[BulkDispatch] Dispatch ${dispatch.id} channel_id=${String(dispatch.channel_id)} (type=${typeof dispatch.channel_id}) | useExistingChannel=${useExistingChannel}`,
   );
 
+  // Get schedule configuration once at start
+  const scheduleConfig = await getScheduleConfig(supabase, dispatch);
+  console.log(`[BulkDispatch] Schedule config: enabled=${scheduleConfig.enabled}, days=${scheduleConfig.days.join(',')}, hours=${scheduleConfig.start}-${scheduleConfig.end}, tz=${scheduleConfig.timezone}`);
+
   while (true) {
     // Check if dispatch is still running
     const { data: currentDispatch } = await supabase
@@ -124,6 +273,16 @@ async function processDispatch(supabase: any, dispatch: any) {
     if (!currentDispatch || currentDispatch.status !== 'running') {
       console.log(`[BulkDispatch] Dispatch ${dispatch.id} stopped (status: ${currentDispatch?.status})`);
       break;
+    }
+
+    // Check if within schedule
+    if (scheduleConfig.enabled && !isWithinSchedule(scheduleConfig)) {
+      const waitMs = calculateWaitTime(scheduleConfig);
+      // Cap wait time at 60 seconds to allow status checks
+      const actualWaitMs = Math.min(waitMs, 60000);
+      console.log(`[BulkDispatch] Outside schedule. Waiting ${Math.round(actualWaitMs / 1000)}s (full wait: ${Math.round(waitMs / 60000)} min)`);
+      await new Promise(resolve => setTimeout(resolve, actualWaitMs));
+      continue;
     }
 
     // Get next pending contact
