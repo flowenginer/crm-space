@@ -12,11 +12,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { 
   Plus, 
   Trash2, 
@@ -37,14 +38,8 @@ import {
   Video,
   MessageSquareReply,
   Timer,
-  ChevronDown,
-  ChevronUp,
-  Reply,
-  Clock4,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Slider } from '@/components/ui/slider';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ActionBuilder } from './ActionBuilder';
 import { 
   useCreateMarketingCampaign,
@@ -60,7 +55,7 @@ import { useTags } from '@/hooks/useTags';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
 import { useSegments } from '@/hooks/useSegments';
 import { supabase } from '@/integrations/supabase/client';
-import type { MarketingCampaign, MarketingStep, MarketingAction } from '@/types/marketing';
+import type { MarketingCampaign, MarketingStep } from '@/types/marketing';
 
 interface MarketingCampaignModalProps {
   open: boolean;
@@ -90,7 +85,6 @@ export function MarketingCampaignModal({
   const [description, setDescription] = useState('');
   const [steps, setSteps] = useState<MarketingStep[]>([{ ...DEFAULT_STEP }]);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
-  const [expandedSections, setExpandedSections] = useState<Record<number, { reply: boolean; noReply: boolean }>>({});
 
   // Data hooks
   const { data: closeReasons = [] } = useCloseReasons();
@@ -114,29 +108,17 @@ export function MarketingCampaignModal({
       setTitle(campaign.title);
       setDescription(campaign.description || '');
       setSteps(campaign.steps.length > 0 ? campaign.steps : [{ ...DEFAULT_STEP }]);
-      // Initialize expanded sections
-      const sections: Record<number, { reply: boolean; noReply: boolean }> = {};
-      campaign.steps.forEach((_, i) => {
-        sections[i] = { reply: true, noReply: true };
-      });
-      setExpandedSections(sections);
     } else {
       setTitle('');
       setDescription('');
       setSteps([{ ...DEFAULT_STEP }]);
-      setExpandedSections({ 0: { reply: true, noReply: true } });
     }
     setActiveStepIndex(0);
   }, [campaign, open]);
 
   const handleAddStep = () => {
-    const newIndex = steps.length;
     setSteps([...steps, { ...DEFAULT_STEP }]);
-    setActiveStepIndex(newIndex);
-    setExpandedSections(prev => ({
-      ...prev,
-      [newIndex]: { reply: true, noReply: true },
-    }));
+    setActiveStepIndex(steps.length);
   };
 
   const handleRemoveStep = (index: number) => {
@@ -145,17 +127,6 @@ export function MarketingCampaignModal({
     if (activeStepIndex >= steps.length - 1) {
       setActiveStepIndex(Math.max(0, steps.length - 2));
     }
-    // Update expanded sections
-    const newSections: Record<number, { reply: boolean; noReply: boolean }> = {};
-    Object.entries(expandedSections).forEach(([key, value]) => {
-      const keyNum = parseInt(key);
-      if (keyNum < index) {
-        newSections[keyNum] = value;
-      } else if (keyNum > index) {
-        newSections[keyNum - 1] = value;
-      }
-    });
-    setExpandedSections(newSections);
   };
 
   const handleStepChange = (index: number, field: keyof MarketingStep, value: any) => {
@@ -164,14 +135,10 @@ export function MarketingCampaignModal({
     ));
   };
 
-  const toggleSection = (stepIndex: number, section: 'reply' | 'noReply') => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [stepIndex]: {
-        ...prev[stepIndex],
-        [section]: !prev[stepIndex]?.[section],
-      },
-    }));
+  const handleStepMultiChange = (index: number, updates: Partial<MarketingStep>) => {
+    setSteps(prevSteps => prevSteps.map((step, i) => 
+      i === index ? { ...step, ...updates } : step
+    ));
   };
 
   const insertVariable = (variable: string) => {
@@ -204,7 +171,7 @@ export function MarketingCampaignModal({
     };
 
     return (
-      <div className="bg-[#0b141a] rounded-lg p-4 min-h-[150px]">
+      <div className="bg-[#0b141a] rounded-lg p-4 min-h-[200px]">
         <div className="flex flex-col gap-2">
           {step.audio_url && (
             <div className="self-end max-w-[85%] bg-[#005c4b] text-white rounded-lg p-2">
@@ -212,7 +179,9 @@ export function MarketingCampaignModal({
                 <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
                   <Play size={14} />
                 </div>
-                <div className="flex-1 h-1 bg-white/30 rounded-full" />
+                <div className="flex-1 h-1 bg-white/30 rounded-full">
+                  <div className="h-full w-0 bg-white rounded-full" />
+                </div>
                 <span className="text-xs opacity-70">0:00</span>
               </div>
             </div>
@@ -224,11 +193,11 @@ export function MarketingCampaignModal({
                 <img 
                   src={step.attachment_url} 
                   alt="Preview" 
-                  className="max-w-full max-h-32 object-cover"
+                  className="max-w-full max-h-40 object-cover"
                 />
               ) : step.attachment_type === 'video' ? (
-                <div className="w-full h-24 bg-black/50 flex items-center justify-center">
-                  <Video size={24} className="opacity-70" />
+                <div className="w-full h-32 bg-black/50 flex items-center justify-center">
+                  <Video size={32} className="opacity-70" />
                 </div>
               ) : (
                 <div className="p-3 flex items-center gap-2">
@@ -296,137 +265,106 @@ export function MarketingCampaignModal({
     }
   };
 
-  const activeStep = steps[activeStepIndex];
-  const isReplyExpanded = expandedSections[activeStepIndex]?.reply ?? true;
-  const isNoReplyExpanded = expandedSections[activeStepIndex]?.noReply ?? true;
+  const currentStep = steps[activeStepIndex];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-5xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? 'Editar Campanha de Marketing' : 'Nova Campanha de Marketing'}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex gap-4">
-          {/* Left: Steps List */}
-          <div className="w-48 flex-shrink-0 border-r border-border pr-4">
-            <Label className="text-xs text-muted-foreground mb-2 block">MENSAGENS</Label>
-            <ScrollArea className="h-[400px]">
-              <div className="space-y-2">
-                {steps.map((step, index) => (
-                  <div
-                    key={index}
-                    className={`relative group p-3 rounded-lg border cursor-pointer transition-all ${
-                      activeStepIndex === index
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-muted-foreground/50'
-                    }`}
-                    onClick={() => setActiveStepIndex(index)}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium">Mensagem {index + 1}</span>
-                      {steps.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100"
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left Column - Form */}
+          <ScrollArea className="max-h-[60vh] pr-4">
+            <div className="space-y-6">
+              {/* Basic Info */}
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="title">Título da Campanha</Label>
+                  <Input
+                    id="title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Ex: Promoção Black Friday"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="description">Descrição (opcional)</Label>
+                  <Input
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Ex: Campanha de vendas para novembro"
+                  />
+                </div>
+              </div>
+
+              {/* Steps Tabs */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-semibold">Mensagens</Label>
+                  <Button variant="outline" size="sm" onClick={handleAddStep}>
+                    <Plus size={14} className="mr-1" />
+                    Adicionar
+                  </Button>
+                </div>
+
+                {/* Step Tabs */}
+                <div className="flex flex-wrap gap-2">
+                  {steps.map((_, index) => (
+                    <Button
+                      key={index}
+                      variant={activeStepIndex === index ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setActiveStepIndex(index)}
+                      className="relative"
+                    >
+                      Msg {index + 1}
+                      {steps.length > 1 && activeStepIndex === index && (
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleRemoveStep(index);
                           }}
+                          className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs"
                         >
-                          <Trash2 size={12} className="text-destructive" />
-                        </Button>
+                          <X size={10} />
+                        </button>
                       )}
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Clock size={10} />
-                      {formatTimerLabel(step.timer_minutes)}
-                    </div>
-                    {step.message && (
-                      <p className="text-xs text-muted-foreground mt-1 truncate">
-                        {step.message.substring(0, 30)}...
-                      </p>
-                    )}
-                  </div>
-                ))}
-                
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={handleAddStep}
-                >
-                  <Plus size={14} className="mr-1" />
-                  Adicionar
-                </Button>
-              </div>
-            </ScrollArea>
-          </div>
+                    </Button>
+                  ))}
+                </div>
 
-          {/* Right: Step Editor */}
-          <div className="flex-1 overflow-hidden">
-            <ScrollArea className="h-[450px] pr-4">
-              <div className="space-y-4">
-                {/* Title & Description (only show on first step) */}
-                {activeStepIndex === 0 && (
-                  <div className="space-y-3 pb-4 border-b border-border">
-                    <div>
-                      <Label>Título da Campanha *</Label>
-                      <Input
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder="Ex: Promoção Black Friday"
-                      />
-                    </div>
-                    <div>
-                      <Label>Descrição</Label>
-                      <Input
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Descrição opcional..."
-                      />
-                    </div>
+                {/* Active Step Editor */}
+                <div className="p-4 border border-border rounded-lg bg-muted/30 space-y-4">
+                  {/* Variables */}
+                  <div className="flex flex-wrap gap-2">
+                    {VARIABLES.map((v) => (
+                      <Button
+                        key={v.key}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => insertVariable(v.key)}
+                        className="text-xs"
+                      >
+                        {v.label}
+                      </Button>
+                    ))}
                   </div>
-                )}
 
-                {/* Message Editor */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Label>Mensagem {activeStepIndex + 1}</Label>
-                    <div className="flex items-center gap-1">
-                      <TooltipProvider>
-                        {VARIABLES.map((v) => (
-                          <Tooltip key={v.key}>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => insertVariable(v.key)}
-                              >
-                                {v.label}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{v.key}</TooltipContent>
-                          </Tooltip>
-                        ))}
-                      </TooltipProvider>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-1 mb-2">
+                  {/* Formatting */}
+                  <div className="flex gap-1">
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => applyFormatting('bold')}
+                      title="Negrito *texto*"
                     >
                       <Bold size={14} />
                     </Button>
@@ -436,6 +374,7 @@ export function MarketingCampaignModal({
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => applyFormatting('italic')}
+                      title="Itálico _texto_"
                     >
                       <Italic size={14} />
                     </Button>
@@ -445,63 +384,91 @@ export function MarketingCampaignModal({
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => applyFormatting('strike')}
+                      title="Riscado ~texto~"
                     >
                       <Strikethrough size={14} />
                     </Button>
                   </div>
 
+                  {/* Message Input */}
                   <Textarea
-                    value={activeStep?.message || ''}
+                    value={currentStep?.message || ''}
                     onChange={(e) => handleStepChange(activeStepIndex, 'message', e.target.value)}
                     placeholder="Digite a mensagem..."
-                    className="min-h-[100px] resize-none"
+                    rows={4}
+                    className="resize-none"
                   />
-                </div>
 
-                {/* Timer */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="flex items-center gap-2">
-                      <Timer size={14} />
-                      Timer: {formatTimerLabel(activeStep?.timer_minutes || 1440)}
-                    </Label>
-                  </div>
-                  <Slider
-                    value={[activeStep?.timer_minutes || 1440]}
-                    onValueChange={([value]) => handleStepChange(activeStepIndex, 'timer_minutes', value)}
-                    min={5}
-                    max={10080} // 7 days
-                    step={5}
+                  {/* Audio Recorder */}
+                  <AudioRecorderInline
+                    audioUrl={currentStep?.audio_url}
+                    onAudioChange={(url) => handleStepChange(activeStepIndex, 'audio_url', url)}
                   />
-                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                    <span>5 min</span>
-                    <span>7 dias</span>
+
+                  {/* File Uploader */}
+                  <FileUploaderInline
+                    attachmentUrl={currentStep?.attachment_url}
+                    attachmentType={currentStep?.attachment_type}
+                    attachmentName={currentStep?.attachment_name}
+                    onFileChange={(url, type, name) => {
+                      handleStepMultiChange(activeStepIndex, {
+                        attachment_url: url,
+                        attachment_type: type,
+                        attachment_name: name,
+                      });
+                    }}
+                    onRemove={() => {
+                      handleStepMultiChange(activeStepIndex, {
+                        attachment_url: undefined,
+                        attachment_type: undefined,
+                        attachment_name: undefined,
+                      });
+                    }}
+                  />
+
+                  {/* Timer */}
+                  <div className="flex items-center gap-3 pt-2 border-t border-border">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock size={14} />
+                      <span>Timer:</span>
+                    </div>
+                    <Select
+                      value={currentStep?.timer_minutes?.toString() || '1440'}
+                      onValueChange={(value) => handleStepChange(activeStepIndex, 'timer_minutes', parseInt(value))}
+                    >
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 min</SelectItem>
+                        <SelectItem value="10">10 min</SelectItem>
+                        <SelectItem value="15">15 min</SelectItem>
+                        <SelectItem value="30">30 min</SelectItem>
+                        <SelectItem value="60">1 hora</SelectItem>
+                        <SelectItem value="120">2 horas</SelectItem>
+                        <SelectItem value="240">4 horas</SelectItem>
+                        <SelectItem value="480">8 horas</SelectItem>
+                        <SelectItem value="720">12 horas</SelectItem>
+                        <SelectItem value="1440">24 horas</SelectItem>
+                        <SelectItem value="2880">48 horas</SelectItem>
+                        <SelectItem value="4320">3 dias</SelectItem>
+                        <SelectItem value="10080">7 dias</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                </div>
 
-                {/* Preview */}
-                <div>
-                  <Label className="mb-2 block">Preview</Label>
-                  {renderWhatsAppPreview(activeStep || DEFAULT_STEP)}
-                </div>
-
-                {/* Actions */}
-                <div className="space-y-3 pt-4 border-t border-border">
-                  {/* On Reply Actions */}
-                  <Collapsible 
-                    open={isReplyExpanded} 
-                    onOpenChange={() => toggleSection(activeStepIndex, 'reply')}
-                  >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 bg-green-500/10 rounded-lg hover:bg-green-500/20 transition-colors">
-                      <div className="flex items-center gap-2 text-green-600">
-                        <Reply size={16} />
-                        <span className="text-sm font-medium">Se o cliente RESPONDER</span>
+                  {/* Individual Actions for this Message */}
+                  <div className="space-y-4 pt-4 border-t border-border">
+                    {/* On Reply Action */}
+                    <div className="space-y-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                      <div className="flex items-center gap-2">
+                        <MessageSquareReply size={16} className="text-green-600" />
+                        <Label className="text-sm font-semibold text-green-700 dark:text-green-400">
+                          Se o cliente RESPONDER
+                        </Label>
                       </div>
-                      {isReplyExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-2">
                       <ActionBuilder
-                        actions={activeStep?.on_reply_actions || []}
+                        actions={currentStep?.on_reply_actions || []}
                         onChange={(actions) => handleStepChange(activeStepIndex, 'on_reply_actions', actions)}
                         label=""
                         closeReasons={closeReasons}
@@ -516,26 +483,18 @@ export function MarketingCampaignModal({
                         currentCampaignId={campaign?.id}
                         hasMoreSteps={activeStepIndex < steps.length - 1}
                       />
-                    </CollapsibleContent>
-                  </Collapsible>
+                    </div>
 
-                  {/* On No Reply Actions */}
-                  <Collapsible 
-                    open={isNoReplyExpanded} 
-                    onOpenChange={() => toggleSection(activeStepIndex, 'noReply')}
-                  >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 bg-orange-500/10 rounded-lg hover:bg-orange-500/20 transition-colors">
-                      <div className="flex items-center gap-2 text-orange-600">
-                        <Clock4 size={16} />
-                        <span className="text-sm font-medium">
-                          Se NÃO responder (após {formatTimerLabel(activeStep?.timer_minutes || 1440)})
-                        </span>
+                    {/* On No Reply Action */}
+                    <div className="space-y-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <div className="flex items-center gap-2">
+                        <Timer size={16} className="text-amber-600" />
+                        <Label className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                          Se NÃO responder (após {formatTimerLabel(currentStep?.timer_minutes || 1440)})
+                        </Label>
                       </div>
-                      {isNoReplyExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-2">
                       <ActionBuilder
-                        actions={activeStep?.on_no_reply_actions || []}
+                        actions={currentStep?.on_no_reply_actions || []}
                         onChange={(actions) => handleStepChange(activeStepIndex, 'on_no_reply_actions', actions)}
                         label=""
                         closeReasons={closeReasons}
@@ -550,11 +509,24 @@ export function MarketingCampaignModal({
                         currentCampaignId={campaign?.id}
                         hasMoreSteps={activeStepIndex < steps.length - 1}
                       />
-                    </CollapsibleContent>
-                  </Collapsible>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </ScrollArea>
+            </div>
+          </ScrollArea>
+
+          {/* Right Column - WhatsApp Preview */}
+          <div className="space-y-4">
+            <Label className="text-base font-semibold">Preview WhatsApp</Label>
+            {renderWhatsAppPreview(currentStep || { ...DEFAULT_STEP })}
+            
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p><strong>Dicas de formatação:</strong></p>
+              <p>*negrito* → <strong>negrito</strong></p>
+              <p>_itálico_ → <em>itálico</em></p>
+              <p>~riscado~ → <del>riscado</del></p>
+            </div>
           </div>
         </div>
 
@@ -563,11 +535,305 @@ export function MarketingCampaignModal({
             Cancelar
           </Button>
           <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {isSaving && <Loader2 size={14} className="mr-2 animate-spin" />}
             {isEditing ? 'Salvar' : 'Criar Campanha'}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Inline Audio Recorder Component
+function AudioRecorderInline({ 
+  audioUrl, 
+  onAudioChange 
+}: { 
+  audioUrl?: string; 
+  onAudioChange: (url: string | undefined) => void;
+}) {
+  const [isRecording, setIsRecording] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        await uploadAudio(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } catch (error) {
+      toast.error('Erro ao acessar microfone');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    }
+  };
+
+  const uploadAudio = async (blob: Blob) => {
+    setIsUploading(true);
+    try {
+      const fileName = `marketing_audio_${Date.now()}.webm`;
+      const { data, error } = await supabase.storage
+        .from('rescue-media')
+        .upload(fileName, blob, { contentType: 'audio/webm' });
+      
+      if (error) throw error;
+      
+      const { data: urlData } = supabase.storage
+        .from('rescue-media')
+        .getPublicUrl(fileName);
+      
+      onAudioChange(urlData.publicUrl);
+      toast.success('Áudio salvo!');
+    } catch (error) {
+      toast.error('Erro ao salvar áudio');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (!file.type.startsWith('audio/')) {
+      toast.error('Selecione um arquivo de áudio');
+      return;
+    }
+    
+    await uploadAudio(file);
+  };
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  if (audioUrl) {
+    return (
+      <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+        <audio ref={audioRef} src={audioUrl} onEnded={() => setIsPlaying(false)} />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={togglePlay}
+        >
+          {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+        </Button>
+        <div className="flex-1 h-1 bg-primary/20 rounded-full">
+          <div className="h-full w-0 bg-primary rounded-full" />
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-destructive"
+          onClick={() => onAudioChange(undefined)}
+        >
+          <X size={14} />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {isRecording ? (
+        <>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={stopRecording}
+          >
+            <Square size={14} className="mr-1" />
+            Parar ({formatTime(recordingTime)})
+          </Button>
+        </>
+      ) : isUploading ? (
+        <Button type="button" variant="outline" size="sm" disabled>
+          <Loader2 size={14} className="mr-1 animate-spin" />
+          Salvando...
+        </Button>
+      ) : (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={startRecording}
+          >
+            <Mic size={14} className="mr-1" />
+            Gravar
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*"
+            className="hidden"
+            onChange={handleFileUpload}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload size={14} className="mr-1" />
+            Upload
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Inline File Uploader Component
+function FileUploaderInline({
+  attachmentUrl,
+  attachmentType,
+  attachmentName,
+  onFileChange,
+  onRemove,
+}: {
+  attachmentUrl?: string;
+  attachmentType?: string;
+  attachmentName?: string;
+  onFileChange: (url: string, type: string, name: string) => void;
+  onRemove: () => void;
+}) {
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `marketing_${Date.now()}.${fileExt}`;
+      
+      const { data, error } = await supabase.storage
+        .from('rescue-media')
+        .upload(fileName, file);
+      
+      if (error) throw error;
+      
+      const { data: urlData } = supabase.storage
+        .from('rescue-media')
+        .getPublicUrl(fileName);
+      
+      let type = 'document';
+      if (file.type.startsWith('image/')) type = 'image';
+      else if (file.type.startsWith('video/')) type = 'video';
+      
+      onFileChange(urlData.publicUrl, type, file.name);
+      toast.success('Arquivo anexado!');
+    } catch (error) {
+      toast.error('Erro ao anexar arquivo');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const getFileIcon = () => {
+    if (attachmentType === 'image') return <ImageIcon size={14} />;
+    if (attachmentType === 'video') return <Video size={14} />;
+    return <FileText size={14} />;
+  };
+
+  if (attachmentUrl) {
+    return (
+      <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+        {getFileIcon()}
+        <span className="text-sm truncate flex-1">{attachmentName || 'Arquivo'}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-destructive"
+          onClick={onRemove}
+        >
+          <X size={14} />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={handleFileUpload}
+        accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={isUploading}
+      >
+        {isUploading ? (
+          <Loader2 size={14} className="mr-1 animate-spin" />
+        ) : (
+          <Paperclip size={14} className="mr-1" />
+        )}
+        {isUploading ? 'Enviando...' : 'Anexar arquivo'}
+      </Button>
+    </div>
   );
 }
