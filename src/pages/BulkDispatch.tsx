@@ -64,6 +64,7 @@ import { useTags } from '@/hooks/useTags';
 import { useSegments } from '@/hooks/useSegments';
 import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useMarketingCampaigns } from '@/hooks/useMarketingCampaigns';
 
 function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -99,6 +100,7 @@ export default function BulkDispatch() {
   const [selectedDispatchId, setSelectedDispatchId] = useState<string | null>(null);
   
   const [name, setName] = useState('');
+  const [campaignType, setCampaignType] = useState<'followup' | 'marketing'>('followup');
   const [templateId, setTemplateId] = useState('');
   const [channelId, setChannelId] = useState('');
   const [intervalSeconds, setIntervalSeconds] = useState(10);
@@ -116,6 +118,7 @@ export default function BulkDispatch() {
 
   const { data: dispatches = [], isLoading: dispatchesLoading } = useBulkDispatches();
   const { data: templates = [] } = useRescueTemplates();
+  const { data: marketingCampaigns = [] } = useMarketingCampaigns();
   const { data: channels = [] } = useChannels();
   const { data: leadStatuses = [] } = useLeadStatuses();
   const { data: tags = [] } = useTags();
@@ -165,14 +168,19 @@ export default function BulkDispatch() {
 
   const handleCreateAndStart = async () => {
     if (!name.trim()) { toast.error('Digite um nome para a campanha'); return; }
-    if (!templateId) { toast.error('Selecione um template de resgate'); return; }
+    if (!templateId) { 
+      toast.error(campaignType === 'followup' ? 'Selecione um template de follow-up' : 'Selecione uma campanha de marketing'); 
+      return; 
+    }
     if (!channelId) { toast.error('Selecione um canal de envio'); return; }
     if (totalContacts === 0) { toast.error('Nenhum contato selecionado'); return; }
 
     try {
       const dispatch = await createDispatch.mutateAsync({
         name, 
-        template_id: templateId, 
+        template_id: campaignType === 'followup' ? templateId : null,
+        marketing_campaign_id: campaignType === 'marketing' ? templateId : null,
+        campaign_type: campaignType,
         channel_id: channelId, 
         filters, 
         interval_seconds: intervalSeconds, 
@@ -185,7 +193,7 @@ export default function BulkDispatch() {
       setActiveTab('history');
       setSelectedDispatchId(dispatch.id);
       setName(''); setTemplateId(''); setChannelId(''); setFilters({ includeBlocked: false });
-      setScheduleEnabled(true); setUseCustomSchedule(false);
+      setCampaignType('followup'); setScheduleEnabled(true); setUseCustomSchedule(false);
     } catch (error) {
       toast.error('Erro ao criar disparo em massa');
     }
@@ -221,10 +229,38 @@ export default function BulkDispatch() {
                   <Input placeholder="Ex: Resgate Black Friday" value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Template de Resgate *</Label>
+                  <Label>Tipo de Campanha *</Label>
+                  <Select value={campaignType} onValueChange={(v) => {
+                    setCampaignType(v as 'followup' | 'marketing');
+                    setTemplateId('');
+                  }}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="followup">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-orange-500" />
+                          Follow-up / Resgate
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="marketing">
+                        <div className="flex items-center gap-2">
+                          <Send className="h-4 w-4 text-purple-500" />
+                          Marketing
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>{campaignType === 'followup' ? 'Template de Follow-up *' : 'Campanha de Marketing *'}</Label>
                   <Select value={templateId} onValueChange={setTemplateId}>
-                    <SelectTrigger><SelectValue placeholder="Selecione um template" /></SelectTrigger>
-                    <SelectContent>{templates.map(t => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent>
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      {campaignType === 'followup' 
+                        ? templates.map(t => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)
+                        : marketingCampaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)
+                      }
+                    </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
