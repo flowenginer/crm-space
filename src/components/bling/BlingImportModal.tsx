@@ -602,6 +602,7 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
   const renderCompleteStep = () => {
     const result = importMutation.data;
     const hasErrors = (result?.errors || 0) > 0;
+    const wasTimeoutRecovery = (result as any)?.wasTimeoutRecovery;
 
     return (
       <>
@@ -609,6 +610,8 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
           <div className="flex flex-col items-center gap-4">
             {hasErrors ? (
               <AlertCircle className="h-12 w-12 text-amber-500" />
+            ) : wasTimeoutRecovery ? (
+              <CheckCircle className="h-12 w-12 text-blue-500" />
             ) : (
               <CheckCircle className="h-12 w-12 text-green-500" />
             )}
@@ -621,6 +624,15 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
               </p>
             </div>
           </div>
+
+          {wasTimeoutRecovery && (
+            <div className="flex items-start gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg mx-4">
+              <AlertTriangle className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+              <p className="text-sm text-muted-foreground">
+                A conexão expirou durante a importação, mas os dados foram importados com sucesso no servidor.
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-center gap-4">
             <div className="text-center">

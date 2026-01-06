@@ -532,6 +532,20 @@ export function useBlingPreview(entityType: BlingImportEntityType) {
   });
 }
 
+// Helper to check if error is a timeout/network error
+function isTimeoutOrNetworkError(error: unknown): boolean {
+  if (!error) return false;
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return (
+    errorMessage.includes('network') ||
+    errorMessage.includes('timeout') ||
+    errorMessage.includes('aborted') ||
+    errorMessage.includes('Failed to fetch') ||
+    errorMessage.includes('NetworkError') ||
+    errorMessage.includes('connection')
+  );
+}
+
 // Hook to import data from Bling
 export function useBlingImport() {
   const queryClient = useQueryClient();
@@ -551,7 +565,7 @@ export function useBlingImport() {
       createDependencies?: boolean;
       ignoreIncomplete?: boolean;
       dateRange?: { startDate: string; endDate: string };
-    }): Promise<BlingImportResult> => {
+    }): Promise<BlingImportResult & { wasTimeoutRecovery?: boolean }> => {
       const { data: config } = await supabase
         .from('bling_integration_config')
         .select('tenant_id')
@@ -561,29 +575,73 @@ export function useBlingImport() {
         throw new Error('Bling not configured');
       }
 
-      const { data, error } = await supabase.functions.invoke('bling-sync', {
-        body: {
-          tenant_id: config.tenant_id,
-          entity_type: entityType, // Send actual entity type (including 'financial')
-          direction: 'bling_to_local',
-          import_mode: mode,
-          selected_ids: selectedIds,
-          create_dependencies: createDependencies,
-          ignore_incomplete: ignoreIncomplete,
-          start_date: dateRange?.startDate,
-          end_date: dateRange?.endDate,
-        },
-      });
+      try {
+        const { data, error } = await supabase.functions.invoke('bling-sync', {
+          body: {
+            tenant_id: config.tenant_id,
+            entity_type: entityType,
+            direction: 'bling_to_local',
+            import_mode: mode,
+            selected_ids: selectedIds,
+            create_dependencies: createDependencies,
+            ignore_incomplete: ignoreIncomplete,
+            start_date: dateRange?.startDate,
+            end_date: dateRange?.endDate,
+          },
+        });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      return {
-        created: data?.summary?.created || 0,
-        updated: data?.summary?.updated || 0,
-        skipped: data?.summary?.skipped || 0,
-        errors: data?.summary?.errors || 0,
-        dependenciesCreated: data?.summary?.dependencies_created || 0,
-      };
+        return {
+          created: data?.summary?.created || 0,
+          updated: data?.summary?.updated || 0,
+          skipped: data?.summary?.skipped || 0,
+          errors: data?.summary?.errors || 0,
+          dependenciesCreated: data?.summary?.dependencies_created || 0,
+        };
+      } catch (error) {
+        // Check if it's a timeout/network error - might have succeeded on backend
+        if (isTimeoutOrNetworkError(error)) {
+          console.log('[useBlingImport] Timeout detected, checking sync log...');
+          
+          // Wait a moment for the backend to finish
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Check the latest sync log to see if it actually completed
+          const { data: lastLog } = await supabase
+            .from('bling_sync_logs')
+            .select('*')
+            .eq('entity_type', entityType)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (lastLog && lastLog.status === 'completed') {
+            console.log('[useBlingImport] Timeout recovery: import actually completed!', lastLog);
+            return {
+              created: lastLog.created_count || 0,
+              updated: lastLog.updated_count || 0,
+              skipped: lastLog.skipped_count || 0,
+              errors: lastLog.error_count || 0,
+              wasTimeoutRecovery: true,
+            };
+          }
+          
+          // Check if it's still running (started recently)
+          if (lastLog && lastLog.status === 'running') {
+            const startedAt = new Date(lastLog.started_at);
+            const now = new Date();
+            const minutesAgo = (now.getTime() - startedAt.getTime()) / 60000;
+            
+            if (minutesAgo < 5) {
+              // Still running, throw a specific error
+              throw new Error('IMPORT_STILL_RUNNING');
+            }
+          }
+        }
+        
+        throw error;
+      }
     },
     onSuccess: (data) => {
       // Invalidate relevant queries based on what was imported
@@ -607,11 +665,22 @@ export function useBlingImport() {
         parts.push(`${data.errors} erros`);
       }
 
-      toast.success(`Importação concluída: ${parts.length > 0 ? parts.join(', ') : 'Nenhuma alteração'}`);
+      const message = data.wasTimeoutRecovery 
+        ? `Importação concluída (conexão recuperada): ${parts.length > 0 ? parts.join(', ') : 'Nenhuma alteração'}`
+        : `Importação concluída: ${parts.length > 0 ? parts.join(', ') : 'Nenhuma alteração'}`;
+      
+      toast.success(message);
     },
     onError: (error) => {
       console.error('Import error:', error);
-      toast.error('Erro ao importar dados do Bling');
+      
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage === 'IMPORT_STILL_RUNNING') {
+        toast.info('A importação ainda está em andamento no servidor. Aguarde alguns minutos e verifique os dados.');
+      } else {
+        toast.error('Erro ao importar dados do Bling');
+      }
     },
   });
 }

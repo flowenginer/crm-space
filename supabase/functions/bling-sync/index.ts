@@ -512,7 +512,163 @@ function isContactComplete(blingContact: BlingContact): {
   };
 }
 
-// Sync Contacts
+// Process a single contact (for parallel processing)
+async function processContact(
+  supabase: any,
+  tenantId: string,
+  blingContact: BlingContact,
+  importMode: string,
+  selectedIds: string[] | undefined,
+  ignoreIncomplete: boolean
+): Promise<{ action: 'created' | 'updated' | 'skipped' | 'error'; error?: string }> {
+  try {
+    // Check if mapping already exists
+    const { data: existingMapping } = await supabase
+      .from("bling_id_mappings")
+      .select("local_id")
+      .eq("tenant_id", tenantId)
+      .eq("entity_type", "contact")
+      .eq("bling_id", String(blingContact.id))
+      .maybeSingle();
+
+    const hasBlingMapping = !!existingMapping?.local_id;
+    
+    // Check for duplicates in CRM (by CPF/CNPJ, phone, or name)
+    const blingPhone = blingContact.celular || blingContact.telefone;
+    const existingContact = await findExistingContact(
+      supabase,
+      tenantId,
+      blingContact.cpfCnpj || null,
+      blingPhone || null,
+      blingContact.nome || ""
+    );
+    
+    const existsInCRM = !!existingContact;
+    const isNew = !hasBlingMapping && !existsInCRM;
+
+    // Skip if not in selected IDs (when provided)
+    if (selectedIds && selectedIds.length > 0 && !selectedIds.includes(String(blingContact.id))) {
+      return { action: 'skipped' };
+    }
+
+    // Skip incomplete contacts if ignoreIncomplete is enabled
+    if (ignoreIncomplete) {
+      const completeness = isContactComplete(blingContact);
+      if (!completeness.isComplete) {
+        console.log(`[bling-sync] Skipping incomplete contact: ${blingContact.nome} (missing: ${completeness.missingFields.join(', ')})`);
+        return { action: 'skipped' };
+      }
+    }
+
+    // Skip based on import mode
+    if (importMode === "new_only" && !isNew) {
+      return { action: 'skipped' };
+    }
+
+    // If contact exists in CRM, SKIP (preserve CRM data) and just create mapping if needed
+    if (existsInCRM) {
+      console.log(`[bling-sync] Skipping duplicate: ${blingContact.nome} (${existingContact.matchedBy})`);
+      
+      // Create mapping if it doesn't exist
+      if (!hasBlingMapping) {
+        const { data: existingBlingMapping } = await supabase
+          .from("bling_id_mappings")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("entity_type", "contact")
+          .eq("local_id", existingContact.id)
+          .maybeSingle();
+        
+        if (!existingBlingMapping) {
+          await supabase.from("bling_id_mappings").insert({
+            tenant_id: tenantId,
+            entity_type: "contact",
+            local_id: existingContact.id,
+            bling_id: String(blingContact.id),
+            sync_direction: "bling_to_local",
+          });
+        }
+      }
+      
+      return { action: 'skipped' };
+    }
+
+    // If has Bling mapping, update the existing contact
+    if (hasBlingMapping) {
+      const phoneValue = blingPhone 
+        ? (normalizePhoneForStorage(blingPhone) || `BLING_${blingContact.id}`)
+        : `BLING_${blingContact.id}`;
+      
+      const contactData = {
+        full_name: (blingContact.nome || "Sem nome").trim().replace(/\s+/g, ' '),
+        phone: phoneValue,
+        email: blingContact.email || null,
+        cpf_cnpj: blingContact.cpfCnpj?.replace(/\D/g, '') || null,
+        person_type: blingContact.tipo === "J" ? "company" : "individual",
+        street: blingContact.endereco?.endereco || null,
+        number: blingContact.endereco?.numero || null,
+        complement: blingContact.endereco?.complemento || null,
+        neighborhood: blingContact.endereco?.bairro || null,
+        zip_code: blingContact.endereco?.cep || null,
+        city: blingContact.endereco?.municipio || null,
+        state: blingContact.endereco?.uf || null,
+      };
+
+      await supabase
+        .from("contacts")
+        .update(contactData)
+        .eq("id", existingMapping.local_id);
+      return { action: 'updated' };
+    }
+
+    // Create new contact (no duplicate found)
+    const newPhoneValue = blingPhone 
+      ? (normalizePhoneForStorage(blingPhone) || `BLING_${blingContact.id}`)
+      : `BLING_${blingContact.id}`;
+    
+    const contactData = {
+      full_name: (blingContact.nome || "Sem nome").trim().replace(/\s+/g, ' '),
+      phone: newPhoneValue,
+      email: blingContact.email || null,
+      cpf_cnpj: blingContact.cpfCnpj?.replace(/\D/g, '') || null,
+      person_type: blingContact.tipo === "J" ? "company" : "individual",
+      street: blingContact.endereco?.endereco || null,
+      number: blingContact.endereco?.numero || null,
+      complement: blingContact.endereco?.complemento || null,
+      neighborhood: blingContact.endereco?.bairro || null,
+      zip_code: blingContact.endereco?.cep || null,
+      city: blingContact.endereco?.municipio || null,
+      state: blingContact.endereco?.uf || null,
+      tenant_id: tenantId,
+    };
+
+    const { data: newContact, error: insertError } = await supabase
+      .from("contacts")
+      .insert(contactData)
+      .select("id")
+      .single();
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+
+    await supabase.from("bling_id_mappings").insert({
+      tenant_id: tenantId,
+      entity_type: "contact",
+      local_id: newContact.id,
+      bling_id: String(blingContact.id),
+      sync_direction: "bling_to_local",
+    });
+    
+    return { action: 'created' };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    console.error(`[bling-sync] Error importing contact ${blingContact.nome}: ${msg}`);
+    return { action: 'error', error: msg };
+  }
+}
+
+// Sync Contacts with parallel batch processing
 async function syncContacts(
   supabase: any, 
   tenantId: string, 
@@ -528,17 +684,19 @@ async function syncContacts(
   const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
   const errors: Array<{ entity: string; message: string; details?: string }> = [];
   const preview: any[] = [];
+  const BATCH_SIZE = 10; // Process 10 contacts in parallel
 
   try {
     // Import from Bling to Local
     if (direction === "bling_to_local" || direction === "bidirectional") {
       console.log(`[bling-sync] Importing contacts from Bling...`);
       
+      // First, collect all contacts from Bling
+      const allBlingContacts: BlingContact[] = [];
       let page = 1;
       let hasMore = true;
 
       while (hasMore) {
-        // Build endpoint with date filters if provided
         let endpoint = `/contatos?pagina=${page}&limite=100`;
         if (startDate) {
           endpoint += `&dataInclusaoInicial=${startDate}`;
@@ -547,7 +705,7 @@ async function syncContacts(
           endpoint += `&dataInclusaoFinal=${endDate}`;
         }
         
-        console.log(`[bling-sync] Fetching contacts: ${endpoint}`);
+        console.log(`[bling-sync] Fetching contacts page ${page}: ${endpoint}`);
         const response = await blingApi(endpoint, accessToken);
         const blingContacts: BlingContact[] = response.data || [];
 
@@ -556,191 +714,96 @@ async function syncContacts(
           break;
         }
 
-        for (const blingContact of blingContacts) {
-          try {
-            // Check if mapping already exists
-            const { data: existingMapping } = await supabase
-              .from("bling_id_mappings")
-              .select("local_id")
-              .eq("tenant_id", tenantId)
-              .eq("entity_type", "contact")
-              .eq("bling_id", String(blingContact.id))
-              .maybeSingle();
-
-            const hasBlingMapping = !!existingMapping?.local_id;
-            
-            // Check for duplicates in CRM (by CPF/CNPJ, phone, or name)
-            const blingPhone = blingContact.celular || blingContact.telefone;
-            const existingContact = await findExistingContact(
-              supabase,
-              tenantId,
-              blingContact.cpfCnpj || null,
-              blingPhone || null,
-              blingContact.nome || ""
-            );
-            
-            const existsInCRM = !!existingContact;
-            const isNew = !hasBlingMapping && !existsInCRM;
-
-            // For preview mode, collect data with duplicate info
-            if (previewOnly) {
-              // Check completeness if ignoreIncomplete is enabled
-              let willBeSkipped = existsInCRM;
-              let skipReason = existsInCRM ? `Já existe no CRM (${existingContact.matchedBy})` : null;
-              
-              if (ignoreIncomplete && !willBeSkipped) {
-                const completeness = isContactComplete(blingContact);
-                if (!completeness.isComplete) {
-                  willBeSkipped = true;
-                  skipReason = `Incompleto: falta ${completeness.missingFields.join(', ')}`;
-                }
-              }
-              
-              preview.push({
-                id: String(blingContact.id),
-                name: blingContact.nome || "Sem nome",
-                code: blingContact.cpfCnpj || blingContact.codigo || null,
-                phone: blingPhone || null,
-                isNew,
-                exists_locally: existsInCRM || hasBlingMapping,
-                willBeSkipped,
-                skipReason,
-              });
-              continue;
-            }
-
-            // Skip if not in selected IDs (when provided)
-            if (selectedIds && selectedIds.length > 0 && !selectedIds.includes(String(blingContact.id))) {
-              counts.skipped++;
-              continue;
-            }
-
-            // Skip incomplete contacts if ignoreIncomplete is enabled
-            if (ignoreIncomplete) {
-              const completeness = isContactComplete(blingContact);
-              if (!completeness.isComplete) {
-                console.log(`[bling-sync] Skipping incomplete contact: ${blingContact.nome} (missing: ${completeness.missingFields.join(', ')})`);
-                counts.skipped++;
-                continue;
-              }
-            }
-
-            // Skip based on import mode
-            if (importMode === "new_only" && !isNew) {
-              counts.skipped++;
-              continue;
-            }
-
-            // If contact exists in CRM, SKIP (preserve CRM data) and just create mapping if needed
-            if (existsInCRM) {
-              console.log(`[bling-sync] Skipping duplicate: ${blingContact.nome} (${existingContact.matchedBy})`);
-              
-              // Create mapping if it doesn't exist
-              if (!hasBlingMapping) {
-                const { data: existingBlingMapping } = await supabase
-                  .from("bling_id_mappings")
-                  .select("id")
-                  .eq("tenant_id", tenantId)
-                  .eq("entity_type", "contact")
-                  .eq("local_id", existingContact.id)
-                  .maybeSingle();
-                
-                if (!existingBlingMapping) {
-                  await supabase.from("bling_id_mappings").insert({
-                    tenant_id: tenantId,
-                    entity_type: "contact",
-                    local_id: existingContact.id,
-                    bling_id: String(blingContact.id),
-                    sync_direction: "bling_to_local",
-                  });
-                }
-              }
-              
-              counts.skipped++;
-              continue;
-            }
-
-            // If has Bling mapping, update the existing contact
-            if (hasBlingMapping) {
-              // Generate unique phone placeholder if no phone provided
-              const phoneValue = blingPhone 
-                ? (normalizePhoneForStorage(blingPhone) || `BLING_${blingContact.id}`)
-                : `BLING_${blingContact.id}`;
-              
-              const contactData = {
-                full_name: (blingContact.nome || "Sem nome").trim().replace(/\s+/g, ' '),
-                phone: phoneValue,
-                email: blingContact.email || null,
-                cpf_cnpj: blingContact.cpfCnpj?.replace(/\D/g, '') || null,
-                person_type: blingContact.tipo === "J" ? "company" : "individual",
-                street: blingContact.endereco?.endereco || null,
-                number: blingContact.endereco?.numero || null,
-                complement: blingContact.endereco?.complemento || null,
-                neighborhood: blingContact.endereco?.bairro || null,
-                zip_code: blingContact.endereco?.cep || null,
-                city: blingContact.endereco?.municipio || null,
-                state: blingContact.endereco?.uf || null,
-              };
-
-              await supabase
-                .from("contacts")
-                .update(contactData)
-                .eq("id", existingMapping.local_id);
-              counts.updated++;
-              continue;
-            }
-
-            // Create new contact (no duplicate found)
-            // Generate unique phone placeholder if no phone provided
-            const newPhoneValue = blingPhone 
-              ? (normalizePhoneForStorage(blingPhone) || `BLING_${blingContact.id}`)
-              : `BLING_${blingContact.id}`;
-            
-            const contactData = {
-              full_name: (blingContact.nome || "Sem nome").trim().replace(/\s+/g, ' '),
-              phone: newPhoneValue,
-              email: blingContact.email || null,
-              cpf_cnpj: blingContact.cpfCnpj?.replace(/\D/g, '') || null,
-              person_type: blingContact.tipo === "J" ? "company" : "individual",
-              street: blingContact.endereco?.endereco || null,
-              number: blingContact.endereco?.numero || null,
-              complement: blingContact.endereco?.complemento || null,
-              neighborhood: blingContact.endereco?.bairro || null,
-              zip_code: blingContact.endereco?.cep || null,
-              city: blingContact.endereco?.municipio || null,
-              state: blingContact.endereco?.uf || null,
-              tenant_id: tenantId,
-            };
-
-            const { data: newContact, error: insertError } = await supabase
-              .from("contacts")
-              .insert(contactData)
-              .select("id")
-              .single();
-
-            if (insertError) {
-              throw new Error(insertError.message);
-            }
-
-            await supabase.from("bling_id_mappings").insert({
-              tenant_id: tenantId,
-              entity_type: "contact",
-              local_id: newContact.id,
-              bling_id: String(blingContact.id),
-              sync_direction: "bling_to_local",
-            });
-            
-            counts.created++;
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : "Unknown error";
-            console.error(`[bling-sync] Error importing contact ${blingContact.nome}: ${msg}`, error);
-            errors.push({ entity: "contact", message: msg, details: blingContact.nome });
-            counts.errors++;
-          }
-        }
-
+        allBlingContacts.push(...blingContacts);
         page++;
         if (blingContacts.length < 100) hasMore = false;
+      }
+
+      console.log(`[bling-sync] Fetched ${allBlingContacts.length} contacts from Bling`);
+
+      // For preview mode, process sequentially (quick lookups)
+      if (previewOnly) {
+        for (const blingContact of allBlingContacts) {
+          const { data: existingMapping } = await supabase
+            .from("bling_id_mappings")
+            .select("local_id")
+            .eq("tenant_id", tenantId)
+            .eq("entity_type", "contact")
+            .eq("bling_id", String(blingContact.id))
+            .maybeSingle();
+
+          const hasBlingMapping = !!existingMapping?.local_id;
+          const blingPhone = blingContact.celular || blingContact.telefone;
+          const existingContact = await findExistingContact(
+            supabase,
+            tenantId,
+            blingContact.cpfCnpj || null,
+            blingPhone || null,
+            blingContact.nome || ""
+          );
+          
+          const existsInCRM = !!existingContact;
+          const isNew = !hasBlingMapping && !existsInCRM;
+
+          let willBeSkipped = existsInCRM;
+          let skipReason = existsInCRM ? `Já existe no CRM (${existingContact.matchedBy})` : null;
+          
+          if (ignoreIncomplete && !willBeSkipped) {
+            const completeness = isContactComplete(blingContact);
+            if (!completeness.isComplete) {
+              willBeSkipped = true;
+              skipReason = `Incompleto: falta ${completeness.missingFields.join(', ')}`;
+            }
+          }
+          
+          preview.push({
+            id: String(blingContact.id),
+            name: blingContact.nome || "Sem nome",
+            code: blingContact.cpfCnpj || blingContact.codigo || null,
+            phone: blingPhone || null,
+            isNew,
+            exists_locally: existsInCRM || hasBlingMapping,
+            willBeSkipped,
+            skipReason,
+          });
+        }
+      } else {
+        // Process contacts in parallel batches
+        console.log(`[bling-sync] Processing ${allBlingContacts.length} contacts in batches of ${BATCH_SIZE}`);
+        
+        for (let i = 0; i < allBlingContacts.length; i += BATCH_SIZE) {
+          const batch = allBlingContacts.slice(i, i + BATCH_SIZE);
+          const results = await Promise.all(
+            batch.map(contact => processContact(supabase, tenantId, contact, importMode, selectedIds, ignoreIncomplete))
+          );
+          
+          // Aggregate results
+          for (let j = 0; j < results.length; j++) {
+            const result = results[j];
+            const contact = batch[j];
+            
+            switch (result.action) {
+              case 'created':
+                counts.created++;
+                break;
+              case 'updated':
+                counts.updated++;
+                break;
+              case 'skipped':
+                counts.skipped++;
+                break;
+              case 'error':
+                counts.errors++;
+                errors.push({ entity: "contact", message: result.error || "Unknown error", details: contact.nome });
+                break;
+            }
+          }
+          
+          // Log progress every 50 contacts
+          if ((i + BATCH_SIZE) % 50 === 0 || i + BATCH_SIZE >= allBlingContacts.length) {
+            console.log(`[bling-sync] Progress: ${Math.min(i + BATCH_SIZE, allBlingContacts.length)}/${allBlingContacts.length} contacts processed`);
+          }
+        }
       }
     }
 
