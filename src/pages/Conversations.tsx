@@ -1403,7 +1403,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const canViewUnassigned = canAccessAllConversations || hasPermission('conversations', 'view_unassigned');
   
   // Permissão para ver conversas pendentes do departamento
-  const canViewPending = canAccessAllConversations || hasPermission('conversations', 'view_pending');
+  // Vendedores com permissão básica de ver conversas podem ver pending dos SEUS departamentos
+  const canViewPending = canAccessAllConversations || hasPermission('conversations', 'view_pending') || hasPermission('conversations', 'view');
   
   // Filtros disponíveis baseados nas permissões
   const availableQuickFilters = useMemo(() => {
@@ -1485,15 +1486,15 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   } = usePaginatedConversations(conversationFilters);
 
   // Build filters for contextual counts - TODOS os filtros ativos
-  // Para vendedores (não admin/supervisor), SEMPRE filtrar pelas próprias conversas
+  // Para vendedores (não admin/supervisor), filtrar por próprias conversas apenas se NÃO pode ver pending
   const countFilters: CountFilters = useMemo(() => {
     // Determinar o agentId efetivo:
     // 1. Se usuário selecionou um agente específico no filtro avançado, usar esse
-    // 2. Se usuário NÃO é admin/supervisor, SEMPRE filtrar pelo próprio ID
-    // 3. Caso contrário (admin/supervisor sem filtro), não filtrar por agente
+    // 2. Se usuário NÃO é admin/supervisor E NÃO pode ver pending, filtrar pelo próprio ID
+    // 3. Se usuário pode ver pending (do departamento), não forçar agentId
     const effectiveAgentId = advancedFilters.agentId !== 'all'
       ? advancedFilters.agentId
-      : (!isAdmin && !isSupervisor && profile?.id)
+      : (!isAdmin && !isSupervisor && !canViewPending && profile?.id)
         ? profile.id
         : undefined;
 
@@ -1510,7 +1511,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       tagId: advancedFilters.tagIds.length === 1 ? advancedFilters.tagIds[0] : undefined, // Single tag filter
       statusFilter: statusFilter, // Status filter for conversation counts
     };
-  }, [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, channelFilter, dateFilter, customDateRange.from, customDateRange.to, sortFilter, statusFilter, isAdmin, isSupervisor, profile?.id]);
+  }, [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, channelFilter, dateFilter, customDateRange.from, customDateRange.to, sortFilter, statusFilter, isAdmin, isSupervisor, canViewPending, profile?.id]);
 
   // Filters for each count type (excluding self to avoid circular filtering)
   const deptCountFilters: CountFilters = useMemo(() => ({ ...countFilters, departmentId: undefined }), [countFilters]);
