@@ -320,8 +320,10 @@ export function MarketingCampaignModal({
         toast.success('Campanha criada!');
       }
       onOpenChange(false);
-    } catch (error) {
-      toast.error('Erro ao salvar campanha');
+    } catch (error: any) {
+      console.error('Erro ao salvar campanha:', error);
+      const message = error?.message || error?.details || 'Erro ao salvar campanha';
+      toast.error(message);
     }
   };
 
