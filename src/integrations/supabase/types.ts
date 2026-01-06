@@ -10235,6 +10235,14 @@ export type Database = {
         }
         Returns: Json
       }
+      get_auth_context: {
+        Args: never
+        Returns: {
+          tenant_id: string
+          user_id: string
+          user_role: string
+        }[]
+      }
       get_base_menu_items: {
         Args: { p_base_tenant_id?: string }
         Returns: {
