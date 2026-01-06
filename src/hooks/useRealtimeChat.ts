@@ -93,7 +93,20 @@ export function useRealtimeConversations() {
       });
     };
 
-    // OTIMIZAÇÃO: Debounce aumentado de 500ms para 800ms
+// OTIMIZAÇÃO: Debounce de INSERT reduzido para 300ms (novas conversas devem aparecer rápido)
+    const invalidateConversationsInsert = debounce(() => {
+      console.log('🔄 [Realtime] Invalidating conversations (INSERT)');
+      queryClient.invalidateQueries({ 
+        queryKey: ['conversations-paginated'],
+        refetchType: 'active'
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ['conversation-total-counts'],
+        refetchType: 'active'
+      });
+    }, 300);
+
+    // OTIMIZAÇÃO: Debounce de UPDATE mantido em 800ms
     const invalidateConversations = debounce(() => {
       queryClient.invalidateQueries({ 
         queryKey: ['conversations-paginated'],
@@ -250,7 +263,7 @@ export function useRealtimeConversations() {
         },
         (payload) => {
           console.log('🔔 [Realtime] New conversation INSERT:', (payload.new as any)?.id);
-          invalidateConversations();
+          invalidateConversationsInsert(); // Usar debounce mais rápido para INSERT
         }
       )
       .subscribe((status) => {
@@ -381,11 +394,53 @@ export function useRealtimeConversations() {
         console.log('📡 [Realtime] live-transfers broadcast channel status:', status);
       });
 
+    // Channel 4: BROADCAST channel para novas conversas (não depende de RLS)
+    const newConversationBroadcastChannel = supabase
+      .channel('new-conversations')
+      .on('broadcast', { event: 'new-conversation' }, async (payload) => {
+        const { tenantId, departmentId, conversationId } = payload.payload;
+        
+        console.log('⚡ [Broadcast] New conversation received:', { tenantId, departmentId, conversationId });
+        
+        // Invalidar imediatamente para todos os usuários do tenant
+        // O RLS vai filtrar o que cada usuário pode ver
+        invalidateConversationsInsert();
+      })
+      .subscribe((status) => {
+        console.log('📡 [Realtime] new-conversations broadcast channel status:', status);
+      });
+
+    // Fallback: Polling inteligente a cada 15 segundos (apenas se não houve eventos recentes)
+    let lastRealtimeEvent = Date.now();
+    
+    // Atualizar lastRealtimeEvent quando qualquer evento de conversa chegar
+    const updateLastEvent = () => {
+      lastRealtimeEvent = Date.now();
+    };
+
+    const pollInterval = setInterval(() => {
+      const timeSinceLastEvent = Date.now() - lastRealtimeEvent;
+      // Só faz polling se não houve evento nos últimos 10 segundos
+      if (timeSinceLastEvent > 10000) {
+        console.log('🔄 [Polling] No realtime events in 10s, forcing refresh...');
+        queryClient.invalidateQueries({ 
+          queryKey: ['conversations-paginated'],
+          refetchType: 'active'
+        });
+        queryClient.invalidateQueries({ 
+          queryKey: ['conversation-total-counts'],
+          refetchType: 'active'
+        });
+      }
+    }, 15000);
+
     return () => {
       console.log('🔌 [Realtime] Cleaning up conversation channels');
+      clearInterval(pollInterval);
       supabase.removeChannel(conversationsChannel);
       supabase.removeChannel(eventsChannel);
       supabase.removeChannel(transferBroadcastChannel);
+      supabase.removeChannel(newConversationBroadcastChannel);
     };
   }, [queryClient]);
 }

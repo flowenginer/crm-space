@@ -2230,6 +2230,27 @@ serve(async (req) => {
           if (initialAssignedTo) {
             console.log(`[Webhook] 👤 New conversation assigned to owner agent: ${initialAssignedTo}`);
           }
+          
+          // ⚡ BROADCAST: Notificar todos os usuários do tenant sobre nova conversa
+          // Isso garante que usuários vejam a conversa mesmo se RLS bloquear postgres_changes
+          try {
+            const broadcastChannel = supabase.channel('new-conversations');
+            await broadcastChannel.send({
+              type: 'broadcast',
+              event: 'new-conversation',
+              payload: {
+                tenantId: channel.tenant_id,
+                departmentId: conversationDepartmentId,
+                conversationId: newConversation.id,
+                timestamp: new Date().toISOString()
+              }
+            });
+            await supabase.removeChannel(broadcastChannel);
+            console.log(`[Webhook] ⚡ Broadcast sent for new conversation ${newConversation.id}`);
+          } catch (broadcastError) {
+            console.error(`[Webhook] ⚠️ Failed to send broadcast:`, broadcastError);
+            // Não falhar a requisição por causa do broadcast
+          }
         }
       }
     } else {
