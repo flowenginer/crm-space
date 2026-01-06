@@ -57,6 +57,9 @@ import { FileUploader } from '@/components/quick-messages/FileUploader';
 import { EmojiPickerButton } from '@/components/quick-messages/EmojiPickerButton';
 import { useRescueTemplates, useDeleteRescueTemplate, RescueTemplate } from '@/hooks/useRescueTemplates';
 import { RescueTemplateModal } from '@/components/rescue/RescueTemplateModal';
+import { useMarketingCampaigns, useDeleteMarketingCampaign } from '@/hooks/useMarketingCampaigns';
+import { MarketingCampaignModal } from '@/components/marketing/MarketingCampaignModal';
+import type { MarketingCampaign } from '@/types/marketing';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -67,10 +70,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Megaphone } from 'lucide-react';
 
 const categoryConfig = [
   { id: 'messages', icon: MessageSquare, label: 'Mensagens' },
-  { id: 'rescue', icon: UserRoundPlus, label: 'Resgate' },
+  { id: 'rescue', icon: UserRoundPlus, label: 'Follow-up' },
+  { id: 'marketing', icon: Megaphone, label: 'Marketing' },
 ];
 
 const variableOptions = [
@@ -102,14 +107,23 @@ export default function QuickMessages() {
   const updateTemplate = useUpdateTemplate();
   const deleteTemplate = useDeleteTemplate();
 
-  // Rescue hooks
+  // Rescue hooks (Follow-up)
   const { data: rescueTemplates = [], isLoading: isLoadingRescue } = useRescueTemplates();
   const deleteRescueTemplate = useDeleteRescueTemplate();
 
-  // Rescue modal states
+  // Marketing hooks
+  const { data: marketingCampaigns = [], isLoading: isLoadingMarketing } = useMarketingCampaigns();
+  const deleteMarketingCampaign = useDeleteMarketingCampaign();
+
+  // Rescue modal states (Follow-up)
   const [showRescueModal, setShowRescueModal] = useState(false);
   const [editingRescue, setEditingRescue] = useState<RescueTemplate | null>(null);
   const [rescueToDelete, setRescueToDelete] = useState<string | null>(null);
+
+  // Marketing modal states
+  const [showMarketingModal, setShowMarketingModal] = useState(false);
+  const [editingMarketing, setEditingMarketing] = useState<MarketingCampaign | null>(null);
+  const [marketingToDelete, setMarketingToDelete] = useState<string | null>(null);
 
   // Modal states
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -135,12 +149,14 @@ export default function QuickMessages() {
     categoryConfig.forEach((cat) => {
       if (cat.id === 'rescue') {
         counts[cat.id] = rescueTemplates.length;
+      } else if (cat.id === 'marketing') {
+        counts[cat.id] = marketingCampaigns.length;
       } else {
         counts[cat.id] = templates.filter((t) => t.category === cat.id).length;
       }
     });
     return counts;
-  }, [templates, rescueTemplates]);
+  }, [templates, rescueTemplates, marketingCampaigns]);
 
   // Filter templates
   const filteredTemplates = useMemo(() => {
@@ -401,10 +417,32 @@ export default function QuickMessages() {
     if (!rescueToDelete) return;
     try {
       await deleteRescueTemplate.mutateAsync(rescueToDelete);
-      toast({ title: 'Template de resgate excluído!' });
+      toast({ title: 'Template de follow-up excluído!' });
       setRescueToDelete(null);
     } catch (error) {
       toast({ title: 'Erro ao excluir template', variant: 'destructive' });
+    }
+  };
+
+  // Marketing handlers
+  const handleNewMarketing = () => {
+    setEditingMarketing(null);
+    setShowMarketingModal(true);
+  };
+
+  const handleEditMarketing = (campaign: MarketingCampaign) => {
+    setEditingMarketing(campaign);
+    setShowMarketingModal(true);
+  };
+
+  const handleDeleteMarketing = async () => {
+    if (!marketingToDelete) return;
+    try {
+      await deleteMarketingCampaign.mutateAsync(marketingToDelete);
+      toast({ title: 'Campanha de marketing excluída!' });
+      setMarketingToDelete(null);
+    } catch (error) {
+      toast({ title: 'Erro ao excluir campanha', variant: 'destructive' });
     }
   };
 
@@ -416,6 +454,15 @@ export default function QuickMessages() {
         (template.description || '').toLowerCase().includes(searchQuery.toLowerCase());
     });
   }, [rescueTemplates, searchQuery]);
+
+  // Filter marketing campaigns by search
+  const filteredMarketingCampaigns = useMemo(() => {
+    return marketingCampaigns.filter((campaign) => {
+      if (searchQuery === '') return true;
+      return campaign.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (campaign.description || '').toLowerCase().includes(searchQuery.toLowerCase());
+    });
+  }, [marketingCampaigns, searchQuery]);
 
   return (
     <div className="flex h-[calc(100vh-72px)]">
@@ -472,10 +519,12 @@ export default function QuickMessages() {
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold text-foreground">
-              {activeCategory === 'rescue' ? 'Templates de Resgate' : 'Mensagens rápidas'}
+              {activeCategory === 'rescue' ? 'Templates de Follow-up' : 
+               activeCategory === 'marketing' ? 'Campanhas de Marketing' : 'Mensagens rápidas'}
             </h1>
             <Badge variant="secondary" className="font-medium">
-              {activeCategory === 'rescue' ? filteredRescueTemplates.length : filteredTemplates.length}
+              {activeCategory === 'rescue' ? filteredRescueTemplates.length : 
+               activeCategory === 'marketing' ? filteredMarketingCampaigns.length : filteredTemplates.length}
             </Badge>
           </div>
 
@@ -493,7 +542,10 @@ export default function QuickMessages() {
             </div>
 
             {/* New Template Button */}
-            <Button onClick={activeCategory === 'rescue' ? handleNewRescue : handleNewTemplate} size="sm">
+            <Button onClick={
+              activeCategory === 'rescue' ? handleNewRescue : 
+              activeCategory === 'marketing' ? handleNewMarketing : handleNewTemplate
+            } size="sm">
               <Plus size={16} className="mr-1" />
               ADICIONAR
             </Button>

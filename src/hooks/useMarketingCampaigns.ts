@@ -1,0 +1,143 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import type { MarketingCampaign, MarketingStep } from '@/types/marketing';
+
+export function useMarketingCampaigns() {
+  return useQuery({
+    queryKey: ['marketing-campaigns'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('marketing_campaigns')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      return (data || []).map(item => ({
+        ...item,
+        steps: (item.steps as unknown as MarketingStep[]) || [],
+      })) as MarketingCampaign[];
+    },
+  });
+}
+
+export function useMarketingCampaign(id: string | null) {
+  return useQuery({
+    queryKey: ['marketing-campaign', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('marketing_campaigns')
+        .select('*')
+        .eq('id', id!)
+        .single();
+
+      if (error) throw error;
+      
+      return {
+        ...data,
+        steps: (data.steps as unknown as MarketingStep[]) || [],
+      } as MarketingCampaign;
+    },
+  });
+}
+
+export function useCreateMarketingCampaign() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (campaign: {
+      title: string;
+      description?: string;
+      steps: MarketingStep[];
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { data, error } = await supabase
+        .from('marketing_campaigns')
+        .insert({
+          title: campaign.title,
+          description: campaign.description || null,
+          steps: campaign.steps as unknown as any,
+          created_by: user?.id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketing-campaigns'] });
+    },
+  });
+}
+
+export function useUpdateMarketingCampaign() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (campaign: {
+      id: string;
+      title?: string;
+      description?: string;
+      steps?: MarketingStep[];
+      is_active?: boolean;
+    }) => {
+      const updateData: any = {};
+      if (campaign.title !== undefined) updateData.title = campaign.title;
+      if (campaign.description !== undefined) updateData.description = campaign.description;
+      if (campaign.steps !== undefined) updateData.steps = campaign.steps as unknown as any;
+      if (campaign.is_active !== undefined) updateData.is_active = campaign.is_active;
+
+      const { data, error } = await supabase
+        .from('marketing_campaigns')
+        .update(updateData)
+        .eq('id', campaign.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketing-campaigns'] });
+    },
+  });
+}
+
+export function useDeleteMarketingCampaign() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('marketing_campaigns')
+        .update({ is_active: false })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketing-campaigns'] });
+    },
+  });
+}
+
+// Hook to get chatbot flows for automation action
+export function useChatbotFlows() {
+  return useQuery({
+    queryKey: ['chatbot-flows-active'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('chatbot_flows')
+        .select('id, name, description')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    },
+  });
+}
