@@ -534,7 +534,7 @@ export function useCreateBulkDispatch() {
         .from('bulk_dispatches')
         .insert({
           name: data.name,
-          template_id: data.template_id || '00000000-0000-0000-0000-000000000000', // Placeholder for marketing
+          template_id: data.campaign_type === 'marketing' ? null : data.template_id,
           channel_id: channelIdValue,
           filters: data.filters as any,
           interval_seconds: data.interval_seconds,

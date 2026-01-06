@@ -809,7 +809,7 @@ export type Database = {
           sent_count: number
           started_at: string | null
           status: string
-          template_id: string
+          template_id: string | null
           tenant_id: string
           total_contacts: number
           updated_at: string
@@ -834,7 +834,7 @@ export type Database = {
           sent_count?: number
           started_at?: string | null
           status?: string
-          template_id: string
+          template_id?: string | null
           tenant_id?: string
           total_contacts?: number
           updated_at?: string
@@ -859,7 +859,7 @@ export type Database = {
           sent_count?: number
           started_at?: string | null
           status?: string
-          template_id?: string
+          template_id?: string | null
           tenant_id?: string
           total_contacts?: number
           updated_at?: string
