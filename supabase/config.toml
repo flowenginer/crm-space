@@ -56,6 +56,9 @@ verify_jwt = true
 [functions.process-rescue-messages]
 verify_jwt = false
 
+[functions.process-marketing-messages]
+verify_jwt = false
+
 [functions.bling-auth]
 verify_jwt = false
 
@@ -108,4 +111,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.delete-user]
+verify_jwt = false
+
+[functions.process-bulk-dispatch]
 verify_jwt = false

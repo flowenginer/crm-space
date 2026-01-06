@@ -317,6 +317,28 @@ async function generateContactsFromFilters(supabase: any, dispatch: any): Promis
     }
   }
 
+  // Apply assignedTo filter - find contacts whose conversations are assigned to these agents
+  if (filters.assignedTo && filters.assignedTo.length > 0) {
+    const { data: assignedConvs } = await supabase
+      .from('conversations')
+      .select('contact_id')
+      .eq('tenant_id', tenantId)
+      .in('assigned_to', filters.assignedTo);
+
+    const assignedContactIds = [...new Set(assignedConvs?.map((c: any) => c.contact_id) || [])];
+    if (assignedContactIds.length > 0) {
+      query = query.in('id', assignedContactIds);
+    } else {
+      console.log(`[BulkDispatch] No contacts found assigned to specified agents`);
+      return 0;
+    }
+  }
+
+  // Apply includeBlocked filter (default: exclude blocked)
+  if (filters.includeBlocked === false || filters.includeBlocked === undefined) {
+    query = query.or('is_blocked.is.null,is_blocked.eq.false');
+  }
+
   const { data: contacts, error } = await query;
 
   if (error) {
