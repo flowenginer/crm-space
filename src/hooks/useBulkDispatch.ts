@@ -44,10 +44,13 @@ export interface BulkDispatch {
   updated_at: string;
   schedule_enabled: boolean;
   schedule_override: ScheduleOverride | null;
+  campaign_type: 'followup' | 'marketing' | null;
+  marketing_campaign_id: string | null;
   // Joined data
   template?: { id: string; title: string };
   channel?: { id: string; name: string };
   creator?: { id: string; full_name: string };
+  marketing_campaign?: { id: string; title: string };
 }
 
 export interface BulkDispatchContact {
@@ -90,7 +93,8 @@ export function useBulkDispatches() {
           *,
           template:rescue_templates(id, title),
           channel:whatsapp_channels(id, name),
-          creator:profiles!bulk_dispatches_created_by_fkey(id, full_name)
+          creator:profiles!bulk_dispatches_created_by_fkey(id, full_name),
+          marketing_campaign:marketing_campaigns(id, title)
         `)
         .order('created_at', { ascending: false });
 
@@ -117,7 +121,8 @@ export function useBulkDispatch(id: string | null) {
           *,
           template:rescue_templates(id, title),
           channel:whatsapp_channels(id, name),
-          creator:profiles!bulk_dispatches_created_by_fkey(id, full_name)
+          creator:profiles!bulk_dispatches_created_by_fkey(id, full_name),
+          marketing_campaign:marketing_campaigns(id, title)
         `)
         .eq('id', id!)
         .single();
@@ -510,13 +515,15 @@ export function useCreateBulkDispatch() {
   return useMutation({
     mutationFn: async (data: {
       name: string;
-      template_id: string;
+      template_id: string | null;
       channel_id: string;
       filters: BulkDispatchFilters;
       interval_seconds: number;
       totalContacts: number; // Total exato vindo do COUNT
       schedule_enabled?: boolean;
       schedule_override?: ScheduleOverride | null;
+      campaign_type?: 'followup' | 'marketing';
+      marketing_campaign_id?: string | null;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -527,7 +534,7 @@ export function useCreateBulkDispatch() {
         .from('bulk_dispatches')
         .insert({
           name: data.name,
-          template_id: data.template_id,
+          template_id: data.template_id || '00000000-0000-0000-0000-000000000000', // Placeholder for marketing
           channel_id: channelIdValue,
           filters: data.filters as any,
           interval_seconds: data.interval_seconds,
@@ -535,6 +542,8 @@ export function useCreateBulkDispatch() {
           created_by: user?.id,
           schedule_enabled: data.schedule_enabled ?? true,
           schedule_override: data.schedule_override as any,
+          campaign_type: data.campaign_type || 'followup',
+          marketing_campaign_id: data.marketing_campaign_id || null,
         })
         .select()
         .single();
