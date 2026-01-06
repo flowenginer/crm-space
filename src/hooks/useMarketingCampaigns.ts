@@ -54,6 +54,17 @@ export function useCreateMarketingCampaign() {
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Buscar tenant_id do perfil do usuário
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user?.id)
+        .single();
+      
+      if (profileError || !profile?.tenant_id) {
+        throw new Error('Não foi possível identificar o tenant');
+      }
+      
       const { data, error } = await supabase
         .from('marketing_campaigns')
         .insert({
@@ -61,6 +72,7 @@ export function useCreateMarketingCampaign() {
           description: campaign.description || null,
           steps: campaign.steps as unknown as any,
           created_by: user?.id,
+          tenant_id: profile.tenant_id,
         })
         .select()
         .single();
