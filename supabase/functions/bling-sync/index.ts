@@ -458,18 +458,29 @@ async function findExistingContact(
     }
   }
   
-  // 3. Check by exact name (case-insensitive)
+  // 3. Check by exact name (case-insensitive, normalized for extra spaces)
   if (name && name.trim()) {
-    const { data } = await supabase
-      .from('contacts')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .ilike('full_name', name.trim())
-      .maybeSingle();
+    // Normalize: trim + collapse multiple spaces into single space
+    const normalizedName = name.trim().replace(/\s+/g, ' ');
     
-    if (data) {
-      console.log(`[bling-sync] Found duplicate by name: ${name}`);
-      return { id: data.id, matchedBy: 'Nome' };
+    // Fetch contacts and compare with normalized names (more reliable than ilike with spaces)
+    const { data: contacts } = await supabase
+      .from('contacts')
+      .select('id, full_name')
+      .eq('tenant_id', tenantId)
+      .not('full_name', 'is', null);
+    
+    if (contacts) {
+      const match = contacts.find((c: { id: string; full_name: string | null }) => {
+        if (!c.full_name) return false;
+        const normalizedDbName = c.full_name.trim().replace(/\s+/g, ' ');
+        return normalizedDbName.toLowerCase() === normalizedName.toLowerCase();
+      });
+      
+      if (match) {
+        console.log(`[bling-sync] Found duplicate by name: ${name} -> ${match.full_name}`);
+        return { id: match.id, matchedBy: 'Nome' };
+      }
     }
   }
   
@@ -603,9 +614,14 @@ async function syncContacts(
 
             // If has Bling mapping, update the existing contact
             if (hasBlingMapping) {
+              // Generate unique phone placeholder if no phone provided
+              const phoneValue = blingPhone 
+                ? (normalizePhoneForStorage(blingPhone) || `BLING_${blingContact.id}`)
+                : `BLING_${blingContact.id}`;
+              
               const contactData = {
-                full_name: blingContact.nome || "Sem nome",
-                phone: normalizePhoneForStorage(blingPhone || "0000000000") || "0000000000",
+                full_name: (blingContact.nome || "Sem nome").trim().replace(/\s+/g, ' '),
+                phone: phoneValue,
                 email: blingContact.email || null,
                 cpf_cnpj: blingContact.cpfCnpj?.replace(/\D/g, '') || null,
                 person_type: blingContact.tipo === "J" ? "company" : "individual",
@@ -627,9 +643,14 @@ async function syncContacts(
             }
 
             // Create new contact (no duplicate found)
+            // Generate unique phone placeholder if no phone provided
+            const newPhoneValue = blingPhone 
+              ? (normalizePhoneForStorage(blingPhone) || `BLING_${blingContact.id}`)
+              : `BLING_${blingContact.id}`;
+            
             const contactData = {
-              full_name: blingContact.nome || "Sem nome",
-              phone: normalizePhoneForStorage(blingPhone || "0000000000") || "0000000000",
+              full_name: (blingContact.nome || "Sem nome").trim().replace(/\s+/g, ' '),
+              phone: newPhoneValue,
               email: blingContact.email || null,
               cpf_cnpj: blingContact.cpfCnpj?.replace(/\D/g, '') || null,
               person_type: blingContact.tipo === "J" ? "company" : "individual",
