@@ -9938,6 +9938,7 @@ export type Database = {
         Returns: number
       }
       create_tenant_triggers: { Args: never; Returns: undefined }
+      current_tenant_id: { Args: never; Returns: string }
       current_user_is_super_admin: { Args: never; Returns: boolean }
       delete_contact_permanently: {
         Args: { p_contact_id: string }
