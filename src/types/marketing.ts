@@ -61,6 +61,7 @@ export interface MarketingCampaign {
   description: string | null;
   steps: MarketingStep[];
   is_active: boolean;
+  initial_department_id: string | null;
   created_by: string | null;
   tenant_id: string;
   created_at: string;

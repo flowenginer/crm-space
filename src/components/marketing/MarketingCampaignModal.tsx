@@ -87,6 +87,7 @@ export function MarketingCampaignModal({
 }: MarketingCampaignModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [initialDepartmentId, setInitialDepartmentId] = useState<string | null>(null);
   const [steps, setSteps] = useState<MarketingStep[]>([{ ...DEFAULT_STEP }]);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -112,10 +113,12 @@ export function MarketingCampaignModal({
     if (campaign) {
       setTitle(campaign.title);
       setDescription(campaign.description || '');
+      setInitialDepartmentId(campaign.initial_department_id || null);
       setSteps(campaign.steps.length > 0 ? campaign.steps : [{ ...DEFAULT_STEP }]);
     } else {
       setTitle('');
       setDescription('');
+      setInitialDepartmentId(null);
       setSteps([{ ...DEFAULT_STEP }]);
     }
     setActiveStepIndex(0);
@@ -309,6 +312,7 @@ export function MarketingCampaignModal({
           title,
           description,
           steps: validSteps,
+          initial_department_id: initialDepartmentId,
         });
         toast.success('Campanha atualizada!');
       } else {
@@ -316,6 +320,7 @@ export function MarketingCampaignModal({
           title,
           description,
           steps: validSteps,
+          initial_department_id: initialDepartmentId,
         });
         toast.success('Campanha criada!');
       }
@@ -362,6 +367,34 @@ export function MarketingCampaignModal({
                     placeholder="Ex: Campanha de vendas para novembro"
                   />
                 </div>
+              </div>
+
+              {/* Initial Department Transfer */}
+              <div className="p-4 border-2 border-dashed border-primary/30 rounded-lg bg-primary/5 space-y-2">
+                <Label htmlFor="initial-department" className="text-sm font-medium flex items-center gap-2">
+                  <span className="text-primary">⚡</span>
+                  Transferir para departamento antes de iniciar (opcional)
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  O lead será transferido automaticamente para este departamento ao iniciar a campanha. 
+                  Útil para isolar o atendimento em um departamento privado.
+                </p>
+                <Select
+                  value={initialDepartmentId || 'none'}
+                  onValueChange={(value) => setInitialDepartmentId(value === 'none' ? null : value)}
+                >
+                  <SelectTrigger id="initial-department">
+                    <SelectValue placeholder="Selecione um departamento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Não transferir</SelectItem>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Steps Tabs */}
