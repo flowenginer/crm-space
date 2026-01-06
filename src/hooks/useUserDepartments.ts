@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useTenantId } from '@/hooks/useUserContext';
 
 export interface UserDepartment {
   id: string;
@@ -61,6 +62,7 @@ export function useAllUserDepartments() {
 
 export function useAddUserToDepartment() {
   const queryClient = useQueryClient();
+  const currentTenantId = useTenantId();
 
   return useMutation({
     mutationFn: async ({ userId, departmentId, isPrimary = false, tenantId }: { 
@@ -77,16 +79,19 @@ export function useAddUserToDepartment() {
           .eq('user_id', userId);
       }
 
-      const insertData: any = { 
+      // Usa tenant_id fornecido ou o do contexto atual
+      const effectiveTenantId = tenantId || currentTenantId;
+      
+      if (!effectiveTenantId) {
+        throw new Error('tenant_id é obrigatório para adicionar usuário ao departamento');
+      }
+
+      const insertData = { 
         user_id: userId, 
         department_id: departmentId, 
-        is_primary: isPrimary 
+        is_primary: isPrimary,
+        tenant_id: effectiveTenantId 
       };
-      
-      // Adiciona tenant_id se fornecido
-      if (tenantId) {
-        insertData.tenant_id = tenantId;
-      }
 
       const { data, error } = await supabase
         .from('user_departments')
