@@ -401,7 +401,7 @@ export function MarketingCampaignModal({
                 {/* Active Step Editor */}
                 <div className="p-4 border border-border rounded-lg bg-muted/30 space-y-4">
                   {/* Variables */}
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1">
                     {VARIABLES.map((v) => (
                       <Button
                         key={v.key}
@@ -409,7 +409,7 @@ export function MarketingCampaignModal({
                         variant="outline"
                         size="sm"
                         onClick={() => insertVariable(v.key)}
-                        className="text-xs"
+                        className="text-xs h-7 px-2"
                       >
                         {v.label}
                       </Button>
@@ -465,32 +465,32 @@ export function MarketingCampaignModal({
                     className="resize-none"
                   />
 
-                  {/* Audio Recorder */}
-                  <AudioRecorderInline
-                    audioUrl={currentStep?.audio_url}
-                    onAudioChange={(url) => handleStepChange(activeStepIndex, 'audio_url', url)}
-                  />
-
-                  {/* File Uploader */}
-                  <FileUploaderInline
-                    attachmentUrl={currentStep?.attachment_url}
-                    attachmentType={currentStep?.attachment_type}
-                    attachmentName={currentStep?.attachment_name}
-                    onFileChange={(url, type, name) => {
-                      handleStepMultiChange(activeStepIndex, {
-                        attachment_url: url,
-                        attachment_type: type,
-                        attachment_name: name,
-                      });
-                    }}
-                    onRemove={() => {
-                      handleStepMultiChange(activeStepIndex, {
-                        attachment_url: undefined,
-                        attachment_type: undefined,
-                        attachment_name: undefined,
-                      });
-                    }}
-                  />
+                  {/* Media Controls - Unified in one line */}
+                  <div className="flex items-center gap-2">
+                    <AudioRecorderInline
+                      audioUrl={currentStep?.audio_url}
+                      onAudioChange={(url) => handleStepChange(activeStepIndex, 'audio_url', url)}
+                    />
+                    <FileUploaderInline
+                      attachmentUrl={currentStep?.attachment_url}
+                      attachmentType={currentStep?.attachment_type}
+                      attachmentName={currentStep?.attachment_name}
+                      onFileChange={(url, type, name) => {
+                        handleStepMultiChange(activeStepIndex, {
+                          attachment_url: url,
+                          attachment_type: type,
+                          attachment_name: name,
+                        });
+                      }}
+                      onRemove={() => {
+                        handleStepMultiChange(activeStepIndex, {
+                          attachment_url: undefined,
+                          attachment_type: undefined,
+                          attachment_name: undefined,
+                        });
+                      }}
+                    />
+                  </div>
 
                   {/* Timer */}
                   <div className="flex items-center gap-3 pt-2 border-t border-border">
@@ -753,58 +753,36 @@ function AudioRecorderInline({
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <>
       {isRecording ? (
-        <>
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            onClick={stopRecording}
-          >
-            <Square size={14} className="mr-1" />
-            Parar ({formatTime(recordingTime)})
-          </Button>
-        </>
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          onClick={stopRecording}
+        >
+          <Square size={14} className="mr-1" />
+          Parar ({formatTime(recordingTime)})
+        </Button>
       ) : isUploading ? (
         <Button type="button" variant="outline" size="sm" disabled>
           <Loader2 size={14} className="mr-1 animate-spin" />
           Salvando...
         </Button>
       ) : (
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={startRecording}
-          >
-            <Mic size={14} className="mr-1" />
-            Gravar
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="audio/*"
-            className="hidden"
-            onChange={handleFileUpload}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload size={14} className="mr-1" />
-            Upload
-          </Button>
-        </>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={startRecording}
+        >
+          <Mic size={14} className="mr-1" />
+          Gravar
+        </Button>
       )}
-    </div>
+    </>
   );
 }
-
-// Inline File Uploader Component
 function FileUploaderInline({
   attachmentUrl,
   attachmentType,
@@ -878,7 +856,7 @@ function FileUploaderInline({
   }
 
   return (
-    <div>
+    <>
       <input
         ref={fileInputRef}
         type="file"
@@ -898,8 +876,8 @@ function FileUploaderInline({
         ) : (
           <Paperclip size={14} className="mr-1" />
         )}
-        {isUploading ? 'Enviando...' : 'Anexar arquivo'}
+        {isUploading ? 'Enviando...' : 'Arquivo'}
       </Button>
-    </div>
+    </>
   );
 }
