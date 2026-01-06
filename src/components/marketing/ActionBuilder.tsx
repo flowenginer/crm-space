@@ -104,7 +104,7 @@ export function ActionBuilder({
               Adicionar ação
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuContent align="start" className="w-56 max-h-[300px] overflow-y-auto">
             {MARKETING_ACTION_CATEGORIES.map((category, catIndex) => (
               <div key={category.label}>
                 {catIndex > 0 && <DropdownMenuSeparator />}
