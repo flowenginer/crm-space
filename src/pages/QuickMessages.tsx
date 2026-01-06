@@ -669,6 +669,105 @@ export default function QuickMessages() {
                     </div>
                   )}
                 </>
+              ) : activeCategory === 'marketing' ? (
+                <>
+                  {/* Marketing Campaigns Table */}
+                  {isLoadingMarketing ? (
+                    <div className="p-4 space-y-3">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="flex items-center gap-4">
+                          <Skeleton className="h-4 w-8" />
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-4 flex-1" />
+                          <Skeleton className="h-4 w-16" />
+                          <Skeleton className="h-8 w-24" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50 hover:bg-muted/50">
+                          <TableHead className="w-12 text-center">#</TableHead>
+                          <TableHead className="w-48">Título</TableHead>
+                          <TableHead>Descrição</TableHead>
+                          <TableHead className="w-24 text-center">Mensagens</TableHead>
+                          <TableHead className="w-36">Timers</TableHead>
+                          <TableHead className="w-24 text-center">Status</TableHead>
+                          <TableHead className="w-28 text-center">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredMarketingCampaigns.map((campaign, index) => (
+                          <TableRow key={campaign.id} className="group">
+                            <TableCell className="text-center text-muted-foreground font-mono text-sm">
+                              {index + 1}
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-semibold text-foreground">
+                                {campaign.title}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-muted-foreground text-sm">
+                                {campaign.description ? truncateMessage(campaign.description, 60) : '—'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="secondary" className="text-xs">
+                                {campaign.steps?.length || 0}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Clock size={12} />
+                                {campaign.steps?.map((s) => formatTimer(s.timer_minutes || 0)).join(', ') || '—'}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant={campaign.is_active ? "default" : "secondary"} className="text-xs">
+                                {campaign.is_active ? 'Ativa' : 'Inativa'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleEditMarketing(campaign)}
+                                  title="Editar"
+                                >
+                                  <Edit3 size={14} />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  onClick={() => setMarketingToDelete(campaign.id)}
+                                  disabled={deleteMarketingCampaign.isPending}
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={14} />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+
+                  {!isLoadingMarketing && filteredMarketingCampaigns.length === 0 && (
+                    <div className="text-center py-12">
+                      <Megaphone className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                      <h3 className="text-sm font-semibold text-foreground">Nenhuma campanha de marketing</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Crie campanhas com sequências de mensagens e ações automatizadas
+                      </p>
+                    </div>
+                  )}
+                </>
               ) : (
                 <>
                   {/* Regular Templates Table */}
@@ -1238,6 +1337,34 @@ export default function QuickMessages() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction 
               onClick={handleDeleteRescue}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Marketing Campaign Modal */}
+      <MarketingCampaignModal
+        open={showMarketingModal}
+        onOpenChange={setShowMarketingModal}
+        campaign={editingMarketing}
+      />
+
+      {/* Delete Marketing Confirmation */}
+      <AlertDialog open={!!marketingToDelete} onOpenChange={(open) => !open && setMarketingToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir campanha de marketing?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. A campanha será permanentemente removida.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteMarketing}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Excluir
