@@ -1417,7 +1417,8 @@ function EditUserModal({ open, onClose, user, departments, roles }: {
           .insert({
             user_id: user.id,
             department_id: dept.id,
-            is_primary: dept.isPrimary
+            is_primary: dept.isPrimary,
+            tenant_id: user.tenant_id
           });
       }
 
