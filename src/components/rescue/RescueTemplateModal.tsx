@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { EmojiPickerButton } from '@/components/quick-messages/EmojiPickerButton';
 import {
   Dialog,
   DialogContent,
@@ -87,6 +88,9 @@ const VARIABLES = [
   { key: '{{nome}}', label: 'Nome' },
   { key: '{{telefone}}', label: 'Telefone' },
   { key: '{{email}}', label: 'Email' },
+  { key: '{{data}}', label: 'Data' },
+  { key: '{{saudacao}}', label: 'Saudação' },
+  { key: '{{atendente}}', label: 'Atendente' },
 ];
 
 const ACTION_OPTIONS: { value: RescueActionType; label: string; description?: string }[] = [
@@ -623,6 +627,14 @@ export function RescueTemplateModal({
                       <Strikethrough size={14} />
                     </Button>
                   </div>
+
+                  {/* Emoji Picker */}
+                  <EmojiPickerButton
+                    onEmojiSelect={(emoji) => {
+                      const newMessage = (currentStep?.message || '') + emoji;
+                      handleStepChange(activeStepIndex, 'message', newMessage);
+                    }}
+                  />
 
                   {/* Message Input */}
                   <Textarea

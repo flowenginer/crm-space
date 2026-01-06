@@ -5,6 +5,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Helper function to get greeting based on time of day
+function getGreeting(): string {
+  const now = new Date();
+  const brasiliaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const hour = brasiliaTime.getHours();
+  if (hour >= 5 && hour < 12) return 'Bom dia';
+  if (hour >= 12 && hour < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+// Helper function to get current date in pt-BR format
+function getCurrentDate(): string {
+  const now = new Date();
+  const brasiliaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  return brasiliaTime.toLocaleDateString('pt-BR');
+}
+
+// Helper function to replace variables in message
+function replaceVariables(
+  text: string,
+  contact: { full_name?: string; phone?: string; email?: string },
+  agentName?: string
+): string {
+  return text
+    .replace(/\{\{nome\}\}/gi, contact.full_name || '')
+    .replace(/\{\{telefone\}\}/gi, contact.phone || '')
+    .replace(/\{\{email\}\}/gi, contact.email || '')
+    .replace(/\{\{data\}\}/gi, getCurrentDate())
+    .replace(/\{\{saudacao\}\}/gi, getGreeting())
+    .replace(/\{\{atendente\}\}/gi, agentName || '');
+}
+
 interface ScheduledMessage {
   id: string
   content: string
@@ -374,7 +406,7 @@ Deno.serve(async (req) => {
       .from('scheduled_messages')
       .select(`
         *,
-        contact:contacts(id, full_name, phone)
+        contact:contacts(id, full_name, phone, email)
       `)
       .eq('status', 'scheduled')
       .lte('scheduled_for', now)
@@ -491,15 +523,47 @@ Deno.serve(async (req) => {
         const hasMedia = scheduled.media_url && scheduled.media_url.length > 0
         
         // =====================================================
+        // REPLACE VARIABLES: Substituir variáveis no conteúdo
+        // =====================================================
+        let processedContent = scheduled.content || ''
+        let agentName = ''
+        
+        if (hasText && scheduled.contact) {
+          // Buscar nome do agente se created_by existe
+          if (scheduled.created_by) {
+            const { data: agentProfile } = await supabase
+              .from('profiles')
+              .select('full_name, signature_name, signature_enabled')
+              .eq('id', scheduled.created_by)
+              .single()
+            
+            if (agentProfile) {
+              agentName = agentProfile.full_name || ''
+            }
+          }
+          
+          // Substituir variáveis
+          processedContent = replaceVariables(
+            processedContent,
+            { 
+              full_name: scheduled.contact.full_name, 
+              phone: scheduled.contact.phone, 
+              email: (scheduled.contact as any).email 
+            },
+            agentName
+          )
+        }
+        
+        // =====================================================
         // ASSINATURA OBRIGATÓRIA: Adicionar assinatura do agente se for mensagem de texto
         // =====================================================
-        let finalTextContent = scheduled.content
+        let finalTextContent = processedContent
         if (msgType === 'text' && hasText && scheduled.created_by) {
           // Verificar se já tem assinatura (começa com *Algo*:)
-          const hasSignature = /^\*[^*]+\*:\s*/.test(scheduled.content || '')
+          const hasSignature = /^\*[^*]+\*:\s*/.test(processedContent || '')
           
           if (!hasSignature) {
-            // Buscar perfil do agente que criou a mensagem
+            // Buscar perfil do agente que criou a mensagem (já pode estar no cache)
             const { data: agentProfile } = await supabase
               .from('profiles')
               .select('full_name, signature_name, signature_enabled')
@@ -510,7 +574,7 @@ Deno.serve(async (req) => {
             if (agentProfile && agentProfile.signature_enabled !== false) {
               const signatureName = agentProfile.signature_name || agentProfile.full_name
               if (signatureName) {
-                finalTextContent = `*${signatureName}*:\n${scheduled.content}`
+                finalTextContent = `*${signatureName}*:\n${processedContent}`
                 console.log(`[Scheduled] Added signature from agent: ${signatureName}`)
               }
             }

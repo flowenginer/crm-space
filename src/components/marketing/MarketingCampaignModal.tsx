@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { EmojiPickerButton } from '@/components/quick-messages/EmojiPickerButton';
 import {
   Dialog,
   DialogContent,
@@ -67,6 +68,9 @@ const VARIABLES = [
   { key: '{{nome}}', label: 'Nome' },
   { key: '{{telefone}}', label: 'Telefone' },
   { key: '{{email}}', label: 'Email' },
+  { key: '{{data}}', label: 'Data' },
+  { key: '{{saudacao}}', label: 'Saudação' },
+  { key: '{{atendente}}', label: 'Atendente' },
 ];
 
 const DEFAULT_STEP: MarketingStep = {
@@ -389,6 +393,14 @@ export function MarketingCampaignModal({
                       <Strikethrough size={14} />
                     </Button>
                   </div>
+
+                  {/* Emoji Picker */}
+                  <EmojiPickerButton
+                    onEmojiSelect={(emoji) => {
+                      const newMessage = (currentStep?.message || '') + emoji;
+                      handleStepChange(activeStepIndex, 'message', newMessage);
+                    }}
+                  />
 
                   {/* Message Input */}
                   <Textarea

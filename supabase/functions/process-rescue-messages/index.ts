@@ -5,6 +5,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Helper function to get greeting based on time of day
+function getGreeting(): string {
+  const now = new Date();
+  const brasiliaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const hour = brasiliaTime.getHours();
+  if (hour >= 5 && hour < 12) return 'Bom dia';
+  if (hour >= 12 && hour < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+// Helper function to get current date in pt-BR format
+function getCurrentDate(): string {
+  const now = new Date();
+  const brasiliaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  return brasiliaTime.toLocaleDateString('pt-BR');
+}
+
+// Helper function to replace variables in message
+function replaceVariables(
+  text: string,
+  contact: { full_name?: string; phone?: string; email?: string },
+  agentName?: string
+): string {
+  return text
+    .replace(/\{\{nome\}\}/gi, contact.full_name || '')
+    .replace(/\{\{telefone\}\}/gi, contact.phone || '')
+    .replace(/\{\{email\}\}/gi, contact.email || '')
+    .replace(/\{\{data\}\}/gi, getCurrentDate())
+    .replace(/\{\{saudacao\}\}/gi, getGreeting())
+    .replace(/\{\{atendente\}\}/gi, agentName || '');
+}
+
 // Helper function to execute an action
 async function executeAction(
   supabase: any,
@@ -145,10 +177,10 @@ Deno.serve(async (req) => {
       }
 
       try {
-        // Get conversation and channel info
+        // Get conversation and channel info with assigned_to
         const { data: conversation, error: convError } = await supabase
           .from('conversations')
-          .select('channel_id')
+          .select('channel_id, assigned_to')
           .eq('id', msg.rescue.conversation_id)
           .single()
 
@@ -158,10 +190,10 @@ Deno.serve(async (req) => {
           continue
         }
 
-        // Get contact phone
+        // Get contact info (phone, full_name, email)
         const { data: contact, error: contactError } = await supabase
           .from('contacts')
-          .select('phone')
+          .select('phone, full_name, email')
           .eq('id', msg.rescue.contact_id)
           .single()
 
@@ -169,6 +201,17 @@ Deno.serve(async (req) => {
           console.error('[process-rescue-messages] Missing phone for message:', msg.id, contactError)
           errors++
           continue
+        }
+
+        // Get agent name if assigned
+        let agentName = ''
+        if (conversation.assigned_to) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', conversation.assigned_to)
+            .single()
+          agentName = profile?.full_name || ''
         }
 
         // Send each media type SEPARATELY: text, audio, attachment
@@ -244,10 +287,11 @@ Deno.serve(async (req) => {
           console.log(`[process-rescue-messages] ${type} message updated with whatsapp_message_id`)
         }
 
-        // 1. Send TEXT message first (if exists)
+        // 1. Send TEXT message first (if exists) - with variable replacement
         if (msg.content?.trim()) {
           console.log('[process-rescue-messages] Sending text...')
-          await sendWithInsertFirst('text', msg.content, null)
+          const processedContent = replaceVariables(msg.content, contact, agentName)
+          await sendWithInsertFirst('text', processedContent, null)
         }
         
         // 2. Send AUDIO (if exists)
