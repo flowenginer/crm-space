@@ -20,6 +20,7 @@ import {
   Target,
   Radio,
   ChevronDown,
+  Eye,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -65,6 +66,7 @@ import { useSegments } from '@/hooks/useSegments';
 import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useMarketingCampaigns } from '@/hooks/useMarketingCampaigns';
+import { BulkDispatchDetailsDialog } from '@/components/bulk-dispatch/BulkDispatchDetailsDialog';
 
 function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -98,6 +100,7 @@ function getStatusBadge(status: BulkDispatchType['status']) {
 export default function BulkDispatch() {
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
   const [selectedDispatchId, setSelectedDispatchId] = useState<string | null>(null);
+  const [detailsDispatch, setDetailsDispatch] = useState<BulkDispatchType | null>(null);
   
   const [name, setName] = useState('');
   const [campaignType, setCampaignType] = useState<'followup' | 'marketing'>('followup');
@@ -511,6 +514,9 @@ export default function BulkDispatch() {
                         <TableCell>{format(new Date(d.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => setDetailsDispatch(d)} title="Ver detalhes">
+                              <Eye className="h-4 w-4" />
+                            </Button>
                             {d.status === 'running' && <Button variant="outline" size="sm" onClick={() => pauseDispatch.mutate(d.id)}><Pause className="h-4 w-4" /></Button>}
                             {d.status === 'paused' && <Button variant="outline" size="sm" onClick={() => resumeDispatch.mutate(d.id)}><Play className="h-4 w-4" /></Button>}
                             {(d.status === 'running' || d.status === 'paused') && <Button variant="outline" size="sm" className="text-destructive" onClick={() => cancelDispatch.mutate(d.id)}><X className="h-4 w-4" /></Button>}
@@ -525,6 +531,12 @@ export default function BulkDispatch() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <BulkDispatchDetailsDialog
+        dispatch={detailsDispatch}
+        open={!!detailsDispatch}
+        onOpenChange={(open) => !open && setDetailsDispatch(null)}
+      />
     </div>
   );
 }

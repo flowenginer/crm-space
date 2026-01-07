@@ -5,6 +5,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Configuration for batch processing
+const MAX_CONTACTS_PER_BATCH = 5; // Process max 5 contacts per invocation
+const MAX_EXECUTION_TIME_MS = 45000; // 45 seconds max per invocation (leave buffer before 60s timeout)
+
 // Schedule configuration interface
 interface ScheduleConfig {
   enabled: boolean;
@@ -366,6 +370,33 @@ function calculateWaitTime(config: ScheduleConfig): number {
   return totalMinutes * 60 * 1000;
 }
 
+// Self-reinvoke the function to continue processing
+async function scheduleNextBatch(supabaseUrl: string, supabaseKey: string, dispatchId: string, delayMs: number): Promise<void> {
+  console.log(`[BulkDispatch] Scheduling next batch in ${delayMs}ms for dispatch ${dispatchId}`);
+  
+  // Use setTimeout to delay, then invoke
+  await new Promise(resolve => setTimeout(resolve, Math.min(delayMs, 5000))); // Max 5s delay for scheduling
+  
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/process-bulk-dispatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({ dispatchId }),
+    });
+    
+    if (!response.ok) {
+      console.error(`[BulkDispatch] Failed to schedule next batch:`, await response.text());
+    } else {
+      console.log(`[BulkDispatch] Next batch scheduled successfully for dispatch ${dispatchId}`);
+    }
+  } catch (err) {
+    console.error(`[BulkDispatch] Error scheduling next batch:`, err);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -383,7 +414,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'dispatchId is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    console.log(`[BulkDispatch] Starting processing for dispatch: ${dispatchId}`);
+    console.log(`[BulkDispatch] Starting batch processing for dispatch: ${dispatchId}`);
 
     // Fetch dispatch with both template (rescue) and marketing_campaign
     const { data: dispatch, error: dispatchError } = await supabase
@@ -397,15 +428,20 @@ Deno.serve(async (req) => {
     }
 
     if (dispatch.status !== 'running') {
+      console.log(`[BulkDispatch] Dispatch ${dispatchId} is not running (status: ${dispatch.status}), skipping`);
       return new Response(JSON.stringify({ message: 'Dispatch is not running', status: dispatch.status }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Process in background using async IIFE
-    (async () => {
-      await processDispatch(supabase, dispatch, supabaseUrl, supabaseKey);
-    })();
+    // Process batch synchronously (not in background)
+    const result = await processDispatchBatch(supabase, dispatch, supabaseUrl, supabaseKey);
 
-    return new Response(JSON.stringify({ message: 'Processing started', dispatchId }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ 
+      message: 'Batch processed', 
+      dispatchId,
+      processed: result.processed,
+      hasMore: result.hasMore,
+      nextBatchScheduled: result.nextBatchScheduled
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (err) {
     const error = err as Error;
@@ -500,8 +536,15 @@ async function generateContactsFromFilters(supabase: any, dispatch: any): Promis
   return allContactIds.length;
 }
 
+interface BatchResult {
+  processed: number;
+  hasMore: boolean;
+  nextBatchScheduled: boolean;
+}
+
 // @ts-ignore - Using any types for edge function flexibility
-async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string, supabaseKey: string) {
+async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: string, supabaseKey: string): Promise<BatchResult> {
+  const startTime = Date.now();
   const baseIntervalMs = dispatch.interval_seconds * 1000;
   const channel = dispatch.channel;
 
@@ -530,7 +573,7 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
         .from('bulk_dispatches')
         .update({ status: 'completed', completed_at: new Date().toISOString() })
         .eq('id', dispatch.id);
-      return;
+      return { processed: 0, hasMore: false, nextBatchScheduled: false };
     }
 
     // Update total_contacts with actual count
@@ -549,7 +592,7 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
       .from('bulk_dispatches')
       .update({ status: 'error', completed_at: new Date().toISOString() })
       .eq('id', dispatch.id);
-    return;
+    return { processed: 0, hasMore: false, nextBatchScheduled: false };
   }
 
   if (!isMarketingCampaign && !template) {
@@ -558,7 +601,7 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
       .from('bulk_dispatches')
       .update({ status: 'error', completed_at: new Date().toISOString() })
       .eq('id', dispatch.id);
-    return;
+    return { processed: 0, hasMore: false, nextBatchScheduled: false };
   }
 
   // Get steps based on campaign type
@@ -573,21 +616,42 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
       .from('bulk_dispatches')
       .update({ status: 'error', completed_at: new Date().toISOString() })
       .eq('id', dispatch.id);
-    return;
+    return { processed: 0, hasMore: false, nextBatchScheduled: false };
   }
 
   // channel_id "vazio" (null/undefined) indica que deve usar o canal da conversa existente
-  const useExistingChannel = !dispatch.channel_id;
+  const useExistingChannel = !dispatch.channel_id || dispatch.channel_id === '__existing__';
 
   console.log(
-    `[BulkDispatch] Dispatch ${dispatch.id} channel_id=${String(dispatch.channel_id)} (type=${typeof dispatch.channel_id}) | useExistingChannel=${useExistingChannel}`,
+    `[BulkDispatch] Dispatch ${dispatch.id} channel_id=${String(dispatch.channel_id)} | useExistingChannel=${useExistingChannel}`,
   );
 
-  // Get schedule configuration once at start
+  // Get schedule configuration
   const scheduleConfig = await getScheduleConfig(supabase, dispatch);
   console.log(`[BulkDispatch] Schedule config: enabled=${scheduleConfig.enabled}, days=${scheduleConfig.days.join(',')}, hours=${scheduleConfig.start}-${scheduleConfig.end}, tz=${scheduleConfig.timezone}`);
 
-  while (true) {
+  // Check if within schedule
+  if (scheduleConfig.enabled && !isWithinSchedule(scheduleConfig)) {
+    const waitMs = calculateWaitTime(scheduleConfig);
+    console.log(`[BulkDispatch] Outside schedule. Will retry in ${Math.round(waitMs / 60000)} minutes`);
+    
+    // Schedule next batch for when schedule allows (max 30 minutes from now to keep checking)
+    const nextCheckMs = Math.min(waitMs, 30 * 60 * 1000);
+    scheduleNextBatch(supabaseUrl, supabaseKey, dispatch.id, nextCheckMs);
+    
+    return { processed: 0, hasMore: true, nextBatchScheduled: true };
+  }
+
+  let processedCount = 0;
+
+  while (processedCount < MAX_CONTACTS_PER_BATCH) {
+    // Check execution time
+    const elapsed = Date.now() - startTime;
+    if (elapsed > MAX_EXECUTION_TIME_MS) {
+      console.log(`[BulkDispatch] Approaching timeout (${elapsed}ms), scheduling next batch`);
+      break;
+    }
+
     // Check if dispatch is still running
     const { data: currentDispatch } = await supabase
       .from('bulk_dispatches')
@@ -597,17 +661,7 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
 
     if (!currentDispatch || currentDispatch.status !== 'running') {
       console.log(`[BulkDispatch] Dispatch ${dispatch.id} stopped (status: ${currentDispatch?.status})`);
-      break;
-    }
-
-    // Check if within schedule
-    if (scheduleConfig.enabled && !isWithinSchedule(scheduleConfig)) {
-      const waitMs = calculateWaitTime(scheduleConfig);
-      // Cap wait time at 60 seconds to allow status checks
-      const actualWaitMs = Math.min(waitMs, 60000);
-      console.log(`[BulkDispatch] Outside schedule. Waiting ${Math.round(actualWaitMs / 1000)}s (full wait: ${Math.round(waitMs / 60000)} min)`);
-      await new Promise(resolve => setTimeout(resolve, actualWaitMs));
-      continue;
+      return { processed: processedCount, hasMore: false, nextBatchScheduled: false };
     }
 
     // Get next pending contact
@@ -625,7 +679,7 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
         .from('bulk_dispatches')
         .update({ status: 'completed', completed_at: new Date().toISOString() })
         .eq('id', dispatch.id);
-      break;
+      return { processed: processedCount, hasMore: false, nextBatchScheduled: false };
     }
 
     const dispatchContact = pendingContacts[0];
@@ -672,9 +726,10 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
               .eq('id', dispatch.id);
 
             dispatch.processed_count++;
-            const skipInterval = getRandomizedInterval(baseIntervalMs);
-            console.log(`[BulkDispatch] Waiting ${skipInterval}ms before next contact`);
-            await new Promise(resolve => setTimeout(resolve, skipInterval));
+            processedCount++;
+            
+            // Short delay before next contact
+            await new Promise(resolve => setTimeout(resolve, 500));
             continue;
           }
 
@@ -696,9 +751,10 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
             .eq('id', dispatch.id);
 
           dispatch.processed_count++;
-          const skipInterval = getRandomizedInterval(baseIntervalMs);
-          console.log(`[BulkDispatch] Waiting ${skipInterval}ms before next contact`);
-          await new Promise(resolve => setTimeout(resolve, skipInterval));
+          processedCount++;
+          
+          // Short delay before next contact
+          await new Promise(resolve => setTimeout(resolve, 500));
           continue;
         }
       }
@@ -900,6 +956,7 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
 
       dispatch.processed_count++;
       dispatch.sent_count++;
+      processedCount++;
 
       console.log(`[BulkDispatch] Successfully processed contact: ${contact.full_name} (${isMarketingCampaign ? 'marketing' : 'rescue'})`);
 
@@ -922,13 +979,43 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
 
       dispatch.processed_count++;
       dispatch.error_count++;
+      processedCount++;
     }
 
-    // Wait randomized interval before next contact
-    const randomInterval = getRandomizedInterval(baseIntervalMs);
-    console.log(`[BulkDispatch] Waiting ${randomInterval}ms before next contact`);
-    await new Promise(resolve => setTimeout(resolve, randomInterval));
+    // Wait interval between contacts (use randomized but capped at 10 seconds per contact within batch)
+    const intervalForBatch = Math.min(getRandomizedInterval(baseIntervalMs), 10000);
+    console.log(`[BulkDispatch] Waiting ${intervalForBatch}ms before next contact in batch`);
+    await new Promise(resolve => setTimeout(resolve, intervalForBatch));
   }
 
+  // Check if there are more pending contacts
+  const { count: remainingCount } = await supabase
+    .from('bulk_dispatch_contacts')
+    .select('*', { count: 'exact', head: true })
+    .eq('dispatch_id', dispatch.id)
+    .eq('status', 'pending');
+
+  const hasMore = (remainingCount || 0) > 0;
+
+  if (hasMore) {
+    console.log(`[BulkDispatch] ${remainingCount} contacts remaining, scheduling next batch`);
+    
+    // Calculate delay for next batch based on interval setting
+    // If interval is longer than 10s, we need to respect it
+    const nextBatchDelay = Math.max(baseIntervalMs - 10000, 1000); // At least 1 second
+    
+    // Schedule next batch (this will be async after response)
+    scheduleNextBatch(supabaseUrl, supabaseKey, dispatch.id, nextBatchDelay);
+    
+    return { processed: processedCount, hasMore: true, nextBatchScheduled: true };
+  }
+
+  // All done
   console.log(`[BulkDispatch] Finished processing dispatch ${dispatch.id}`);
+  await supabase
+    .from('bulk_dispatches')
+    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .eq('id', dispatch.id);
+
+  return { processed: processedCount, hasMore: false, nextBatchScheduled: false };
 }
