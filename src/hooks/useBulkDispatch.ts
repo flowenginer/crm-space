@@ -555,10 +555,17 @@ export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled
       
       if (idFilters.length > 0) {
         // Fazer interseção de todos os conjuntos de IDs
-        finalEligibleIds = idFilters.reduce((acc, ids) => {
-          const idsSet = new Set(ids);
-          return acc.filter(id => idsSet.has(id));
-        });
+        // Começar com o primeiro array e ir filtrando pelos outros
+        if (idFilters.length === 1) {
+          // Se só tem um filtro, usar diretamente
+          finalEligibleIds = idFilters[0];
+        } else {
+          // Fazer interseção de múltiplos filtros
+          finalEligibleIds = idFilters.reduce((acc, ids) => {
+            const idsSet = new Set(ids);
+            return acc.filter(id => idsSet.has(id));
+          });
+        }
         
         if (finalEligibleIds.length === 0) {
           return [] as PreviewContact[];
