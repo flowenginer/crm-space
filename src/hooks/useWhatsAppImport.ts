@@ -22,6 +22,7 @@ export interface ImportProgress {
 export interface ImportResult {
   messagesImported: number;
   mediaUploaded: number;
+  skippedDuplicates: number;
   errors: string[];
 }
 
@@ -209,6 +210,7 @@ export function useWhatsAppImport() {
     const result: ImportResult = {
       messagesImported: 0,
       mediaUploaded: 0,
+      skippedDuplicates: 0,
       errors: [],
     };
     
@@ -266,12 +268,30 @@ export function useWhatsAppImport() {
         });
       }
       
-      // Fase 2: Inserir mensagens
-      setProgress({ step: 'inserting', current: 0, total: totalMessages, message: 'Importando mensagens...' });
+      // Fase 2: Buscar mensagens existentes para evitar duplicatas
+      setProgress({ step: 'inserting', current: 0, total: totalMessages, message: 'Verificando duplicatas...' });
+      
+      // Buscar mensagens existentes da conversa no período importado
+      const minDate = parsedMessages[0].timestamp;
+      const maxDate = parsedMessages[parsedMessages.length - 1].timestamp;
+      
+      const { data: existingMessages } = await supabase
+        .from('messages')
+        .select('created_at, content, is_from_me')
+        .eq('conversation_id', conversationId)
+        .gte('created_at', minDate.toISOString())
+        .lte('created_at', maxDate.toISOString());
+      
+      // Criar Set de chaves para lookup rápido (timestamp + is_from_me + início do conteúdo)
+      const existingKeys = new Set(
+        (existingMessages || []).map(m => 
+          `${m.created_at}|${m.is_from_me}|${(m.content || '').substring(0, 50)}`
+        )
+      );
       
       // Preparar mensagens para inserção em lotes
       const batchSize = 50;
-      const messagesToInsert = parsedMessages.map(msg => {
+      const allPreparedMessages = parsedMessages.map(msg => {
         const isFromMe = msg.sender === mySenderName;
         const mediaUrl = msg.mediaFileName ? mediaUrls.get(msg.mediaFileName) : undefined;
         
@@ -292,6 +312,8 @@ export function useWhatsAppImport() {
           if (!content) content = msg.mediaFileName || `[${messageType}]`;
         }
         
+        const createdAt = msg.timestamp.toISOString();
+        
         return {
           conversation_id: conversationId,
           contact_id: isFromMe ? null : contactId,
@@ -302,30 +324,44 @@ export function useWhatsAppImport() {
           media_url: mediaUrl || null,
           media_mime_type: msg.mediaFileName ? getMimeType(msg.mediaFileName) : null,
           status: 'delivered',
-          created_at: msg.timestamp.toISOString(),
+          created_at: createdAt,
+          _key: `${createdAt}|${isFromMe}|${content.substring(0, 50)}`, // Para filtrar duplicatas
         };
       });
       
-      // Inserir em lotes
-      for (let i = 0; i < messagesToInsert.length; i += batchSize) {
-        const batch = messagesToInsert.slice(i, i + batchSize);
-        
-        const { error: insertError } = await supabase
-          .from('messages')
-          .insert(batch);
-        
-        if (insertError) {
-          result.errors.push(`Erro ao inserir lote ${Math.floor(i / batchSize) + 1}: ${insertError.message}`);
-        } else {
-          result.messagesImported += batch.length;
+      // Filtrar mensagens que já existem
+      const messagesToInsert = allPreparedMessages.filter(msg => {
+        const isDuplicate = existingKeys.has(msg._key);
+        if (isDuplicate) result.skippedDuplicates++;
+        return !isDuplicate;
+      }).map(({ _key, ...msg }) => msg); // Remover _key antes de inserir
+      
+      // Inserir em lotes (apenas mensagens novas)
+      const newMessagesTotal = messagesToInsert.length;
+      
+      if (newMessagesTotal === 0) {
+        setProgress({ step: 'done', current: totalMessages, total: totalMessages, message: 'Nenhuma mensagem nova para importar.' });
+      } else {
+        for (let i = 0; i < newMessagesTotal; i += batchSize) {
+          const batch = messagesToInsert.slice(i, i + batchSize);
+          
+          const { error: insertError } = await supabase
+            .from('messages')
+            .insert(batch);
+          
+          if (insertError) {
+            result.errors.push(`Erro ao inserir lote ${Math.floor(i / batchSize) + 1}: ${insertError.message}`);
+          } else {
+            result.messagesImported += batch.length;
+          }
+          
+          setProgress({ 
+            step: 'inserting', 
+            current: Math.min(i + batchSize, newMessagesTotal), 
+            total: newMessagesTotal, 
+            message: `Importando mensagem ${Math.min(i + batchSize, newMessagesTotal)} de ${newMessagesTotal}...` 
+          });
         }
-        
-        setProgress({ 
-          step: 'inserting', 
-          current: Math.min(i + batchSize, totalMessages), 
-          total: totalMessages, 
-          message: `Importando mensagem ${Math.min(i + batchSize, totalMessages)} de ${totalMessages}...` 
-        });
       }
       
       // Atualizar conversa com última mensagem
