@@ -10857,6 +10857,15 @@ export type Database = {
           other_count: number
         }[]
       }
+      get_original_agents_for_contacts: {
+        Args: { contact_ids: string[] }
+        Returns: {
+          contact_id: string
+          original_agent_id: string
+          original_agent_name: string
+          original_department_id: string
+        }[]
+      }
       get_platform_sync_config: {
         Args: never
         Returns: {

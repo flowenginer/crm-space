@@ -149,6 +149,8 @@ import { useRequiredFieldsValidation } from '@/hooks/useRequiredFieldsValidation
 import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
 import { RescueButton } from '@/components/rescue/RescueButton';
 import { RescueActiveAlert } from '@/components/rescue/RescueActiveAlert';
+import { BulkTransferModal } from '@/components/conversations/BulkTransferModal';
+import { useBulkReturnToOriginalAgent } from '@/hooks/useBulkConversationActions';
 import type { Profile } from '@/types';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
@@ -1361,6 +1363,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
   const [isConversationSelectionMode, setIsConversationSelectionMode] = useState(false);
   const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(new Set());
+  const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
+  const [isBulkReturning, setIsBulkReturning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -1629,6 +1633,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const createInternalNote = useCreateInternalNote();
   const updateInternalNote = useUpdateInternalNote();
   const updateConversation = useUpdateConversation();
+  const bulkReturnToOriginal = useBulkReturnToOriginalAgent();
 
   // Departamentos visíveis baseado no perfil do usuário
   // Vendedores só veem os departamentos que têm acesso, Admin/Supervisor veem todos
@@ -2403,6 +2408,58 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const selectAllConversations = () => {
     const allIds = new Set(filteredConversations.map(c => c.id));
     setSelectedConversationIds(allIds);
+  };
+
+  // Bulk return to original agent
+  const handleBulkReturnToOriginal = async () => {
+    if (selectedConversationIds.size === 0) return;
+    
+    const ids = Array.from(selectedConversationIds);
+    setIsBulkReturning(true);
+    
+    try {
+      const result = await bulkReturnToOriginal.mutateAsync(ids);
+      
+      // Exit selection mode
+      setSelectedConversationIds(new Set());
+      setIsConversationSelectionMode(false);
+      
+      if (result.success > 0 && result.failed === 0 && result.noOriginalAgent === 0) {
+        toast.success(`${result.success} conversa(s) devolvida(s) aos atendentes originais`);
+      } else if (result.success > 0) {
+        const messages: string[] = [];
+        if (result.noOriginalAgent > 0) {
+          messages.push(`${result.noOriginalAgent} sem atendente original`);
+        }
+        if (result.failed > 0) {
+          messages.push(`${result.failed} falhou(aram)`);
+        }
+        toast.warning(`${result.success} devolvida(s), ${messages.join(', ')}`);
+      } else if (result.noOriginalAgent > 0) {
+        toast.error('Nenhum atendente original encontrado para as conversas selecionadas');
+      } else {
+        toast.error('Falha ao devolver conversas');
+      }
+    } catch (error: any) {
+      toast.error('Erro ao devolver conversas', {
+        description: error?.message || 'Tente novamente.',
+      });
+    } finally {
+      setIsBulkReturning(false);
+    }
+  };
+
+  // Open bulk transfer modal
+  const handleOpenBulkTransfer = () => {
+    if (selectedConversationIds.size === 0) return;
+    setShowBulkTransferModal(true);
+  };
+
+  // Handle bulk transfer success
+  const handleBulkTransferSuccess = () => {
+    setSelectedConversationIds(new Set());
+    setIsConversationSelectionMode(false);
+    setShowBulkTransferModal(false);
   };
 
   const handleCloseConversation = () => {
@@ -3879,6 +3936,30 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              onClick={handleOpenBulkTransfer}
+              disabled={selectedConversationIds.size === 0}
+              className="h-8"
+            >
+              <ArrowRightLeft size={16} className="mr-1" />
+              Transferir
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleBulkReturnToOriginal}
+              disabled={selectedConversationIds.size === 0 || isBulkReturning}
+              className="h-8"
+            >
+              {isBulkReturning ? (
+                <Loader2 size={16} className="mr-1 animate-spin" />
+              ) : (
+                <UserCircle2 size={16} className="mr-1" />
+              )}
+              Devolver
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               onClick={cancelConversationSelection}
               className="h-8"
@@ -3888,6 +3969,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </Button>
           </div>
         )}
+
+        {/* Bulk Transfer Modal */}
+        <BulkTransferModal
+          open={showBulkTransferModal}
+          onClose={() => setShowBulkTransferModal(false)}
+          onTransferSuccess={handleBulkTransferSuccess}
+          conversationIds={Array.from(selectedConversationIds)}
+        />
       </div>
 
       {/* Column 2: Chat Area */}
