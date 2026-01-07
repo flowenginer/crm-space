@@ -1509,7 +1509,13 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     statusFilter: conversationFilters.statusFilter,
     leadStatusFilter: conversationFilters.leadStatusFilter,
     currentUserId: profile?.id,
-  }), [conversationFilters, profile?.id]);
+    // Filtros de status de conversação
+    isUnread: statusFiltersSelected.unread,
+    isNotReplied: statusFiltersSelected.not_replied,
+    isClientNotReplied: statusFiltersSelected.client_not_replied,
+    // Ordem de ordenação
+    sortOrder: sortOrder,
+  }), [conversationFilters, profile?.id, statusFiltersSelected, sortOrder]);
 
   const isSearchActive = debouncedSearchQuery.length >= 3;
   const {

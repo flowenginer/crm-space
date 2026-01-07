@@ -48,6 +48,12 @@ export interface SearchFilters {
   tagIds?: string[];
   /** ID do usuário atual (para filtro "mine") */
   currentUserId?: string;
+  /** Filtros de status de conversação: não lidas, não respondidas, etc. */
+  isUnread?: boolean;
+  isNotReplied?: boolean;
+  isClientNotReplied?: boolean;
+  /** Ordem de ordenação */
+  sortOrder?: 'newest' | 'oldest';
 }
 
 const MIN_SEARCH_LENGTH = 3;
@@ -196,7 +202,7 @@ export function useGlobalSearch(
         if (conversationIds.length > 0) {
           let convQuery = supabase
             .from('conversations')
-            .select('id, assigned_to, department_id, channel_id, status, referral_source, contacts!inner(lead_status)')
+            .select('id, assigned_to, department_id, channel_id, status, referral_source, is_unread, last_message_is_from_me, contacts!inner(lead_status)')
             .in('id', conversationIds);
 
           // Apply filters to conversations query
@@ -229,6 +235,18 @@ export function useGlobalSearch(
           if (filters.leadStatusFilter) {
             convQuery = convQuery.eq('contacts.lead_status', filters.leadStatusFilter);
           }
+          // Filtro de não lidas
+          if (filters.isUnread) {
+            convQuery = convQuery.eq('is_unread', true);
+          }
+          // Filtro de não respondidas (última mensagem é do contato)
+          if (filters.isNotReplied) {
+            convQuery = convQuery.eq('last_message_is_from_me', false);
+          }
+          // Filtro de cliente não respondeu (última mensagem é nossa)
+          if (filters.isClientNotReplied) {
+            convQuery = convQuery.eq('last_message_is_from_me', true);
+          }
 
           const { data: matchingConversations } = await convQuery;
           const matchingIds = new Set(matchingConversations?.map((c: any) => c.id) || []);
@@ -236,6 +254,14 @@ export function useGlobalSearch(
           // Filter messages to only include those from matching conversations
           filteredData = data.filter((msg: any) => matchingIds.has(msg.conversation_id));
         }
+      }
+      
+      // Apply sort order
+      if (filters?.sortOrder === 'oldest') {
+        filteredData.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      } else {
+        // Default: newest first
+        filteredData.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       }
 
       const hasMore = filteredData.length > messageLimit;
