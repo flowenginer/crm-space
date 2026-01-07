@@ -424,7 +424,7 @@ export default function BulkDispatch() {
                 <Separator />
                 
                 <ScrollArea 
-                  className="h-[250px]" 
+                  className="h-[450px]" 
                   onScrollCapture={handleScroll}
                 >
                   {previewLoading ? (

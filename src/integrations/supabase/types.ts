@@ -1990,6 +1990,7 @@ export type Database = {
       }
       conversations: {
         Row: {
+          analysis_status: string | null
           assigned_to: string | null
           channel_id: string | null
           close_reason: string | null
@@ -2000,7 +2001,6 @@ export type Database = {
           department_id: string | null
           first_response_at: string | null
           id: string
-          is_analyzed: boolean | null
           is_new_transfer: boolean | null
           is_unread: boolean | null
           last_message_at: string | null
@@ -2028,6 +2028,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          analysis_status?: string | null
           assigned_to?: string | null
           channel_id?: string | null
           close_reason?: string | null
@@ -2038,7 +2039,6 @@ export type Database = {
           department_id?: string | null
           first_response_at?: string | null
           id?: string
-          is_analyzed?: boolean | null
           is_new_transfer?: boolean | null
           is_unread?: boolean | null
           last_message_at?: string | null
@@ -2066,6 +2066,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          analysis_status?: string | null
           assigned_to?: string | null
           channel_id?: string | null
           close_reason?: string | null
@@ -2076,7 +2077,6 @@ export type Database = {
           department_id?: string | null
           first_response_at?: string | null
           id?: string
-          is_analyzed?: boolean | null
           is_new_transfer?: boolean | null
           is_unread?: boolean | null
           last_message_at?: string | null
@@ -8381,6 +8381,124 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "role_definitions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_evaluations: {
+        Row: {
+          analyzed_at: string
+          assigned_to: string
+          comunicacao_clareza: number
+          comunicacao_conhecimento_produto: number
+          comunicacao_cordialidade: number
+          comunicacao_proatividade: number
+          conducao: number
+          conversation_id: string
+          criterio_followup_estruturado: number
+          criterio_personalizacao: number
+          criterio_qualificacao_lead: number
+          criterio_recuperacao_final: number
+          criterio_senso_urgencia: number
+          criterio_tempo_resposta: number
+          etapa_aprovacao_mockup: number
+          etapa_catalogo_referencia: number
+          etapa_fechamento: number
+          etapa_mockup: number
+          etapa_orcamento_final: number
+          etapas_score: number
+          feedback: string | null
+          id: string
+          objecoes: Json
+          objecoes_apareceram: number
+          objecoes_nota_media: number
+          objecoes_tratadas: number
+          overall_score: number
+          raw_analysis: Json | null
+          tenant_id: string
+        }
+        Insert: {
+          analyzed_at?: string
+          assigned_to: string
+          comunicacao_clareza?: number
+          comunicacao_conhecimento_produto?: number
+          comunicacao_cordialidade?: number
+          comunicacao_proatividade?: number
+          conducao?: number
+          conversation_id: string
+          criterio_followup_estruturado?: number
+          criterio_personalizacao?: number
+          criterio_qualificacao_lead?: number
+          criterio_recuperacao_final?: number
+          criterio_senso_urgencia?: number
+          criterio_tempo_resposta?: number
+          etapa_aprovacao_mockup?: number
+          etapa_catalogo_referencia?: number
+          etapa_fechamento?: number
+          etapa_mockup?: number
+          etapa_orcamento_final?: number
+          etapas_score?: number
+          feedback?: string | null
+          id?: string
+          objecoes?: Json
+          objecoes_apareceram?: number
+          objecoes_nota_media?: number
+          objecoes_tratadas?: number
+          overall_score?: number
+          raw_analysis?: Json | null
+          tenant_id: string
+        }
+        Update: {
+          analyzed_at?: string
+          assigned_to?: string
+          comunicacao_clareza?: number
+          comunicacao_conhecimento_produto?: number
+          comunicacao_cordialidade?: number
+          comunicacao_proatividade?: number
+          conducao?: number
+          conversation_id?: string
+          criterio_followup_estruturado?: number
+          criterio_personalizacao?: number
+          criterio_qualificacao_lead?: number
+          criterio_recuperacao_final?: number
+          criterio_senso_urgencia?: number
+          criterio_tempo_resposta?: number
+          etapa_aprovacao_mockup?: number
+          etapa_catalogo_referencia?: number
+          etapa_fechamento?: number
+          etapa_mockup?: number
+          etapa_orcamento_final?: number
+          etapas_score?: number
+          feedback?: string | null
+          id?: string
+          objecoes?: Json
+          objecoes_apareceram?: number
+          objecoes_nota_media?: number
+          objecoes_tratadas?: number
+          overall_score?: number
+          raw_analysis?: Json | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_evaluations_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_evaluations_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: true
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_evaluations_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
