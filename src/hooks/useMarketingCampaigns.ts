@@ -52,6 +52,7 @@ export function useCreateMarketingCampaign() {
       description?: string;
       steps: MarketingStep[];
       initial_department_id?: string | null;
+      initial_user_id?: string | null;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -74,6 +75,7 @@ export function useCreateMarketingCampaign() {
           description: campaign.description || null,
           steps: campaign.steps as unknown as any,
           initial_department_id: campaign.initial_department_id || null,
+          initial_user_id: campaign.initial_user_id || null,
           created_by: user?.id,
           tenant_id: profile.tenant_id,
         })
@@ -105,6 +107,7 @@ export function useUpdateMarketingCampaign() {
       steps?: MarketingStep[];
       is_active?: boolean;
       initial_department_id?: string | null;
+      initial_user_id?: string | null;
     }) => {
       const updateData: any = {};
       if (campaign.title !== undefined) updateData.title = campaign.title;
@@ -112,6 +115,7 @@ export function useUpdateMarketingCampaign() {
       if (campaign.steps !== undefined) updateData.steps = campaign.steps as unknown as any;
       if (campaign.is_active !== undefined) updateData.is_active = campaign.is_active;
       if (campaign.initial_department_id !== undefined) updateData.initial_department_id = campaign.initial_department_id;
+      if (campaign.initial_user_id !== undefined) updateData.initial_user_id = campaign.initial_user_id;
 
       const { data, error } = await supabase
         .from('marketing_campaigns')

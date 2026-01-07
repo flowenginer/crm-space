@@ -4630,6 +4630,7 @@ export type Database = {
           description: string | null
           id: string
           initial_department_id: string | null
+          initial_user_id: string | null
           is_active: boolean | null
           steps: Json
           tenant_id: string
@@ -4642,6 +4643,7 @@ export type Database = {
           description?: string | null
           id?: string
           initial_department_id?: string | null
+          initial_user_id?: string | null
           is_active?: boolean | null
           steps?: Json
           tenant_id?: string
@@ -4654,6 +4656,7 @@ export type Database = {
           description?: string | null
           id?: string
           initial_department_id?: string | null
+          initial_user_id?: string | null
           is_active?: boolean | null
           steps?: Json
           tenant_id?: string
@@ -4673,6 +4676,13 @@ export type Database = {
             columns: ["initial_department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_campaigns_initial_user_id_fkey"
+            columns: ["initial_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
