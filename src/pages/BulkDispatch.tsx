@@ -12,6 +12,7 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
+  Trash2,
   MessageSquare,
   Calendar,
   Tag,
@@ -50,11 +51,22 @@ import {
   usePauseBulkDispatch,
   useResumeBulkDispatch,
   useCancelBulkDispatch,
+  useDeleteBulkDispatch,
   useBulkDispatchRealtime,
   type BulkDispatchFilters,
   type BulkDispatch as BulkDispatchType,
   type ScheduleOverride,
 } from '@/hooks/useBulkDispatch';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { formatBusinessHoursSummary, businessHoursToOverride } from '@/lib/schedule-utils';
 import { CompactScheduleEditor } from '@/components/settings/BusinessHoursEditor';
@@ -101,6 +113,7 @@ export default function BulkDispatch() {
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
   const [selectedDispatchId, setSelectedDispatchId] = useState<string | null>(null);
   const [detailsDispatch, setDetailsDispatch] = useState<BulkDispatchType | null>(null);
+  const [dispatchToDelete, setDispatchToDelete] = useState<string | null>(null);
   
   const [name, setName] = useState('');
   const [campaignType, setCampaignType] = useState<'followup' | 'marketing'>('followup');
@@ -149,6 +162,7 @@ export default function BulkDispatch() {
   const pauseDispatch = usePauseBulkDispatch();
   const resumeDispatch = useResumeBulkDispatch();
   const cancelDispatch = useCancelBulkDispatch();
+  const deleteDispatch = useDeleteBulkDispatch();
 
   useBulkDispatchRealtime(selectedDispatchId);
 
@@ -530,6 +544,17 @@ export default function BulkDispatch() {
                               {d.status === 'running' && <Button variant="outline" size="sm" onClick={() => pauseDispatch.mutate(d.id)}><Pause className="h-4 w-4" /></Button>}
                               {d.status === 'paused' && <Button variant="outline" size="sm" onClick={() => resumeDispatch.mutate(d.id)}><Play className="h-4 w-4" /></Button>}
                               {(d.status === 'running' || d.status === 'paused') && <Button variant="outline" size="sm" className="text-destructive" onClick={() => cancelDispatch.mutate(d.id)}><X className="h-4 w-4" /></Button>}
+                              {(d.status === 'completed' || d.status === 'cancelled') && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="text-destructive hover:text-destructive" 
+                                  onClick={() => setDispatchToDelete(d.id)}
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -548,6 +573,38 @@ export default function BulkDispatch() {
         open={!!detailsDispatch}
         onOpenChange={(open) => !open && setDetailsDispatch(null)}
       />
+
+      <AlertDialog open={!!dispatchToDelete} onOpenChange={(open) => !open && setDispatchToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir disparo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Todos os registros de contatos associados a este disparo também serão excluídos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (dispatchToDelete) {
+                  deleteDispatch.mutate(dispatchToDelete, {
+                    onSuccess: () => {
+                      toast.success('Disparo excluído com sucesso');
+                      setDispatchToDelete(null);
+                    },
+                    onError: () => {
+                      toast.error('Erro ao excluir disparo');
+                    },
+                  });
+                }
+              }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
