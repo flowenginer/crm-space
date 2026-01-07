@@ -383,7 +383,7 @@ Deno.serve(async (req) => {
       .from('conversations')
       .select('id')
       .eq('contact_id', contact_id)
-      .in('status', ['open', 'pending']);
+      .in('status', ['open', 'pending', 'closed']);
 
     if (updatedConversations && updatedConversations.length > 0) {
       for (const conv of updatedConversations) {
