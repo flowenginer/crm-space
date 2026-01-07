@@ -414,106 +414,75 @@ Deno.serve(async (req) => {
   }
 });
 
-// Generate contacts from filters if not already generated
+// Generate contacts from filters if not already generated - uses server-side RPC
 async function generateContactsFromFilters(supabase: any, dispatch: any): Promise<number> {
   const filters = dispatch.filters || {};
   const tenantId = dispatch.tenant_id;
 
-  console.log(`[BulkDispatch] Generating contacts from filters:`, JSON.stringify(filters));
+  console.log(`[BulkDispatch] Generating contacts from filters using RPC:`, JSON.stringify(filters));
 
-  // Start with base query
-  let query = supabase
-    .from('contacts')
-    .select('id')
-    .eq('tenant_id', tenantId);
+  // Resolve leadStatusIds to lead_status names
+  let leadStatusNames: string[] = [];
+  if (filters.leadStatusIds && filters.leadStatusIds.length > 0) {
+    const { data: statuses } = await supabase
+      .from('lead_statuses')
+      .select('name')
+      .in('id', filters.leadStatusIds);
+    leadStatusNames = statuses?.map((s: { name: string }) => s.name) || [];
+    console.log(`[BulkDispatch] Resolved lead status names:`, leadStatusNames);
+  }
 
-  // Apply tag filters - need to check contact_tags table
-  if (filters.tags && filters.tags.length > 0) {
-    const { data: taggedContacts } = await supabase
-      .from('contact_tags')
-      .select('contact_id')
-      .eq('tenant_id', tenantId)
-      .in('tag_id', filters.tags);
+  // Use the RPC function to get contacts with all filters applied server-side
+  // This handles all complex filtering including lastClientMessageDaysAgo
+  const PAGE_SIZE = 500;
+  let offset = 0;
+  let allContactIds: string[] = [];
+  let hasMore = true;
 
-    const taggedContactIds = [...new Set(taggedContacts?.map((ct: any) => ct.contact_id) || [])];
-    if (taggedContactIds.length > 0) {
-      query = query.in('id', taggedContactIds);
-    } else {
-      console.log(`[BulkDispatch] No contacts found with specified tags`);
+  while (hasMore) {
+    const { data: contacts, error } = await supabase.rpc('get_bulk_dispatch_preview_contacts', {
+      p_tenant_id: tenantId,
+      p_lead_status_names: leadStatusNames.length > 0 ? leadStatusNames : null,
+      p_last_client_message_days_ago: filters.lastClientMessageDaysAgo || null,
+      p_tag_ids: filters.tagIds?.length ? filters.tagIds : null,
+      p_conversation_statuses: filters.conversationStatus?.length ? filters.conversationStatus : null,
+      p_segment_id: filters.segmentId || null,
+      p_origin: filters.origin || null,
+      p_assigned_to: filters.assignedTo?.length ? filters.assignedTo : null,
+      p_department_ids: filters.departmentIds?.length ? filters.departmentIds : null,
+      p_contact_type: filters.contactType || null,
+      p_include_blocked: filters.includeBlocked || false,
+      p_first_contact_start: filters.firstContactStart || null,
+      p_first_contact_end: filters.firstContactEnd ? filters.firstContactEnd + 'T23:59:59' : null,
+      p_offset_val: offset,
+      p_limit_val: PAGE_SIZE,
+    });
+
+    if (error) {
+      console.error(`[BulkDispatch] Error calling RPC:`, error);
       return 0;
+    }
+
+    if (contacts && contacts.length > 0) {
+      allContactIds = [...allContactIds, ...contacts.map((c: { id: string }) => c.id)];
+      offset += PAGE_SIZE;
+      hasMore = contacts.length === PAGE_SIZE;
+    } else {
+      hasMore = false;
     }
   }
 
-  // Apply segment filter
-  if (filters.segment_id) {
-    query = query.eq('segment_id', filters.segment_id);
-  }
-
-  // Apply date filters
-  if (filters.createdFrom) {
-    query = query.gte('created_at', filters.createdFrom);
-  }
-  if (filters.createdTo) {
-    query = query.lte('created_at', filters.createdTo);
-  }
-
-  // Apply conversation status filter
-  if (filters.conversationStatus && filters.conversationStatus.length > 0) {
-    const { data: conversations } = await supabase
-      .from('conversations')
-      .select('contact_id')
-      .eq('tenant_id', tenantId)
-      .in('status', filters.conversationStatus);
-
-    const contactIds = [...new Set(conversations?.map((c: any) => c.contact_id) || [])];
-    if (contactIds.length > 0) {
-      query = query.in('id', contactIds);
-    } else {
-      console.log(`[BulkDispatch] No contacts found with specified conversation status`);
-      return 0;
-    }
-  }
-
-  // Apply assignedTo filter - find contacts whose conversations are assigned to these agents
-  if (filters.assignedTo && filters.assignedTo.length > 0) {
-    const { data: assignedConvs } = await supabase
-      .from('conversations')
-      .select('contact_id')
-      .eq('tenant_id', tenantId)
-      .in('assigned_to', filters.assignedTo);
-
-    const assignedContactIds = [...new Set(assignedConvs?.map((c: any) => c.contact_id) || [])];
-    if (assignedContactIds.length > 0) {
-      query = query.in('id', assignedContactIds);
-    } else {
-      console.log(`[BulkDispatch] No contacts found assigned to specified agents`);
-      return 0;
-    }
-  }
-
-  // Apply includeBlocked filter (default: exclude blocked)
-  if (filters.includeBlocked === false || filters.includeBlocked === undefined) {
-    query = query.or('is_blocked.is.null,is_blocked.eq.false');
-  }
-
-  const { data: contacts, error } = await query;
-
-  if (error) {
-    console.error(`[BulkDispatch] Error fetching contacts:`, error);
-    return 0;
-  }
-
-  if (!contacts || contacts.length === 0) {
+  if (allContactIds.length === 0) {
     console.log(`[BulkDispatch] No contacts found matching filters`);
     return 0;
   }
 
-  console.log(`[BulkDispatch] Found ${contacts.length} contacts matching filters`);
+  console.log(`[BulkDispatch] Found ${allContactIds.length} contacts matching filters`);
 
   // Insert contacts into bulk_dispatch_contacts in batches
-  const contactRecords = contacts.map((c: any) => ({
+  const contactRecords = allContactIds.map((id: string) => ({
     dispatch_id: dispatch.id,
-    contact_id: c.id,
+    contact_id: id,
     tenant_id: tenantId,
     status: 'pending',
   }));
@@ -527,8 +496,8 @@ async function generateContactsFromFilters(supabase: any, dispatch: any): Promis
     }
   }
 
-  console.log(`[BulkDispatch] Generated ${contacts.length} contacts from filters`);
-  return contacts.length;
+  console.log(`[BulkDispatch] Generated ${allContactIds.length} contacts from filters`);
+  return allContactIds.length;
 }
 
 // @ts-ignore - Using any types for edge function flexibility
