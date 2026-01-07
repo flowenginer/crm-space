@@ -151,6 +151,64 @@ export function useDeleteMarketingCampaign() {
   });
 }
 
+// Hook to duplicate a marketing campaign
+export function useDuplicateMarketingCampaign() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (campaignId: string) => {
+      // Fetch original campaign
+      const { data: original, error: fetchError } = await supabase
+        .from('marketing_campaigns')
+        .select('*')
+        .eq('id', campaignId)
+        .single();
+
+      if (fetchError || !original) {
+        throw new Error('Campanha não encontrada');
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Fetch tenant_id from user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user?.id)
+        .single();
+
+      if (profileError || !profile?.tenant_id) {
+        throw new Error('Não foi possível identificar o tenant');
+      }
+
+      // Create new campaign with copied data
+      const { data: newCampaign, error: createError } = await supabase
+        .from('marketing_campaigns')
+        .insert({
+          title: `[CÓPIA] ${original.title}`,
+          description: original.description,
+          steps: original.steps,
+          initial_department_id: original.initial_department_id,
+          initial_user_id: original.initial_user_id,
+          is_active: true,
+          created_by: user?.id,
+          tenant_id: profile.tenant_id,
+        })
+        .select()
+        .single();
+
+      if (createError) {
+        throw createError;
+      }
+
+      return newCampaign;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketing-campaigns'] });
+    },
+  });
+}
+
 // Hook to get chatbot flows for automation action
 export function useChatbotFlows() {
   return useQuery({

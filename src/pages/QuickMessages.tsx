@@ -57,7 +57,7 @@ import { FileUploader } from '@/components/quick-messages/FileUploader';
 import { EmojiPickerButton } from '@/components/quick-messages/EmojiPickerButton';
 import { useRescueTemplates, useDeleteRescueTemplate, RescueTemplate } from '@/hooks/useRescueTemplates';
 import { RescueTemplateModal } from '@/components/rescue/RescueTemplateModal';
-import { useMarketingCampaigns, useDeleteMarketingCampaign } from '@/hooks/useMarketingCampaigns';
+import { useMarketingCampaigns, useDeleteMarketingCampaign, useDuplicateMarketingCampaign } from '@/hooks/useMarketingCampaigns';
 import { MarketingCampaignModal } from '@/components/marketing/MarketingCampaignModal';
 import type { MarketingCampaign } from '@/types/marketing';
 import {
@@ -70,7 +70,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Megaphone } from 'lucide-react';
+import { Megaphone, Copy } from 'lucide-react';
 
 const categoryConfig = [
   { id: 'messages', icon: MessageSquare, label: 'Mensagens' },
@@ -114,6 +114,7 @@ export default function QuickMessages() {
   // Marketing hooks
   const { data: marketingCampaigns = [], isLoading: isLoadingMarketing } = useMarketingCampaigns();
   const deleteMarketingCampaign = useDeleteMarketingCampaign();
+  const duplicateMarketingCampaign = useDuplicateMarketingCampaign();
 
   // Rescue modal states (Follow-up)
   const [showRescueModal, setShowRescueModal] = useState(false);
@@ -739,6 +740,23 @@ export default function QuickMessages() {
                                   title="Editar"
                                 >
                                   <Edit3 size={14} />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={async () => {
+                                    try {
+                                      const newCampaign = await duplicateMarketingCampaign.mutateAsync(campaign.id);
+                                      toast({ title: 'Campanha duplicada!', description: `"${newCampaign.title}" criada com sucesso.` });
+                                    } catch (error) {
+                                      toast({ title: 'Erro ao duplicar campanha', variant: 'destructive' });
+                                    }
+                                  }}
+                                  disabled={duplicateMarketingCampaign.isPending}
+                                  title="Duplicar"
+                                >
+                                  <Copy size={14} />
                                 </Button>
                                 <Button
                                   variant="ghost"
