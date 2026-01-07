@@ -134,6 +134,7 @@ import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePin
 import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds, useAllSharedConversationIds, useMySharePermission } from '@/hooks/useSharedConversations';
 import { useSharedConversationsWithDetails } from '@/hooks/useSharedConversationsWithDetails';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserStore } from '@/store/userStore';
 import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
@@ -1376,6 +1377,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
 const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAllConversations } = usePermissions();
+  const { data: isSuperAdmin = false } = useCurrentUserIsSuperAdmin();
   const { profile: authProfile, user } = useAuth();
   const { setProfile } = useUserStore();
   
@@ -3390,6 +3392,26 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 <SelectItem value="all">Todos</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Department Filter - Super Admin only */}
+            {isSuperAdmin && (
+              <Select 
+                value={advancedFilters.departmentId} 
+                onValueChange={(v) => setAdvancedFilters(prev => ({ ...prev, departmentId: v }))}
+              >
+                <SelectTrigger className="flex-1 h-9 rounded-lg text-sm">
+                  <SelectValue placeholder="Departamento" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos departamentos</SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      {dept.name} ({departmentCountMap.get(dept.id) || 0})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
 
             <Select value={channelFilter} onValueChange={setChannelFilter}>
               <SelectTrigger className="flex-1 h-9 rounded-lg text-sm">
