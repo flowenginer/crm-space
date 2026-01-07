@@ -1324,10 +1324,19 @@ serve(async (req) => {
           // Se for mídia, processar de acordo com o provider
           const isFromMeMediaType = ['audio', 'image', 'video', 'document'].includes(normalizedMessage.type);
           
-          if (isFromMeMediaType && !normalizedMessage.mediaBase64) {
+          // IMPORTANTE: Verificar se a mensagem já tem URL de mídia válida do Supabase Storage
+          // Se tiver, NÃO substituir - manter a qualidade original da imagem enviada pelo CRM
+          const existingMediaUrl = matchedMessage.media_url;
+          const hasValidSupabaseUrl = existingMediaUrl && existingMediaUrl.includes('supabase.co/storage');
+          
+          if (hasValidSupabaseUrl) {
+            console.log(`[Webhook] FromMe message already has Supabase URL, keeping original quality: ${existingMediaUrl.substring(0, 80)}...`);
+            // Não atualiza media_url - mantém a URL original de alta qualidade
+          } else if (isFromMeMediaType && !normalizedMessage.mediaBase64) {
+            // Só baixa mídia da UAZAPI/Evolution se NÃO tiver URL do Supabase
             // UAZAPI: Download media using /message/download endpoint
             if (provider === 'uazapi') {
-              console.log(`[Webhook UAZAPI] FromMe media - downloading from UAZAPI...`);
+              console.log(`[Webhook UAZAPI] FromMe media without Supabase URL - downloading from UAZAPI...`);
               const uazapiMedia = await processUAZAPIMedia(
                 supabase,
                 normalizedMessage.instanceId,
@@ -1363,8 +1372,8 @@ serve(async (req) => {
             }
           }
 
-          // Upload media if we have base64 (Evolution or other providers)
-          if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
+          // Upload media if we have base64 (Evolution or other providers) - apenas se não tiver URL do Supabase
+          if (!hasValidSupabaseUrl && normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType) {
             console.log(`[Webhook] Uploading media for fromMe message update...`);
             const uploadedUrl = await uploadMediaToStorage(
               supabase,
@@ -1433,10 +1442,18 @@ serve(async (req) => {
       let finalMediaUrl = normalizedMessage.mediaUrl;
       const isFromMeInsertMediaType = ['audio', 'image', 'video', 'document'].includes(normalizedMessage.type);
       
-      if (isFromMeInsertMediaType && !normalizedMessage.mediaBase64) {
+      // IMPORTANTE: Verificar se já existe URL válida do Supabase Storage
+      // Isso pode acontecer se a mensagem foi enviada pelo frontend e já tem a mídia no Storage
+      const hasExistingSupabaseUrl = finalMediaUrl && finalMediaUrl.includes('supabase.co/storage');
+      
+      if (hasExistingSupabaseUrl) {
+        console.log(`[Webhook] FromMe insert already has Supabase URL, keeping original quality: ${finalMediaUrl!.substring(0, 80)}...`);
+        // Mantém a URL original - não baixa da UAZAPI/Evolution
+      } else if (isFromMeInsertMediaType && !normalizedMessage.mediaBase64) {
+        // Só baixa mídia se NÃO tiver URL do Supabase
         // UAZAPI: Download media using /message/download endpoint
         if (provider === 'uazapi') {
-          console.log(`[Webhook UAZAPI] FromMe insert - downloading media from UAZAPI...`);
+          console.log(`[Webhook UAZAPI] FromMe insert without Supabase URL - downloading media from UAZAPI...`);
           const uazapiMedia = await processUAZAPIMedia(
             supabase,
             normalizedMessage.instanceId,
@@ -1472,8 +1489,8 @@ serve(async (req) => {
         }
       }
 
-      // Upload base64 if available (Evolution or other providers)
-      if (normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType && !finalMediaUrl?.includes('supabase')) {
+      // Upload base64 if available (Evolution or other providers) - apenas se não tiver URL do Supabase
+      if (!hasExistingSupabaseUrl && normalizedMessage.mediaBase64 && normalizedMessage.mediaMimeType && !finalMediaUrl?.includes('supabase')) {
         const uploadedUrl = await uploadMediaToStorage(
           supabase,
           normalizedMessage.mediaBase64,
