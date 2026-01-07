@@ -2675,6 +2675,7 @@ serve(async (req) => {
           conversation_id,
           current_step,
           tenant_id,
+          dispatch_id,
           marketing_campaign:marketing_campaigns(id, steps, title)
         `)
         .eq('contact_id', contact.id)
@@ -2926,6 +2927,38 @@ serve(async (req) => {
               .eq('id', activeCampaign.id);
 
             console.log(`[Webhook] ✅ Marketing campaign ${activeCampaign.id} ${shouldCancelCampaign ? 'cancelled' : 'responded'}`);
+          }
+
+          // =====================================================
+          // UPDATE BULK DISPATCH STATS (responded count)
+          // =====================================================
+          if (activeCampaign.dispatch_id) {
+            try {
+              // Update bulk_dispatch_contacts with responded_at
+              const { error: updateContactError } = await supabase
+                .from('bulk_dispatch_contacts')
+                .update({ responded_at: new Date().toISOString() })
+                .eq('dispatch_id', activeCampaign.dispatch_id)
+                .eq('contact_id', contact.id)
+                .is('responded_at', null);
+
+              if (updateContactError) {
+                console.error(`[Webhook] Error updating bulk_dispatch_contacts:`, updateContactError);
+              } else {
+                // Increment responded_count in bulk_dispatches using RPC
+                const { error: rpcError } = await supabase.rpc('increment_dispatch_responded', {
+                  p_dispatch_id: activeCampaign.dispatch_id
+                });
+
+                if (rpcError) {
+                  console.error(`[Webhook] Error incrementing dispatch responded count:`, rpcError);
+                } else {
+                  console.log(`[Webhook] ✅ Updated bulk dispatch responded stats for dispatch ${activeCampaign.dispatch_id}`);
+                }
+              }
+            } catch (dispatchError) {
+              console.error(`[Webhook] Error updating dispatch stats:`, dispatchError);
+            }
           }
         }
       }

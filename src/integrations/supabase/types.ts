@@ -10765,6 +10765,10 @@ export type Database = {
         Returns: boolean
       }
       immutable_unaccent: { Args: { "": string }; Returns: string }
+      increment_dispatch_responded: {
+        Args: { p_dispatch_id: string }
+        Returns: undefined
+      }
       increment_unread: { Args: { conv_id: string }; Returns: undefined }
       increment_webhook_stats: {
         Args: {
