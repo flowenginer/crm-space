@@ -675,10 +675,10 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
       let effectiveChannelId = channel?.id;
 
       if (useExistingChannel) {
-        // Find existing conversation for this contact
+        // Find existing conversation for this contact WITH channel status
         const { data: existingConv } = await supabase
           .from('conversations')
-          .select('id, channel_id')
+          .select('id, channel_id, channel:whatsapp_channels(id, status)')
           .eq('contact_id', contact.id)
           .not('channel_id', 'is', null)
           .order('last_message_at', { ascending: false })
@@ -686,6 +686,29 @@ async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string
           .single();
 
         if (existingConv?.channel_id) {
+          // Check if the channel is connected
+          const channelStatus = existingConv.channel?.status;
+          if (channelStatus !== 'connected') {
+            console.log(`[BulkDispatch] Channel ${existingConv.channel_id} is disconnected (status: ${channelStatus}), skipping contact ${contact.id}`);
+            await supabase
+              .from('bulk_dispatch_contacts')
+              .update({ status: 'skipped', error_message: 'Canal desconectado' })
+              .eq('id', dispatchContact.id);
+
+            await supabase
+              .from('bulk_dispatches')
+              .update({
+                processed_count: dispatch.processed_count + 1,
+              })
+              .eq('id', dispatch.id);
+
+            dispatch.processed_count++;
+            const skipInterval = getRandomizedInterval(baseIntervalMs);
+            console.log(`[BulkDispatch] Waiting ${skipInterval}ms before next contact`);
+            await new Promise(resolve => setTimeout(resolve, skipInterval));
+            continue;
+          }
+
           effectiveChannelId = existingConv.channel_id;
           console.log(`[BulkDispatch] Using existing channel ${effectiveChannelId} for contact ${contact.id}`);
         } else {

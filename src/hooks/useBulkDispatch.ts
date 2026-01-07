@@ -504,13 +504,87 @@ export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled
     queryFn: async ({ pageParam = 0 }) => {
       const { leadStatusNames } = await applyBaseFilters(filters);
 
+      // Se há filtro de última mensagem do cliente, buscar IDs elegíveis primeiro
+      let eligibleIdsFromLastMessage: string[] | null = null;
+      if (filters.lastClientMessageDaysAgo) {
+        const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+        const { data: eligibleContacts } = await supabase
+          .rpc('get_contacts_last_client_message_before', {
+            p_days_ago: filters.lastClientMessageDaysAgo,
+            p_tenant_id: tenantId
+          });
+        eligibleIdsFromLastMessage = (eligibleContacts || []).map((c: { contact_id: string }) => c.contact_id);
+        
+        // Se não há contatos elegíveis, retornar vazio
+        if (eligibleIdsFromLastMessage.length === 0) {
+          return [] as PreviewContact[];
+        }
+      }
+
+      // Se há filtro de tags, buscar IDs dos contatos com as tags
+      let taggedContactIds: string[] | null = null;
+      if (filters.tagIds && filters.tagIds.length > 0) {
+        const { data: taggedContacts } = await supabase
+          .from('contact_tags')
+          .select('contact_id')
+          .in('tag_id', filters.tagIds);
+        taggedContactIds = [...new Set(taggedContacts?.map(tc => tc.contact_id) || [])];
+        
+        if (taggedContactIds.length === 0) {
+          return [] as PreviewContact[];
+        }
+      }
+
+      // Se há filtro de status de conversa, buscar IDs dos contatos
+      let conversationStatusContactIds: string[] | null = null;
+      if (filters.conversationStatus && filters.conversationStatus.length > 0) {
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('contact_id')
+          .in('status', filters.conversationStatus);
+        conversationStatusContactIds = [...new Set(conversations?.map(c => c.contact_id) || [])];
+        
+        if (conversationStatusContactIds.length === 0) {
+          return [] as PreviewContact[];
+        }
+      }
+
+      // Calcular a interseção de todos os filtros baseados em IDs
+      let finalEligibleIds: string[] | null = null;
+      const idFilters = [eligibleIdsFromLastMessage, taggedContactIds, conversationStatusContactIds].filter(Boolean) as string[][];
+      
+      if (idFilters.length > 0) {
+        // Fazer interseção de todos os conjuntos de IDs
+        finalEligibleIds = idFilters.reduce((acc, ids) => {
+          const idsSet = new Set(ids);
+          return acc.filter(id => idsSet.has(id));
+        });
+        
+        if (finalEligibleIds.length === 0) {
+          return [] as PreviewContact[];
+        }
+      }
+
+      // Construir query base
       let query = supabase
         .from('contacts')
         .select('id, full_name, phone, avatar_url, lead_status, last_interaction_at')
-        .order('full_name', { ascending: true })
-        .range(pageParam, pageParam + PREVIEW_PAGE_SIZE - 1);
+        .order('full_name', { ascending: true });
 
-      // Aplicar filtros
+      // Se temos IDs filtrados, usar paginação sobre eles
+      if (finalEligibleIds) {
+        // Paginar sobre os IDs elegíveis
+        const paginatedIds = finalEligibleIds.slice(pageParam, pageParam + PREVIEW_PAGE_SIZE);
+        if (paginatedIds.length === 0) {
+          return [] as PreviewContact[];
+        }
+        query = query.in('id', paginatedIds);
+      } else {
+        // Paginação normal
+        query = query.range(pageParam, pageParam + PREVIEW_PAGE_SIZE - 1);
+      }
+
+      // Aplicar filtros diretos na tabela contacts
       if (filters.firstContactStart) {
         query = query.gte('first_contact_at', filters.firstContactStart);
       }
@@ -542,54 +616,7 @@ export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled
       const { data, error } = await query;
       if (error) throw error;
 
-      let contacts = (data || []) as PreviewContact[];
-
-      // Filtrar por tags (se especificado) - client-side para esta página
-      if (filters.tagIds && filters.tagIds.length > 0) {
-        const contactIds = contacts.map(c => c.id);
-        if (contactIds.length > 0) {
-          const { data: taggedContacts } = await supabase
-            .from('contact_tags')
-            .select('contact_id')
-            .in('tag_id', filters.tagIds)
-            .in('contact_id', contactIds);
-          
-          const taggedIds = new Set(taggedContacts?.map(tc => tc.contact_id) || []);
-          contacts = contacts.filter(c => taggedIds.has(c.id));
-        }
-      }
-
-      // Filtrar por status de conversa (se especificado)
-      if (filters.conversationStatus && filters.conversationStatus.length > 0) {
-        const contactIds = contacts.map(c => c.id);
-        if (contactIds.length > 0) {
-          const { data: conversations } = await supabase
-            .from('conversations')
-            .select('contact_id')
-            .in('status', filters.conversationStatus)
-            .in('contact_id', contactIds);
-          
-          const contactsWithStatus = new Set(conversations?.map(c => c.contact_id) || []);
-          contacts = contacts.filter(c => contactsWithStatus.has(c.id));
-        }
-      }
-
-      // Filtrar por última mensagem do cliente (se especificado)
-      if (filters.lastClientMessageDaysAgo) {
-        // Obter tenant_id corretamente via RPC
-        const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
-        
-        const { data: eligibleContacts } = await supabase
-          .rpc('get_contacts_last_client_message_before', {
-            p_days_ago: filters.lastClientMessageDaysAgo,
-            p_tenant_id: tenantId
-          });
-        
-        const eligibleIds = new Set((eligibleContacts || []).map((c: { contact_id: string }) => c.contact_id));
-        contacts = contacts.filter(c => eligibleIds.has(c.id));
-      }
-
-      return contacts;
+      return (data || []) as PreviewContact[];
     },
   });
 }
