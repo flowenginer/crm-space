@@ -11282,6 +11282,20 @@ export type Database = {
           total_count: number
         }[]
       }
+      search_messages_global: {
+        Args: { p_limit?: number; p_search_term: string }
+        Returns: {
+          contact_id: string
+          contact_name: string
+          contact_phone: string
+          content: string
+          conversation_id: string
+          created_at: string
+          is_from_me: boolean
+          match_highlight: string
+          message_id: string
+        }[]
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       sync_menu_items_to_tenant: {

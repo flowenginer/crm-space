@@ -101,6 +101,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileSwipeNavigation, type MobilePanel } from '@/components/conversations/MobileSwipeNavigation';
 import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
+import { GlobalSearchPopover } from '@/components/conversations/GlobalSearchPopover';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { QuickTemplatesPopover } from '@/components/conversations/QuickTemplatesPopover';
@@ -3246,17 +3247,20 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
               {/* Search + Date Filter - lado a lado */}
               <div className="flex items-center gap-1.5 mt-3">
-                {/* Campo de Busca */}
-                <div className="relative flex-1">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Buscar conversas..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 h-9 rounded-xl bg-muted/50 border-border/50 text-sm"
-                  />
-                </div>
+                {/* Campo de Busca Global */}
+                <GlobalSearchPopover
+                  onSelectContact={(contactId, conversationId) => {
+                    if (conversationId) {
+                      navigate(`/conversations?id=${conversationId}`);
+                    }
+                  }}
+                  onSelectMessage={(conversationId, messageId) => {
+                    navigate(`/conversations?id=${conversationId}`);
+                    // TODO: Scroll to message when implemented
+                  }}
+                  onSearchChange={setSearchQuery}
+                  className="flex-1"
+                />
                 
                 {/* Filtro de Datas */}
                 <Select 
