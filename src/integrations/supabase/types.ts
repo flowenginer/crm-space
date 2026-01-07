@@ -4519,6 +4519,110 @@ export type Database = {
           },
         ]
       }
+      marketing_action_logs: {
+        Row: {
+          action_config: Json | null
+          action_type: string
+          active_campaign_id: string | null
+          campaign_id: string | null
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string | null
+          dispatch_id: string | null
+          error_message: string | null
+          executed_at: string | null
+          id: string
+          step_number: number
+          success: boolean | null
+          tenant_id: string
+          trigger_type: string
+        }
+        Insert: {
+          action_config?: Json | null
+          action_type: string
+          active_campaign_id?: string | null
+          campaign_id?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          dispatch_id?: string | null
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          step_number?: number
+          success?: boolean | null
+          tenant_id: string
+          trigger_type: string
+        }
+        Update: {
+          action_config?: Json | null
+          action_type?: string
+          active_campaign_id?: string | null
+          campaign_id?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          dispatch_id?: string | null
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          step_number?: number
+          success?: boolean | null
+          tenant_id?: string
+          trigger_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_action_logs_active_campaign_id_fkey"
+            columns: ["active_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "active_marketing_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_action_logs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_action_logs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_action_logs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_action_logs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_action_logs_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: false
+            referencedRelation: "bulk_dispatches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_action_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketing_campaigns: {
         Row: {
           created_at: string | null
