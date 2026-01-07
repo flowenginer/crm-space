@@ -1,6 +1,7 @@
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -252,6 +253,17 @@ export function ActionItem({
           </Select>
         );
 
+      case 'add_internal_note':
+        return (
+          <Textarea
+            placeholder="Digite o conteúdo da nota interna... (use {{nome}}, {{telefone}}, {{data}})"
+            value={action.config.internal_note_content || ''}
+            onChange={(e) => updateConfig({ internal_note_content: e.target.value })}
+            className="min-h-[60px] text-sm"
+            rows={2}
+          />
+        );
+
       case 'send_next_message':
         if (!hasMoreSteps) {
           return (
@@ -278,7 +290,7 @@ export function ActionItem({
     }
   };
 
-  const needsConfig = !['none', 'send_next_message', 'transfer_owner'].includes(action.type);
+  const needsConfig = !['none', 'send_next_message', 'transfer_owner', 'cancel_campaign'].includes(action.type);
 
   return (
     <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
