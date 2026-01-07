@@ -118,6 +118,7 @@ export default function BulkDispatch() {
   const [dispatchToDelete, setDispatchToDelete] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   
   const [name, setName] = useState('');
   const [campaignType, setCampaignType] = useState<'followup' | 'marketing'>('followup');
@@ -169,10 +170,16 @@ export default function BulkDispatch() {
   const deleteDispatch = useDeleteBulkDispatch();
   const deleteDispatches = useDeleteBulkDispatches();
 
-  // Dispatches que podem ser deletados (concluídos ou cancelados)
+  // Dispatches filtrados por status
+  const filteredDispatches = useMemo(() => {
+    if (statusFilter === 'all') return dispatches;
+    return dispatches.filter(d => d.status === statusFilter);
+  }, [dispatches, statusFilter]);
+
+  // Dispatches que podem ser deletados (concluídos ou cancelados) - dentro do filtro atual
   const deletableDispatches = useMemo(() => 
-    dispatches.filter(d => d.status === 'completed' || d.status === 'cancelled'),
-    [dispatches]
+    filteredDispatches.filter(d => d.status === 'completed' || d.status === 'cancelled'),
+    [filteredDispatches]
   );
   
   const allDeletableSelected = deletableDispatches.length > 0 && 
@@ -525,8 +532,24 @@ export default function BulkDispatch() {
 
         <TabsContent value="history">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Histórico</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <CardTitle>Histórico</CardTitle>
+                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setSelectedIds([]); }}>
+                  <SelectTrigger className="w-[180px]">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Filtrar por status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os status</SelectItem>
+                    <SelectItem value="running">Em Execução</SelectItem>
+                    <SelectItem value="paused">Pausados</SelectItem>
+                    <SelectItem value="completed">Concluídos</SelectItem>
+                    <SelectItem value="cancelled">Cancelados</SelectItem>
+                    <SelectItem value="draft">Rascunhos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               {selectedIds.length > 0 && (
                 <Button 
                   variant="destructive" 
@@ -541,8 +564,8 @@ export default function BulkDispatch() {
             <CardContent>
               {dispatchesLoading ? (
                 <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin" /></div>
-              ) : dispatches.length === 0 ? (
-                <div className="flex flex-col items-center py-12 text-muted-foreground"><History className="h-12 w-12 mb-2 opacity-50" /><p>Nenhuma campanha</p></div>
+              ) : filteredDispatches.length === 0 ? (
+                <div className="flex flex-col items-center py-12 text-muted-foreground"><History className="h-12 w-12 mb-2 opacity-50" /><p>{statusFilter === 'all' ? 'Nenhuma campanha' : 'Nenhuma campanha com este status'}</p></div>
               ) : (
                 <Table>
                   <TableHeader>
@@ -565,7 +588,7 @@ export default function BulkDispatch() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dispatches.map(d => {
+                    {filteredDispatches.map(d => {
                       const processedCount = d.sent_count + d.error_count + (d.skipped_count || 0);
                       const isDeletable = d.status === 'completed' || d.status === 'cancelled';
                       return (
