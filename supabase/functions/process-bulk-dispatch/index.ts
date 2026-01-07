@@ -84,6 +84,163 @@ function getRandomizedInterval(baseMs: number): number {
   return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
 }
 
+// Function to send message directly via whatsapp-instance
+async function sendMessageDirectly(
+  supabase: any,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  channelId: string,
+  conversationId: string,
+  contactId: string,
+  phone: string,
+  content: string,
+  audioUrl?: string | null,
+  attachmentUrl?: string | null
+): Promise<void> {
+  console.log(`[BulkDispatch] Sending message directly to ${phone}`);
+  
+  // Send text message if content exists
+  if (content?.trim()) {
+    // Create message record
+    const { data: msgData, error: msgError } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        contact_id: contactId,
+        content: content,
+        is_from_me: true,
+        message_type: 'text',
+        status: 'pending',
+      })
+      .select('id')
+      .single();
+
+    if (msgError) {
+      console.error(`[BulkDispatch] Error creating message:`, msgError);
+      throw new Error(`Failed to create message: ${msgError.message}`);
+    }
+
+    // Send via whatsapp-instance
+    const sendRes = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        action: 'send',
+        channelId,
+        phone,
+        content,
+        type: 'text',
+      }),
+    });
+
+    const result = await sendRes.json();
+    console.log(`[BulkDispatch] WhatsApp send result:`, result);
+
+    // Update message status
+    await supabase
+      .from('messages')
+      .update({
+        whatsapp_message_id: result?.messageId || null,
+        status: sendRes.ok ? 'sent' : 'error',
+      })
+      .eq('id', msgData.id);
+
+    if (!sendRes.ok) {
+      console.error(`[BulkDispatch] Failed to send message:`, result);
+      throw new Error(result?.error || 'Failed to send message');
+    }
+  }
+
+  // Send audio if exists
+  if (audioUrl) {
+    const { data: audioMsgData } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        contact_id: contactId,
+        content: '',
+        is_from_me: true,
+        message_type: 'audio',
+        media_url: audioUrl,
+        status: 'pending',
+      })
+      .select('id')
+      .single();
+
+    const audioRes = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        action: 'send',
+        channelId,
+        phone,
+        mediaUrl: audioUrl,
+        type: 'audio',
+      }),
+    });
+
+    const audioResult = await audioRes.json();
+    
+    await supabase
+      .from('messages')
+      .update({
+        whatsapp_message_id: audioResult?.messageId || null,
+        status: audioRes.ok ? 'sent' : 'error',
+      })
+      .eq('id', audioMsgData?.id);
+  }
+
+  // Send attachment if exists
+  if (attachmentUrl) {
+    const { data: attachMsgData } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        contact_id: contactId,
+        content: '',
+        is_from_me: true,
+        message_type: 'document',
+        media_url: attachmentUrl,
+        status: 'pending',
+      })
+      .select('id')
+      .single();
+
+    const attachRes = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        action: 'send',
+        channelId,
+        phone,
+        mediaUrl: attachmentUrl,
+        type: 'document',
+      }),
+    });
+
+    const attachResult = await attachRes.json();
+    
+    await supabase
+      .from('messages')
+      .update({
+        whatsapp_message_id: attachResult?.messageId || null,
+        status: attachRes.ok ? 'sent' : 'error',
+      })
+      .eq('id', attachMsgData?.id);
+  }
+
+  console.log(`[BulkDispatch] Message sent directly to ${phone}`);
+}
+
 // Get schedule configuration from dispatch or company settings
 async function getScheduleConfig(supabase: any, dispatch: any): Promise<ScheduleConfig> {
   // If schedule is disabled for this dispatch, return disabled config
@@ -245,7 +402,7 @@ Deno.serve(async (req) => {
 
     // Process in background using async IIFE
     (async () => {
-      await processDispatch(supabase, dispatch);
+      await processDispatch(supabase, dispatch, supabaseUrl, supabaseKey);
     })();
 
     return new Response(JSON.stringify({ message: 'Processing started', dispatchId }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -375,7 +532,7 @@ async function generateContactsFromFilters(supabase: any, dispatch: any): Promis
 }
 
 // @ts-ignore - Using any types for edge function flexibility
-async function processDispatch(supabase: any, dispatch: any) {
+async function processDispatch(supabase: any, dispatch: any, supabaseUrl: string, supabaseKey: string) {
   const baseIntervalMs = dispatch.interval_seconds * 1000;
   const channel = dispatch.channel;
 
@@ -630,24 +787,41 @@ async function processDispatch(supabase: any, dispatch: any) {
         console.log(`[BulkDispatch] Created active marketing campaign: ${activeRecordId}`);
 
         if (activeMarketing) {
-          // Schedule first marketing message
+          const messageContent = replaceVariables(firstStep.message, contact, '');
+          
+          // SEND FIRST MESSAGE IMMEDIATELY
+          await sendMessageDirectly(
+            supabase,
+            supabaseUrl,
+            supabaseKey,
+            effectiveChannelId,
+            conversationId,
+            contact.id,
+            contact.phone,
+            messageContent,
+            firstStep.audio_url,
+            firstStep.attachment_url
+          );
+
+          // Record as already sent in marketing_scheduled_messages
           const { error: scheduleError } = await supabase
             .from('marketing_scheduled_messages')
             .insert({
               active_campaign_id: activeMarketing.id,
               step_number: 0,
               scheduled_for: new Date().toISOString(),
-              status: 'pending',
-              content: replaceVariables(firstStep.message, contact, ''),
+              status: 'sent',
+              sent_at: new Date().toISOString(),
+              content: messageContent,
               audio_url: firstStep.audio_url || null,
               attachment_url: firstStep.attachment_url || null,
               tenant_id: dispatch.tenant_id,
             });
 
           if (scheduleError) {
-            console.error(`[BulkDispatch] Error scheduling marketing message:`, scheduleError);
+            console.error(`[BulkDispatch] Error recording marketing message:`, scheduleError);
           } else {
-            console.log(`[BulkDispatch] Scheduled marketing message for campaign ${activeMarketing.id}`);
+            console.log(`[BulkDispatch] Sent first marketing message for campaign ${activeMarketing.id}`);
           }
         }
       } else {
@@ -674,24 +848,41 @@ async function processDispatch(supabase: any, dispatch: any) {
         console.log(`[BulkDispatch] Created active rescue: ${activeRecordId}`);
 
         if (activeRescue) {
-          // Schedule first rescue message
+          const messageContent = replaceVariables(firstStep.message, contact, '');
+          
+          // SEND FIRST MESSAGE IMMEDIATELY
+          await sendMessageDirectly(
+            supabase,
+            supabaseUrl,
+            supabaseKey,
+            effectiveChannelId,
+            conversationId,
+            contact.id,
+            contact.phone,
+            messageContent,
+            firstStep.audio_url,
+            firstStep.attachment_url
+          );
+
+          // Record as already sent in rescue_scheduled_messages
           const { error: scheduleError } = await supabase
             .from('rescue_scheduled_messages')
             .insert({
               rescue_id: activeRescue.id,
               step_number: 0,
               scheduled_for: new Date().toISOString(),
-              status: 'pending',
-              content: replaceVariables(firstStep.message, contact, ''),
+              status: 'sent',
+              sent_at: new Date().toISOString(),
+              content: messageContent,
               audio_url: firstStep.audio_url || null,
               attachment_url: firstStep.attachment_url || null,
               attachment_type: firstStep.attachment_type || null,
             });
 
           if (scheduleError) {
-            console.error(`[BulkDispatch] Error scheduling rescue message:`, scheduleError);
+            console.error(`[BulkDispatch] Error recording rescue message:`, scheduleError);
           } else {
-            console.log(`[BulkDispatch] Scheduled rescue message for rescue ${activeRescue.id}`);
+            console.log(`[BulkDispatch] Sent first rescue message for rescue ${activeRescue.id}`);
           }
         }
       }
