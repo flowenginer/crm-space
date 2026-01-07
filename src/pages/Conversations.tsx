@@ -803,9 +803,10 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
 
         <div className="flex flex-col max-w-[70%]">
           {/* Reply reference - clickable to scroll to original message */}
-          {replyTo && !isDeleted && (
+          {/* Show even if replyTo is not loaded yet (show loading state) */}
+          {(replyTo || message.reply_to_message_id) && !isDeleted && (
             <div 
-              onClick={() => onScrollToMessage?.(message.reply_to_message_id!)}
+              onClick={() => message.reply_to_message_id && onScrollToMessage?.(message.reply_to_message_id)}
               className={cn(
                 'flex items-center gap-2 px-3 py-1.5 mb-1 rounded-t-xl text-xs border-l-2 cursor-pointer transition-colors',
                 isMe 
@@ -814,38 +815,48 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
               )}
             >
               <CornerDownRight size={12} className="flex-shrink-0" />
-              {/* Image thumbnail for image replies */}
-              {replyTo.message_type === 'image' && replyTo.media_url && (
-                <img 
-                  src={replyTo.media_url} 
-                  alt="Imagem" 
-                  className="w-8 h-8 rounded object-cover flex-shrink-0"
-                />
+              
+              {replyTo ? (
+                <>
+                  {/* Image thumbnail for image replies */}
+                  {replyTo.message_type === 'image' && replyTo.media_url && (
+                    <img 
+                      src={replyTo.media_url} 
+                      alt="Imagem" 
+                      className="w-8 h-8 rounded object-cover flex-shrink-0"
+                    />
+                  )}
+                  {/* Sticker thumbnail for sticker replies */}
+                  {replyTo.message_type === 'sticker' && replyTo.media_url && (
+                    <img 
+                      src={replyTo.media_url} 
+                      alt="Sticker" 
+                      className="w-8 h-8 object-contain flex-shrink-0"
+                    />
+                  )}
+                  <span className="truncate">
+                    {replyTo.is_deleted 
+                      ? 'Mensagem apagada' 
+                      : replyTo.message_type === 'image'
+                        ? (replyTo.content && replyTo.content !== '[Imagem]' ? replyTo.content.substring(0, 50) : 'Imagem')
+                        : replyTo.message_type === 'audio'
+                          ? '🎤 Áudio'
+                          : replyTo.message_type === 'video'
+                            ? '🎬 Vídeo'
+                            : replyTo.message_type === 'document'
+                              ? '📄 Documento'
+                              : replyTo.message_type === 'sticker'
+                                ? '🎭 Sticker'
+                                : (replyTo.content?.substring(0, 50) || 'Mídia')}
+                    {replyTo.message_type === 'text' && replyTo.content && replyTo.content.length > 50 ? '...' : ''}
+                  </span>
+                </>
+              ) : (
+                // Fallback when reply_to_message_id exists but data hasn't loaded
+                <span className="truncate text-muted-foreground/70 italic">
+                  Resposta a mensagem...
+                </span>
               )}
-              {/* Sticker thumbnail for sticker replies */}
-              {replyTo.message_type === 'sticker' && replyTo.media_url && (
-                <img 
-                  src={replyTo.media_url} 
-                  alt="Sticker" 
-                  className="w-8 h-8 object-contain flex-shrink-0"
-                />
-              )}
-              <span className="truncate">
-                {replyTo.is_deleted 
-                  ? 'Mensagem apagada' 
-                  : replyTo.message_type === 'image'
-                    ? (replyTo.content && replyTo.content !== '[Imagem]' ? replyTo.content.substring(0, 50) : 'Imagem')
-                    : replyTo.message_type === 'audio'
-                      ? '🎤 Áudio'
-                      : replyTo.message_type === 'video'
-                        ? '🎬 Vídeo'
-                        : replyTo.message_type === 'document'
-                          ? '📄 Documento'
-                          : replyTo.message_type === 'sticker'
-                            ? '🎭 Sticker'
-                            : (replyTo.content?.substring(0, 50) || 'Mídia')}
-                {replyTo.message_type === 'text' && replyTo.content && replyTo.content.length > 50 ? '...' : ''}
-              </span>
             </div>
           )}
 
