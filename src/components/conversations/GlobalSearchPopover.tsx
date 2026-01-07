@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Search, User, MessageCircle, Loader2, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
 import { useGlobalSearch, type ContactSearchResult, type MessageSearchResult } from '@/hooks/useGlobalSearch';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -30,7 +31,16 @@ export function GlobalSearchPopover({
   const inputRef = useRef<HTMLInputElement>(null);
   const modalInputRef = useRef<HTMLInputElement>(null);
 
-  const { results, isLoading, hasResults, isSearching } = useGlobalSearch(searchQuery, isOpen);
+  const { 
+    results, 
+    isLoading, 
+    hasResults, 
+    isSearching,
+    hasMoreMessages,
+    isLoadingMore,
+    loadMoreMessages,
+    resetPagination,
+  } = useGlobalSearch(searchQuery, isOpen);
 
   // Notify parent of search changes for fallback filtering
   useEffect(() => {
@@ -55,6 +65,7 @@ export function GlobalSearchPopover({
   const handleClose = () => {
     setIsOpen(false);
     setSearchQuery('');
+    resetPagination();
   };
 
   const handleContactClick = (contact: ContactSearchResult) => {
@@ -208,7 +219,7 @@ export function GlobalSearchPopover({
                         Mensagens
                       </span>
                       <span className="text-xs text-muted-foreground ml-1">
-                        ({results.messages.length})
+                        ({results.messages.length}{hasMoreMessages ? '+' : ''})
                       </span>
                     </div>
                     <div className="py-1">
@@ -240,6 +251,27 @@ export function GlobalSearchPopover({
                           </div>
                         </button>
                       ))}
+                      
+                      {/* Load More Button */}
+                      {hasMoreMessages && (
+                        <div className="px-4 py-3">
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={loadMoreMessages}
+                            disabled={isLoadingMore}
+                          >
+                            {isLoadingMore ? (
+                              <>
+                                <Loader2 size={16} className="mr-2 animate-spin" />
+                                Carregando...
+                              </>
+                            ) : (
+                              'Carregar mais mensagens'
+                            )}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

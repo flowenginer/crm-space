@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useState, useCallback } from 'react';
 
 export interface ContactSearchResult {
   id: string;
@@ -28,10 +29,20 @@ export interface GlobalSearchResults {
 }
 
 const MIN_SEARCH_LENGTH = 3;
+const MESSAGES_PER_PAGE = 50;
 
 export function useGlobalSearch(searchTerm: string, enabled: boolean = true) {
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const shouldSearch = enabled && debouncedSearchTerm.length >= MIN_SEARCH_LENGTH;
+  
+  // Pagination state for messages
+  const [messageLimit, setMessageLimit] = useState(MESSAGES_PER_PAGE);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Reset pagination when search term changes
+  const resetPagination = useCallback(() => {
+    setMessageLimit(MESSAGES_PER_PAGE);
+  }, []);
 
   // Search contacts
   const contactsQuery = useQuery({
@@ -43,7 +54,7 @@ export function useGlobalSearch(searchTerm: string, enabled: boolean = true) {
       const { data: contacts, error } = await supabase
         .rpc('search_contacts_unaccent', {
           p_search_query: debouncedSearchTerm,
-          p_limit: 10,
+          p_limit: 20,
         });
 
       if (error) {
@@ -79,26 +90,30 @@ export function useGlobalSearch(searchTerm: string, enabled: boolean = true) {
     },
   });
 
-  // Search messages
+  // Search messages with pagination
   const messagesQuery = useQuery({
-    queryKey: ['global-search-messages', debouncedSearchTerm],
+    queryKey: ['global-search-messages', debouncedSearchTerm, messageLimit],
     enabled: shouldSearch,
     staleTime: 30000, // 30s cache
-    queryFn: async (): Promise<MessageSearchResult[]> => {
+    queryFn: async (): Promise<{ messages: MessageSearchResult[]; hasMore: boolean }> => {
+      // Fetch one extra to know if there are more results
       const { data, error } = await supabase
         .rpc('search_messages_global', {
           p_search_term: debouncedSearchTerm,
-          p_limit: 20,
+          p_limit: messageLimit + 1,
         });
 
       if (error) {
         console.error('Error searching messages:', error);
-        return [];
+        return { messages: [], hasMore: false };
       }
 
-      if (!data) return [];
+      if (!data) return { messages: [], hasMore: false };
 
-      return data.map((msg: any) => ({
+      const hasMore = data.length > messageLimit;
+      const messagesData = hasMore ? data.slice(0, messageLimit) : data;
+
+      const messages = messagesData.map((msg: any) => ({
         messageId: msg.message_id,
         conversationId: msg.conversation_id,
         contactId: msg.contact_id,
@@ -109,14 +124,25 @@ export function useGlobalSearch(searchTerm: string, enabled: boolean = true) {
         createdAt: msg.created_at,
         isFromMe: msg.is_from_me,
       }));
+
+      return { messages, hasMore };
     },
   });
 
+  // Load more messages
+  const loadMoreMessages = useCallback(async () => {
+    setIsLoadingMore(true);
+    setMessageLimit(prev => prev + MESSAGES_PER_PAGE);
+    // Wait a bit for the query to refetch
+    setTimeout(() => setIsLoadingMore(false), 500);
+  }, []);
+
   const results: GlobalSearchResults = {
     contacts: contactsQuery.data || [],
-    messages: messagesQuery.data || [],
+    messages: messagesQuery.data?.messages || [],
   };
 
+  const hasMoreMessages = messagesQuery.data?.hasMore || false;
   const isLoading = contactsQuery.isLoading || messagesQuery.isLoading;
   const hasResults = results.contacts.length > 0 || results.messages.length > 0;
 
@@ -126,5 +152,10 @@ export function useGlobalSearch(searchTerm: string, enabled: boolean = true) {
     hasResults,
     searchTerm: debouncedSearchTerm,
     isSearching: shouldSearch,
+    // Pagination
+    hasMoreMessages,
+    isLoadingMore,
+    loadMoreMessages,
+    resetPagination,
   };
 }
