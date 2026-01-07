@@ -118,7 +118,7 @@ export function GlobalSearchPopover({
       </div>
 
       {/* Search Modal */}
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
         <DialogContent className="max-w-2xl w-[90vw] h-[70vh] max-h-[600px] p-0 gap-0 flex flex-col">
           <DialogTitle className="sr-only">Busca Global</DialogTitle>
           
