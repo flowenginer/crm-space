@@ -378,6 +378,41 @@ Deno.serve(async (req) => {
       // Don't fail the whole operation
     }
 
+    // 7. Create transfer events for each conversation (so it shows in transfer dashboard)
+    const { data: updatedConversations } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('contact_id', contact_id)
+      .in('status', ['open', 'pending']);
+
+    if (updatedConversations && updatedConversations.length > 0) {
+      for (const conv of updatedConversations) {
+        const { error: eventError } = await supabase
+          .from('conversation_events')
+          .insert({
+            conversation_id: conv.id,
+            tenant_id: tenantId,
+            event_type: 'transfer',
+            actor_id: null, // System/auto-distribution
+            data: {
+              from_user_id: null,
+              from_user_name: null,
+              to_user_id: selectedAgent.id,
+              to_user_name: selectedAgent.full_name,
+              to_department_id: departmentId,
+              note: 'Distribuição automática de lead',
+              is_auto_distribution: true
+            }
+          });
+
+        if (eventError) {
+          console.error(`[distribute-lead] Error creating transfer event for conv ${conv.id}:`, eventError);
+        } else {
+          console.log(`[distribute-lead] Created transfer event for conversation ${conv.id}`);
+        }
+      }
+    }
+
     console.log(`[distribute-lead] Successfully distributed contact ${contact_id} to ${selectedAgent.full_name} (status: ${conversationStatus})`);
 
     return new Response(
