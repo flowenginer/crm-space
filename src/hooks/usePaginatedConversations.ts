@@ -30,11 +30,18 @@ const CONVERSATION_FIELDS = `
   channel:whatsapp_channels(id, name)
 `;
 
-// Server-side sorting options - now includes not_replied and client_not_replied
-export type ServerSortFilter = 'newest' | 'oldest' | 'unread' | 'not_replied' | 'client_not_replied';
+// Server-side sorting options
+export type SortOrder = 'newest' | 'oldest';
 
-// All sort filter options (all are now server-side)
-export type SortFilter = ServerSortFilter;
+// Status filters that can be combined
+export interface StatusFiltersSelected {
+  unread: boolean;
+  not_replied: boolean;
+  client_not_replied: boolean;
+}
+
+// Legacy type for backwards compatibility
+export type SortFilter = 'newest' | 'oldest' | 'unread' | 'not_replied' | 'client_not_replied';
 
 export type StatusFilter = 'active' | 'open' | 'pending' | 'closed' | 'all';
 
@@ -42,7 +49,11 @@ export type AssignmentFilterExtended = 'all' | 'mine' | 'unassigned' | 'pending'
 
 export interface ConversationFilters {
   assignment?: AssignmentFilterExtended;
-  sortBy?: SortFilter;
+  sortBy?: SortFilter; // Legacy - still supported
+  sortOrder?: SortOrder; // New: just ordering
+  filterUnread?: boolean; // New: filter by unread
+  filterNotReplied?: boolean; // New: filter by not replied
+  filterClientNotReplied?: boolean; // New: filter by client not replied
   channelId?: string;
   isUnread?: boolean;
   // Filtros avançados - aplicados no servidor
@@ -198,7 +209,11 @@ async function getDateRangeWithTimezone(dateFilter: string, customFrom?: Date, c
 export function usePaginatedConversations(filters?: ConversationFilters) {
   const { 
     assignment, 
-    sortBy = 'newest', 
+    sortBy, // Legacy support
+    sortOrder, // New: just ordering
+    filterUnread, // New: checkbox filter
+    filterNotReplied, // New: checkbox filter
+    filterClientNotReplied, // New: checkbox filter
     channelId, 
     isUnread,
     departmentId,
@@ -212,9 +227,16 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
     statusFilter = 'active',
     leadStatusFilter,
   } = filters || {};
+
+  // Determine effective sort order and filters
+  // Support both legacy sortBy and new sortOrder/filter* props
+  const effectiveSortOrder: SortOrder = sortOrder ?? (sortBy === 'oldest' ? 'oldest' : 'newest');
+  const effectiveFilterUnread = filterUnread ?? (sortBy === 'unread');
+  const effectiveFilterNotReplied = filterNotReplied ?? (sortBy === 'not_replied');
+  const effectiveFilterClientNotReplied = filterClientNotReplied ?? (sortBy === 'client_not_replied');
   
   return useInfiniteQuery({
-    queryKey: ['conversations-paginated', assignment, sortBy, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery, statusFilter, leadStatusFilter],
+    queryKey: ['conversations-paginated', assignment, effectiveSortOrder, effectiveFilterUnread, effectiveFilterNotReplied, effectiveFilterClientNotReplied, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery, statusFilter, leadStatusFilter],
     queryFn: async ({ pageParam = 0 }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -517,33 +539,47 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         query = query.eq('contact.lead_status', leadStatusFilter);
       }
 
-      // Apply sorting - THIS IS THE KEY: sorting happens on the SERVER
-      switch (sortBy) {
-        case 'oldest':
-          query = query.order('last_message_at', { ascending: true, nullsFirst: false });
-          break;
-        case 'unread':
-          // Unread first (is_unread desc), then by date
-          query = query
-            .order('is_unread', { ascending: false })
-            .order('last_message_at', { ascending: false, nullsFirst: false });
-          break;
-        case 'not_replied':
-          // Filter: last message is from client (not from me) - agent hasn't replied
-          query = query
-            .eq('last_message_is_from_me', false)
-            .order('last_message_at', { ascending: false, nullsFirst: false });
-          break;
-        case 'client_not_replied':
-          // Filter: last message is from agent (from me) - client hasn't replied
-          query = query
-            .eq('last_message_is_from_me', true)
-            .order('last_message_at', { ascending: false, nullsFirst: false });
-          break;
-        case 'newest':
-        default:
-          query = query.order('last_message_at', { ascending: false, nullsFirst: false });
-          break;
+      // Apply status filters (can be combined with OR)
+      const statusConditions: string[] = [];
+      
+      if (effectiveFilterUnread) {
+        statusConditions.push('is_unread.eq.true');
+      }
+      
+      if (effectiveFilterNotReplied) {
+        statusConditions.push('last_message_is_from_me.eq.false');
+      }
+      
+      if (effectiveFilterClientNotReplied) {
+        statusConditions.push('last_message_is_from_me.eq.true');
+      }
+      
+      // If multiple status filters, combine with OR
+      // If only one filter, apply it directly
+      if (statusConditions.length === 1) {
+        // Apply single filter directly for better performance
+        if (effectiveFilterUnread) {
+          query = query.eq('is_unread', true);
+        } else if (effectiveFilterNotReplied) {
+          query = query.eq('last_message_is_from_me', false);
+        } else if (effectiveFilterClientNotReplied) {
+          query = query.eq('last_message_is_from_me', true);
+        }
+      } else if (statusConditions.length > 1) {
+        // Combine with OR for multiple filters
+        query = query.or(statusConditions.join(','));
+      }
+
+      // Apply sorting based on effectiveSortOrder
+      if (effectiveSortOrder === 'oldest') {
+        query = query.order('last_message_at', { ascending: true, nullsFirst: false });
+      } else {
+        query = query.order('last_message_at', { ascending: false, nullsFirst: false });
+      }
+      
+      // If filtering by unread, also sort unread first
+      if (effectiveFilterUnread && statusConditions.length === 1) {
+        query = query.order('is_unread', { ascending: false });
       }
 
       // Apply pagination
