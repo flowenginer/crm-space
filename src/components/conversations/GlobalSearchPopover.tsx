@@ -150,8 +150,8 @@ export function GlobalSearchPopover({
 
       {/* Dropdown Results */}
       {showDropdown && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-popover border border-border rounded-xl shadow-lg z-50 overflow-hidden max-w-2xl w-[min(90vw,32rem)]">
-          <ScrollArea className="max-h-[min(70vh,500px)]">
+        <div className="absolute top-full left-0 mt-2 bg-popover border border-border rounded-xl shadow-lg z-50 overflow-hidden w-[min(95vw,550px)]">
+          <ScrollArea className="h-[min(70vh,450px)]">
             {!showResults ? (
               <div className="flex flex-col items-center justify-center py-12 text-center px-4">
                 <Search size={40} className="text-muted-foreground/30 mb-3" />
