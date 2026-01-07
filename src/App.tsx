@@ -55,6 +55,7 @@ import Financial from "@/pages/Financial";
 import SellerDashboard from "@/pages/SellerDashboard";
 import RescueTemplates from "@/pages/RescueTemplates";
 import BulkDispatch from "@/pages/BulkDispatch";
+import MarketingDashboard from "@/pages/MarketingDashboard";
 import Gamification from "@/pages/Gamification";
 import GamificationRankings from "@/pages/gamification/Rankings";
 import GamificationAchievements from "@/pages/gamification/Achievements";
@@ -141,6 +142,11 @@ const App = () => (
               <Route path="/bulk-dispatch" element={
                 <ProtectedRoute permission="templates.view">
                   <BulkDispatch />
+                </ProtectedRoute>
+              } />
+              <Route path="/marketing-dashboard" element={
+                <ProtectedRoute permission="marketing.view_campaigns">
+                  <MarketingDashboard />
                 </ProtectedRoute>
               } />
               <Route path="/crm" element={
