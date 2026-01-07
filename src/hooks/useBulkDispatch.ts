@@ -512,7 +512,7 @@ export function useDeleteBulkDispatch() {
   });
 }
 
-// Realtime subscription para métricas
+// Realtime subscription para métricas de um dispatch específico
 export function useBulkDispatchRealtime(dispatchId: string | null) {
   const queryClient = useQueryClient();
 
@@ -553,4 +553,30 @@ export function useBulkDispatchRealtime(dispatchId: string | null) {
       supabase.removeChannel(channel);
     };
   }, [dispatchId, queryClient]);
+}
+
+// Realtime subscription para TODA a lista de dispatches (sem filtro de ID)
+export function useBulkDispatchesRealtime() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('bulk-dispatches-all')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bulk_dispatches',
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['bulk-dispatches'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 }
