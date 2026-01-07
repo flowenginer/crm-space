@@ -496,34 +496,45 @@ export default function BulkDispatch() {
                       <TableHead>Progresso</TableHead>
                       <TableHead className="text-center">Enviados</TableHead>
                       <TableHead className="text-center">Respondidos</TableHead>
+                      <TableHead className="text-center">Pulados</TableHead>
                       <TableHead>Criado em</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dispatches.map(d => (
-                      <TableRow key={d.id}>
-                        <TableCell className="font-medium">{d.name}</TableCell>
-                        <TableCell>{getStatusBadge(d.status)}</TableCell>
-                        <TableCell className="min-w-[120px]">
-                          <Progress value={d.total_contacts > 0 ? (d.processed_count / d.total_contacts) * 100 : 0} className="h-2" />
-                          <p className="text-xs text-muted-foreground">{d.processed_count}/{d.total_contacts}</p>
-                        </TableCell>
-                        <TableCell className="text-center"><Badge variant="outline" className="bg-green-500/10 text-green-500">{d.sent_count}</Badge></TableCell>
-                        <TableCell className="text-center"><Badge variant="outline" className="bg-blue-500/10 text-blue-500">{d.responded_count}</Badge></TableCell>
-                        <TableCell>{format(new Date(d.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button variant="ghost" size="sm" onClick={() => setDetailsDispatch(d)} title="Ver detalhes">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            {d.status === 'running' && <Button variant="outline" size="sm" onClick={() => pauseDispatch.mutate(d.id)}><Pause className="h-4 w-4" /></Button>}
-                            {d.status === 'paused' && <Button variant="outline" size="sm" onClick={() => resumeDispatch.mutate(d.id)}><Play className="h-4 w-4" /></Button>}
-                            {(d.status === 'running' || d.status === 'paused') && <Button variant="outline" size="sm" className="text-destructive" onClick={() => cancelDispatch.mutate(d.id)}><X className="h-4 w-4" /></Button>}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {dispatches.map(d => {
+                      const processedCount = d.sent_count + d.error_count + (d.skipped_count || 0);
+                      return (
+                        <TableRow key={d.id}>
+                          <TableCell className="font-medium">{d.name}</TableCell>
+                          <TableCell>{getStatusBadge(d.status)}</TableCell>
+                          <TableCell className="min-w-[120px]">
+                            <Progress value={d.total_contacts > 0 ? (processedCount / d.total_contacts) * 100 : 0} className="h-2" />
+                            <p className="text-xs text-muted-foreground">{processedCount}/{d.total_contacts}</p>
+                          </TableCell>
+                          <TableCell className="text-center"><Badge variant="outline" className="bg-green-500/10 text-green-500">{d.sent_count}</Badge></TableCell>
+                          <TableCell className="text-center"><Badge variant="outline" className="bg-blue-500/10 text-blue-500">{d.responded_count}</Badge></TableCell>
+                          <TableCell className="text-center">
+                            {(d.skipped_count || 0) > 0 ? (
+                              <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600">{d.skipped_count}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">0</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{format(new Date(d.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button variant="ghost" size="sm" onClick={() => setDetailsDispatch(d)} title="Ver detalhes">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              {d.status === 'running' && <Button variant="outline" size="sm" onClick={() => pauseDispatch.mutate(d.id)}><Pause className="h-4 w-4" /></Button>}
+                              {d.status === 'paused' && <Button variant="outline" size="sm" onClick={() => resumeDispatch.mutate(d.id)}><Play className="h-4 w-4" /></Button>}
+                              {(d.status === 'running' || d.status === 'paused') && <Button variant="outline" size="sm" className="text-destructive" onClick={() => cancelDispatch.mutate(d.id)}><X className="h-4 w-4" /></Button>}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}

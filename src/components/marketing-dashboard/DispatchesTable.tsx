@@ -13,6 +13,7 @@ interface Dispatch {
   sent_count: number;
   responded_count: number;
   error_count: number;
+  skipped_count: number;
   created_at: string;
 }
 
@@ -55,6 +56,7 @@ export function DispatchesTable({ dispatches, isLoading }: DispatchesTableProps)
           <TableHead>Progresso</TableHead>
           <TableHead className="text-right">Enviados</TableHead>
           <TableHead className="text-right">Respostas</TableHead>
+          <TableHead className="text-right">Pulados</TableHead>
           <TableHead className="text-right">Erros</TableHead>
           <TableHead>Data</TableHead>
         </TableRow>
@@ -63,8 +65,9 @@ export function DispatchesTable({ dispatches, isLoading }: DispatchesTableProps)
         {dispatches.map((dispatch) => {
           const status = statusConfig[dispatch.status] || statusConfig.pending;
           const StatusIcon = status.icon;
+          const processedCount = dispatch.sent_count + dispatch.error_count + (dispatch.skipped_count || 0);
           const progress = dispatch.total_contacts > 0
-            ? (dispatch.sent_count / dispatch.total_contacts) * 100
+            ? (processedCount / dispatch.total_contacts) * 100
             : 0;
           const responseRate = dispatch.sent_count > 0
             ? ((dispatch.responded_count / dispatch.sent_count) * 100).toFixed(1)
@@ -93,6 +96,11 @@ export function DispatchesTable({ dispatches, isLoading }: DispatchesTableProps)
                   {dispatch.responded_count.toLocaleString('pt-BR')}
                 </span>
                 <span className="text-muted-foreground text-xs ml-1">({responseRate}%)</span>
+              </TableCell>
+              <TableCell className="text-right">
+                <span className={(dispatch.skipped_count || 0) > 0 ? 'text-yellow-600' : 'text-muted-foreground'}>
+                  {(dispatch.skipped_count || 0).toLocaleString('pt-BR')}
+                </span>
               </TableCell>
               <TableCell className="text-right">
                 <span className={dispatch.error_count > 0 ? 'text-destructive' : 'text-muted-foreground'}>

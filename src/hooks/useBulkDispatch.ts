@@ -38,6 +38,7 @@ export interface BulkDispatch {
   sent_count: number;
   error_count: number;
   responded_count: number;
+  skipped_count: number;
   created_by: string | null;
   started_at: string | null;
   paused_at: string | null;

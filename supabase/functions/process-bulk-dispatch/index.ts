@@ -722,10 +722,12 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
               .from('bulk_dispatches')
               .update({
                 processed_count: dispatch.processed_count + 1,
+                skipped_count: (dispatch.skipped_count || 0) + 1,
               })
               .eq('id', dispatch.id);
 
             dispatch.processed_count++;
+            dispatch.skipped_count = (dispatch.skipped_count || 0) + 1;
             processedCount++;
             
             // Short delay before next contact
@@ -747,10 +749,12 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
             .from('bulk_dispatches')
             .update({
               processed_count: dispatch.processed_count + 1,
+              skipped_count: (dispatch.skipped_count || 0) + 1,
             })
             .eq('id', dispatch.id);
 
           dispatch.processed_count++;
+          dispatch.skipped_count = (dispatch.skipped_count || 0) + 1;
           processedCount++;
           
           // Short delay before next contact
