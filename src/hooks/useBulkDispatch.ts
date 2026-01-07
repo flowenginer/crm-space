@@ -215,281 +215,45 @@ function buildContactsQuery(filters: BulkDispatchFilters, leadStatusNames: strin
   return query;
 }
 
-// Contagem EXATA de contatos via COUNT (rápido, sem carregar dados)
+// Helper para preparar parâmetros da RPC
+async function prepareRpcParams(filters: BulkDispatchFilters) {
+  const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+  const { leadStatusNames } = await applyBaseFilters(filters);
+  
+  return {
+    p_tenant_id: tenantId,
+    p_lead_status_names: leadStatusNames.length > 0 ? leadStatusNames : null,
+    p_last_client_message_days_ago: filters.lastClientMessageDaysAgo || null,
+    p_tag_ids: filters.tagIds?.length ? filters.tagIds : null,
+    p_conversation_statuses: filters.conversationStatus?.length ? filters.conversationStatus : null,
+    p_segment_id: filters.segmentId || null,
+    p_origin: filters.origin || null,
+    p_assigned_to: filters.assignedTo?.length ? filters.assignedTo : null,
+    p_department_ids: filters.departmentIds?.length ? filters.departmentIds : null,
+    p_contact_type: filters.contactType || null,
+    p_include_blocked: filters.includeBlocked || false,
+    p_first_contact_start: filters.firstContactStart || null,
+    p_first_contact_end: filters.firstContactEnd ? filters.firstContactEnd + 'T23:59:59' : null,
+  };
+}
+
+// Contagem EXATA de contatos via RPC (tudo server-side)
 export function usePreviewContactsCount(filters: BulkDispatchFilters, enabled: boolean = true) {
   return useQuery({
     queryKey: ['bulk-dispatch-preview-count', filters],
     enabled,
     queryFn: async () => {
-      const { leadStatusNames } = await applyBaseFilters(filters);
+      const params = await prepareRpcParams(filters);
       
-      // Query com COUNT exato
-      let query = supabase
-        .from('contacts')
-        .select('id', { count: 'exact', head: true });
-
-      // Aplicar mesmos filtros
-      if (filters.firstContactStart) {
-        query = query.gte('first_contact_at', filters.firstContactStart);
-      }
-      if (filters.firstContactEnd) {
-        query = query.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
-      }
-      if (leadStatusNames.length > 0) {
-        query = query.in('lead_status', leadStatusNames);
-      }
-      if (filters.segmentId) {
-        query = query.eq('segment_id', filters.segmentId);
-      }
-      if (filters.origin) {
-        query = query.eq('origin', filters.origin);
-      }
-      if (filters.assignedTo && filters.assignedTo.length > 0) {
-        query = query.in('assigned_to', filters.assignedTo);
-      }
-      if (filters.departmentIds && filters.departmentIds.length > 0) {
-        query = query.in('department_id', filters.departmentIds);
-      }
-      if (filters.contactType) {
-        query = query.eq('contact_type', filters.contactType);
-      }
-      if (!filters.includeBlocked) {
-        query = query.eq('is_blocked', false);
-      }
-
-      const { count, error } = await query;
+      const { data, error } = await supabase.rpc('get_bulk_dispatch_preview_count', params);
+      
       if (error) throw error;
-
-      let totalCount = count || 0;
-      let eligibleContactIds: Set<string> | null = null;
-
-      // Se há filtro de última mensagem do cliente, usar RPC
-      if (filters.lastClientMessageDaysAgo) {
-        // Obter tenant_id corretamente via RPC
-        const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
-        
-        const { data: eligibleContacts, error: rpcError } = await supabase
-          .rpc('get_contacts_last_client_message_before', {
-            p_days_ago: filters.lastClientMessageDaysAgo,
-            p_tenant_id: tenantId
-          });
-        
-        if (rpcError) throw rpcError;
-        eligibleContactIds = new Set((eligibleContacts || []).map((c: { contact_id: string }) => c.contact_id));
-      }
-
-      // Se há filtro de tags, precisamos ajustar a contagem
-      if (filters.tagIds && filters.tagIds.length > 0) {
-        // Buscar IDs dos contatos que têm as tags
-        const { data: taggedContacts } = await supabase
-          .from('contact_tags')
-          .select('contact_id')
-          .in('tag_id', filters.tagIds);
-        
-        if (taggedContacts) {
-          // Precisamos fazer a interseção com os filtros base
-          // Buscar IDs dos contatos que passam nos filtros base
-          const PAGE_SIZE = 1000;
-          let baseContactIds: string[] = [];
-          let offset = 0;
-          let hasMore = true;
-
-          while (hasMore) {
-            let idQuery = supabase
-              .from('contacts')
-              .select('id');
-
-            // Aplicar mesmos filtros
-            if (filters.firstContactStart) {
-              idQuery = idQuery.gte('first_contact_at', filters.firstContactStart);
-            }
-            if (filters.firstContactEnd) {
-              idQuery = idQuery.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
-            }
-            if (leadStatusNames.length > 0) {
-              idQuery = idQuery.in('lead_status', leadStatusNames);
-            }
-            if (filters.segmentId) {
-              idQuery = idQuery.eq('segment_id', filters.segmentId);
-            }
-            if (filters.origin) {
-              idQuery = idQuery.eq('origin', filters.origin);
-            }
-            if (filters.assignedTo && filters.assignedTo.length > 0) {
-              idQuery = idQuery.in('assigned_to', filters.assignedTo);
-            }
-            if (filters.departmentIds && filters.departmentIds.length > 0) {
-              idQuery = idQuery.in('department_id', filters.departmentIds);
-            }
-            if (filters.contactType) {
-              idQuery = idQuery.eq('contact_type', filters.contactType);
-            }
-            if (!filters.includeBlocked) {
-              idQuery = idQuery.eq('is_blocked', false);
-            }
-
-            const { data, error: idError } = await idQuery.range(offset, offset + PAGE_SIZE - 1);
-            if (idError) throw idError;
-
-            if (data && data.length > 0) {
-              baseContactIds = [...baseContactIds, ...data.map(c => c.id)];
-              offset += PAGE_SIZE;
-              hasMore = data.length === PAGE_SIZE;
-            } else {
-              hasMore = false;
-            }
-          }
-
-          const taggedIds = new Set(taggedContacts.map(tc => tc.contact_id));
-          let filteredIds = baseContactIds.filter(id => taggedIds.has(id));
-          // Aplicar filtro de última mensagem se existir
-          if (eligibleContactIds) {
-            filteredIds = filteredIds.filter(id => eligibleContactIds.has(id));
-          }
-          totalCount = filteredIds.length;
-        }
-      }
-
-      // Se há filtro de conversationStatus, ajustar contagem
-      if (filters.conversationStatus && filters.conversationStatus.length > 0) {
-        const { data: conversations } = await supabase
-          .from('conversations')
-          .select('contact_id')
-          .in('status', filters.conversationStatus);
-        
-        if (conversations) {
-          const contactsWithStatus = new Set(conversations.map(c => c.contact_id));
-          
-          // Se já temos contagem ajustada por tags, usar ela
-          if (filters.tagIds && filters.tagIds.length > 0) {
-            // Já foi calculado acima, agora filtrar novamente
-            // Precisa refazer a lógica completa
-          } else {
-            // Buscar IDs e filtrar
-            const PAGE_SIZE = 1000;
-            let baseContactIds: string[] = [];
-            let offset = 0;
-            let hasMore = true;
-
-            while (hasMore) {
-              let idQuery = supabase
-                .from('contacts')
-                .select('id');
-
-              if (filters.firstContactStart) {
-                idQuery = idQuery.gte('first_contact_at', filters.firstContactStart);
-              }
-              if (filters.firstContactEnd) {
-                idQuery = idQuery.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
-              }
-              if (leadStatusNames.length > 0) {
-                idQuery = idQuery.in('lead_status', leadStatusNames);
-              }
-              if (filters.segmentId) {
-                idQuery = idQuery.eq('segment_id', filters.segmentId);
-              }
-              if (filters.origin) {
-                idQuery = idQuery.eq('origin', filters.origin);
-              }
-              if (filters.assignedTo && filters.assignedTo.length > 0) {
-                idQuery = idQuery.in('assigned_to', filters.assignedTo);
-              }
-              if (filters.departmentIds && filters.departmentIds.length > 0) {
-                idQuery = idQuery.in('department_id', filters.departmentIds);
-              }
-              if (filters.contactType) {
-                idQuery = idQuery.eq('contact_type', filters.contactType);
-              }
-              if (!filters.includeBlocked) {
-                idQuery = idQuery.eq('is_blocked', false);
-              }
-
-              const { data, error: idError } = await idQuery.range(offset, offset + PAGE_SIZE - 1);
-              if (idError) throw idError;
-
-              if (data && data.length > 0) {
-                baseContactIds = [...baseContactIds, ...data.map(c => c.id)];
-                offset += PAGE_SIZE;
-                hasMore = data.length === PAGE_SIZE;
-              } else {
-                hasMore = false;
-              }
-            }
-
-            let filteredIds = baseContactIds.filter(id => contactsWithStatus.has(id));
-            // Aplicar filtro de última mensagem se existir
-            if (eligibleContactIds) {
-              filteredIds = filteredIds.filter(id => eligibleContactIds.has(id));
-            }
-            totalCount = filteredIds.length;
-          }
-        }
-      }
-
-      // Se só tem filtro de última mensagem (sem tags nem conversationStatus)
-      if (eligibleContactIds && 
-          !(filters.tagIds && filters.tagIds.length > 0) && 
-          !(filters.conversationStatus && filters.conversationStatus.length > 0)) {
-        // Buscar IDs dos contatos base e fazer interseção
-        const PAGE_SIZE = 1000;
-        let baseContactIds: string[] = [];
-        let offset = 0;
-        let hasMore = true;
-
-        while (hasMore) {
-          let idQuery = supabase
-            .from('contacts')
-            .select('id');
-
-          if (filters.firstContactStart) {
-            idQuery = idQuery.gte('first_contact_at', filters.firstContactStart);
-          }
-          if (filters.firstContactEnd) {
-            idQuery = idQuery.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
-          }
-          if (leadStatusNames.length > 0) {
-            idQuery = idQuery.in('lead_status', leadStatusNames);
-          }
-          if (filters.segmentId) {
-            idQuery = idQuery.eq('segment_id', filters.segmentId);
-          }
-          if (filters.origin) {
-            idQuery = idQuery.eq('origin', filters.origin);
-          }
-          if (filters.assignedTo && filters.assignedTo.length > 0) {
-            idQuery = idQuery.in('assigned_to', filters.assignedTo);
-          }
-          if (filters.departmentIds && filters.departmentIds.length > 0) {
-            idQuery = idQuery.in('department_id', filters.departmentIds);
-          }
-          if (filters.contactType) {
-            idQuery = idQuery.eq('contact_type', filters.contactType);
-          }
-          if (!filters.includeBlocked) {
-            idQuery = idQuery.eq('is_blocked', false);
-          }
-
-          const { data, error: idError } = await idQuery.range(offset, offset + PAGE_SIZE - 1);
-          if (idError) throw idError;
-
-          if (data && data.length > 0) {
-            baseContactIds = [...baseContactIds, ...data.map(c => c.id)];
-            offset += PAGE_SIZE;
-            hasMore = data.length === PAGE_SIZE;
-          } else {
-            hasMore = false;
-          }
-        }
-
-        totalCount = baseContactIds.filter(id => eligibleContactIds.has(id)).length;
-      }
-
-      return totalCount;
+      return Number(data) || 0;
     },
   });
 }
 
-// Preview de contatos com SCROLL INFINITO (paginado)
+// Preview de contatos com SCROLL INFINITO (paginado via RPC)
 const PREVIEW_PAGE_SIZE = 100;
 
 export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled: boolean = true) {
@@ -502,129 +266,15 @@ export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled
       return allPages.length * PREVIEW_PAGE_SIZE;
     },
     queryFn: async ({ pageParam = 0 }) => {
-      const { leadStatusNames } = await applyBaseFilters(filters);
-
-      // Se há filtro de última mensagem do cliente, buscar IDs elegíveis primeiro
-      let eligibleIdsFromLastMessage: string[] | null = null;
-      if (filters.lastClientMessageDaysAgo) {
-        const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
-        const { data: eligibleContacts } = await supabase
-          .rpc('get_contacts_last_client_message_before', {
-            p_days_ago: filters.lastClientMessageDaysAgo,
-            p_tenant_id: tenantId
-          });
-        eligibleIdsFromLastMessage = (eligibleContacts || []).map((c: { contact_id: string }) => c.contact_id);
-        
-        // Se não há contatos elegíveis, retornar vazio
-        if (eligibleIdsFromLastMessage.length === 0) {
-          return [] as PreviewContact[];
-        }
-      }
-
-      // Se há filtro de tags, buscar IDs dos contatos com as tags
-      let taggedContactIds: string[] | null = null;
-      if (filters.tagIds && filters.tagIds.length > 0) {
-        const { data: taggedContacts } = await supabase
-          .from('contact_tags')
-          .select('contact_id')
-          .in('tag_id', filters.tagIds);
-        taggedContactIds = [...new Set(taggedContacts?.map(tc => tc.contact_id) || [])];
-        
-        if (taggedContactIds.length === 0) {
-          return [] as PreviewContact[];
-        }
-      }
-
-      // Se há filtro de status de conversa, buscar IDs dos contatos
-      let conversationStatusContactIds: string[] | null = null;
-      if (filters.conversationStatus && filters.conversationStatus.length > 0) {
-        const { data: conversations } = await supabase
-          .from('conversations')
-          .select('contact_id')
-          .in('status', filters.conversationStatus);
-        conversationStatusContactIds = [...new Set(conversations?.map(c => c.contact_id) || [])];
-        
-        if (conversationStatusContactIds.length === 0) {
-          return [] as PreviewContact[];
-        }
-      }
-
-      // Calcular a interseção de todos os filtros baseados em IDs
-      let finalEligibleIds: string[] | null = null;
-      const idFilters = [eligibleIdsFromLastMessage, taggedContactIds, conversationStatusContactIds].filter(Boolean) as string[][];
+      const params = await prepareRpcParams(filters);
       
-      if (idFilters.length > 0) {
-        // Fazer interseção de todos os conjuntos de IDs
-        // Começar com o primeiro array e ir filtrando pelos outros
-        if (idFilters.length === 1) {
-          // Se só tem um filtro, usar diretamente
-          finalEligibleIds = idFilters[0];
-        } else {
-          // Fazer interseção de múltiplos filtros
-          finalEligibleIds = idFilters.reduce((acc, ids) => {
-            const idsSet = new Set(ids);
-            return acc.filter(id => idsSet.has(id));
-          });
-        }
-        
-        if (finalEligibleIds.length === 0) {
-          return [] as PreviewContact[];
-        }
-      }
-
-      // Construir query base
-      let query = supabase
-        .from('contacts')
-        .select('id, full_name, phone, avatar_url, lead_status, last_interaction_at')
-        .order('full_name', { ascending: true });
-
-      // Aplicar filtros diretos na tabela contacts
-      if (filters.firstContactStart) {
-        query = query.gte('first_contact_at', filters.firstContactStart);
-      }
-      if (filters.firstContactEnd) {
-        query = query.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
-      }
-      if (leadStatusNames.length > 0) {
-        query = query.in('lead_status', leadStatusNames);
-      }
-      if (filters.segmentId) {
-        query = query.eq('segment_id', filters.segmentId);
-      }
-      if (filters.origin) {
-        query = query.eq('origin', filters.origin);
-      }
-      if (filters.assignedTo && filters.assignedTo.length > 0) {
-        query = query.in('assigned_to', filters.assignedTo);
-      }
-      if (filters.departmentIds && filters.departmentIds.length > 0) {
-        query = query.in('department_id', filters.departmentIds);
-      }
-      if (filters.contactType) {
-        query = query.eq('contact_type', filters.contactType);
-      }
-      if (!filters.includeBlocked) {
-        query = query.eq('is_blocked', false);
-      }
-
-      // Paginação (sempre por RANGE, para o PostgREST paginar após filtrar)
-      if (finalEligibleIds) {
-        const MAX_IN_IDS = 2000;
-        if (finalEligibleIds.length <= MAX_IN_IDS) {
-          query = query.in('id', finalEligibleIds);
-        } else {
-          // Fallback para conjuntos muito grandes (evita URL gigantesca)
-          const paginatedIds = finalEligibleIds.slice(pageParam, pageParam + PREVIEW_PAGE_SIZE);
-          if (paginatedIds.length === 0) return [] as PreviewContact[];
-          query = query.in('id', paginatedIds);
-        }
-      }
-
-      query = query.range(pageParam, pageParam + PREVIEW_PAGE_SIZE - 1);
-
-      const { data, error } = await query;
+      const { data, error } = await supabase.rpc('get_bulk_dispatch_preview_contacts', {
+        ...params,
+        p_offset_val: pageParam,
+        p_limit_val: PREVIEW_PAGE_SIZE,
+      });
+      
       if (error) throw error;
-
       return (data || []) as PreviewContact[];
     },
   });
