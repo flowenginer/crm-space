@@ -800,31 +800,37 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
       let activeRecordId: string | null = null;
 
       if (isMarketingCampaign) {
+        console.log(`[BulkDispatch] Marketing campaign config - initial_department_id: ${marketingCampaign.initial_department_id}, initial_user_id: ${marketingCampaign.initial_user_id}`);
+        
+        // Build update object for both department and user transfer
+        const updateData: Record<string, any> = {};
+        
         // Apply initial department transfer if configured
         if (marketingCampaign.initial_department_id) {
-          const { error: deptTransferError } = await supabase
-            .from('conversations')
-            .update({ department_id: marketingCampaign.initial_department_id })
-            .eq('id', conversationId);
-          
-          if (deptTransferError) {
-            console.error(`[BulkDispatch] Error transferring to initial department:`, deptTransferError);
-          } else {
-            console.log(`[BulkDispatch] Transferred conversation ${conversationId} to department ${marketingCampaign.initial_department_id}`);
-          }
+          updateData.department_id = marketingCampaign.initial_department_id;
         }
-
+        
         // Apply initial user transfer if configured
         if (marketingCampaign.initial_user_id) {
-          const { error: userTransferError } = await supabase
+          updateData.assigned_to = marketingCampaign.initial_user_id;
+        }
+        
+        // Apply both updates in a single query for consistency
+        if (Object.keys(updateData).length > 0) {
+          const { error: transferError } = await supabase
             .from('conversations')
-            .update({ assigned_to: marketingCampaign.initial_user_id })
+            .update(updateData)
             .eq('id', conversationId);
           
-          if (userTransferError) {
-            console.error(`[BulkDispatch] Error transferring to initial user:`, userTransferError);
+          if (transferError) {
+            console.error(`[BulkDispatch] Error transferring conversation:`, transferError);
           } else {
-            console.log(`[BulkDispatch] Assigned conversation ${conversationId} to user ${marketingCampaign.initial_user_id}`);
+            if (updateData.department_id) {
+              console.log(`[BulkDispatch] Transferred conversation ${conversationId} to department ${updateData.department_id}`);
+            }
+            if (updateData.assigned_to) {
+              console.log(`[BulkDispatch] Assigned conversation ${conversationId} to user ${updateData.assigned_to}`);
+            }
           }
         }
 
