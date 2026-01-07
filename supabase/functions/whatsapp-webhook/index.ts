@@ -2730,7 +2730,8 @@ serve(async (req) => {
           tenant_id,
           dispatch_id,
           created_at,
-          marketing_campaign:marketing_campaigns(id, steps, title)
+          marketing_campaign:marketing_campaigns(id, steps, title),
+          bulk_dispatch:bulk_dispatches(id, created_by)
         `)
         .eq('contact_id', contact.id)
         .eq('status', 'active');
@@ -2911,14 +2912,23 @@ serve(async (req) => {
                         .replace(/\{\{telefone\}\}/gi, contact.phone || '')
                         .replace(/\{\{data\}\}/gi, new Date().toLocaleDateString('pt-BR'));
                       
-                      await supabase
-                        .from('internal_notes')
-                        .insert({
-                          conversation_id: activeCampaign.conversation_id,
-                          content: `[Marketing] ${noteContent}`,
-                          tenant_id: channel.tenant_id,
-                        });
-                      console.log(`[Webhook] Internal note added for conversation: ${activeCampaign.conversation_id}`);
+                      // Get author_id from bulk_dispatch creator or fallback
+                      const bulkDispatch = (activeCampaign as any).bulk_dispatch;
+                      const authorId = bulkDispatch?.created_by;
+                      
+                      if (!authorId) {
+                        console.error(`[Webhook] Cannot create internal note - no author_id available`);
+                      } else {
+                        await supabase
+                          .from('internal_notes')
+                          .insert({
+                            conversation_id: activeCampaign.conversation_id,
+                            content: `[Marketing] ${noteContent}`,
+                            tenant_id: channel.tenant_id,
+                            author_id: authorId,
+                          });
+                        console.log(`[Webhook] Internal note added for conversation: ${activeCampaign.conversation_id} by author: ${authorId}`);
+                      }
                     }
                     break;
 
