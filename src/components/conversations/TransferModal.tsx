@@ -173,7 +173,7 @@ export function TransferModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-lg max-h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
         {/* Header com gradiente */}
         <DialogHeader className="p-6 pb-4 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/5 border-b border-border/50 flex-shrink-0">
           <div className="flex items-center gap-4">
@@ -204,7 +204,7 @@ export function TransferModal({
             </div>
           </div>
         ) : (
-          <ScrollArea className="flex-1 max-h-[60vh]">
+          <ScrollArea className="flex-1 overflow-y-auto">
             <div className="p-6 space-y-5">
             {/* Tipo de Transferência */}
             <div className="space-y-3">
@@ -359,8 +359,7 @@ export function TransferModal({
                     </p>
                   </div>
                 ) : (
-                  <ScrollArea className="max-h-40">
-                    <div className="grid grid-cols-2 gap-2 pr-2">
+                  <div className="grid grid-cols-2 gap-2">
                       {teamInDepartment.map((member) => {
                         const isSelected = selectedUserId === member.id;
                         return (
@@ -403,7 +402,6 @@ export function TransferModal({
                         );
                       })}
                     </div>
-                  </ScrollArea>
                 )}
               </div>
             )}
