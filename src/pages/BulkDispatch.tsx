@@ -54,6 +54,7 @@ import {
   useDeleteBulkDispatch,
   useDeleteBulkDispatches,
   useBulkDispatchRealtime,
+  useBulkDispatchesRealtime,
   type BulkDispatchFilters,
   type BulkDispatch as BulkDispatchType,
   type ScheduleOverride,
@@ -202,6 +203,7 @@ export default function BulkDispatch() {
   };
 
   useBulkDispatchRealtime(selectedDispatchId);
+  useBulkDispatchesRealtime(); // Realtime para TODA a lista
 
   const connectedChannels = useMemo(() => channels.filter(c => c.status === 'connected'), [channels]);
   const estimatedTime = useMemo(() => formatDuration(totalContacts * intervalSeconds), [totalContacts, intervalSeconds]);
