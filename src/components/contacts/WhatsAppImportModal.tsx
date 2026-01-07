@@ -1,9 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Upload, FileArchive, AlertCircle, CheckCircle2, User, Loader2, MessageSquare, Image, Music, Video, FileText, X } from 'lucide-react';
+import { Upload, FileArchive, AlertCircle, CheckCircle2, User, Loader2, MessageSquare, Image, Music, Video, FileText, Phone } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 import { useWhatsAppImport, type ParsedMessage } from '@/hooks/useWhatsAppImport';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -20,6 +22,17 @@ interface WhatsAppImportModalProps {
   };
 }
 
+interface ConversationWithChannel {
+  id: string;
+  channel_id: string | null;
+  last_message_at: string | null;
+  whatsapp_channels: {
+    id: string;
+    name: string;
+    phone: string | null;
+  } | null;
+}
+
 type Step = 'upload' | 'preview' | 'importing' | 'done';
 
 export function WhatsAppImportModal({ open, onOpenChange, contact }: WhatsAppImportModalProps) {
@@ -28,6 +41,11 @@ export function WhatsAppImportModal({ open, onOpenChange, contact }: WhatsAppImp
   const [selectedSender, setSelectedSender] = useState<string>('');
   const [dragActive, setDragActive] = useState(false);
   const [importResult, setImportResult] = useState<{ messagesImported: number; mediaUploaded: number; errors: string[] } | null>(null);
+  
+  // Estado para seleção de canal
+  const [conversations, setConversations] = useState<ConversationWithChannel[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<string>('new');
+  const [loadingConversations, setLoadingConversations] = useState(false);
   
   const {
     isProcessing,
@@ -39,11 +57,56 @@ export function WhatsAppImportModal({ open, onOpenChange, contact }: WhatsAppImp
     reset,
   } = useWhatsAppImport();
 
+  // Buscar conversas do contato ao abrir o modal
+  useEffect(() => {
+    if (open && contact?.id) {
+      const fetchConversations = async () => {
+        setLoadingConversations(true);
+        try {
+          const { data, error } = await supabase
+            .from('conversations')
+            .select(`
+              id,
+              channel_id,
+              last_message_at,
+              whatsapp_channels (
+                id,
+                name,
+                phone
+              )
+            `)
+            .eq('contact_id', contact.id)
+            .order('last_message_at', { ascending: false });
+          
+          if (error) throw error;
+          
+          setConversations(data || []);
+          
+          // Se tiver apenas uma conversa, selecionar automaticamente
+          if (data && data.length === 1) {
+            setSelectedConversationId(data[0].id);
+          } else if (data && data.length > 1) {
+            // Se tiver múltiplas, deixar como 'new' para o usuário escolher
+            setSelectedConversationId(data[0].id);
+          }
+        } catch (error) {
+          console.error('Erro ao buscar conversas:', error);
+        } finally {
+          setLoadingConversations(false);
+        }
+      };
+      
+      fetchConversations();
+    }
+  }, [open, contact?.id]);
+
   const handleClose = useCallback(() => {
     reset();
     setStep('upload');
     setSelectedSender('');
     setImportResult(null);
+    setConversations([]);
+    setSelectedConversationId('new');
     onOpenChange(false);
   }, [reset, onOpenChange]);
 
@@ -85,19 +148,11 @@ export function WhatsAppImportModal({ open, onOpenChange, contact }: WhatsAppImp
     setStep('importing');
     
     try {
-      // Buscar ou criar conversa
       let conversationId: string;
       
-      const { data: existingConv } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('contact_id', contact.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (existingConv) {
-        conversationId = existingConv.id;
+      // Usar conversa selecionada ou criar nova
+      if (selectedConversationId && selectedConversationId !== 'new') {
+        conversationId = selectedConversationId;
       } else {
         // Criar nova conversa
         const { data: { user } } = await supabase.auth.getUser();
@@ -236,6 +291,80 @@ export function WhatsAppImportModal({ open, onOpenChange, contact }: WhatsAppImp
                   <div className="text-sm text-muted-foreground">Participantes</div>
                 </div>
               </div>
+
+              {/* Channel selection - only show if multiple conversations */}
+              {conversations.length > 1 && (
+                <div className="space-y-3">
+                  <label className="text-sm font-medium">Selecione o canal de destino:</label>
+                  <RadioGroup 
+                    value={selectedConversationId} 
+                    onValueChange={setSelectedConversationId}
+                    className="space-y-2"
+                  >
+                    {conversations.map((conv) => (
+                      <div 
+                        key={conv.id} 
+                        className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                          selectedConversationId === conv.id
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border hover:border-primary/50'
+                        }`}
+                      >
+                        <RadioGroupItem value={conv.id} id={conv.id} />
+                        <Label htmlFor={conv.id} className="flex-1 flex items-center gap-3 cursor-pointer">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                            selectedConversationId === conv.id ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                          }`}>
+                            <Phone size={14} />
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-sm font-medium">
+                              {conv.whatsapp_channels?.name || 'Canal não identificado'}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {conv.whatsapp_channels?.phone || 'Sem telefone'}
+                              {conv.last_message_at && (
+                                <> · Última msg: {format(new Date(conv.last_message_at), "dd/MM/yyyy", { locale: ptBR })}</>
+                              )}
+                            </div>
+                          </div>
+                        </Label>
+                      </div>
+                    ))}
+                    <div 
+                      className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                        selectedConversationId === 'new'
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                    >
+                      <RadioGroupItem value="new" id="new-conversation" />
+                      <Label htmlFor="new-conversation" className="flex-1 flex items-center gap-3 cursor-pointer">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          selectedConversationId === 'new' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                        }`}>
+                          <MessageSquare size={14} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">Criar nova conversa</div>
+                          <div className="text-xs text-muted-foreground">Sem canal vinculado</div>
+                        </div>
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              )}
+
+              {/* Show selected channel if only one conversation */}
+              {conversations.length === 1 && conversations[0].whatsapp_channels && (
+                <div className="bg-muted/50 rounded-xl p-3 flex items-center gap-3">
+                  <Phone size={16} className="text-muted-foreground" />
+                  <div>
+                    <div className="text-sm font-medium">Canal: {conversations[0].whatsapp_channels.name}</div>
+                    <div className="text-xs text-muted-foreground">{conversations[0].whatsapp_channels.phone}</div>
+                  </div>
+                </div>
+              )}
 
               {/* Sender selection */}
               <div className="space-y-3">

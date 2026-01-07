@@ -296,7 +296,6 @@ export function useWhatsAppImport() {
           media_mime_type: msg.mediaFileName ? getMimeType(msg.mediaFileName) : null,
           status: 'delivered',
           created_at: msg.timestamp.toISOString(),
-          is_imported: true,
         };
       });
       
