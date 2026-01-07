@@ -84,6 +84,8 @@ export function useWhatsAppImport() {
     const mediaRegexBR = /<anexo:\s*([^>]+)>/i;
     const mediaRegexEN = /<attached:\s*([^>]+)>/i;
     const mediaRegexPTFile = /arquivo omitido|mídia omitida|media omitted/i;
+    // Formato brasileiro: "ARQUIVO.ext (arquivo anexado)" - com possível caractere invisível no início
+    const mediaRegexBRNew = /[\u200E\u200F\u202A-\u202E]?([A-Za-z0-9_\-]+\.(opus|mp3|ogg|wav|m4a|aac|jpg|jpeg|png|gif|webp|mp4|mov|avi|mkv|3gp|pdf|doc|docx))\s*\(arquivo anexado\)/i;
     
     let currentMessage: ParsedMessage | null = null;
     
@@ -109,10 +111,11 @@ export function useWhatsAppImport() {
         
         const timestamp = new Date(year, month - 1, day, hours, minutes, seconds);
         
-        // Verificar se é mídia
+        // Verificar se é mídia - tentar todos os formatos
         const mediaMatchBR = content.match(mediaRegexBR);
         const mediaMatchEN = content.match(mediaRegexEN);
-        const mediaMatch = mediaMatchBR || mediaMatchEN;
+        const mediaMatchBRNew = content.match(mediaRegexBRNew);
+        const mediaMatch = mediaMatchBR || mediaMatchEN || mediaMatchBRNew;
         const isOmittedMedia = mediaRegexPTFile.test(content);
         
         currentMessage = {
@@ -278,10 +281,14 @@ export function useWhatsAppImport() {
           messageType = msg.mediaType;
         }
         
-        // Limpar conteúdo de mídia
+        // Limpar conteúdo de mídia (remover todos os formatos conhecidos)
         let content = msg.content;
         if (msg.isMedia) {
-          content = content.replace(/<anexo:\s*[^>]+>/i, '').replace(/<attached:\s*[^>]+>/i, '').trim();
+          content = content
+            .replace(/<anexo:\s*[^>]+>/i, '')
+            .replace(/<attached:\s*[^>]+>/i, '')
+            .replace(/[\u200E\u200F\u202A-\u202E]?[A-Za-z0-9_\-]+\.(opus|mp3|ogg|wav|m4a|aac|jpg|jpeg|png|gif|webp|mp4|mov|avi|mkv|3gp|pdf|doc|docx)\s*\(arquivo anexado\)/i, '')
+            .trim();
           if (!content) content = msg.mediaFileName || `[${messageType}]`;
         }
         
