@@ -367,61 +367,97 @@ async function uploadMediaToStorage(
  * Download media from UAZAPI using their /message/download endpoint
  * UAZAPI doesn't provide media URLs directly - we need to download using messageid
  */
+/**
+ * Download media from UAZAPI using their /message/download endpoint
+ * UAZAPI doesn't provide media URLs directly - we need to download using messageid
+ * 
+ * Includes automatic retry for failed downloads (important for larger videos)
+ */
 async function downloadUAZAPIMedia(
   baseUrl: string,
   instanceToken: string,
   messageId: string
 ): Promise<{ success: boolean; base64?: string; mimeType?: string; error?: string }> {
-  try {
-    console.log(`[Webhook UAZAPI] Downloading media for messageId: ${messageId}`);
-    
-    // Normalize base URL
-    let normalizedUrl = baseUrl.replace(/\/+$/, '');
-    
-    const response = await fetch(`${normalizedUrl}/message/download`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'token': instanceToken,
-      },
-      body: JSON.stringify({
-        id: messageId,
-        return_base64: true,  // Get base64 for storage upload
-        generate_mp3: true,   // Convert audio to mp3 for compatibility
-        return_link: false,
-        transcribe: false,
-        download_quoted: false,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Webhook UAZAPI] Media download failed: ${response.status} - ${errorText}`);
-      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+  const MAX_RETRIES = 2;
+  const RETRY_DELAY_MS = 1500; // 1.5 seconds between retries
+  
+  // Normalize base URL
+  const normalizedUrl = baseUrl.replace(/\/+$/, '');
+  
+  console.log(`[Webhook UAZAPI] Downloading media for messageId: ${messageId}`);
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+    try {
+      const response = await fetch(`${normalizedUrl}/message/download`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'token': instanceToken,
+        },
+        body: JSON.stringify({
+          id: messageId,
+          return_base64: true,  // Get base64 for storage upload
+          generate_mp3: true,   // Convert audio to mp3 for compatibility
+          return_link: false,
+          transcribe: false,
+          download_quoted: false,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[Webhook UAZAPI] Media download failed (attempt ${attempt}): ${response.status} - ${errorText}`);
+        
+        // Retry on server errors (5xx) or timeout-like errors
+        if (attempt <= MAX_RETRIES && (response.status >= 500 || response.status === 408)) {
+          console.log(`[Webhook UAZAPI] Retrying in ${RETRY_DELAY_MS}ms...`);
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+          continue;
+        }
+        
+        return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+      }
+      
+      const data = await response.json();
+      
+      // UAZAPI returns base64 in different fields depending on version
+      const base64Data = data.base64Data || data.base64 || data.data || data.file;
+      const mimeType = data.mimeType || data.mimetype || data.contentType || 'application/octet-stream';
+      
+      if (base64Data) {
+        console.log(`[Webhook UAZAPI] ✅ Media downloaded (attempt ${attempt}) - Base64 length: ${base64Data.length}, MimeType: ${mimeType}`);
+        return {
+          success: true,
+          base64: base64Data,
+          mimeType: mimeType,
+        };
+      }
+      
+      // No data returned - retry if possible
+      console.log(`[Webhook UAZAPI] ⚠️ Media download returned no data (attempt ${attempt}):`, JSON.stringify(data).substring(0, 200));
+      
+      if (attempt <= MAX_RETRIES) {
+        console.log(`[Webhook UAZAPI] Retrying in ${RETRY_DELAY_MS}ms...`);
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+        continue;
+      }
+      
+      return { success: false, error: 'No media data returned after retries' };
+    } catch (error) {
+      console.error(`[Webhook UAZAPI] Error downloading media (attempt ${attempt}):`, error);
+      
+      if (attempt <= MAX_RETRIES) {
+        console.log(`[Webhook UAZAPI] Retrying in ${RETRY_DELAY_MS}ms...`);
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+        continue;
+      }
+      
+      return { success: false, error: String(error) };
     }
-    
-    const data = await response.json();
-    
-    // UAZAPI returns base64 in different fields depending on version
-    const base64Data = data.base64Data || data.base64 || data.data || data.file;
-    const mimeType = data.mimeType || data.mimetype || data.contentType || 'application/octet-stream';
-    
-    if (base64Data) {
-      console.log(`[Webhook UAZAPI] ✅ Media downloaded - Base64 length: ${base64Data.length}, MimeType: ${mimeType}`);
-      return {
-        success: true,
-        base64: base64Data,
-        mimeType: mimeType,
-      };
-    }
-    
-    console.log(`[Webhook UAZAPI] ⚠️ Media download returned no data:`, JSON.stringify(data).substring(0, 200));
-    return { success: false, error: 'No media data returned' };
-  } catch (error) {
-    console.error('[Webhook UAZAPI] Error downloading media:', error);
-    return { success: false, error: String(error) };
   }
+  
+  return { success: false, error: 'Max retries exceeded' };
 }
 
 /**

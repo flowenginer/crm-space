@@ -56,14 +56,23 @@ export function usePaginatedMessages(conversationId: string | null) {
         reply_to: null,
       }));
 
-      // Buscar replies se existirem
+      // Buscar replies se existirem (incluindo mensagens deletadas para mostrar "Mensagem apagada")
       const replyIds = messages.filter(m => m.reply_to_message_id).map(m => m.reply_to_message_id!);
       
       if (replyIds.length > 0) {
-        const { data: replyMessages } = await supabase
+        console.log(`[usePaginatedMessages] Fetching ${replyIds.length} reply messages for conversation ${conversationId}`);
+        
+        // NÃO filtrar por is_deleted para poder mostrar referência a mensagens apagadas
+        const { data: replyMessages, error: replyError } = await supabase
           .from('messages')
           .select(MESSAGE_FIELDS)
           .in('id', replyIds);
+        
+        if (replyError) {
+          console.error('[usePaginatedMessages] Error fetching replies:', replyError);
+        } else {
+          console.log(`[usePaginatedMessages] Found ${replyMessages?.length || 0}/${replyIds.length} reply messages`);
+        }
         
         const replyMap = new Map((replyMessages || []).map(m => [m.id, {
           ...m,
@@ -72,8 +81,12 @@ export function usePaginatedMessages(conversationId: string | null) {
         } as Message]));
         
         messages.forEach(m => {
-          if (m.reply_to_message_id && replyMap.has(m.reply_to_message_id)) {
-            m.reply_to = [replyMap.get(m.reply_to_message_id)!];
+          if (m.reply_to_message_id) {
+            if (replyMap.has(m.reply_to_message_id)) {
+              m.reply_to = [replyMap.get(m.reply_to_message_id)!];
+            } else {
+              console.log(`[usePaginatedMessages] Reply message not found: ${m.reply_to_message_id} (referenced by ${m.id})`);
+            }
           }
         });
       }
