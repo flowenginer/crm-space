@@ -15,6 +15,7 @@ export type MarketingActionType =
   | 'add_tag'
   | 'change_lead_status'  // Uses lead_statuses table
   | 'add_segment'
+  | 'add_internal_note'  // Adicionar nota interna
   | 'close'
   
   // Chaining
@@ -32,6 +33,7 @@ export interface MarketingActionConfig {
   lead_status_id?: string;
   segment_id?: string;
   close_reason_id?: string;
+  internal_note_content?: string;  // Conteúdo da nota interna
   
   // Chaining
   followup_template_id?: string;
@@ -107,6 +109,7 @@ export const MARKETING_ACTION_LABELS: Record<MarketingActionType, string> = {
   add_tag: 'Adicionar etiqueta',
   change_lead_status: 'Mudar status do lead',
   add_segment: 'Anexar segmento',
+  add_internal_note: 'Adicionar nota interna',
   close: 'Fechar conversa',
   start_followup: 'Iniciar Follow-up',
   start_marketing: 'Iniciar Campanha de Marketing',
@@ -125,7 +128,7 @@ export const MARKETING_ACTION_CATEGORIES = [
   },
   {
     label: 'Organização',
-    actions: ['add_tag', 'change_lead_status', 'add_segment', 'close'] as MarketingActionType[],
+    actions: ['add_tag', 'change_lead_status', 'add_segment', 'add_internal_note', 'close'] as MarketingActionType[],
   },
   {
     label: 'Encadeamento',

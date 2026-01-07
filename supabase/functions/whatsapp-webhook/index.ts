@@ -2850,6 +2850,25 @@ serve(async (req) => {
                     }
                     break;
 
+                  case 'add_internal_note':
+                    if (config?.internal_note_content && activeCampaign.conversation_id) {
+                      // Replace variables in note content
+                      const noteContent = config.internal_note_content
+                        .replace(/\{\{nome\}\}/gi, contact.full_name || '')
+                        .replace(/\{\{telefone\}\}/gi, contact.phone || '')
+                        .replace(/\{\{data\}\}/gi, new Date().toLocaleDateString('pt-BR'));
+                      
+                      await supabase
+                        .from('internal_notes')
+                        .insert({
+                          conversation_id: activeCampaign.conversation_id,
+                          content: `[Marketing] ${noteContent}`,
+                          tenant_id: channel.tenant_id,
+                        });
+                      console.log(`[Webhook] Internal note added for conversation: ${activeCampaign.conversation_id}`);
+                    }
+                    break;
+
                   default:
                     console.log(`[Webhook] Unknown marketing action type: ${actionType}`);
                 }
