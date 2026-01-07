@@ -265,10 +265,13 @@ export function usePreviewContactsCount(filters: BulkDispatchFilters, enabled: b
 
       // Se há filtro de última mensagem do cliente, usar RPC
       if (filters.lastClientMessageDaysAgo) {
+        // Obter tenant_id corretamente via RPC
+        const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+        
         const { data: eligibleContacts, error: rpcError } = await supabase
           .rpc('get_contacts_last_client_message_before', {
             p_days_ago: filters.lastClientMessageDaysAgo,
-            p_tenant_id: (await supabase.auth.getUser()).data.user?.user_metadata?.tenant_id
+            p_tenant_id: tenantId
           });
         
         if (rpcError) throw rpcError;
@@ -573,10 +576,13 @@ export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled
 
       // Filtrar por última mensagem do cliente (se especificado)
       if (filters.lastClientMessageDaysAgo) {
+        // Obter tenant_id corretamente via RPC
+        const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+        
         const { data: eligibleContacts } = await supabase
           .rpc('get_contacts_last_client_message_before', {
             p_days_ago: filters.lastClientMessageDaysAgo,
-            p_tenant_id: (await supabase.auth.getUser()).data.user?.user_metadata?.tenant_id
+            p_tenant_id: tenantId
           });
         
         const eligibleIds = new Set((eligibleContacts || []).map((c: { contact_id: string }) => c.contact_id));
