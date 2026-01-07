@@ -43,6 +43,24 @@ Deno.serve(async (req) => {
 
     console.log(`[distribute-lead] Starting distribution for contact: ${contact_id}`);
 
+    // FIRST: Get contact to determine tenant_id
+    const { data: contact, error: contactFetchError } = await supabase
+      .from('contacts')
+      .select('id, tenant_id, assigned_to')
+      .eq('id', contact_id)
+      .single();
+
+    if (contactFetchError || !contact) {
+      console.error('[distribute-lead] Error fetching contact:', contactFetchError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Contact not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const tenantId = contact.tenant_id;
+    console.log(`[distribute-lead] Contact tenant_id: ${tenantId}`);
+
     // CHECK 1: Verify if there's a recent manual transfer (last 60 seconds) - don't overwrite
     const { data: conversations } = await supabase
       .from('conversations')
@@ -90,24 +108,26 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 1. Get distribution configuration from company_settings
+    // 1. Get distribution configuration from company_settings BY TENANT
     const { data: settings, error: settingsError } = await supabase
       .from('company_settings')
       .select('*')
-      .limit(1)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (settingsError) {
-      console.error('[distribute-lead] Error fetching settings:', settingsError);
+      console.error(`[distribute-lead] Error fetching settings for tenant ${tenantId}:`, settingsError);
       return new Response(
-        JSON.stringify({ success: false, error: 'Failed to fetch distribution settings' }),
+        JSON.stringify({ success: false, error: 'Failed to fetch distribution settings for tenant' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    console.log(`[distribute-lead] Using company_settings id=${settings.id}, tenant=${tenantId}, enabled=${settings.lead_distribution_enabled}`);
+
     // Check if distribution is enabled
     if (!settings.lead_distribution_enabled) {
-      console.log('[distribute-lead] Distribution is disabled');
+      console.log(`[distribute-lead] Distribution is disabled for tenant ${tenantId}`);
       return new Response(
         JSON.stringify({ success: false, error: 'Lead distribution is disabled' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
