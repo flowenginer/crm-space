@@ -325,16 +325,47 @@ export default function BulkDispatch() {
                 <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" />Filtros</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-2">
-                    <Label><Calendar className="h-3 w-3 inline mr-1" />Data Inicial</Label>
-                    <Input type="date" value={filters.firstContactStart || ''} onChange={(e) => setFilters(f => ({ ...f, firstContactStart: e.target.value || undefined }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label><Calendar className="h-3 w-3 inline mr-1" />Data Final</Label>
-                    <Input type="date" value={filters.firstContactEnd || ''} onChange={(e) => setFilters(f => ({ ...f, firstContactEnd: e.target.value || undefined }))} />
+                <div className="space-y-3">
+                  <Label className="text-xs text-muted-foreground uppercase">Data do Primeiro Contato</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label><Calendar className="h-3 w-3 inline mr-1" />De</Label>
+                      <Input type="date" value={filters.firstContactStart || ''} onChange={(e) => setFilters(f => ({ ...f, firstContactStart: e.target.value || undefined }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label><Calendar className="h-3 w-3 inline mr-1" />Até</Label>
+                      <Input type="date" value={filters.firstContactEnd || ''} onChange={(e) => setFilters(f => ({ ...f, firstContactEnd: e.target.value || undefined }))} />
+                    </div>
                   </div>
                 </div>
+                
+                <Separator />
+                
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1">
+                    <MessageSquare className="h-3 w-3" />
+                    Cliente não fala há
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input 
+                      type="number" 
+                      min={1}
+                      placeholder="Ex: 5"
+                      value={filters.lastClientMessageDaysAgo || ''} 
+                      onChange={(e) => setFilters(f => ({ 
+                        ...f, 
+                        lastClientMessageDaysAgo: e.target.value ? parseInt(e.target.value) : undefined 
+                      }))} 
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">dias ou mais</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Filtra contatos cuja última mensagem foi há X dias ou mais
+                  </p>
+                </div>
+                
+                <Separator />
                 <div className="space-y-2">
                   <Label><Target className="h-3 w-3 inline mr-1" />Status do Lead</Label>
                   <MultiSelect options={leadStatusOptions} value={filters.leadStatusIds || []} onChange={(v) => setFilters(f => ({ ...f, leadStatusIds: v.length > 0 ? v : undefined }))} placeholder="Todos" />

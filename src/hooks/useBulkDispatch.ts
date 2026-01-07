@@ -14,6 +14,8 @@ export interface BulkDispatchFilters {
   departmentIds?: string[];
   contactType?: 'customer' | 'lead' | 'supplier';
   includeBlocked?: boolean;
+  // Filtro de última mensagem do cliente
+  lastClientMessageDaysAgo?: number;
 }
 
 export interface ScheduleOverride {
@@ -259,6 +261,19 @@ export function usePreviewContactsCount(filters: BulkDispatchFilters, enabled: b
       if (error) throw error;
 
       let totalCount = count || 0;
+      let eligibleContactIds: Set<string> | null = null;
+
+      // Se há filtro de última mensagem do cliente, usar RPC
+      if (filters.lastClientMessageDaysAgo) {
+        const { data: eligibleContacts, error: rpcError } = await supabase
+          .rpc('get_contacts_last_client_message_before', {
+            p_days_ago: filters.lastClientMessageDaysAgo,
+            p_tenant_id: (await supabase.auth.getUser()).data.user?.user_metadata?.tenant_id
+          });
+        
+        if (rpcError) throw rpcError;
+        eligibleContactIds = new Set((eligibleContacts || []).map((c: { contact_id: string }) => c.contact_id));
+      }
 
       // Se há filtro de tags, precisamos ajustar a contagem
       if (filters.tagIds && filters.tagIds.length > 0) {
@@ -323,7 +338,12 @@ export function usePreviewContactsCount(filters: BulkDispatchFilters, enabled: b
           }
 
           const taggedIds = new Set(taggedContacts.map(tc => tc.contact_id));
-          totalCount = baseContactIds.filter(id => taggedIds.has(id)).length;
+          let filteredIds = baseContactIds.filter(id => taggedIds.has(id));
+          // Aplicar filtro de última mensagem se existir
+          if (eligibleContactIds) {
+            filteredIds = filteredIds.filter(id => eligibleContactIds.has(id));
+          }
+          totalCount = filteredIds.length;
         }
       }
 
@@ -393,9 +413,72 @@ export function usePreviewContactsCount(filters: BulkDispatchFilters, enabled: b
               }
             }
 
-            totalCount = baseContactIds.filter(id => contactsWithStatus.has(id)).length;
+            let filteredIds = baseContactIds.filter(id => contactsWithStatus.has(id));
+            // Aplicar filtro de última mensagem se existir
+            if (eligibleContactIds) {
+              filteredIds = filteredIds.filter(id => eligibleContactIds.has(id));
+            }
+            totalCount = filteredIds.length;
           }
         }
+      }
+
+      // Se só tem filtro de última mensagem (sem tags nem conversationStatus)
+      if (eligibleContactIds && 
+          !(filters.tagIds && filters.tagIds.length > 0) && 
+          !(filters.conversationStatus && filters.conversationStatus.length > 0)) {
+        // Buscar IDs dos contatos base e fazer interseção
+        const PAGE_SIZE = 1000;
+        let baseContactIds: string[] = [];
+        let offset = 0;
+        let hasMore = true;
+
+        while (hasMore) {
+          let idQuery = supabase
+            .from('contacts')
+            .select('id');
+
+          if (filters.firstContactStart) {
+            idQuery = idQuery.gte('first_contact_at', filters.firstContactStart);
+          }
+          if (filters.firstContactEnd) {
+            idQuery = idQuery.lte('first_contact_at', filters.firstContactEnd + 'T23:59:59');
+          }
+          if (leadStatusNames.length > 0) {
+            idQuery = idQuery.in('lead_status', leadStatusNames);
+          }
+          if (filters.segmentId) {
+            idQuery = idQuery.eq('segment_id', filters.segmentId);
+          }
+          if (filters.origin) {
+            idQuery = idQuery.eq('origin', filters.origin);
+          }
+          if (filters.assignedTo && filters.assignedTo.length > 0) {
+            idQuery = idQuery.in('assigned_to', filters.assignedTo);
+          }
+          if (filters.departmentIds && filters.departmentIds.length > 0) {
+            idQuery = idQuery.in('department_id', filters.departmentIds);
+          }
+          if (filters.contactType) {
+            idQuery = idQuery.eq('contact_type', filters.contactType);
+          }
+          if (!filters.includeBlocked) {
+            idQuery = idQuery.eq('is_blocked', false);
+          }
+
+          const { data, error: idError } = await idQuery.range(offset, offset + PAGE_SIZE - 1);
+          if (idError) throw idError;
+
+          if (data && data.length > 0) {
+            baseContactIds = [...baseContactIds, ...data.map(c => c.id)];
+            offset += PAGE_SIZE;
+            hasMore = data.length === PAGE_SIZE;
+          } else {
+            hasMore = false;
+          }
+        }
+
+        totalCount = baseContactIds.filter(id => eligibleContactIds.has(id)).length;
       }
 
       return totalCount;
@@ -486,6 +569,18 @@ export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled
           const contactsWithStatus = new Set(conversations?.map(c => c.contact_id) || []);
           contacts = contacts.filter(c => contactsWithStatus.has(c.id));
         }
+      }
+
+      // Filtrar por última mensagem do cliente (se especificado)
+      if (filters.lastClientMessageDaysAgo) {
+        const { data: eligibleContacts } = await supabase
+          .rpc('get_contacts_last_client_message_before', {
+            p_days_ago: filters.lastClientMessageDaysAgo,
+            p_tenant_id: (await supabase.auth.getUser()).data.user?.user_metadata?.tenant_id
+          });
+        
+        const eligibleIds = new Set((eligibleContacts || []).map((c: { contact_id: string }) => c.contact_id));
+        contacts = contacts.filter(c => eligibleIds.has(c.id));
       }
 
       return contacts;

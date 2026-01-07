@@ -10252,6 +10252,12 @@ export type Database = {
           total_count: number
         }[]
       }
+      get_contacts_last_client_message_before: {
+        Args: { p_days_ago: number; p_tenant_id: string }
+        Returns: {
+          contact_id: string
+        }[]
+      }
       get_conversation_owner_name: {
         Args: { conv_id: string }
         Returns: string
