@@ -89,6 +89,7 @@ export function MarketingCampaignModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [initialDepartmentId, setInitialDepartmentId] = useState<string | null>(null);
+  const [initialUserId, setInitialUserId] = useState<string | null>(null);
   const [steps, setSteps] = useState<MarketingStep[]>([{ ...DEFAULT_STEP }]);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -115,11 +116,13 @@ export function MarketingCampaignModal({
       setTitle(campaign.title);
       setDescription(campaign.description || '');
       setInitialDepartmentId(campaign.initial_department_id || null);
+      setInitialUserId(campaign.initial_user_id || null);
       setSteps(campaign.steps.length > 0 ? campaign.steps : [{ ...DEFAULT_STEP }]);
     } else {
       setTitle('');
       setDescription('');
       setInitialDepartmentId(null);
+      setInitialUserId(null);
       setSteps([{ ...DEFAULT_STEP }]);
     }
     setActiveStepIndex(0);
@@ -314,6 +317,7 @@ export function MarketingCampaignModal({
           description,
           steps: validSteps,
           initial_department_id: initialDepartmentId,
+          initial_user_id: initialUserId,
         });
         toast.success('Campanha atualizada!');
       } else {
@@ -322,6 +326,7 @@ export function MarketingCampaignModal({
           description,
           steps: validSteps,
           initial_department_id: initialDepartmentId,
+          initial_user_id: initialUserId,
         });
         toast.success('Campanha criada!');
       }
@@ -370,32 +375,60 @@ export function MarketingCampaignModal({
                 </div>
               </div>
 
-              {/* Initial Department Transfer */}
-              <div className="p-4 border-2 border-dashed border-primary/30 rounded-lg bg-primary/5 space-y-2">
-                <Label htmlFor="initial-department" className="text-sm font-medium flex items-center gap-2">
-                  <span className="text-primary">⚡</span>
-                  Transferir para departamento antes de iniciar (opcional)
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  O lead será transferido automaticamente para este departamento ao iniciar a campanha. 
-                  Útil para isolar o atendimento em um departamento privado.
-                </p>
-                <Select
-                  value={initialDepartmentId || 'none'}
-                  onValueChange={(value) => setInitialDepartmentId(value === 'none' ? null : value)}
-                >
-                  <SelectTrigger id="initial-department">
-                    <SelectValue placeholder="Selecione um departamento" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Não transferir</SelectItem>
-                    {departments.map((dept) => (
-                      <SelectItem key={dept.id} value={dept.id}>
-                        {dept.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Initial Department and User Transfer */}
+              <div className="p-4 border-2 border-dashed border-primary/30 rounded-lg bg-primary/5 space-y-4">
+                <div>
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <span className="text-primary">⚡</span>
+                    Transferir antes de iniciar (opcional)
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    O lead será transferido automaticamente para este departamento/usuário ao iniciar a campanha. 
+                    Útil para isolar o atendimento em um departamento privado.
+                  </p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="initial-department" className="text-xs text-muted-foreground">Departamento</Label>
+                    <Select
+                      value={initialDepartmentId || 'none'}
+                      onValueChange={(value) => setInitialDepartmentId(value === 'none' ? null : value)}
+                    >
+                      <SelectTrigger id="initial-department">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Não transferir</SelectItem>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.id}>
+                            {dept.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-1.5">
+                    <Label htmlFor="initial-user" className="text-xs text-muted-foreground">Usuário</Label>
+                    <Select
+                      value={initialUserId || 'none'}
+                      onValueChange={(value) => setInitialUserId(value === 'none' ? null : value)}
+                    >
+                      <SelectTrigger id="initial-user">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Não atribuir</SelectItem>
+                        {team.map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.full_name || 'Sem nome'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
 
               {/* Steps Tabs */}

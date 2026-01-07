@@ -810,6 +810,20 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
           }
         }
 
+        // Apply initial user transfer if configured
+        if (marketingCampaign.initial_user_id) {
+          const { error: userTransferError } = await supabase
+            .from('conversations')
+            .update({ assigned_to: marketingCampaign.initial_user_id })
+            .eq('id', conversationId);
+          
+          if (userTransferError) {
+            console.error(`[BulkDispatch] Error transferring to initial user:`, userTransferError);
+          } else {
+            console.log(`[BulkDispatch] Assigned conversation ${conversationId} to user ${marketingCampaign.initial_user_id}`);
+          }
+        }
+
         // Create active marketing campaign
         const { data: activeMarketing, error: marketingError } = await supabase
           .from('active_marketing_campaigns')
