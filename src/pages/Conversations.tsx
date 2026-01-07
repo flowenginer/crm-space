@@ -101,7 +101,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileSwipeNavigation, type MobilePanel } from '@/components/conversations/MobileSwipeNavigation';
 import { cn } from '@/lib/utils';
 import { StartConversation } from '@/components/conversations/StartConversation';
-import { GlobalSearchPopover } from '@/components/conversations/GlobalSearchPopover';
+import { GlobalSearchPopover, useGlobalSearch } from '@/components/conversations/GlobalSearchPopover';
+import { SearchResultsList } from '@/components/conversations/SearchResultsList';
 import { ConversationSidebar } from '@/components/conversations/ConversationSidebar';
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { QuickTemplatesPopover } from '@/components/conversations/QuickTemplatesPopover';
@@ -1497,6 +1498,27 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     canViewPending,
     canViewUnassigned,
   }), [quickFilter, sortOrder, statusFiltersSelected, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter, leadStatusFilter, canViewPending, canViewUnassigned]);
+
+  // Global search hook - for integrated search results
+  const searchFilters = useMemo(() => ({
+    assignment: conversationFilters.assignment,
+    channelId: conversationFilters.channelId,
+    departmentId: conversationFilters.departmentId,
+    agentId: conversationFilters.agentId,
+    origin: conversationFilters.origin,
+    statusFilter: conversationFilters.statusFilter,
+    leadStatusFilter: conversationFilters.leadStatusFilter,
+    currentUserId: profile?.id,
+  }), [conversationFilters, profile?.id]);
+
+  const isSearchActive = debouncedSearchQuery.length >= 3;
+  const {
+    results: searchResults,
+    isLoading: isSearchLoading,
+    hasMoreMessages: hasMoreSearchMessages,
+    isLoadingMore: isLoadingMoreSearchMessages,
+    loadMoreMessages: loadMoreSearchMessages,
+  } = useGlobalSearch(debouncedSearchQuery, isSearchActive, searchFilters);
 
   // Fetch real conversations from database with filter (PAGINATED + SERVER SORTED)
   const { 
@@ -3249,27 +3271,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               <div className="flex items-center gap-1.5 mt-3">
                 {/* Campo de Busca Global */}
                 <GlobalSearchPopover
-                  onSelectContact={(contactId, conversationId) => {
-                    if (conversationId) {
-                      navigate(`/conversations?id=${conversationId}`);
-                    }
-                  }}
-                  onSelectMessage={(conversationId, messageId) => {
-                    navigate(`/conversations?id=${conversationId}`);
-                    // TODO: Scroll to message when implemented
-                  }}
                   onSearchChange={setSearchQuery}
                   className="flex-1"
-                  filters={{
-                    assignment: conversationFilters.assignment,
-                    channelId: conversationFilters.channelId,
-                    departmentId: conversationFilters.departmentId,
-                    agentId: conversationFilters.agentId,
-                    origin: conversationFilters.origin,
-                    statusFilter: conversationFilters.statusFilter,
-                    leadStatusFilter: conversationFilters.leadStatusFilter,
-                    currentUserId: profile?.id,
-                  }}
                 />
                 
                 {/* Filtro de Datas */}
@@ -3781,44 +3784,65 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           className="flex-1 overflow-y-auto"
           onScroll={handleConversationListScroll}
         >
-          {conversationsLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredConversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
-              <MessageCircle size={40} className="mb-3 opacity-50" />
-              <p className="text-sm">Nenhuma conversa encontrada</p>
-            </div>
-          ) : (
-            <>
-              {filteredConversations.map((conv) => (
-                <ConversationItem
-                  key={conv.id}
-                  conversation={conv}
-                  isSelected={selectedConversationId === conv.id}
-                  isPinned={isPinned(conv.id)}
-                  isShared={sharedConversationIds.includes(conv.id)}
-                  isNewTransfer={!!(conv as any).is_new_transfer && conv.assigned_to === profile?.id}
-                  onClick={() => handleSelectConversation(conv)}
-                  onTogglePin={() => {
-                    togglePin(conv.id);
-                    toast.success(isPinned(conv.id) ? 'Conversa desafixada' : 'Conversa fixada');
-                  }}
-                  isSelectionMode={isConversationSelectionMode}
-                  isChecked={selectedConversationIds.has(conv.id)}
-                  onToggleCheck={() => toggleConversationSelection(conv.id)}
-                />
-              ))}
-              {/* Loading indicator for more conversations */}
-              {isFetchingMoreConversations && (
-                <div className="flex items-center justify-center p-4">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-sm text-muted-foreground">Carregando mais...</span>
-                </div>
-              )}
-            </>
-          )}
+        {/* Search Results - quando busca ativa */}
+        {isSearchActive ? (
+          <SearchResultsList
+            searchQuery={debouncedSearchQuery}
+            isLoading={isSearchLoading}
+            contacts={searchResults.contacts}
+            messages={searchResults.messages}
+            hasMoreMessages={hasMoreSearchMessages}
+            isLoadingMore={isLoadingMoreSearchMessages}
+            onLoadMoreMessages={loadMoreSearchMessages}
+            onSelectContact={(contactId, conversationId) => {
+              if (conversationId) {
+                navigate(`/conversations?id=${conversationId}`);
+              }
+            }}
+            onSelectMessage={(conversationId, messageId) => {
+              navigate(`/conversations?id=${conversationId}`);
+              // TODO: Scroll to message
+            }}
+            selectedConversationId={selectedConversationId}
+          />
+        ) : conversationsLoading ? (
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : filteredConversations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-8 text-muted-foreground">
+            <MessageCircle size={40} className="mb-3 opacity-50" />
+            <p className="text-sm">Nenhuma conversa encontrada</p>
+          </div>
+        ) : (
+          <>
+            {filteredConversations.map((conv) => (
+              <ConversationItem
+                key={conv.id}
+                conversation={conv}
+                isSelected={selectedConversationId === conv.id}
+                isPinned={isPinned(conv.id)}
+                isShared={sharedConversationIds.includes(conv.id)}
+                isNewTransfer={!!(conv as any).is_new_transfer && conv.assigned_to === profile?.id}
+                onClick={() => handleSelectConversation(conv)}
+                onTogglePin={() => {
+                  togglePin(conv.id);
+                  toast.success(isPinned(conv.id) ? 'Conversa desafixada' : 'Conversa fixada');
+                }}
+                isSelectionMode={isConversationSelectionMode}
+                isChecked={selectedConversationIds.has(conv.id)}
+                onToggleCheck={() => toggleConversationSelection(conv.id)}
+              />
+            ))}
+            {/* Loading indicator for more conversations */}
+            {isFetchingMoreConversations && (
+              <div className="flex items-center justify-center p-4">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">Carregando mais...</span>
+              </div>
+            )}
+          </>
+        )}
         </div>
         )}
         
