@@ -105,7 +105,7 @@ import { ConversationSidebar } from '@/components/conversations/ConversationSide
 import { ScheduleMessageModal } from '@/components/conversations/ScheduleMessageModal';
 import { QuickTemplatesPopover } from '@/components/conversations/QuickTemplatesPopover';
 import { useConversations, useMessages, useSendMessage, useDeleteMessage, useEditMessage, useReactToMessage, uploadAttachment, updateMessageWhatsAppId, useUpdateConversation, type Conversation, type Message, type AssignmentFilter } from '@/hooks/useConversations';
-import { usePaginatedConversations, useSortFilterCounts, type SortFilter, type ConversationFilters, type StatusFilter, type AssignmentFilterExtended } from '@/hooks/usePaginatedConversations';
+import { usePaginatedConversations, useSortFilterCounts, type SortFilter, type SortOrder, type StatusFiltersSelected, type ConversationFilters, type StatusFilter, type AssignmentFilterExtended } from '@/hooks/usePaginatedConversations';
 import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useDepartmentCounts, useOriginCounts, useTagCounts, useAgentCounts, useNoTagCount, useLeadStatusCounts, type CountFilters } from '@/hooks/useConversationCounts';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
@@ -1309,7 +1309,12 @@ export default function Conversations() {
   const [dateFilter, setDateFilter] = useState('all');
   const [customDateRange, setCustomDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
-  const [sortFilter, setSortFilter] = useState<SortFilter>('newest');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [statusFiltersSelected, setStatusFiltersSelected] = useState<StatusFiltersSelected>({
+    unread: false,
+    not_replied: false,
+    client_not_replied: false,
+  });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [quickFilter, setQuickFilter] = useState<'all' | 'mine' | 'unassigned' | 'pinned' | 'pending' | 'shared'>('all');
@@ -1466,9 +1471,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   // Build filters for server-side filtering and sorting
   const conversationFilters: ConversationFilters = useMemo(() => ({
     assignment: (quickFilter === 'pinned' || quickFilter === 'shared') ? 'all' : quickFilter === 'pending' ? 'pending' : quickFilter,
-    sortBy: sortFilter,
+    sortOrder: sortOrder,
+    filterUnread: statusFiltersSelected.unread,
+    filterNotReplied: statusFiltersSelected.not_replied,
+    filterClientNotReplied: statusFiltersSelected.client_not_replied,
     channelId: channelFilter !== 'all' ? channelFilter : undefined,
-    isUnread: sortFilter === 'unread' ? true : undefined,
+    isUnread: statusFiltersSelected.unread ? true : undefined,
     // Filtros avançados - aplicados no servidor
     departmentId: advancedFilters.departmentId !== 'all' ? advancedFilters.departmentId : undefined,
     agentId: advancedFilters.agentId !== 'all' ? advancedFilters.agentId : undefined,
@@ -1487,7 +1495,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     // Permissões - para filtrar conversas quando assignment é 'all'
     canViewPending,
     canViewUnassigned,
-  }), [quickFilter, sortFilter, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter, leadStatusFilter, canViewPending, canViewUnassigned]);
+  }), [quickFilter, sortOrder, statusFiltersSelected, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter, leadStatusFilter, canViewPending, canViewUnassigned]);
 
   // Fetch real conversations from database with filter (PAGINATED + SERVER SORTED)
   const { 
@@ -1520,11 +1528,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       dateFilter: dateFilter !== 'all' ? dateFilter : undefined,
       customDateFrom: customDateRange.from,
       customDateTo: customDateRange.to,
-      sortFilter: (sortFilter !== 'newest' && sortFilter !== 'oldest') ? sortFilter : undefined,
+      sortFilter: statusFiltersSelected.unread ? 'unread' : statusFiltersSelected.not_replied ? 'not_replied' : statusFiltersSelected.client_not_replied ? 'client_not_replied' : undefined,
       tagId: advancedFilters.tagIds.length === 1 ? advancedFilters.tagIds[0] : undefined, // Single tag filter
       statusFilter: statusFilter, // Status filter for conversation counts
     };
-  }, [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, channelFilter, dateFilter, customDateRange.from, customDateRange.to, sortFilter, statusFilter, isAdmin, isSupervisor, canViewPending, profile?.id]);
+  }, [advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, channelFilter, dateFilter, customDateRange.from, customDateRange.to, statusFiltersSelected, statusFilter, isAdmin, isSupervisor, canViewPending, profile?.id]);
 
   // Filters for each count type (excluding self to avoid circular filtering)
   const deptCountFilters: CountFilters = useMemo(() => ({ ...countFilters, departmentId: undefined }), [countFilters]);
@@ -2188,7 +2196,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       });
     
     return filtered;
-  }, [conversations, channelFilter, sortFilter, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery, allSharedConversationIds]);
+  }, [conversations, channelFilter, sortOrder, statusFiltersSelected, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery, allSharedConversationIds]);
 
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
@@ -3439,18 +3447,94 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               </SelectContent>
             </Select>
 
-            <Select value={sortFilter} onValueChange={(v) => setSortFilter(v as SortFilter)}>
-              <SelectTrigger className="flex-1 h-9 rounded-lg text-sm">
-                <SelectValue placeholder="Mais novas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="newest">Mais novas</SelectItem>
-                <SelectItem value="oldest">Mais antigas</SelectItem>
-                <SelectItem value="unread">Não lidas ({sortFilterCounts.unread})</SelectItem>
-                <SelectItem value="not_replied">Não respondidas ({sortFilterCounts.not_replied})</SelectItem>
-                <SelectItem value="client_not_replied">Cliente não respondeu ({sortFilterCounts.client_not_replied})</SelectItem>
-              </SelectContent>
-            </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="flex-1 h-9 justify-between rounded-lg text-sm font-normal">
+                  <span className="truncate">
+                    {sortOrder === 'oldest' ? 'Mais antigas' : 'Mais novas'}
+                    {(statusFiltersSelected.unread || statusFiltersSelected.not_replied || statusFiltersSelected.client_not_replied) && (
+                      <span className="ml-1 text-primary">
+                        (+{[statusFiltersSelected.unread, statusFiltersSelected.not_replied, statusFiltersSelected.client_not_replied].filter(Boolean).length})
+                      </span>
+                    )}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-3" align="start">
+                {/* Ordenação */}
+                <div className="mb-3 pb-3 border-b">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Ordenar por</p>
+                  <div className="space-y-1">
+                    <label className="flex items-center gap-2 p-2 hover:bg-muted rounded-md cursor-pointer transition-colors">
+                      <input 
+                        type="radio" 
+                        name="sortOrder" 
+                        checked={sortOrder === 'newest'} 
+                        onChange={() => setSortOrder('newest')}
+                        className="h-4 w-4 text-primary"
+                      />
+                      <span className="text-sm">Mais novas</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 hover:bg-muted rounded-md cursor-pointer transition-colors">
+                      <input 
+                        type="radio" 
+                        name="sortOrder" 
+                        checked={sortOrder === 'oldest'} 
+                        onChange={() => setSortOrder('oldest')}
+                        className="h-4 w-4 text-primary"
+                      />
+                      <span className="text-sm">Mais antigas</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Filtros */}
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Filtrar por</p>
+                  <div className="space-y-1">
+                    <label className="flex items-center gap-2 p-2 hover:bg-muted rounded-md cursor-pointer transition-colors">
+                      <Checkbox 
+                        checked={statusFiltersSelected.unread} 
+                        onCheckedChange={(checked) => setStatusFiltersSelected(prev => ({ ...prev, unread: !!checked }))}
+                      />
+                      <span className="text-sm flex-1">Não lidas</span>
+                      <span className="text-xs text-muted-foreground">({sortFilterCounts.unread})</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 hover:bg-muted rounded-md cursor-pointer transition-colors">
+                      <Checkbox 
+                        checked={statusFiltersSelected.not_replied} 
+                        onCheckedChange={(checked) => setStatusFiltersSelected(prev => ({ ...prev, not_replied: !!checked }))}
+                      />
+                      <span className="text-sm flex-1">Não respondidas</span>
+                      <span className="text-xs text-muted-foreground">({sortFilterCounts.not_replied})</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 hover:bg-muted rounded-md cursor-pointer transition-colors">
+                      <Checkbox 
+                        checked={statusFiltersSelected.client_not_replied} 
+                        onCheckedChange={(checked) => setStatusFiltersSelected(prev => ({ ...prev, client_not_replied: !!checked }))}
+                      />
+                      <span className="text-sm flex-1">Cliente não respondeu</span>
+                      <span className="text-xs text-muted-foreground">({sortFilterCounts.client_not_replied})</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Limpar filtros */}
+                {(statusFiltersSelected.unread || statusFiltersSelected.not_replied || statusFiltersSelected.client_not_replied) && (
+                  <div className="mt-3 pt-3 border-t">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full text-xs"
+                      onClick={() => setStatusFiltersSelected({ unread: false, not_replied: false, client_not_replied: false })}
+                    >
+                      Limpar filtros
+                    </Button>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
 
             <button
               onClick={() => setShowFilters(true)}
@@ -4931,7 +5015,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               setDateFilter('all');
               setSearchQuery('');
               setDebouncedSearchQuery('');
-              setSortFilter('newest');
+              setSortOrder('newest');
+              setStatusFiltersSelected({ unread: false, not_replied: false, client_not_replied: false });
               setAdvancedFilters({
                 agentId: 'all',
                 tagIds: [],
