@@ -2404,10 +2404,19 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     setIsConversationSelectionMode(false);
   };
 
-  // Select all visible conversations
+  // Select all visible conversations (or search results when search is active)
   const selectAllConversations = () => {
-    const allIds = new Set(filteredConversations.map(c => c.id));
-    setSelectedConversationIds(allIds);
+    if (isSearchActive && searchResults.messages.length > 0) {
+      // When search is active, select unique conversation IDs from search results
+      const uniqueConversationIds = new Set(
+        searchResults.messages.map(m => m.conversationId)
+      );
+      setSelectedConversationIds(uniqueConversationIds);
+    } else {
+      // Normal behavior - filtered conversations
+      const allIds = new Set(filteredConversations.map(c => c.id));
+      setSelectedConversationIds(allIds);
+    }
   };
 
   // Bulk return to original agent
@@ -3867,6 +3876,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               // TODO: Scroll to message
             }}
             selectedConversationId={selectedConversationId}
+            isSelectionMode={isConversationSelectionMode}
+            selectedConversationIds={selectedConversationIds}
+            onToggleSelection={toggleConversationSelection}
           />
         ) : conversationsLoading ? (
           <div className="flex items-center justify-center p-8">

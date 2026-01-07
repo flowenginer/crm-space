@@ -1,5 +1,6 @@
 import { User, MessageCircle, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -16,6 +17,10 @@ interface SearchResultsListProps {
   onSelectContact: (contactId: string, conversationId?: string) => void;
   onSelectMessage: (conversationId: string, messageId: string) => void;
   selectedConversationId?: string;
+  // Selection mode props
+  isSelectionMode?: boolean;
+  selectedConversationIds?: Set<string>;
+  onToggleSelection?: (conversationId: string) => void;
 }
 
 export function SearchResultsList({
@@ -29,6 +34,9 @@ export function SearchResultsList({
   onSelectContact,
   onSelectMessage,
   selectedConversationId,
+  isSelectionMode,
+  selectedConversationIds,
+  onToggleSelection,
 }: SearchResultsListProps) {
   const hasResults = contacts.length > 0 || messages.length > 0;
   const showResults = searchQuery.length >= 3;
@@ -150,12 +158,29 @@ export function SearchResultsList({
             {messages.map((message) => (
               <button
                 key={`${message.conversationId}-${message.messageId}`}
-                onClick={() => onSelectMessage(message.conversationId, message.messageId)}
+                onClick={() => {
+                  if (isSelectionMode && onToggleSelection) {
+                    onToggleSelection(message.conversationId);
+                  } else {
+                    onSelectMessage(message.conversationId, message.messageId);
+                  }
+                }}
                 className={cn(
                   "w-full flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left border-b border-border/30",
-                  message.conversationId === selectedConversationId && "bg-muted/50"
+                  message.conversationId === selectedConversationId && "bg-muted/50",
+                  selectedConversationIds?.has(message.conversationId) && "bg-primary/10"
                 )}
               >
+                {/* Checkbox when in selection mode */}
+                {isSelectionMode && (
+                  <div className="flex items-center h-11 flex-shrink-0">
+                    <Checkbox
+                      checked={selectedConversationIds?.has(message.conversationId)}
+                      onCheckedChange={() => onToggleSelection?.(message.conversationId)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                )}
                 <div className="w-11 h-11 rounded-full bg-gradient-to-br from-muted-foreground/30 to-muted-foreground/10 flex items-center justify-center text-muted-foreground text-sm font-medium flex-shrink-0">
                   {message.contactName.charAt(0).toUpperCase()}
                 </div>
