@@ -350,12 +350,20 @@ export function BulkDispatchDetailsDialog({
                 </div>
               </div>
               
-              {dispatch.error_count > 0 && (
-                <div className="p-2 rounded-lg bg-destructive/10 text-center">
-                  <p className="text-lg font-bold text-destructive">{dispatch.error_count}</p>
-                  <p className="text-xs text-muted-foreground">Erros</p>
-                </div>
-              )}
+              <div className="grid grid-cols-2 gap-2 text-center">
+                {(dispatch.skipped_count || 0) > 0 && (
+                  <div className="p-2 rounded-lg bg-yellow-500/10 text-center">
+                    <p className="text-lg font-bold text-yellow-600">{dispatch.skipped_count}</p>
+                    <p className="text-xs text-muted-foreground">Pulados</p>
+                  </div>
+                )}
+                {dispatch.error_count > 0 && (
+                  <div className="p-2 rounded-lg bg-destructive/10 text-center">
+                    <p className="text-lg font-bold text-destructive">{dispatch.error_count}</p>
+                    <p className="text-xs text-muted-foreground">Erros</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Timestamps */}

@@ -807,6 +807,7 @@ export type Database = {
           schedule_enabled: boolean | null
           schedule_override: Json | null
           sent_count: number
+          skipped_count: number | null
           started_at: string | null
           status: string
           template_id: string | null
@@ -832,6 +833,7 @@ export type Database = {
           schedule_enabled?: boolean | null
           schedule_override?: Json | null
           sent_count?: number
+          skipped_count?: number | null
           started_at?: string | null
           status?: string
           template_id?: string | null
@@ -857,6 +859,7 @@ export type Database = {
           schedule_enabled?: boolean | null
           schedule_override?: Json | null
           sent_count?: number
+          skipped_count?: number | null
           started_at?: string | null
           status?: string
           template_id?: string | null

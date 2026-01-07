@@ -403,7 +403,7 @@ export function useMarketingDispatchStats(campaignId: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('bulk_dispatches')
-        .select('id, name, status, total_contacts, sent_count, responded_count, error_count, created_at')
+        .select('id, name, status, total_contacts, sent_count, responded_count, error_count, skipped_count, created_at')
         .eq('marketing_campaign_id', campaignId!)
         .order('created_at', { ascending: false });
 
