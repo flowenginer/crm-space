@@ -455,6 +455,35 @@ export function useCancelBulkDispatch() {
   });
 }
 
+// Excluir campanha (apenas concluídas ou canceladas)
+export function useDeleteBulkDispatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (dispatchId: string) => {
+      // Primeiro deletar os contatos associados
+      const { error: contactsError } = await supabase
+        .from('bulk_dispatch_contacts')
+        .delete()
+        .eq('dispatch_id', dispatchId);
+
+      if (contactsError) throw contactsError;
+
+      // Depois deletar o dispatch
+      const { error } = await supabase
+        .from('bulk_dispatches')
+        .delete()
+        .eq('id', dispatchId);
+
+      if (error) throw error;
+      return dispatchId;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bulk-dispatches'] });
+    },
+  });
+}
+
 // Realtime subscription para métricas
 export function useBulkDispatchRealtime(dispatchId: string | null) {
   const queryClient = useQueryClient();
