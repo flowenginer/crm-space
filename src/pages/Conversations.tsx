@@ -3260,6 +3260,16 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   }}
                   onSearchChange={setSearchQuery}
                   className="flex-1"
+                  filters={{
+                    assignment: conversationFilters.assignment,
+                    channelId: conversationFilters.channelId,
+                    departmentId: conversationFilters.departmentId,
+                    agentId: conversationFilters.agentId,
+                    origin: conversationFilters.origin,
+                    statusFilter: conversationFilters.statusFilter,
+                    leadStatusFilter: conversationFilters.leadStatusFilter,
+                    currentUserId: profile?.id,
+                  }}
                 />
                 
                 {/* Filtro de Datas */}
