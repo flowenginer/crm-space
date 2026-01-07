@@ -282,10 +282,21 @@ export function useWhatsAppImport() {
         .gte('created_at', minDate.toISOString())
         .lte('created_at', maxDate.toISOString());
       
-      // Criar Set de chaves para lookup rápido (timestamp + is_from_me + início do conteúdo)
+      // Função para normalizar conteúdo de mídia para comparação
+      const normalizeMediaContent = (content: string): string => {
+        return content
+          .replace(/[\u200E\u200F\u202A-\u202E]/g, '') // Remover caracteres invisíveis Unicode
+          .replace(/\s*\(arquivo anexado\)/i, '') // Remover "(arquivo anexado)"
+          .replace(/<anexo:\s*[^>]+>/i, '') // Remover "<anexo: ...>"
+          .replace(/<attached:\s*[^>]+>/i, '') // Remover "<attached: ...>"
+          .trim()
+          .substring(0, 50);
+      };
+      
+      // Criar Set de chaves para lookup rápido (timestamp + is_from_me + conteúdo normalizado)
       const existingKeys = new Set(
         (existingMessages || []).map(m => 
-          `${m.created_at}|${m.is_from_me}|${(m.content || '').substring(0, 50)}`
+          `${m.created_at}|${m.is_from_me}|${normalizeMediaContent(m.content || '')}`
         )
       );
       
@@ -325,7 +336,7 @@ export function useWhatsAppImport() {
           media_mime_type: msg.mediaFileName ? getMimeType(msg.mediaFileName) : null,
           status: 'delivered',
           created_at: createdAt,
-          _key: `${createdAt}|${isFromMe}|${content.substring(0, 50)}`, // Para filtrar duplicatas
+          _key: `${createdAt}|${isFromMe}|${normalizeMediaContent(content)}`, // Para filtrar duplicatas (normalizado)
         };
       });
       
