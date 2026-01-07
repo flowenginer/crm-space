@@ -29,6 +29,7 @@ import {
 import { ContactRequestModal } from '@/components/conversations/ContactRequestModal';
 import { ContactFormModal } from '@/components/contacts/ContactFormModal';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
+import { WhatsAppImportModal } from '@/components/contacts/WhatsAppImportModal';
 import {
   Dialog,
   DialogContent,
@@ -60,6 +61,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
 import { useLeadStatuses } from '@/hooks/useLeadKanban';
 import { usePermissions } from '@/hooks/usePermissions';
+import { MessageSquareMore } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BlingIntegrationBanner } from '@/components/bling/BlingIntegrationBanner';
 
@@ -222,6 +224,7 @@ export default function Contacts() {
   const [showContactModal, setShowContactModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showTagsModal, setShowTagsModal] = useState(false);
+  const [showWhatsAppImportModal, setShowWhatsAppImportModal] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [importStep, setImportStep] = useState(1);
@@ -755,6 +758,21 @@ export default function Contacts() {
               <Download size={16} />
               Exportar
             </button>
+            {isAdmin && selectedContacts.length === 1 && (
+              <button 
+                onClick={() => {
+                  const contact = paginatedContacts.find(c => c.id === selectedContacts[0]);
+                  if (contact) {
+                    setSelectedContact(contact);
+                    setShowWhatsAppImportModal(true);
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600/80 hover:bg-green-600 rounded-lg text-sm font-medium transition-colors"
+              >
+                <MessageSquareMore size={16} />
+                Importar WhatsApp
+              </button>
+            )}
             <button 
               onClick={handleBulkDelete}
               className="flex items-center gap-2 px-4 py-2 bg-destructive/80 hover:bg-destructive rounded-lg text-sm font-medium transition-colors"
@@ -1439,6 +1457,22 @@ export default function Contacts() {
           setShowTagsDropdown(false);
           setTagSearchQuery('');
         }} />
+      )}
+
+      {/* Modal de importação de WhatsApp */}
+      {selectedContact && (
+        <WhatsAppImportModal
+          open={showWhatsAppImportModal}
+          onOpenChange={(open) => {
+            setShowWhatsAppImportModal(open);
+            if (!open) setSelectedContact(null);
+          }}
+          contact={{
+            id: selectedContact.id,
+            full_name: selectedContact.full_name,
+            phone: selectedContact.phone,
+          }}
+        />
       )}
     </div>
   );
