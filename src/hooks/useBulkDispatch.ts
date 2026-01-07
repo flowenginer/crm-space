@@ -578,29 +578,6 @@ export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled
         .select('id, full_name, phone, avatar_url, lead_status, last_interaction_at')
         .order('full_name', { ascending: true });
 
-      // Paginação
-      if (finalEligibleIds) {
-        // IMPORTANTE:
-        // Se a gente "fatia" IDs antes de aplicar filtros (ex: lead_status), pode cair numa página vazia
-        // e o infinite query para por achar que acabou. Então, quando o conjunto de IDs é pequeno,
-        // aplicamos o IN completo e paginamos via RANGE após ordenar.
-        const MAX_IN_IDS = 2000;
-
-        if (finalEligibleIds.length <= MAX_IN_IDS) {
-          query = query.in('id', finalEligibleIds).range(pageParam, pageParam + PREVIEW_PAGE_SIZE - 1);
-        } else {
-          // Fallback para conjuntos muito grandes (evita URL gigantesca)
-          const paginatedIds = finalEligibleIds.slice(pageParam, pageParam + PREVIEW_PAGE_SIZE);
-          if (paginatedIds.length === 0) {
-            return [] as PreviewContact[];
-          }
-          query = query.in('id', paginatedIds);
-        }
-      } else {
-        // Paginação normal
-        query = query.range(pageParam, pageParam + PREVIEW_PAGE_SIZE - 1);
-      }
-
       // Aplicar filtros diretos na tabela contacts
       if (filters.firstContactStart) {
         query = query.gte('first_contact_at', filters.firstContactStart);
@@ -629,6 +606,21 @@ export function useInfinitePreviewContacts(filters: BulkDispatchFilters, enabled
       if (!filters.includeBlocked) {
         query = query.eq('is_blocked', false);
       }
+
+      // Paginação (sempre por RANGE, para o PostgREST paginar após filtrar)
+      if (finalEligibleIds) {
+        const MAX_IN_IDS = 2000;
+        if (finalEligibleIds.length <= MAX_IN_IDS) {
+          query = query.in('id', finalEligibleIds);
+        } else {
+          // Fallback para conjuntos muito grandes (evita URL gigantesca)
+          const paginatedIds = finalEligibleIds.slice(pageParam, pageParam + PREVIEW_PAGE_SIZE);
+          if (paginatedIds.length === 0) return [] as PreviewContact[];
+          query = query.in('id', paginatedIds);
+        }
+      }
+
+      query = query.range(pageParam, pageParam + PREVIEW_PAGE_SIZE - 1);
 
       const { data, error } = await query;
       if (error) throw error;
