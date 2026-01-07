@@ -52,11 +52,13 @@ import {
   useResumeBulkDispatch,
   useCancelBulkDispatch,
   useDeleteBulkDispatch,
+  useDeleteBulkDispatches,
   useBulkDispatchRealtime,
   type BulkDispatchFilters,
   type BulkDispatch as BulkDispatchType,
   type ScheduleOverride,
 } from '@/hooks/useBulkDispatch';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -114,6 +116,8 @@ export default function BulkDispatch() {
   const [selectedDispatchId, setSelectedDispatchId] = useState<string | null>(null);
   const [detailsDispatch, setDetailsDispatch] = useState<BulkDispatchType | null>(null);
   const [dispatchToDelete, setDispatchToDelete] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   
   const [name, setName] = useState('');
   const [campaignType, setCampaignType] = useState<'followup' | 'marketing'>('followup');
@@ -163,6 +167,32 @@ export default function BulkDispatch() {
   const resumeDispatch = useResumeBulkDispatch();
   const cancelDispatch = useCancelBulkDispatch();
   const deleteDispatch = useDeleteBulkDispatch();
+  const deleteDispatches = useDeleteBulkDispatches();
+
+  // Dispatches que podem ser deletados (concluídos ou cancelados)
+  const deletableDispatches = useMemo(() => 
+    dispatches.filter(d => d.status === 'completed' || d.status === 'cancelled'),
+    [dispatches]
+  );
+  
+  const allDeletableSelected = deletableDispatches.length > 0 && 
+    deletableDispatches.every(d => selectedIds.includes(d.id));
+  
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(deletableDispatches.map(d => d.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+  
+  const handleSelectOne = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedIds(prev => [...prev, id]);
+    } else {
+      setSelectedIds(prev => prev.filter(i => i !== id));
+    }
+  };
 
   useBulkDispatchRealtime(selectedDispatchId);
 
@@ -495,7 +525,19 @@ export default function BulkDispatch() {
 
         <TabsContent value="history">
           <Card>
-            <CardHeader><CardTitle>Histórico</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Histórico</CardTitle>
+              {selectedIds.length > 0 && (
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={() => setShowBulkDeleteConfirm(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Excluir {selectedIds.length} selecionado{selectedIds.length > 1 ? 's' : ''}
+                </Button>
+              )}
+            </CardHeader>
             <CardContent>
               {dispatchesLoading ? (
                 <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin" /></div>
@@ -505,6 +547,13 @@ export default function BulkDispatch() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox 
+                          checked={allDeletableSelected}
+                          onCheckedChange={handleSelectAll}
+                          disabled={deletableDispatches.length === 0}
+                        />
+                      </TableHead>
                       <TableHead>Campanha</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Progresso</TableHead>
@@ -518,8 +567,16 @@ export default function BulkDispatch() {
                   <TableBody>
                     {dispatches.map(d => {
                       const processedCount = d.sent_count + d.error_count + (d.skipped_count || 0);
+                      const isDeletable = d.status === 'completed' || d.status === 'cancelled';
                       return (
                         <TableRow key={d.id}>
+                          <TableCell>
+                            <Checkbox 
+                              checked={selectedIds.includes(d.id)}
+                              onCheckedChange={(checked) => handleSelectOne(d.id, !!checked)}
+                              disabled={!isDeletable}
+                            />
+                          </TableCell>
                           <TableCell className="font-medium">{d.name}</TableCell>
                           <TableCell>{getStatusBadge(d.status)}</TableCell>
                           <TableCell className="min-w-[120px]">
@@ -544,7 +601,7 @@ export default function BulkDispatch() {
                               {d.status === 'running' && <Button variant="outline" size="sm" onClick={() => pauseDispatch.mutate(d.id)}><Pause className="h-4 w-4" /></Button>}
                               {d.status === 'paused' && <Button variant="outline" size="sm" onClick={() => resumeDispatch.mutate(d.id)}><Play className="h-4 w-4" /></Button>}
                               {(d.status === 'running' || d.status === 'paused') && <Button variant="outline" size="sm" className="text-destructive" onClick={() => cancelDispatch.mutate(d.id)}><X className="h-4 w-4" /></Button>}
-                              {(d.status === 'completed' || d.status === 'cancelled') && (
+                              {isDeletable && (
                                 <Button 
                                   variant="ghost" 
                                   size="sm" 
@@ -601,6 +658,37 @@ export default function BulkDispatch() {
               }}
             >
               Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir {selectedIds.length} disparo{selectedIds.length > 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Todos os registros de contatos associados aos disparos selecionados também serão excluídos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                deleteDispatches.mutate(selectedIds, {
+                  onSuccess: () => {
+                    toast.success(`${selectedIds.length} disparo${selectedIds.length > 1 ? 's' : ''} excluído${selectedIds.length > 1 ? 's' : ''} com sucesso`);
+                    setSelectedIds([]);
+                    setShowBulkDeleteConfirm(false);
+                  },
+                  onError: () => {
+                    toast.error('Erro ao excluir disparos');
+                  },
+                });
+              }}
+            >
+              Excluir Todos
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
