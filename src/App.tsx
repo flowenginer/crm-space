@@ -56,6 +56,7 @@ import SellerDashboard from "@/pages/SellerDashboard";
 import RescueTemplates from "@/pages/RescueTemplates";
 import BulkDispatch from "@/pages/BulkDispatch";
 import MarketingDashboard from "@/pages/MarketingDashboard";
+import MarketingCampaigns from "@/pages/MarketingCampaigns";
 import Gamification from "@/pages/Gamification";
 import GamificationRankings from "@/pages/gamification/Rankings";
 import GamificationAchievements from "@/pages/gamification/Achievements";
@@ -147,6 +148,11 @@ const App = () => (
               <Route path="/marketing-dashboard" element={
                 <ProtectedRoute permission="marketing.view_campaigns">
                   <MarketingDashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/marketing-campaigns" element={
+                <ProtectedRoute permission="marketing.view_campaigns">
+                  <MarketingCampaigns />
                 </ProtectedRoute>
               } />
               <Route path="/crm" element={
