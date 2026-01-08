@@ -169,11 +169,11 @@ export function SearchResultsList({
                   })}
                 </span>
               </div>
-              {/* Channel name */}
+              {/* Channel name - styled like main conversations list */}
               {message.channelName && (
-                <div className="flex items-center gap-1 mt-0.5">
-                  <Smartphone size={10} className="text-muted-foreground/70" />
-                  <span className="text-[10px] text-muted-foreground/70">
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-green-500/20 rounded-full w-fit mt-0.5">
+                  <MessageCircle size={12} className="text-green-500" />
+                  <span className="text-xs text-green-500 font-medium truncate max-w-[120px]">
                     {message.channelName}
                   </span>
                 </div>
