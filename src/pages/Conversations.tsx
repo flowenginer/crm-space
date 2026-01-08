@@ -3347,9 +3347,84 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   >
                     <CheckSquare size={18} />
                   </button>
-                  <button className="p-2 hover:bg-muted rounded-lg transition-colors">
-                    <Edit3 size={18} className="text-muted-foreground" />
-                  </button>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="p-2 hover:bg-muted rounded-lg transition-colors relative">
+                        <MessageCircle 
+                          size={18} 
+                          className={cn(
+                            channels?.every(c => c.status === 'connected') 
+                              ? "text-green-500" 
+                              : channels?.some(c => c.status === 'connected')
+                                ? "text-yellow-500"
+                                : "text-muted-foreground"
+                          )} 
+                        />
+                        <span className={cn(
+                          "absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background",
+                          channels?.every(c => c.status === 'connected') 
+                            ? "bg-green-500" 
+                            : channels?.some(c => c.status === 'connected')
+                              ? "bg-yellow-500"
+                              : "bg-red-500"
+                        )} />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-0" align="end">
+                      <div className="p-3 border-b border-border">
+                        <h4 className="font-semibold flex items-center gap-2 text-sm">
+                          <MessageCircle size={16} />
+                          Canais WhatsApp
+                        </h4>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {channels?.length === 0 ? (
+                          <div className="p-4 text-center text-sm text-muted-foreground">
+                            Nenhum canal configurado
+                          </div>
+                        ) : (
+                          channels?.map(channel => (
+                            <div 
+                              key={channel.id} 
+                              className="flex items-center justify-between p-3 hover:bg-muted/50 border-b border-border/50 last:border-b-0"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className={cn(
+                                  "w-2 h-2 rounded-full flex-shrink-0",
+                                  channel.status === 'connected' ? "bg-green-500" : "bg-red-500"
+                                )} />
+                                <div className="min-w-0">
+                                  <p className="font-medium text-sm truncate">{channel.name}</p>
+                                  <p className="text-xs text-muted-foreground">{channel.phone || 'Sem número'}</p>
+                                </div>
+                              </div>
+                              <span className={cn(
+                                "text-xs px-2 py-0.5 rounded-full flex-shrink-0",
+                                channel.status === 'connected' 
+                                  ? "bg-green-500/20 text-green-600" 
+                                  : "bg-red-500/20 text-red-600"
+                              )}>
+                                {channel.status === 'connected' ? 'Ativo' : 'Inativo'}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="p-3 border-t border-border bg-muted/30 flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">
+                          {channels?.filter(c => c.status === 'connected').length || 0} ativos · {channels?.filter(c => c.status !== 'connected').length || 0} inativos
+                        </span>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-xs h-7"
+                          onClick={() => navigate('/settings?tab=channels')}
+                        >
+                          Configurações
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </>
             )}
