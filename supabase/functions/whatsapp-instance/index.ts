@@ -2269,16 +2269,30 @@ serve(async (req) => {
       
       if (statusResult.success) {
         // Determine new status and phone
+        // FIXED: statusResult.state is a string ("open", "connected") not an object
+        // Also check statusResult.status which is already "connected"/"disconnected"
         let newStatus = 'disconnected';
         let phone = syncChannel.phone || '';
         
-        if (statusResult.state?.connected || statusResult.state?.loggedIn) {
+        const stateStr = statusResult.state;
+        const statusStr = statusResult.status;
+        
+        // Check if connected: state can be "open" or "connected" (string), or status is "connected"
+        const isConnected = statusStr === 'connected' || stateStr === 'open' || stateStr === 'connected';
+        
+        if (isConnected) {
           newStatus = 'connected';
-          if (statusResult.state?.jid) {
-            const jidPhone = statusResult.state.jid.split(':')[0].split('@')[0];
-            if (jidPhone) phone = jidPhone;
+        }
+        
+        // Extract phone from ownerJid if available
+        if (statusResult.ownerJid) {
+          const jidPhone = statusResult.ownerJid.split(':')[0].split('@')[0];
+          if (jidPhone && jidPhone.length >= 10) {
+            phone = jidPhone;
           }
         }
+        
+        console.log('[syncStatus] Resultado:', { stateStr, statusStr, isConnected, newStatus, phone });
         
         // Update channel in database
         const { error: updateError } = await supabase
@@ -2302,6 +2316,7 @@ serve(async (req) => {
             success: true,
             status: newStatus,
             phone: phone,
+            providerState: stateStr,
             message: newStatus === 'connected' ? 'Canal conectado e sincronizado!' : 'Status sincronizado'
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
