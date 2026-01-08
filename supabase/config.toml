@@ -118,3 +118,6 @@ verify_jwt = false
 
 [functions.test-marketing-campaign]
 verify_jwt = false
+
+[functions.sync-whatsapp-channels]
+verify_jwt = false
