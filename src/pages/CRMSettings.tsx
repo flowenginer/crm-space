@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Settings2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RequiredFieldsSettings } from '@/components/settings/RequiredFieldsSettings';
+import { LeadStatusSettings } from '@/components/settings/LeadStatusSettings';
 
 export default function CRMSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -26,10 +27,15 @@ export default function CRMSettings() {
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="mb-6">
           <TabsTrigger value="required-fields">Campos Obrigatórios</TabsTrigger>
+          <TabsTrigger value="lead-statuses">Status de Lead</TabsTrigger>
         </TabsList>
 
         <TabsContent value="required-fields">
           <RequiredFieldsSettings />
+        </TabsContent>
+
+        <TabsContent value="lead-statuses">
+          <LeadStatusSettings />
         </TabsContent>
       </Tabs>
     </div>
