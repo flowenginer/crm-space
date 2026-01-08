@@ -295,7 +295,11 @@ export function TenantModulesTree({ modules, onChange, tenantId }: TenantModules
     );
   }
 
-  const activeItems = menuHierarchy.filter(item => item.is_active);
+  // Filtrar itens ativos E ocultar módulos que não devem ser configuráveis por tenants
+  const HIDDEN_MODULES = ['super_admin'];
+  const activeItems = menuHierarchy.filter(item => 
+    item.is_active && !HIDDEN_MODULES.includes(item.module_key || '')
+  );
 
   return (
     <div className="space-y-3">
