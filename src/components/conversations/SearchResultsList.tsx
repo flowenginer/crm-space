@@ -1,4 +1,4 @@
-import { MessageCircle, Loader2, Search, User } from 'lucide-react';
+import { MessageCircle, Loader2, Search, User, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
@@ -169,6 +169,15 @@ export function SearchResultsList({
                   })}
                 </span>
               </div>
+              {/* Channel name */}
+              {message.channelName && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Smartphone size={10} className="text-muted-foreground/70" />
+                  <span className="text-[10px] text-muted-foreground/70">
+                    {message.channelName}
+                  </span>
+                </div>
+              )}
               <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
                 {message.isFromMe && <span className="text-primary font-medium">Você: </span>}
                 {message.matchType === 'content' 
