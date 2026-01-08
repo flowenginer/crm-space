@@ -1394,6 +1394,21 @@ serve(async (req) => {
 
           console.log(`[Webhook] Updated frontend message with whatsapp_message_id`);
 
+          // Marcar conversa como lida (mensagem enviada = atendente respondeu)
+          await supabase
+            .from("conversations")
+            .update({
+              is_unread: false,
+              unread_count: 0,
+              last_message_is_from_me: true,
+              last_message_at: new Date().toISOString(),
+              last_message_preview: matchedMessage.content?.substring(0, 100) || normalizedMessage.content?.substring(0, 100) || "[Mídia]",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", conversation.id);
+
+          console.log(`[Webhook] Conversation marked as read (frontend message sent)`);
+
           // TRIGGER MESSAGE_KEY AUTOMATIONS (mensagens enviadas via frontend)
           try {
             console.log(`[Webhook] 🤖 Checking message_key automations for frontend message...`);
@@ -1605,6 +1620,10 @@ serve(async (req) => {
           last_message_preview: normalizedMessage.content?.substring(0, 100) || "[Mídia]",
           updated_at: new Date().toISOString(),
           // NÃO atualiza status! Permanece como estava (open, pending ou closed)
+          // NOVO: Marcar como lida - se respondeu pelo telefone, leu a mensagem
+          is_unread: false,
+          unread_count: 0,
+          last_message_is_from_me: true,
         })
         .eq("id", conversation.id);
 
