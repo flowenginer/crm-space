@@ -3410,18 +3410,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                           ))
                         )}
                       </div>
-                      <div className="p-3 border-t border-border bg-muted/30 flex items-center justify-between">
+                      <div className="p-3 border-t border-border bg-muted/30">
                         <span className="text-xs text-muted-foreground">
                           {channels?.filter(c => c.status === 'connected').length || 0} ativos · {channels?.filter(c => c.status !== 'connected').length || 0} inativos
                         </span>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-xs h-7"
-                          onClick={() => navigate('/settings?tab=channels')}
-                        >
-                          Configurações
-                        </Button>
                       </div>
                     </PopoverContent>
                   </Popover>
