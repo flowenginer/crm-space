@@ -1627,6 +1627,22 @@ serve(async (req) => {
         })
         .eq("id", conversation.id);
 
+      // =====================================================
+      // PROCESSAR ACK INLINE NA MENSAGEM fromMe (UAZAPI)
+      // Quando a UAZAPI envia mensagem fromMe, pode já incluir o ack (delivered/read)
+      // =====================================================
+      const messageAck = payload.message?.ack ?? payload.body?.message?.ack ?? payload.ack;
+      if (messageAck !== undefined && messageAck > 0 && normalizedMessage.originalId) {
+        const ackStatus = mapProviderStatus(String(messageAck));
+        if (ackStatus && ackStatus !== 'sent') {
+          await supabase
+            .from("messages")
+            .update({ status: ackStatus })
+            .eq("whatsapp_message_id", normalizedMessage.originalId);
+          console.log(`[Webhook] ✅ Updated fromMe message status from inline ACK: ${messageAck} -> ${ackStatus}`);
+        }
+      }
+
       console.log(`[Webhook] FromMe message from other device saved for conversation ${conversation.id}`);
       return new Response(JSON.stringify({ success: true, message: "FromMe message saved (other device)" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

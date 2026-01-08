@@ -832,7 +832,8 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
             url: webhookUrl, 
             webhook: webhookUrl,
             enabled: true,
-            events: ['messages', 'status', 'connection', 'message_ack', 'presence', 'calls']
+            // UAZAPI V2: incluir variações de nomes de eventos para ACK
+            events: ['messages', 'messages_ack', 'message_ack', 'ack', 'status', 'connection', 'presence', 'calls']
           }),
         });
         
@@ -1487,7 +1488,8 @@ async function setUAZAPIWebhook(config: ProviderConfig, instanceName: string, we
   const webhookPayload = { 
     url: webhookUrl,
     enabled: true,
-    events: ['messages', 'status', 'connection', 'message_ack', 'presence', 'calls']
+    // UAZAPI V2: incluir variações de nomes de eventos para ACK
+    events: ['messages', 'messages_ack', 'message_ack', 'ack', 'status', 'connection', 'presence', 'calls']
   };
   
   let lastError = '';
