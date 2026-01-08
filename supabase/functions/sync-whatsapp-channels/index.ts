@@ -54,6 +54,7 @@ function normalizeBaseUrl(url: string): string {
 }
 
 // Get UAZAPI Status
+// FIX: UAZAPI pode retornar `state` como string ("open"/"connected") ou objeto ({ connected, loggedIn })
 async function getUAZAPIStatus(baseUrl: string, instanceToken: string) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   
@@ -68,13 +69,31 @@ async function getUAZAPIStatus(baseUrl: string, instanceToken: string) {
     }
     
     const data = await response.json();
-    const state = data.state || data.status || 'disconnected';
-    const isConnected = state === 'connected' || state === 'open';
+    
+    // State pode ser string ou objeto
+    const state = data.state as any;
+    const statusStr = data.status;
+    
+    const stateIsObject = !!state && typeof state === 'object';
+    const stateConnected = stateIsObject && (state.connected === true || state.loggedIn === true);
+    const stateStr = typeof state === 'string' ? state : undefined;
+    
+    const isConnected =
+      statusStr === 'connected' ||
+      stateConnected ||
+      stateStr === 'open' ||
+      stateStr === 'connected';
+    
+    // Extrair JID/telefone
+    const candidateJid: string | undefined =
+      data.owner ||
+      data.ownerJid ||
+      (stateIsObject && typeof state.jid === 'string' ? state.jid : undefined);
     
     return { 
       success: true, 
       connected: isConnected,
-      jid: data.owner || data.ownerJid,
+      jid: candidateJid,
     };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -82,6 +101,7 @@ async function getUAZAPIStatus(baseUrl: string, instanceToken: string) {
 }
 
 // Get Evolution Status
+// FIX: Evolution também pode retornar state como string ou objeto
 async function getEvolutionStatus(baseUrl: string, instanceName: string, adminToken: string) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   
@@ -95,12 +115,23 @@ async function getEvolutionStatus(baseUrl: string, instanceName: string, adminTo
     }
     
     const data = await response.json();
-    const state = data.instance?.state || data.state;
+    const state = (data.instance?.state || data.state) as any;
+    
+    const stateIsObject = !!state && typeof state === 'object';
+    const stateConnected = stateIsObject && (state.connected === true || state.loggedIn === true);
+    const stateStr = typeof state === 'string' ? state : undefined;
+    
+    const isConnected = stateConnected || stateStr === 'open' || stateStr === 'connected';
+    
+    const candidateJid: string | undefined =
+      data.instance?.owner ||
+      data.ownerJid ||
+      (stateIsObject && typeof state.jid === 'string' ? state.jid : undefined);
     
     return { 
       success: true, 
-      connected: state === 'open',
-      jid: data.instance?.owner || data.ownerJid,
+      connected: isConnected,
+      jid: candidateJid,
     };
   } catch (err: any) {
     return { success: false, error: err.message };
