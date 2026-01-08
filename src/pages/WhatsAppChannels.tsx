@@ -532,8 +532,90 @@ export default function WhatsAppChannels() {
     }
   };
 
+  // Handler para o botão "Já escaneei o QR Code" - usa syncChannelStatus com retries
+  const handleAlreadyScanned = async () => {
+    if (!createdChannelId) {
+      toast.error('Canal não encontrado');
+      return;
+    }
+    
+    setIsConnecting(true);
+    
+    try {
+      // Tentar sincronizar status com retries (o WhatsApp pode demorar a reportar conexão)
+      let attempts = 0;
+      const maxAttempts = 3;
+      let lastResult: any = null;
+      
+      while (attempts < maxAttempts) {
+        attempts++;
+        console.log(`[handleAlreadyScanned] Tentativa ${attempts}/${maxAttempts}`);
+        
+        try {
+          lastResult = await syncChannelStatus.mutateAsync(createdChannelId);
+          
+          if (lastResult.status === 'connected') {
+            // Conectado com sucesso!
+            console.log('[handleAlreadyScanned] Canal conectado:', lastResult);
+            
+            // Reconfigurar webhook (não bloquear se falhar)
+            try {
+              await reconfigureChannelWebhook(createdChannelId);
+            } catch (webhookError) {
+              console.warn('[handleAlreadyScanned] Erro ao configurar webhook:', webhookError);
+            }
+            
+            setAddStep(3);
+            refetchChannels();
+            return;
+          }
+        } catch (syncError) {
+          console.warn(`[handleAlreadyScanned] Erro na tentativa ${attempts}:`, syncError);
+          lastResult = { status: 'disconnected' };
+        }
+        
+        // Se não conectou e ainda temos tentativas, aguardar e tentar novamente
+        if (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+      }
+      
+      // Não conectou após todas as tentativas - buscar novo QR Code
+      console.log('[handleAlreadyScanned] Canal não conectou após tentativas, buscando novo QR...');
+      
+      try {
+        const refreshResult = await refreshQRCode.mutateAsync(createdChannelId);
+        
+        if (refreshResult.connected) {
+          // Reconfigurar webhook
+          try {
+            await reconfigureChannelWebhook(createdChannelId);
+          } catch (webhookError) {
+            console.warn('[handleAlreadyScanned] Erro ao configurar webhook:', webhookError);
+          }
+          
+          setAddStep(3);
+          refetchChannels();
+        } else if (refreshResult.qrCode) {
+          setQrCode(refreshResult.qrCode);
+          setQrCountdown(60);
+          toast.info('Ainda não conectou. Escaneie o QR Code e tente novamente.');
+        } else {
+          toast.warning('Canal ainda não conectou. Escaneie o QR Code e clique em "Já escaneei" novamente.');
+        }
+      } catch (refreshError) {
+        console.error('[handleAlreadyScanned] Erro ao buscar QR:', refreshError);
+        toast.warning('Não foi possível verificar a conexão. Tente novamente em alguns segundos.');
+      }
+    } catch (error: any) {
+      console.error('[handleAlreadyScanned] Error:', error);
+      toast.error(error.message || 'Erro ao verificar conexão');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
   const handleConnect = async (channel: WhatsAppChannel) => {
-    // Buscar provedor do canal
     const provider = providers.find(p => p.id === channel.provider_id);
     if (!provider || !channel.instance_id) {
       toast.error('Canal sem provedor ou instância configurada');
@@ -1161,17 +1243,14 @@ export default function WhatsAppChannels() {
             {addStep === 2 && (
               <div className="w-full space-y-2">
                 <Button
-                  onClick={() => {
-                    // Check connection status
-                    handleRefreshQR();
-                  }}
+                  onClick={handleAlreadyScanned}
                   className="w-full btn-gradient"
                   disabled={isConnecting}
                 >
                   {isConnecting ? (
                     <>
                       <Loader2 size={18} className="animate-spin mr-2" />
-                      Verificando...
+                      Verificando conexão...
                     </>
                   ) : (
                     'Já escaneei o QR Code'

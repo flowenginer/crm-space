@@ -112,6 +112,7 @@ export function useCreateChannelWithInstance() {
         toast.success('Canal criado com sucesso!');
       }
       queryClient.invalidateQueries({ queryKey: ['whatsapp-channels'] });
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
     },
     onError: (error: any) => {
       toast.dismiss();
@@ -207,6 +208,7 @@ export function useRefreshQRCode() {
         toast.success('WhatsApp conectado com sucesso!');
       }
       queryClient.invalidateQueries({ queryKey: ['whatsapp-channels'] });
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
     },
     onError: (error: any) => {
       toast.error(error.message || 'Erro ao atualizar QR Code');
