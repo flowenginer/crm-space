@@ -16,13 +16,16 @@ interface CreateTenantModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Módulos que NUNCA devem ser habilitados para novos tenants
+const EXCLUDED_MODULES = ['super_admin'];
+
 // Helper para extrair todas as chaves de módulo da hierarquia
 // Agora usa item.module_key diretamente do banco
 function getAllModuleKeysFromHierarchy(items: any[]): string[] {
   const keys: string[] = [];
   items.forEach(item => {
-    // Usar module_key diretamente do banco
-    if (item.module_key) {
+    // Usar module_key diretamente do banco, excluindo módulos restritos
+    if (item.module_key && !EXCLUDED_MODULES.includes(item.module_key)) {
       keys.push(item.module_key);
     }
     if (item.children) {
