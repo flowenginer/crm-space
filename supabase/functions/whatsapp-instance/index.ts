@@ -2269,24 +2269,35 @@ serve(async (req) => {
       
       if (statusResult.success) {
         // Determine new status and phone
-        // FIXED: statusResult.state is a string ("open", "connected") not an object
-        // Also check statusResult.status which is already "connected"/"disconnected"
+        // FIX: UAZAPI/Evolution podem retornar `state` como objeto ({ connected, loggedIn, jid })
+        // ou como string ("open"/"connected"). Precisamos suportar ambos.
         let newStatus = 'disconnected';
         let phone = syncChannel.phone || '';
         
-        const stateStr = statusResult.state;
         const statusStr = statusResult.status;
+        const state = statusResult.state as any;
         
-        // Check if connected: state can be "open" or "connected" (string), or status is "connected"
-        const isConnected = statusStr === 'connected' || stateStr === 'open' || stateStr === 'connected';
+        const stateIsObject = !!state && typeof state === 'object';
+        const stateConnected = stateIsObject && (state.connected === true || state.loggedIn === true);
+        const stateStr = typeof state === 'string' ? (state as string) : undefined;
+        
+        const isConnected =
+          statusStr === 'connected' ||
+          stateConnected ||
+          stateStr === 'open' ||
+          stateStr === 'connected';
         
         if (isConnected) {
           newStatus = 'connected';
         }
         
-        // Extract phone from ownerJid if available
-        if (statusResult.ownerJid) {
-          const jidPhone = statusResult.ownerJid.split(':')[0].split('@')[0];
+        // Extract phone from ownerJid (preferred) or from state.jid fallback
+        const candidateJid: string | undefined =
+          (statusResult.ownerJid as string | undefined) ||
+          (stateIsObject && typeof state.jid === 'string' ? state.jid : undefined);
+        
+        if (candidateJid) {
+          const jidPhone = candidateJid.split(':')[0].split('@')[0];
           if (jidPhone && jidPhone.length >= 10) {
             phone = jidPhone;
           }
