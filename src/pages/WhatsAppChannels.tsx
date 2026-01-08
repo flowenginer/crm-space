@@ -79,7 +79,7 @@ import { useProviders, useConfiguredProviders, useDefaultSharedProvider } from '
 import { useDepartments } from '@/hooks/useDepartments';
 import { useCreateChannelWithInstance, useRefreshQRCode, useSyncChannelStatus } from '@/hooks/useCreateChannelWithInstance';
 import { whatsappService } from '@/lib/whatsapp';
-import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, reconfigureChannelWebhook, configureChannelFull, fetchChannelWebhook, ProviderInstance } from '@/lib/whatsapp/instance-creator';
+import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, reconfigureChannelWebhook, configureChannelFull, fetchChannelWebhook, syncChannelStatus, ProviderInstance } from '@/lib/whatsapp/instance-creator';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -98,7 +98,7 @@ export default function WhatsAppChannels() {
   const createChannel = useCreateChannel();
   const createChannelWithInstance = useCreateChannelWithInstance();
   const refreshQRCode = useRefreshQRCode();
-  const syncChannelStatus = useSyncChannelStatus();
+  const syncChannelStatusMutation = useSyncChannelStatus();
   const updateChannel = useUpdateChannel();
   const deleteChannel = useDeleteChannel();
   const restoreChannel = useRestoreChannel();
@@ -233,106 +233,59 @@ export default function WhatsAppChannels() {
     setShowAddModal(true);
   };
 
-  // Sincronizar instâncias do provedor
+  // Estado para progresso da sincronização
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; channelName: string } | null>(null);
+
+  // Sincronizar status de todos os canais, um por um
   const handleSyncInstances = async () => {
-    if (configuredProviders.length === 0) {
-      toast.error('Nenhum provedor configurado');
+    if (channels.length === 0) {
+      toast.info('Nenhum canal para sincronizar');
       return;
     }
 
     setIsSyncing(true);
-    let totalSynced = 0;
-    let totalCreated = 0;
-    let totalUpdated = 0;
+    let successCount = 0;
+    let errorCount = 0;
+    const total = channels.length;
 
     try {
-      for (const provider of configuredProviders) {
-        toast.loading(`Sincronizando ${provider.name}...`);
-        
-        const result = await fetchProviderInstances(provider.code as 'zapi' | 'uazapi' | 'evolution');
-        
-        if (!result.success || !result.instances) {
-          console.log(`[Sync] ${provider.name}: ${result.error || 'Sem instâncias'}`);
-          continue;
+      for (let i = 0; i < channels.length; i++) {
+        const channel = channels[i];
+        setSyncProgress({ current: i + 1, total, channelName: channel.name });
+
+        try {
+          const result = await syncChannelStatus(channel.id);
+          
+          if (result.success) {
+            successCount++;
+            console.log(`[Sync] ${channel.name}: ${result.status} - ${result.phone || 'N/A'}`);
+          } else {
+            errorCount++;
+            console.warn(`[Sync] ${channel.name}: Erro - ${result.error}`);
+          }
+        } catch (error: any) {
+          errorCount++;
+          console.error(`[Sync] ${channel.name}: Erro - ${error.message}`);
         }
 
-        console.log(`[Sync] ${provider.name}: ${result.instances.length} instâncias encontradas`);
-
-        for (const instance of result.instances) {
-          const instanceName = instance.instance?.instanceName || instance.instanceName;
-          const connectionState = typeof instance.connectionStatus === 'object' ? instance.connectionStatus?.state : instance.connectionStatus;
-          const instanceStatus = instance.instance?.state || connectionState;
-          const profileName = instance.instance?.profileName || instance.profileName;
-          const ownerPhone = instance.instance?.owner || instance.owner;
-          const ownerJid = instance.ownerJid;
-          
-          // Extrair phone do ownerJid se disponível (formato: 5521999999999@s.whatsapp.net)
-          let phone = ownerPhone;
-          if (!phone && ownerJid) {
-            phone = ownerJid.split('@')[0];
-          }
-          
-          if (!instanceName) continue;
-
-          // Verificar se já existe no banco
-          const existingChannel = channels.find(c => c.instance_id === instanceName);
-
-          // Determinar status - apenas 'open' é considerado conectado
-          const newStatus = instanceStatus === 'open' ? 'connected' : 'disconnected';
-
-          if (existingChannel) {
-            // Atualizar status SOMENTE se a API retornou um estado válido
-            if (instanceStatus) {
-              const needsUpdate = existingChannel.status !== newStatus || 
-                                  (phone && existingChannel.phone !== phone);
-              
-              if (needsUpdate) {
-                await supabase
-                  .from('whatsapp_channels')
-                  .update({ 
-                    status: newStatus,
-                    phone: phone || existingChannel.phone,
-                    last_sync_at: new Date().toISOString(),
-                  })
-                  .eq('id', existingChannel.id);
-                totalUpdated++;
-              }
-            }
-          } else {
-            // Criar novo canal
-            const { error } = await supabase
-              .from('whatsapp_channels')
-              .insert({
-                name: profileName || instanceName,
-                phone: phone || 'Não identificado',
-                provider_id: provider.id,
-                instance_id: instanceName,
-                status: newStatus,
-                last_sync_at: new Date().toISOString(),
-              });
-            
-            if (!error) {
-              totalCreated++;
-            }
-          }
-          totalSynced++;
+        // Pequeno delay para não sobrecarregar a API
+        if (i < channels.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
 
-      toast.dismiss();
-      
-      if (totalSynced === 0) {
-        toast.info('Nenhuma instância encontrada nos provedores');
+      if (errorCount === 0) {
+        toast.success(`Sincronização concluída! ${successCount} canais atualizados`);
       } else {
-        toast.success(`Sincronização concluída! ${totalCreated} novos, ${totalUpdated} atualizados`);
+        toast.warning(`Sincronização concluída: ${successCount} OK, ${errorCount} com erro`);
       }
       
       refetchChannels();
     } catch (error: any) {
-      toast.dismiss();
       toast.error(error.message || 'Erro ao sincronizar');
     } finally {
       setIsSyncing(false);
+      setSyncProgress(null);
     }
   };
 
@@ -552,7 +505,7 @@ export default function WhatsAppChannels() {
         console.log(`[handleAlreadyScanned] Tentativa ${attempts}/${maxAttempts}`);
         
         try {
-          lastResult = await syncChannelStatus.mutateAsync(createdChannelId);
+          lastResult = await syncChannelStatusMutation.mutateAsync(createdChannelId);
           
           if (lastResult.status === 'connected') {
             // Conectado com sucesso!
@@ -700,7 +653,7 @@ export default function WhatsAppChannels() {
   const handleSync = async (channel: WhatsAppChannel) => {
     try {
       // Usar a nova action syncStatus que verifica status E atualiza o banco
-      await syncChannelStatus.mutateAsync(channel.id);
+      await syncChannelStatusMutation.mutateAsync(channel.id);
     } catch (error: any) {
       console.error('[Sync] Erro:', error);
       // Toast já é mostrado pelo hook
@@ -870,15 +823,17 @@ export default function WhatsAppChannels() {
           <Button
             variant="outline"
             onClick={handleSyncInstances}
-            disabled={isSyncing || configuredProviders.length === 0}
-            title="Sincronizar status das instâncias"
+            disabled={isSyncing || channels.length === 0}
+            title="Sincronizar status de todos os canais"
           >
             {isSyncing ? (
               <Loader2 size={18} className="animate-spin" />
             ) : (
               <RefreshCw size={18} />
             )}
-            Atualizar Status
+            {syncProgress 
+              ? `${syncProgress.current}/${syncProgress.total}` 
+              : 'Atualizar Status'}
           </Button>
 
           <Button
