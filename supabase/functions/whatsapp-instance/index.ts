@@ -10,7 +10,7 @@ const corsHeaders = {
 // TIPOS
 // =====================================================
 interface CreateInstanceRequest {
-  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage' | 'sendReaction' | 'reconfigureWebhook' | 'syncStatus';
+  action: 'create' | 'qrcode' | 'status' | 'fetchInstances' | 'testConnection' | 'deleteInstance' | 'getStatus' | 'send' | 'fetchProfile' | 'setWebhook' | 'fetchWebhook' | 'restartInstance' | 'setSettings' | 'configureChannel' | 'deleteMessage' | 'editMessage' | 'sendReaction' | 'reconfigureWebhook' | 'syncStatus' | 'logoutInstance';
   providerCode?: 'zapi' | 'uazapi' | 'evolution';
   instanceName?: string;
   instanceId?: string;
@@ -867,6 +867,54 @@ async function createUAZAPIInstance(config: ProviderConfig, instanceName: string
   }
 }
 
+// Função para fazer logout de instância UAZAPI (resetar estado travado)
+async function logoutUAZAPIInstance(baseUrl: string, instanceToken: string) {
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  console.log('[UAZAPI] Logging out instance to reset stuck state');
+  
+  try {
+    const response = await fetch(`${normalizedUrl}/instance/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'token': instanceToken,
+      },
+      body: JSON.stringify({}),
+    });
+    
+    const text = await response.text();
+    console.log('[UAZAPI Logout] Response:', response.status, text);
+    
+    return { success: response.ok, message: 'Logout realizado' };
+  } catch (err: any) {
+    console.error('[UAZAPI Logout] Error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// Função para fazer logout de instância Evolution
+async function logoutEvolutionInstance(config: ProviderConfig, instanceName: string) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl);
+  console.log('[Evolution] Logging out instance:', instanceName);
+  
+  try {
+    const response = await fetch(`${baseUrl}/instance/logout/${instanceName}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': config.adminToken,
+      },
+    });
+    
+    const text = await response.text();
+    console.log('[Evolution Logout] Response:', response.status, text);
+    
+    return { success: response.ok, message: 'Logout realizado' };
+  } catch (err: any) {
+    console.error('[Evolution Logout] Error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
 async function getUAZAPIQRCode(baseUrl: string, instanceName: string, instanceToken: string) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   console.log('[UAZAPI] Getting QR code for:', instanceName, 'at', normalizedUrl);
@@ -893,6 +941,19 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, instanceTo
       return { connected: true, ownerJid: statusData.owner };
     }
     
+    // NOVO: Detectar instância travada em "connecting" sem QR Code
+    // Se está em "connecting" mas não tem QR Code, provavelmente está travada
+    if (statusData.state === 'connecting' && !statusData.qrcode && !statusData.qr && !statusData.instance?.qrcode) {
+      console.log('[UAZAPI] Instance stuck in "connecting" state without QR, performing logout...');
+      
+      // Fazer logout para resetar estado
+      const logoutResult = await logoutUAZAPIInstance(normalizedUrl, instanceToken);
+      console.log('[UAZAPI] Logout result:', logoutResult);
+      
+      // Aguardar para o logout processar
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    
     // Se tem QRCode no status, retornar (pode estar na raiz ou em instance)
     if (statusData.qrcode || statusData.qr || statusData.instance?.qrcode) {
       return {
@@ -901,7 +962,7 @@ async function getUAZAPIQRCode(baseUrl: string, instanceName: string, instanceTo
       };
     }
     
-    // Se desconectado, chamar /instance/connect novamente para gerar novo QRCode
+    // Se desconectado ou após logout, chamar /instance/connect para gerar novo QRCode
     // Docs: https://docs.uazapi.com/endpoint/post/instance~connect
     const connectUrl = `${normalizedUrl}/instance/connect`;
     console.log('[UAZAPI] Reconnecting to get new QR:', connectUrl);
@@ -2239,6 +2300,73 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+    }
+
+    // =====================================================
+    // LOGOUT INSTANCE - Desconectar instância (resetar estado travado)
+    // =====================================================
+    if (action === 'logoutInstance') {
+      const logoutChannelId = body.channelId as string;
+      console.log('[WhatsApp Instance] Logout instance for channel:', logoutChannelId);
+      
+      if (!logoutChannelId) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'channelId é obrigatório' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      // Fetch channel from database
+      const { data: logoutChannel, error: logoutChannelError } = await supabase
+        .from('whatsapp_channels')
+        .select('*, provider:whatsapp_providers(*)')
+        .eq('id', logoutChannelId)
+        .single();
+      
+      if (logoutChannelError || !logoutChannel) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Canal não encontrado' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+
+      const logoutProvider = logoutChannel.provider as any;
+      const logoutConfig: ProviderConfig = {
+        baseUrl: normalizeBaseUrl(logoutProvider?.base_url || ''),
+        adminToken: logoutProvider?.admin_token || '',
+        clientToken: logoutProvider?.client_token || '',
+      };
+      
+      let logoutResult: any;
+      
+      switch (logoutProvider?.code) {
+        case 'uazapi':
+          logoutResult = await logoutUAZAPIInstance(logoutConfig.baseUrl, logoutChannel.instance_token || '');
+          break;
+        case 'evolution':
+          logoutResult = await logoutEvolutionInstance(logoutConfig, logoutChannel.instance_id!);
+          break;
+        case 'zapi':
+          logoutResult = { success: false, error: 'Z-API não suporta logout via API' };
+          break;
+        default:
+          logoutResult = { success: false, error: 'Provedor desconhecido' };
+      }
+      
+      console.log('[WhatsApp Instance] Logout result:', logoutResult);
+      
+      if (logoutResult.success) {
+        // Atualizar status para disconnected
+        await supabase
+          .from('whatsapp_channels')
+          .update({ status: 'disconnected', updated_at: new Date().toISOString() })
+          .eq('id', logoutChannelId);
+      }
+      
+      return new Response(
+        JSON.stringify(logoutResult),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // =====================================================
