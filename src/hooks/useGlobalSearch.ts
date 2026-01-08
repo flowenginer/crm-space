@@ -16,6 +16,10 @@ export interface MessageSearchResult {
   isFromMe: boolean;
   /** Tipo de match: 'content' = termo encontrado na mensagem, 'contact' = mensagem pertence a contato que corresponde ao termo */
   matchType: 'content' | 'contact';
+  /** ID do canal WhatsApp */
+  channelId: string | null;
+  /** Nome do canal WhatsApp (ex: "Vendas 06") */
+  channelName: string | null;
 }
 
 export interface GlobalSearchResults {
@@ -139,6 +143,10 @@ export function useGlobalSearch(
                 phone,
                 avatar_url,
                 lead_status
+              ),
+              whatsapp_channels (
+                id,
+                name
               )
             )
           `)
@@ -159,6 +167,8 @@ export function useGlobalSearch(
           match_highlight: msg.content?.substring(0, 100),
           _matchType: 'contact' as const,
           _conversation: msg.conversations,
+          channel_id: msg.conversations?.channel_id,
+          channel_name: msg.conversations?.whatsapp_channels?.name || null,
         }));
       }
 
@@ -192,7 +202,7 @@ export function useGlobalSearch(
         if (conversationIds.length > 0) {
           let convQuery = supabase
             .from('conversations')
-            .select('id, assigned_to, department_id, channel_id, status, referral_source, is_unread, last_message_is_from_me, contacts!inner(lead_status)')
+            .select('id, assigned_to, department_id, channel_id, status, referral_source, is_unread, last_message_is_from_me, contacts!inner(lead_status), whatsapp_channels(id, name)')
             .in('id', conversationIds);
 
           // Apply filters to conversations query
@@ -237,8 +247,26 @@ export function useGlobalSearch(
           const { data: matchingConversations } = await convQuery;
           const matchingIds = new Set(matchingConversations?.map((c: any) => c.id) || []);
           
-          // Filter messages to only include those from matching conversations
-          filteredData = allMessages.filter((msg: any) => matchingIds.has(msg.conversation_id));
+          // Create a map for channel data
+          const channelDataMap = new Map<string, { channel_id: string | null; channel_name: string | null }>();
+          (matchingConversations || []).forEach((c: any) => {
+            channelDataMap.set(c.id, {
+              channel_id: c.channel_id,
+              channel_name: c.whatsapp_channels?.name || null,
+            });
+          });
+          
+          // Filter messages to only include those from matching conversations and add channel data
+          filteredData = allMessages
+            .filter((msg: any) => matchingIds.has(msg.conversation_id))
+            .map((msg: any) => {
+              const channelData = channelDataMap.get(msg.conversation_id);
+              return {
+                ...msg,
+                channel_id: msg.channel_id || channelData?.channel_id || null,
+                channel_name: msg.channel_name || channelData?.channel_name || null,
+              };
+            });
         }
       }
       
@@ -271,6 +299,8 @@ export function useGlobalSearch(
         createdAt: msg.created_at,
         isFromMe: msg.is_from_me,
         matchType: msg._matchType || 'content',
+        channelId: msg.channel_id || null,
+        channelName: msg.channel_name || null,
       }));
 
       return { messages, hasMore };
