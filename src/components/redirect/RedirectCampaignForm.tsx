@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Loader2, Palette, Eye, Building2, Tag, Plus, BarChart3, Shuffle, Phone } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -35,6 +36,7 @@ const campaignSchema = z.object({
   background_image_opacity: z.number().min(0.1).max(1).optional(),
   background_image_position: z.string().optional(),
   auto_distribute_channels: z.boolean().optional(),
+  channel_ids: z.array(z.string()).optional(),
   // Campos de rastreamento/pixels
   facebook_pixel_id: z.string().optional(),
   gtm_container_id: z.string().optional(),
@@ -115,6 +117,9 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
   const [autoDistributeChannels, setAutoDistributeChannels] = useState(
     campaign?.auto_distribute_channels !== false // default true
   );
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>(
+    campaign?.channels?.map(c => c.channel_id) || []
+  );
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CampaignFormData>({
     resolver: zodResolver(campaignSchema),
@@ -171,6 +176,7 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
       logo_size: logoSize,
       background_image_opacity: backgroundImageOpacity,
       auto_distribute_channels: autoDistributeChannels,
+      channel_ids: autoDistributeChannels ? selectedChannelIds : [],
     });
   };
 
@@ -519,12 +525,11 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-muted-foreground" />
                 <Label htmlFor="auto-distribute" className="font-medium cursor-pointer">
-                  Distribuir automaticamente entre canais conectados
+                  Ativar distribuição de canais
                 </Label>
               </div>
               <p className="text-sm text-muted-foreground">
-                Quando ativado, os leads serão atribuídos aleatoriamente aos canais WhatsApp conectados do seu tenant, 
-                mesmo que nenhum canal específico esteja configurado na campanha.
+                Quando ativado, os leads serão atribuídos aleatoriamente aos canais selecionados abaixo.
               </p>
             </div>
             <Switch
@@ -534,20 +539,84 @@ export function RedirectCampaignForm({ campaign, onSubmit, onCancel, isLoading }
             />
           </div>
 
-          {/* Info sobre canais disponíveis */}
-          <div className="text-sm text-muted-foreground">
-            <span className="font-medium">{whatsappChannels.length}</span> canal(is) conectado(s) disponível(is)
-            {whatsappChannels.length > 0 && (
-              <span className="ml-1">
-                ({whatsappChannels.map(c => c.name).join(', ')})
-              </span>
-            )}
-          </div>
+          {autoDistributeChannels && whatsappChannels.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">
+                  Selecione os canais para distribuição:
+                </Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedChannelIds(whatsappChannels.map(c => c.id))}
+                  >
+                    Selecionar todos
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedChannelIds([])}
+                  >
+                    Limpar
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="grid gap-2 max-h-48 overflow-y-auto border rounded-lg p-3">
+                {whatsappChannels.map((channel) => (
+                  <div 
+                    key={channel.id}
+                    className="flex items-center gap-3 p-2 rounded hover:bg-muted/50"
+                  >
+                    <Checkbox
+                      id={`channel-${channel.id}`}
+                      checked={selectedChannelIds.includes(channel.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedChannelIds([...selectedChannelIds, channel.id]);
+                        } else {
+                          setSelectedChannelIds(selectedChannelIds.filter(id => id !== channel.id));
+                        }
+                      }}
+                    />
+                    <Label 
+                      htmlFor={`channel-${channel.id}`}
+                      className="flex-1 cursor-pointer flex items-center gap-2"
+                    >
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{channel.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        ({channel.phone})
+                      </span>
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              
+              <p className="text-xs text-muted-foreground">
+                {selectedChannelIds.length} de {whatsappChannels.length} canais selecionados
+              </p>
+
+              {selectedChannelIds.length === 0 && (
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                  <strong>Atenção:</strong> Selecione pelo menos um canal para a distribuição funcionar.
+                </div>
+              )}
+            </div>
+          )}
+
+          {autoDistributeChannels && whatsappChannels.length === 0 && (
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+              <strong>Atenção:</strong> Nenhum canal WhatsApp conectado. Conecte um canal para usar a distribuição.
+            </div>
+          )}
 
           {!autoDistributeChannels && (
-            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
-              <strong>Atenção:</strong> Com a distribuição automática desativada, os leads só serão atribuídos 
-              a um canal se você configurar canais específicos na campanha através de outra interface.
+            <div className="p-3 rounded-lg bg-muted border text-muted-foreground text-sm">
+              A distribuição automática está desativada. Os leads não serão atribuídos automaticamente a nenhum canal.
             </div>
           )}
         </CardContent>
