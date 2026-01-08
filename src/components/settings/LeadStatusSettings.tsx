@@ -24,8 +24,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useLeadStatuses } from '@/hooks/useLeadStatuses';
-import { useCreateLeadStatus, useUpdateLeadStatus, useDeleteLeadStatus } from '@/hooks/useLeadKanban';
+import { useLeadStatuses, useCreateLeadStatus, useUpdateLeadStatus, useDeleteLeadStatus } from '@/hooks/useLeadKanban';
 
 const DEFAULT_COLORS = [
   '#3B82F6', // blue
