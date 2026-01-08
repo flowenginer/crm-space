@@ -494,3 +494,32 @@ export async function syncChannelStatus(
     return { success: false, error: error.message || 'Erro ao sincronizar status' };
   }
 }
+
+// =====================================================
+// FUNÇÃO - LOGOUT DE INSTÂNCIA (RESET ESTADO TRAVADO)
+// =====================================================
+export async function logoutChannelInstance(
+  channelId: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    console.log('[Instance Creator] Logging out instance for channel:', channelId);
+    
+    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+      body: {
+        action: 'logoutInstance',
+        channelId,
+      },
+    });
+
+    console.log('[Instance Creator] LogoutInstance Response:', data, error);
+
+    if (error) {
+      return { success: false, error: error.message || 'Erro ao fazer logout da instância' };
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error('[Instance Creator] LogoutInstance Error:', error);
+    return { success: false, error: error.message || 'Erro ao fazer logout da instância' };
+  }
+}
