@@ -57,4 +57,4 @@ export function GlobalSearchPopover({
 
 // Re-export types and hook for convenience
 export { useGlobalSearch, type SearchFilters } from '@/hooks/useGlobalSearch';
-export type { ContactSearchResult, MessageSearchResult } from '@/hooks/useGlobalSearch';
+export type { MessageSearchResult } from '@/hooks/useGlobalSearch';

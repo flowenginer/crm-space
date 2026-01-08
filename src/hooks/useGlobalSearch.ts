@@ -3,28 +3,22 @@ import { supabase } from '@/integrations/supabase/client';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useState, useCallback, useEffect } from 'react';
 
-export interface ContactSearchResult {
-  id: string;
-  full_name: string;
-  phone: string;
-  avatar_url: string | null;
-  conversationId?: string;
-}
-
 export interface MessageSearchResult {
   messageId: string;
   conversationId: string;
   contactId: string;
   contactName: string;
   contactPhone: string;
+  contactAvatarUrl: string | null;
   matchHighlight: string;
   content: string;
   createdAt: string;
   isFromMe: boolean;
+  /** Tipo de match: 'content' = termo encontrado na mensagem, 'contact' = mensagem pertence a contato que corresponde ao termo */
+  matchType: 'content' | 'contact';
 }
 
 export interface GlobalSearchResults {
-  contacts: ContactSearchResult[];
   messages: MessageSearchResult[];
 }
 
@@ -81,108 +75,38 @@ export function useGlobalSearch(
     setMessageLimit(MESSAGES_PER_PAGE);
   }, [debouncedSearchTerm]);
 
-  // Search contacts
-  const contactsQuery = useQuery({
-    queryKey: ['global-search-contacts', debouncedSearchTerm],
-    enabled: shouldSearch,
-    staleTime: 30000, // 30s cache
-    queryFn: async (): Promise<ContactSearchResult[]> => {
-      // Use the existing RPC for contact search
-      const { data: contacts, error } = await supabase
-        .rpc('search_contacts_unaccent', {
-          p_search_query: debouncedSearchTerm,
-          p_limit: 20,
-        });
-
-      if (error) {
-        console.error('Error searching contacts:', error);
-        return [];
-      }
-
-      if (!contacts || contacts.length === 0) return [];
-
-      // Get conversations for these contacts with filters applied
-      const contactIds = contacts.map((c: any) => c.id);
-      let query = supabase
-        .from('conversations')
-        .select('id, contact_id, assigned_to, department_id, channel_id, status, referral_source')
-        .in('contact_id', contactIds)
-        .order('last_message_at', { ascending: false });
-
-      // Apply filters to conversations
-      if (filters) {
-        if (filters.statusFilter && filters.statusFilter !== 'all') {
-          if (filters.statusFilter === 'active') {
-            query = query.in('status', ['open', 'pending']);
-          } else {
-            query = query.eq('status', filters.statusFilter);
-          }
-        }
-        if (filters.channelId) {
-          query = query.eq('channel_id', filters.channelId);
-        }
-        if (filters.departmentId) {
-          query = query.eq('department_id', filters.departmentId);
-        }
-        if (filters.agentId) {
-          query = query.eq('assigned_to', filters.agentId);
-        }
-        if (filters.assignment === 'mine' && filters.currentUserId) {
-          query = query.eq('assigned_to', filters.currentUserId);
-        }
-        if (filters.assignment === 'unassigned') {
-          query = query.is('assigned_to', null);
-        }
-        if (filters.origin && filters.origin !== 'all') {
-          query = query.eq('referral_source', filters.origin);
-        }
-      }
-
-      const { data: conversations } = await query;
-
-      // Map conversations to contacts - only include contacts with matching conversations
-      const convMap = new Map<string, string>();
-      conversations?.forEach((conv: any) => {
-        if (!convMap.has(conv.contact_id)) {
-          convMap.set(conv.contact_id, conv.id);
-        }
-      });
-
-      // If filters are applied, only return contacts that have matching conversations
-      const hasActiveFilters = filters && (
-        filters.assignment !== 'all' ||
-        filters.statusFilter !== 'all' ||
-        filters.channelId ||
-        filters.departmentId ||
-        filters.agentId ||
-        (filters.origin && filters.origin !== 'all')
-      );
-
-      const filteredContacts = hasActiveFilters
-        ? contacts.filter((c: any) => convMap.has(c.id))
-        : contacts;
-
-      return filteredContacts.map((contact: any) => ({
-        id: contact.id,
-        full_name: contact.full_name,
-        phone: contact.phone,
-        avatar_url: contact.avatar_url,
-        conversationId: convMap.get(contact.id),
-      }));
-    },
-  });
-
-  // Search messages with pagination and filters
+  // Unified search - messages by content OR by contact name/phone
   const messagesQuery = useQuery({
-    queryKey: ['global-search-messages', debouncedSearchTerm, messageLimit, filters],
+    queryKey: ['global-search-unified', debouncedSearchTerm, messageLimit, filters],
     enabled: shouldSearch,
     staleTime: 30000, // 30s cache
     queryFn: async (): Promise<{ messages: MessageSearchResult[]; hasMore: boolean }> => {
-      // First get messages using existing RPC
-      const { data, error } = await supabase
+      // Step 1: Find contacts matching the search term (by name or phone)
+      const { data: matchingContacts } = await supabase
+        .rpc('search_contacts_unaccent', {
+          p_search_query: debouncedSearchTerm,
+          p_limit: 50,
+        });
+
+      const matchingContactIds = new Set<string>(
+        (matchingContacts || []).map((c: any) => c.id)
+      );
+
+      // Create a map for quick contact data lookup
+      const contactDataMap = new Map<string, { full_name: string; phone: string; avatar_url: string | null }>();
+      (matchingContacts || []).forEach((c: any) => {
+        contactDataMap.set(c.id, {
+          full_name: c.full_name,
+          phone: c.phone,
+          avatar_url: c.avatar_url,
+        });
+      });
+
+      // Step 2: Get messages by content match using existing RPC
+      const { data: contentMessages, error } = await supabase
         .rpc('search_messages_global', {
           p_search_term: debouncedSearchTerm,
-          p_limit: 500, // Get more to filter client-side
+          p_limit: 300,
         });
 
       if (error) {
@@ -190,14 +114,80 @@ export function useGlobalSearch(
         return { messages: [], hasMore: false };
       }
 
-      if (!data) return { messages: [], hasMore: false };
+      // Step 3: Get recent messages from matching contacts (if any found)
+      let contactMessages: any[] = [];
+      if (matchingContactIds.size > 0) {
+        const { data: recentContactMsgs } = await supabase
+          .from('messages')
+          .select(`
+            id,
+            content,
+            created_at,
+            is_from_me,
+            conversation_id,
+            conversations!inner (
+              id,
+              contact_id,
+              assigned_to,
+              department_id,
+              channel_id,
+              status,
+              referral_source,
+              contacts!inner (
+                id,
+                full_name,
+                phone,
+                avatar_url,
+                lead_status
+              )
+            )
+          `)
+          .in('conversations.contact_id', Array.from(matchingContactIds))
+          .order('created_at', { ascending: false })
+          .limit(200);
 
-      // Apply filters client-side if needed
-      let filteredData = data;
+        contactMessages = (recentContactMsgs || []).map((msg: any) => ({
+          message_id: msg.id,
+          conversation_id: msg.conversation_id,
+          contact_id: msg.conversations?.contact_id,
+          contact_name: msg.conversations?.contacts?.full_name,
+          contact_phone: msg.conversations?.contacts?.phone,
+          contact_avatar_url: msg.conversations?.contacts?.avatar_url,
+          content: msg.content,
+          created_at: msg.created_at,
+          is_from_me: msg.is_from_me,
+          match_highlight: msg.content?.substring(0, 100),
+          _matchType: 'contact' as const,
+          _conversation: msg.conversations,
+        }));
+      }
+
+      // Step 4: Combine and deduplicate
+      const seenMessageIds = new Set<string>();
+      const allMessages: any[] = [];
+
+      // Add contact messages first (they have priority)
+      for (const msg of contactMessages) {
+        if (!seenMessageIds.has(msg.message_id)) {
+          seenMessageIds.add(msg.message_id);
+          allMessages.push({ ...msg, _matchType: 'contact' });
+        }
+      }
+
+      // Add content messages
+      for (const msg of contentMessages || []) {
+        if (!seenMessageIds.has(msg.message_id)) {
+          seenMessageIds.add(msg.message_id);
+          allMessages.push({ ...msg, _matchType: 'content' });
+        }
+      }
+
+      // Step 5: Apply filters
+      let filteredData = allMessages;
       
       if (filters) {
         // Get conversation details to apply filters
-        const conversationIds = [...new Set(data.map((msg: any) => msg.conversation_id))];
+        const conversationIds = [...new Set(allMessages.map((msg: any) => msg.conversation_id))];
         
         if (conversationIds.length > 0) {
           let convQuery = supabase
@@ -207,7 +197,6 @@ export function useGlobalSearch(
 
           // Apply filters to conversations query
           if (filters.statusFilter && filters.statusFilter !== 'all') {
-            // Handle 'active' as filter for 'open' or 'pending' status
             if (filters.statusFilter === 'active') {
               convQuery = convQuery.in('status', ['open', 'pending']);
             } else {
@@ -235,15 +224,12 @@ export function useGlobalSearch(
           if (filters.leadStatusFilter) {
             convQuery = convQuery.eq('contacts.lead_status', filters.leadStatusFilter);
           }
-          // Filtro de não lidas
           if (filters.isUnread) {
             convQuery = convQuery.eq('is_unread', true);
           }
-          // Filtro de não respondidas (última mensagem é do contato)
           if (filters.isNotReplied) {
             convQuery = convQuery.eq('last_message_is_from_me', false);
           }
-          // Filtro de cliente não respondeu (última mensagem é nossa)
           if (filters.isClientNotReplied) {
             convQuery = convQuery.eq('last_message_is_from_me', true);
           }
@@ -252,7 +238,7 @@ export function useGlobalSearch(
           const matchingIds = new Set(matchingConversations?.map((c: any) => c.id) || []);
           
           // Filter messages to only include those from matching conversations
-          filteredData = data.filter((msg: any) => matchingIds.has(msg.conversation_id));
+          filteredData = allMessages.filter((msg: any) => matchingIds.has(msg.conversation_id));
         }
       }
       
@@ -260,23 +246,31 @@ export function useGlobalSearch(
       if (filters?.sortOrder === 'oldest') {
         filteredData.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
       } else {
-        // Default: newest first
-        filteredData.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        // Default: newest first, but prioritize contact matches
+        filteredData.sort((a: any, b: any) => {
+          // Contact matches come first
+          if (a._matchType === 'contact' && b._matchType !== 'contact') return -1;
+          if (a._matchType !== 'contact' && b._matchType === 'contact') return 1;
+          // Then by date
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
       }
 
       const hasMore = filteredData.length > messageLimit;
       const messagesData = filteredData.slice(0, messageLimit);
 
-      const messages = messagesData.map((msg: any) => ({
+      const messages: MessageSearchResult[] = messagesData.map((msg: any) => ({
         messageId: msg.message_id,
         conversationId: msg.conversation_id,
         contactId: msg.contact_id,
         contactName: msg.contact_name,
         contactPhone: msg.contact_phone,
+        contactAvatarUrl: msg.contact_avatar_url || null,
         matchHighlight: msg.match_highlight || msg.content?.substring(0, 80),
         content: msg.content,
         createdAt: msg.created_at,
         isFromMe: msg.is_from_me,
+        matchType: msg._matchType || 'content',
       }));
 
       return { messages, hasMore };
@@ -287,18 +281,16 @@ export function useGlobalSearch(
   const loadMoreMessages = useCallback(async () => {
     setIsLoadingMore(true);
     setMessageLimit(prev => prev + MESSAGES_PER_PAGE);
-    // Wait a bit for the query to refetch
     setTimeout(() => setIsLoadingMore(false), 500);
   }, []);
 
   const results: GlobalSearchResults = {
-    contacts: contactsQuery.data || [],
     messages: messagesQuery.data?.messages || [],
   };
 
   const hasMoreMessages = messagesQuery.data?.hasMore || false;
-  const isLoading = contactsQuery.isLoading || messagesQuery.isLoading;
-  const hasResults = results.contacts.length > 0 || results.messages.length > 0;
+  const isLoading = messagesQuery.isLoading;
+  const hasResults = results.messages.length > 0;
 
   return {
     results,

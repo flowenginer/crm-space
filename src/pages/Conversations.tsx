@@ -3861,16 +3861,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           <SearchResultsList
             searchQuery={debouncedSearchQuery}
             isLoading={isSearchLoading}
-            contacts={searchResults.contacts}
             messages={searchResults.messages}
             hasMoreMessages={hasMoreSearchMessages}
             isLoadingMore={isLoadingMoreSearchMessages}
             onLoadMoreMessages={loadMoreSearchMessages}
-            onSelectContact={(contactId, conversationId) => {
-              if (conversationId) {
-                navigate(`/conversations?id=${conversationId}`);
-              }
-            }}
             onSelectMessage={(conversationId, messageId) => {
               navigate(`/conversations?id=${conversationId}`);
               // TODO: Scroll to message
