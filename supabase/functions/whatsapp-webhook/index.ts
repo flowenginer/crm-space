@@ -895,9 +895,12 @@ serve(async (req) => {
       });
     }
 
+    // Debug log para identificar eventos de conexão que podem estar sendo ignorados
+    console.log(`[Webhook DEBUG Connection] Provider: ${provider}, EventType: ${eventType}, PayloadEvent: ${typeof payload.event === 'string' ? payload.event : JSON.stringify(payload.event)}, PayloadType: ${payload.type}, EventTypeProp: ${payload.EventType}, Connected: ${payload.connected}, State: ${payload.state || payload.data?.state}`);
+
     // Handle connection status updates
     if (isConnectionEvent(provider, payload)) {
-      console.log(`[Webhook] Processing connection event for instance: ${instanceId}`);
+      console.log(`[Webhook] 🔌 Processing connection event for instance: ${instanceId}`);
       await handleConnectionEvent(supabase, provider, instanceId, payload);
       return new Response(JSON.stringify({ success: true, message: "Connection event processed" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -3242,13 +3245,56 @@ function isConnectionEvent(provider: WhatsAppProvider, payload: any): boolean {
              payload.event === "connection" ||
              payload.connected !== undefined;
     case "uazapi":
-      return payload.event === "connection.update" || 
-             payload.event === "status" ||
-             payload.type === "connection";
+      // UAZAPI V2: Detectar eventos de conexão por múltiplos campos e formatos
+      const uazapiEventStr = typeof payload.event === 'string' ? payload.event : "";
+      const uazapiEventLower = uazapiEventStr.toLowerCase();
+      const uazapiEventType = (payload.EventType || payload.eventType || "").toLowerCase();
+      const uazapiType = (payload.type || "").toLowerCase();
+      
+      const isUazapiConnection = 
+        // Eventos explícitos de conexão
+        uazapiEventLower === "connection.update" ||
+        uazapiEventLower === "connection_update" ||
+        uazapiEventLower === "status" ||
+        uazapiEventLower === "status.update" ||
+        uazapiEventLower === "instance.status" ||
+        // EventType field (UAZAPI V2 pode usar EventType com E maiúsculo)
+        uazapiEventType === "connection" ||
+        uazapiEventType === "connection.update" ||
+        uazapiEventType === "status" ||
+        uazapiEventType === "instance.status" ||
+        // Type field
+        uazapiType === "connection" ||
+        uazapiType === "status" ||
+        // Verificar campos que indicam mudança de estado
+        payload.connected !== undefined ||
+        payload.status === "disconnected" ||
+        payload.status === "connected" ||
+        // Verificar payload.data para estado
+        (payload.data?.state && ['open', 'close', 'connecting', 'disconnected', 'closed'].includes(payload.data.state));
+      
+      if (isUazapiConnection) {
+        console.log(`[Webhook] ✅ UAZAPI connection event detected! EventType: ${uazapiEventType}, event: ${uazapiEventLower}, state: ${payload.data?.state || payload.state}`);
+      }
+      
+      return isUazapiConnection;
     case "evolution":
       const evolutionConnEventStr = typeof payload.event === 'string' ? payload.event : "";
       const evolutionConnEvent = evolutionConnEventStr.toLowerCase().replace(/_/g, '.');
-      return evolutionConnEvent === "connection.update";
+      
+      const isEvolutionConnection = 
+        evolutionConnEvent === "connection.update" ||
+        evolutionConnEvent === "connection_update" ||
+        evolutionConnEvent === "status.instance" ||
+        payload.state === "open" ||
+        payload.state === "close" ||
+        payload.state === "connecting";
+      
+      if (isEvolutionConnection) {
+        console.log(`[Webhook] ✅ Evolution connection event detected! Event: ${evolutionConnEvent}, state: ${payload.state}`);
+      }
+      
+      return isEvolutionConnection;
     default:
       return false;
   }
@@ -3268,20 +3314,50 @@ async function handleConnectionEvent(
   let newStatus: "connected" | "disconnected" = "disconnected";
   let ownerPhone: string | null = null;
 
+  // Normalizar estados para connected/disconnected
+  const openStates = ["open", "connected", "online", "ready"];
+  const closeStates = ["close", "closed", "disconnected", "offline", "logout", "conflict"];
+
   switch (provider) {
     case "zapi":
       newStatus = payload.connected === true ? "connected" : "disconnected";
       ownerPhone = payload.phone || payload.owner;
       break;
     case "uazapi":
-      const uazapiState = payload.data?.state || payload.state;
-      newStatus = uazapiState === "open" || uazapiState === "connected" ? "connected" : "disconnected";
+      // UAZAPI pode enviar estado em vários formatos
+      const uazapiState = 
+        payload.data?.state || 
+        payload.state || 
+        payload.status ||
+        payload.connectionState ||
+        (payload.connected === true ? "open" : payload.connected === false ? "close" : null);
+      
+      console.log(`[Webhook] UAZAPI connection - Raw state values: data.state=${payload.data?.state}, state=${payload.state}, status=${payload.status}, connected=${payload.connected}`);
+      
+      if (uazapiState && openStates.includes(uazapiState.toLowerCase())) {
+        newStatus = "connected";
+      } else if (uazapiState && closeStates.includes(uazapiState.toLowerCase())) {
+        newStatus = "disconnected";
+      } else {
+        console.log(`[Webhook] ⚠️ Unknown UAZAPI state: ${uazapiState}, assuming disconnected`);
+        newStatus = "disconnected";
+      }
+      
       ownerPhone = payload.data?.wuid?.replace("@s.whatsapp.net", "") || 
-                   payload.owner?.replace("@s.whatsapp.net", "");
+                   payload.owner?.replace("@s.whatsapp.net", "") ||
+                   payload.phone;
       break;
     case "evolution":
       const evolutionState = payload.data?.state || payload.state;
-      newStatus = evolutionState === "open" ? "connected" : "disconnected";
+      
+      if (evolutionState && openStates.includes(evolutionState.toLowerCase())) {
+        newStatus = "connected";
+      } else if (evolutionState && closeStates.includes(evolutionState.toLowerCase())) {
+        newStatus = "disconnected";
+      } else {
+        newStatus = "disconnected";
+      }
+      
       ownerPhone = payload.sender?.replace("@s.whatsapp.net", "") || 
                    payload.data?.wuid?.replace("@s.whatsapp.net", "") ||
                    payload.data?.owner?.replace("@s.whatsapp.net", "");
@@ -3292,7 +3368,7 @@ async function handleConnectionEvent(
 
   const { data: channel, error: channelError } = await supabase
     .from("whatsapp_channels")
-    .select("id, name, phone, status")
+    .select("id, name, phone, status, tenant_id")
     .eq("instance_id", instanceId)
     .eq("is_deleted", false)
     .single();
@@ -3302,6 +3378,9 @@ async function handleConnectionEvent(
     return;
   }
 
+  // Verificar se houve mudança de status
+  const statusChanged = channel.status !== newStatus;
+  
   const updateData: any = {
     status: newStatus,
     last_sync_at: new Date().toISOString(),
@@ -3320,6 +3399,29 @@ async function handleConnectionEvent(
     console.error(`[Webhook] Error updating channel status:`, updateError);
   } else {
     console.log(`[Webhook] Channel ${channel.name} status updated to ${newStatus}`);
+    
+    // Registrar evento de mudança de status (especialmente desconexões)
+    if (statusChanged && channel.tenant_id) {
+      try {
+        await supabase.from("whatsapp_channel_events").insert({
+          channel_id: channel.id,
+          tenant_id: channel.tenant_id,
+          event_type: newStatus === "connected" ? "connected" : "disconnected",
+          previous_status: channel.status,
+          new_status: newStatus,
+          details: {
+            ownerPhone,
+            instanceId,
+            provider,
+            timestamp: new Date().toISOString(),
+          }
+        });
+        
+        console.log(`[Webhook] 📢 Channel event logged: ${channel.name} ${channel.status} -> ${newStatus}`);
+      } catch (eventError) {
+        console.error(`[Webhook] Error logging channel event:`, eventError);
+      }
+    }
   }
 }
 

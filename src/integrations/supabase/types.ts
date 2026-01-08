@@ -9756,6 +9756,67 @@ export type Database = {
           },
         ]
       }
+      whatsapp_channel_events: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          channel_id: string
+          created_at: string | null
+          details: Json | null
+          event_type: string
+          id: string
+          new_status: string
+          previous_status: string | null
+          tenant_id: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          channel_id: string
+          created_at?: string | null
+          details?: Json | null
+          event_type: string
+          id?: string
+          new_status: string
+          previous_status?: string | null
+          tenant_id: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          channel_id?: string
+          created_at?: string | null
+          details?: Json | null
+          event_type?: string
+          id?: string
+          new_status?: string
+          previous_status?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_channel_events_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_channel_events_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_channel_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_channels: {
         Row: {
           battery_level: number | null

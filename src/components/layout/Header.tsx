@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
-import { Search, Bell, Calendar, Menu, MessageCircle, Clock, UserPlus, AlertTriangle, ArrowRightLeft, CheckCheck, X, Crown, Building2 } from 'lucide-react';
+import { Search, Bell, Calendar, Menu, MessageCircle, Clock, UserPlus, AlertTriangle, ArrowRightLeft, CheckCheck, X, Crown, Building2, WifiOff } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useCurrentUser, useCurrentUserProfile } from '@/hooks/useCurrentUser';
 import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
 import { useUserStore } from '@/store/userStore';
 
@@ -38,11 +38,12 @@ interface SearchResult {
 
 interface Notification {
   id: string;
-  type: 'assignment' | 'transfer' | 'sla';
+  type: 'assignment' | 'transfer' | 'sla' | 'channel_disconnect';
   conversationId: string;
   contactName: string;
   message: string;
   timestamp: string;
+  channelEventId?: string; // Para notificações de canal
 }
 
 const DISMISSED_NOTIFICATIONS_KEY = 'dismissed_notifications_v2';
@@ -162,17 +163,20 @@ export function Header({ title, onMenuClick }: HeaderProps) {
 
   // OTIMIZAÇÃO: Usa hook centralizado
   const { data: currentUser } = useCurrentUser();
+  const { data: currentUserProfile } = useCurrentUserProfile();
   const { data: isSuperAdmin } = useCurrentUserIsSuperAdmin();
   const tenant = useUserStore((state) => state.tenant);
 
   // Fetch useful notifications: assignments, transfers, SLA alerts
   const { data: notifications = [] } = useQuery({
-    queryKey: ['header-notifications', currentUser?.id],
+    queryKey: ['header-notifications', currentUser?.id, currentUserProfile?.role],
     staleTime: 60000, // OTIMIZAÇÃO: 1 minuto de cache
     refetchOnWindowFocus: false,
     enabled: !!currentUser?.id,
     queryFn: async () => {
       if (!currentUser?.id) return [];
+      
+      const userRole = currentUserProfile?.role;
 
       const allNotifications: Notification[] = [];
 
@@ -254,10 +258,52 @@ export function Header({ title, onMenuClick }: HeaderProps) {
         });
       });
 
+      // 4. Canais WhatsApp desconectados (últimas 24h) - apenas para admins
+      const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+      if (isAdmin) {
+        const { data: channelEvents } = await supabase
+          .from('whatsapp_channel_events')
+          .select(`
+            id,
+            created_at,
+            event_type,
+            new_status,
+            channel_id
+          `)
+          .eq('event_type', 'disconnected')
+          .is('acknowledged_at', null)
+          .gte('created_at', oneDayAgo)
+          .order('created_at', { ascending: false })
+          .limit(5);
+        
+        // Buscar nomes dos canais
+        if (channelEvents && channelEvents.length > 0) {
+          const channelIds = channelEvents.map(e => e.channel_id);
+          const { data: channels } = await supabase
+            .from('whatsapp_channels')
+            .select('id, name')
+            .in('id', channelIds);
+          
+          const channelMap = new Map(channels?.map(c => [c.id, c.name]) || []);
+          
+          channelEvents.forEach(event => {
+            allNotifications.push({
+              id: `channel-${event.id}`,
+              type: 'channel_disconnect',
+              conversationId: '',
+              contactName: channelMap.get(event.channel_id) || 'Canal WhatsApp',
+              message: '⚠️ Canal desconectado! Reconecte para continuar recebendo mensagens.',
+              timestamp: event.created_at,
+              channelEventId: event.id,
+            });
+          });
+        }
+      }
+
       // Sort all by timestamp and limit
       return allNotifications
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        .slice(0, 10);
+        .slice(0, 15);
     },
     refetchInterval: 60000, // Refresh every minute
   });
@@ -372,8 +418,28 @@ export function Header({ title, onMenuClick }: HeaderProps) {
     }
   };
 
-  const handleNotificationClick = (notification: Notification) => {
+  const handleNotificationClick = async (notification: Notification) => {
     setShowNotifications(false);
+    
+    // Se for notificação de canal desconectado, marcar como reconhecida e ir para configurações
+    if (notification.type === 'channel_disconnect' && notification.channelEventId) {
+      try {
+        await supabase
+          .from('whatsapp_channel_events')
+          .update({ 
+            acknowledged_at: new Date().toISOString(),
+            acknowledged_by: currentUser?.id 
+          })
+          .eq('id', notification.channelEventId);
+        
+        queryClient.invalidateQueries({ queryKey: ['header-notifications'] });
+      } catch (error) {
+        console.error('Error acknowledging channel event:', error);
+      }
+      navigate('/settings/channels');
+      return;
+    }
+    
     navigate(`/conversations?id=${notification.conversationId}`);
   };
 
@@ -394,6 +460,8 @@ export function Header({ title, onMenuClick }: HeaderProps) {
         return <ArrowRightLeft size={14} className="text-blue-500" />;
       case 'sla':
         return <AlertTriangle size={14} className="text-amber-500" />;
+      case 'channel_disconnect':
+        return <WifiOff size={14} className="text-destructive" />;
       default:
         return <Bell size={14} className="text-muted-foreground" />;
     }
@@ -407,6 +475,8 @@ export function Header({ title, onMenuClick }: HeaderProps) {
         return 'from-blue-500 to-cyan-500';
       case 'sla':
         return 'from-amber-500 to-orange-500';
+      case 'channel_disconnect':
+        return 'from-destructive to-red-600';
       default:
         return 'from-purple-500 to-pink-500';
     }
