@@ -435,9 +435,10 @@ interface ConversationItemProps {
   isSelectionMode?: boolean;
   isChecked?: boolean;
   onToggleCheck?: () => void;
+  channels?: Array<{ id: string; status: string; name: string }>;
 }
 
-function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewTransfer, onClick, onTogglePin, isSelectionMode, isChecked, onToggleCheck }: ConversationItemProps) {
+function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewTransfer, onClick, onTogglePin, isSelectionMode, isChecked, onToggleCheck, channels }: ConversationItemProps) {
   const contactName = conversation.contact?.full_name || 'Contato';
   const isOnline = conversation.contact?.is_online || false;
   const isUnread = conversation.is_unread || false;
@@ -584,14 +585,35 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
           </p>
 
           <div className="flex items-center justify-between gap-2">
-            {/* Channel Badge */}
+            {/* Channel Badge with Status */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              <div className="flex items-center gap-1 px-2 py-0.5 bg-green-500/20 rounded-full">
-                <MessageCircle size={12} className="text-green-500" />
-                <span className="text-xs text-green-500 font-medium truncate max-w-[80px]">
-                  {conversation.channel?.name || 'Chat'}
-                </span>
-              </div>
+              {(() => {
+                const channelData = channels?.find(c => c.id === conversation.channel_id);
+                const isConnected = channelData?.status === 'connected';
+                const statusLabel = isConnected ? 'Ativo' : 'Inativo';
+                
+                return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className={cn(
+                        "flex items-center gap-1 px-2 py-0.5 rounded-full cursor-default",
+                        isConnected ? "bg-green-500/20" : "bg-red-500/20"
+                      )}>
+                        <MessageCircle size={12} className={isConnected ? "text-green-500" : "text-red-500"} />
+                        <span className={cn(
+                          "text-xs font-medium truncate max-w-[80px]",
+                          isConnected ? "text-green-500" : "text-red-500"
+                        )}>
+                          {conversation.channel?.name || 'Chat'}
+                        </span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <p>{statusLabel}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })()}
               
               {/* Assignee Badge */}
               {assigneeName && (
@@ -3901,6 +3923,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 isSelectionMode={isConversationSelectionMode}
                 isChecked={selectedConversationIds.has(conv.id)}
                 onToggleCheck={() => toggleConversationSelection(conv.id)}
+                channels={channels}
               />
             ))}
             {/* Loading indicator for more conversations */}
