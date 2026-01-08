@@ -89,12 +89,12 @@ export function WaitingCard() {
     <>
       <button
         onClick={() => setModalOpen(true)}
-        className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all w-full text-left ${
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all w-full text-left border ${
           hasCritical 
-            ? 'bg-destructive/10 border border-destructive/30 hover:bg-destructive/20' 
+            ? 'animate-blink-red' 
             : hasWarning 
-              ? 'bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20'
-              : 'bg-muted/50 hover:bg-muted border border-transparent'
+              ? 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20'
+              : 'bg-muted/50 hover:bg-muted border-transparent'
         }`}
       >
         <Clock 
