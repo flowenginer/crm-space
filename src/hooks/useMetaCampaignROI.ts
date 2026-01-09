@@ -38,9 +38,6 @@ interface DateRange {
   to: Date;
 }
 
-// Constante para status de conversão
-const CONVERSION_STATUS = '07 - Pedido Fechado';
-
 // Função para ajustar data para UTC considerando Brasília (UTC-3)
 function toUTCDate(date: Date, isEndOfDay: boolean = false): string {
   const d = new Date(date);
@@ -58,6 +55,33 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['meta_campaign_roi', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async (): Promise<{ campaigns: CampaignROIData[]; summary: ROISummary }> => {
+      // Buscar configurações de conversão dinâmicas
+      const { data: settings } = await supabase
+        .from('company_settings')
+        .select('conversion_status_ids')
+        .limit(1)
+        .single();
+
+      const conversionStatusIds = settings?.conversion_status_ids || [];
+
+      // Buscar nomes dos status de conversão
+      let conversionStatusNames = new Set<string>();
+      if (conversionStatusIds.length > 0) {
+        const { data: conversionStatuses } = await supabase
+          .from('lead_statuses')
+          .select('name')
+          .in('id', conversionStatusIds);
+        
+        conversionStatuses?.forEach(s => {
+          if (s.name) conversionStatusNames.add(s.name);
+        });
+      }
+
+      // Fallback para status padrão se nenhum configurado
+      if (conversionStatusNames.size === 0) {
+        conversionStatusNames.add('07 - Pedido Fechado');
+      }
+
       // Buscar TODAS campanhas (não apenas ativas) para incluir leads de campanhas pausadas
       const { data: campaigns } = await supabase
         .from('meta_campaigns')
@@ -170,7 +194,7 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
         crmDataMap[campaignId].leads++;
 
         const status = contact?.lead_status || 'new';
-        if (status === CONVERSION_STATUS) {
+        if (conversionStatusNames.has(status)) {
           crmDataMap[campaignId].conversions++;
           crmDataMap[campaignId].revenue += (contact?.negotiated_value || 0);
         }
