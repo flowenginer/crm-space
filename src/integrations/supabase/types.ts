@@ -11135,7 +11135,7 @@ export type Database = {
         Returns: undefined
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
-      is_admin_or_supervisor: { Args: { _user_id: string }; Returns: boolean }
+      is_admin_or_supervisor: { Args: { _user_id?: string }; Returns: boolean }
       is_conversation_owner: {
         Args: { _conversation_id: string; _user_id: string }
         Returns: boolean
