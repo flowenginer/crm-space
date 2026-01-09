@@ -823,10 +823,10 @@ export default function Contacts() {
         </div>
       ) : (
         /* Contacts Table */
-        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden flex flex-col max-h-[calc(100vh-280px)]">
+          <div className="overflow-auto flex-1">
             <table className="w-full">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-muted/50">
                 <tr className="bg-muted/50 border-b border-border">
                   <th className="w-12 px-4 py-4">
                     <Checkbox
@@ -1065,7 +1065,7 @@ export default function Contacts() {
 
           {/* Pagination */}
           {filteredCount > 0 && (
-            <div className="px-6 py-4 border-t border-border flex items-center justify-between">
+            <div className="px-6 py-4 border-t border-border flex items-center justify-between shrink-0 bg-card">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span>Mostrando</span>
                 <select
