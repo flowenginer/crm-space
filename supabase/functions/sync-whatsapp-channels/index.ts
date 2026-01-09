@@ -54,41 +54,67 @@ function normalizeBaseUrl(url: string): string {
 }
 
 // Get UAZAPI Status
-// FIX: UAZAPI pode retornar `state` como string ("open"/"connected") ou objeto ({ connected, loggedIn })
+// UAZAPI retorna: { instance: { status: "connected", owner: "55..." }, status: { connected: true, jid: "...", loggedIn: true } }
 async function getUAZAPIStatus(baseUrl: string, instanceToken: string) {
   const normalizedUrl = normalizeBaseUrl(baseUrl);
   
   try {
     const url = `${normalizedUrl}/instance/status`;
+    console.log(`[UAZAPI] Checking status at: ${url}`);
+    
     const response = await fetch(url, {
       headers: { 'token': instanceToken },
     });
     
     if (!response.ok) {
+      console.log(`[UAZAPI] HTTP error: ${response.status}`);
       return { success: false, error: `HTTP ${response.status}` };
     }
     
     const data = await response.json();
+    console.log(`[UAZAPI] Response keys:`, Object.keys(data));
     
-    // State pode ser string ou objeto
-    const state = data.state as any;
-    const statusStr = data.status;
+    // UAZAPI pode retornar a estrutura de diferentes formas:
+    // 1. { instance: { status: "connected", owner: "..." }, status: { connected: true, jid: "..." } }
+    // 2. { status: "connected", state: "open", owner: "..." }
     
-    const stateIsObject = !!state && typeof state === 'object';
-    const stateConnected = stateIsObject && (state.connected === true || state.loggedIn === true);
-    const stateStr = typeof state === 'string' ? state : undefined;
+    let isConnected = false;
+    let candidateJid: string | undefined;
     
-    const isConnected =
-      statusStr === 'connected' ||
-      stateConnected ||
-      stateStr === 'open' ||
-      stateStr === 'connected';
+    // Verificar estrutura nova: data.status é objeto { connected, loggedIn, jid }
+    if (data.status && typeof data.status === 'object') {
+      isConnected = data.status.connected === true || data.status.loggedIn === true;
+      candidateJid = data.status.jid;
+      console.log(`[UAZAPI] Status object - connected: ${isConnected}, jid: ${candidateJid}`);
+    }
     
-    // Extrair JID/telefone
-    const candidateJid: string | undefined =
-      data.owner ||
-      data.ownerJid ||
-      (stateIsObject && typeof state.jid === 'string' ? state.jid : undefined);
+    // Verificar estrutura instance.status como string
+    if (!isConnected && data.instance?.status) {
+      isConnected = data.instance.status === 'connected';
+      console.log(`[UAZAPI] Instance status: ${data.instance.status}`);
+    }
+    
+    // Verificar estado legado
+    if (!isConnected && data.state) {
+      if (typeof data.state === 'string') {
+        isConnected = data.state === 'open' || data.state === 'connected';
+      } else if (typeof data.state === 'object') {
+        isConnected = data.state.connected === true || data.state.loggedIn === true;
+        if (!candidateJid && data.state.jid) candidateJid = data.state.jid;
+      }
+    }
+    
+    // Verificar status como string (estrutura antiga)
+    if (!isConnected && typeof data.status === 'string') {
+      isConnected = data.status === 'connected';
+    }
+    
+    // Extrair JID/telefone de várias fontes possíveis
+    if (!candidateJid) {
+      candidateJid = data.instance?.owner || data.owner || data.ownerJid;
+    }
+    
+    console.log(`[UAZAPI] Final result - connected: ${isConnected}, jid: ${candidateJid}`);
     
     return { 
       success: true, 
@@ -96,6 +122,7 @@ async function getUAZAPIStatus(baseUrl: string, instanceToken: string) {
       jid: candidateJid,
     };
   } catch (err: any) {
+    console.error(`[UAZAPI] Error:`, err.message);
     return { success: false, error: err.message };
   }
 }
