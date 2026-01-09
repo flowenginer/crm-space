@@ -3316,7 +3316,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           isMobile ? (mobilePanel === 'list' ? 'flex w-full' : 'hidden') : 'flex',
         isLeftPanelCollapsed 
           ? 'w-[60px] min-w-[60px] max-w-[60px]' 
-          : 'w-full md:w-[360px] md:min-w-[320px] md:max-w-[360px] xl:w-[420px] xl:min-w-[380px] xl:max-w-[420px] 2xl:w-[500px] 2xl:min-w-[440px] 2xl:max-w-[500px]'
+          : 'w-full md:w-[380px] md:min-w-[340px] md:max-w-[380px] xl:w-[450px] xl:min-w-[400px] xl:max-w-[450px] 2xl:w-[520px] 2xl:min-w-[460px] 2xl:max-w-[520px]'
       )}>
         {/* Header - Only when expanded */}
         {!isLeftPanelCollapsed && (
@@ -3575,7 +3575,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </div>
           )}
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {/* Status Filter */}
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
               <SelectTrigger className="flex-1 h-9 rounded-lg text-sm">
