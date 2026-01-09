@@ -78,6 +78,7 @@ import {
 import { useProviders, useConfiguredProviders, useDefaultSharedProvider } from '@/hooks/useProviders';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useCreateChannelWithInstance, useRefreshQRCode, useSyncChannelStatus } from '@/hooks/useCreateChannelWithInstance';
+import { useAutoSyncChannelStatus } from '@/hooks/useAutoSyncChannelStatus';
 import { whatsappService } from '@/lib/whatsapp';
 import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, reconfigureChannelWebhook, configureChannelFull, fetchChannelWebhook, syncChannelStatus, ProviderInstance } from '@/lib/whatsapp/instance-creator';
 import { Link } from 'react-router-dom';
@@ -133,6 +134,13 @@ export default function WhatsAppChannels() {
 
   const connectedCount = channels.filter(c => c.status === 'connected').length;
   const totalSlots = channels.length;
+
+  // Sincronização automática de status ao carregar a página
+  const { isAutoSyncing, syncProgress: autoSyncProgress } = useAutoSyncChannelStatus(
+    channels,
+    !isLoading && channels.length > 0,
+    refetchChannels
+  );
 
   // Supabase Realtime subscription for channel status updates
   useEffect(() => {
@@ -820,10 +828,18 @@ export default function WhatsAppChannels() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Indicador de sincronização automática */}
+          {isAutoSyncing && autoSyncProgress && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 size={14} className="animate-spin" />
+              <span>Sincronizando {autoSyncProgress.current}/{autoSyncProgress.total}...</span>
+            </div>
+          )}
+          
           <Button
             variant="outline"
             onClick={handleSyncInstances}
-            disabled={isSyncing || channels.length === 0}
+            disabled={isSyncing || isAutoSyncing || channels.length === 0}
             title="Sincronizar status de todos os canais"
           >
             {isSyncing ? (
