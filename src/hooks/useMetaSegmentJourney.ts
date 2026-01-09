@@ -54,6 +54,33 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['meta_segment_journey', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async (): Promise<SegmentJourneyData[]> => {
+      // Buscar configurações de conversão dinâmicas
+      const { data: settings } = await supabase
+        .from('company_settings')
+        .select('conversion_status_ids')
+        .limit(1)
+        .single();
+
+      const conversionStatusIds = settings?.conversion_status_ids || [];
+
+      // Buscar nomes dos status de conversão
+      let conversionStatusNames = new Set<string>();
+      if (conversionStatusIds.length > 0) {
+        const { data: conversionStatuses } = await supabase
+          .from('lead_statuses')
+          .select('name')
+          .in('id', conversionStatusIds);
+        
+        conversionStatuses?.forEach(s => {
+          if (s.name) conversionStatusNames.add(s.name);
+        });
+      }
+
+      // Fallback para status padrão se nenhum configurado
+      if (conversionStatusNames.size === 0) {
+        conversionStatusNames.add('07 - Pedido Fechado');
+      }
+
       // Buscar todos os segmentos
       const { data: segments } = await supabase
         .from('segments')
@@ -206,7 +233,7 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
         if (status.includes('04 - Layout') || status.toLowerCase().includes('layout')) {
           breakdownData.layoutCount++;
         }
-        if (status.includes('07 - Pedido Fechado') || status.toLowerCase().includes('pedido fechado')) {
+        if (conversionStatusNames.has(status)) {
           breakdownData.pedidoFechadoCount++;
         }
       });

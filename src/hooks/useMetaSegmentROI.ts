@@ -26,8 +26,6 @@ interface DateRange {
   to: Date;
 }
 
-const CONVERSION_STATUS = '07 - Pedido Fechado';
-
 function toUTCDate(date: Date, isEndOfDay: boolean = false): string {
   const d = new Date(date);
   if (isEndOfDay) {
@@ -52,6 +50,33 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['meta_segment_roi', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async (): Promise<SegmentROIData[]> => {
+      // Buscar configurações de conversão dinâmicas
+      const { data: settings } = await supabase
+        .from('company_settings')
+        .select('conversion_status_ids')
+        .limit(1)
+        .single();
+
+      const conversionStatusIds = settings?.conversion_status_ids || [];
+
+      // Buscar nomes dos status de conversão
+      let conversionStatusNames = new Set<string>();
+      if (conversionStatusIds.length > 0) {
+        const { data: conversionStatuses } = await supabase
+          .from('lead_statuses')
+          .select('name')
+          .in('id', conversionStatusIds);
+        
+        conversionStatuses?.forEach(s => {
+          if (s.name) conversionStatusNames.add(s.name);
+        });
+      }
+
+      // Fallback para status padrão se nenhum configurado
+      if (conversionStatusNames.size === 0) {
+        conversionStatusNames.add('07 - Pedido Fechado');
+      }
+
       // Buscar campanhas (todas, não apenas ativas)
       const { data: campaigns } = await supabase
         .from('meta_campaigns')
@@ -165,7 +190,7 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
         crmDataMap[segment].leads++;
 
         const status = contact?.lead_status || 'new';
-        if (status === CONVERSION_STATUS) {
+        if (conversionStatusNames.has(status)) {
           crmDataMap[segment].conversions++;
           crmDataMap[segment].revenue += (contact?.negotiated_value || 0);
         }
