@@ -1708,11 +1708,13 @@ serve(async (req) => {
         variations.push(`${ddd}${without9}`);
       }
       
-      // CORREÇÃO: Se tem 8 dígitos após DDD e começa com [6-9], é celular que perdeu o 9
-      // Gerar variação com 9 prefixado
-      if (rest.length === 8 && /^[6-9]/.test(rest)) {
+      // CORREÇÃO: Se tem 8 dígitos após DDD, pode ser celular que perdeu o 9º dígito
+      // Celulares começam com 6-9, telefones fixos com 2-5
+      // SEMPRE gerar variação com 9 prefixado para celulares (exceto fixos)
+      if (rest.length === 8 && !/^[2-5]/.test(rest)) {
         variations.push(`55${ddd}9${rest}`);
         variations.push(`${ddd}9${rest}`);
+        console.log(`[Webhook] Generated 9th digit variation for: ${ddd}${rest} -> ${ddd}9${rest}`);
       }
       
       // Handle extra trailing zeros (sometimes added in calls)
@@ -1756,13 +1758,18 @@ serve(async (req) => {
       }
       
       // For Brazilian phones with 12 digits (55 + DDD + 8 digits)
-      // Add 9 if the 8-digit block starts with [6-9] (mobile number missing 9th digit)
+      // CORREÇÃO: Celulares BR DEVEM ter 9 dígitos após DDD
+      // Se tem 8 dígitos e NÃO é telefone fixo (começa com 2-5), adiciona o 9
+      // Isso corrige números do Meta Ads que chegam sem o 9º dígito
+      // Ex: 554896109082 -> 5548996109082 (96109082 vira 996109082)
       if (digits.startsWith('55') && digits.length === 12) {
         const ddd = digits.slice(2, 4);
         const rest = digits.slice(4);
-        if (rest.length === 8 && /^[6-9]/.test(rest)) {
+        // Telefones fixos começam com 2, 3, 4, 5 - não adicionar 9
+        // Celulares começam com 6, 7, 8, 9 - SEMPRE adicionar 9
+        if (rest.length === 8 && !/^[2-5]/.test(rest)) {
           digits = `55${ddd}9${rest}`;
-          console.log(`[Webhook] Normalized phone: added 9th digit -> ${digits}`);
+          console.log(`[Webhook] Normalized phone: added 9th digit -> ${digits} (original: ${phone})`);
         }
       }
       
