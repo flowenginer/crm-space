@@ -148,11 +148,38 @@ export default function MetaAdsManager() {
     }
   };
 
-  // Prepare pie chart data
-  const pieData = campaigns?.slice(0, 6).map(c => ({
-    name: c.name.length > 20 ? c.name.substring(0, 20) + '...' : c.name,
-    value: c.insights?.spend || 0
-  })) || [];
+  // Prepare pie chart data - ordenado por gasto e com categoria "Outras"
+  const pieData = useMemo(() => {
+    if (!campaigns) return [];
+    
+    // Ordenar por gasto (maior primeiro) e filtrar campanhas sem gasto
+    const sortedCampaigns = [...campaigns]
+      .filter(c => (c.insights?.spend || 0) > 0)
+      .sort((a, b) => (b.insights?.spend || 0) - (a.insights?.spend || 0));
+    
+    // Pegar as 6 maiores
+    const topCampaigns = sortedCampaigns.slice(0, 6);
+    
+    // Calcular "Outras" se houver mais campanhas
+    const otherSpend = sortedCampaigns
+      .slice(6)
+      .reduce((sum, c) => sum + (c.insights?.spend || 0), 0);
+    
+    const result = topCampaigns.map(c => ({
+      name: c.name.length > 25 ? c.name.substring(0, 25) + '...' : c.name,
+      value: c.insights?.spend || 0
+    }));
+    
+    // Adicionar "Outras" se houver gastos de outras campanhas
+    if (otherSpend > 0) {
+      result.push({
+        name: 'Outras campanhas',
+        value: otherSpend
+      });
+    }
+    
+    return result;
+  }, [campaigns]);
 
   // Prepare daily chart data
   const chartData = dailyData?.map(d => ({
