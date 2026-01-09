@@ -2137,8 +2137,19 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   useEffect(() => {
     prevMessagesLengthRef.current = 0;
     isLoadingOlderRef.current = false;
-    scrollToBottom();
   }, [selectedConversationId]);
+
+  // Scroll to bottom when messages finish loading for new conversation
+  useEffect(() => {
+    if (selectedConversationId && allChatItems.length > 0 && !messagesLoading) {
+      // Use requestAnimationFrame + multiple attempts to ensure DOM is ready
+      requestAnimationFrame(() => {
+        scrollToBottom(true);
+        setTimeout(() => scrollToBottom(true), 150);
+        setTimeout(() => scrollToBottom(true), 400);
+      });
+    }
+  }, [selectedConversationId, messagesLoading, allChatItems.length > 0]);
 
   // Infinite scroll handler for conversations list
   const handleConversationListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -4705,14 +4716,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 </>
               )}
               
-              {/* Floating Scroll to Bottom Button */}
+              {/* Floating Scroll to Bottom Button - WhatsApp style */}
               {showScrollToBottom && (
                 <button
                   onClick={() => scrollToBottom()}
-                  className="absolute bottom-4 right-4 z-40 p-3 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-all hover:scale-105 active:scale-95"
+                  className="absolute bottom-20 right-4 z-40 p-2.5 bg-card text-muted-foreground rounded-full shadow-lg border border-border hover:bg-muted transition-all hover:scale-105 active:scale-95"
                   title="Ir para o final"
                 >
-                  <ChevronDown size={20} />
+                  <ChevronDown size={22} strokeWidth={2.5} />
                 </button>
               )}
             </div>
