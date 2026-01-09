@@ -165,14 +165,15 @@ export function ConversationPreviewDialog({
         `)
         .eq('conversation_id', conversationId)
         .eq('is_deleted', false)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false }) // Buscar as mais recentes primeiro
         .limit(100);
       if (error) throw error;
       console.log('[Preview] Loaded messages count:', data?.length || 0);
+      // Reverter para ordem cronológica (antigas → recentes) para exibição
       return (data || []).map(m => ({
         ...m,
         reactions: (m.reactions as unknown as MessageReaction[]) || null,
-      })) as PreviewMessage[];
+      })).reverse() as PreviewMessage[];
     },
     enabled: !!conversationId && isOpen,
     staleTime: 0, // Sempre considerar dados como stale
