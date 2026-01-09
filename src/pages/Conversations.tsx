@@ -4550,16 +4550,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               </div>
             )}
 
-            {/* Messages Area with Drag & Drop */}
-            <div 
-              ref={messagesContainerRef}
-              className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 space-y-4 relative"
-              onScroll={handleMessagesScroll}
-              onDragEnter={handleDragEnter}
-              onDragLeave={handleDragLeave}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-            >
+            {/* Messages Area Wrapper - relative container for fixed overlay button */}
+            <div className="flex-1 relative overflow-hidden">
+              {/* Scrollable Messages Container */}
+              <div 
+                ref={messagesContainerRef}
+                className="h-full overflow-y-auto overflow-x-hidden p-4 md:p-6 space-y-4"
+                onScroll={handleMessagesScroll}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              >
               {/* Drag Overlay */}
               {isDragging && (
                 <div className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm border-2 border-dashed border-primary rounded-lg flex flex-col items-center justify-center">
@@ -4716,14 +4718,19 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 </>
               )}
               
-              {/* Floating Scroll to Bottom Button - WhatsApp style */}
+              </div>
+
+              {/* Floating Scroll to Bottom Button - WhatsApp style (outside scroller, inside wrapper) */}
               {showScrollToBottom && (
                 <button
-                  onClick={() => scrollToBottom()}
-                  className="absolute bottom-20 right-4 z-40 p-2.5 bg-card text-muted-foreground rounded-full shadow-lg border border-border hover:bg-muted transition-all hover:scale-105 active:scale-95"
+                  onClick={() => {
+                    scrollToBottom();
+                    setShowScrollToBottom(false);
+                  }}
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 p-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-colors z-10"
                   title="Ir para o final"
                 >
-                  <ChevronDown size={22} strokeWidth={2.5} />
+                  <ChevronDown size={16} />
                 </button>
               )}
             </div>
