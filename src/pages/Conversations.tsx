@@ -5331,19 +5331,19 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
       {/* Advanced Filters Modal */}
       <Dialog open={showFilters} onOpenChange={setShowFilters}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Filtros Avançados</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 overflow-y-auto flex-1 pr-2">
             {/* Filtrar por Agente - Apenas para admin/supervisor em formato de botões */}
             {(isAdmin || isSupervisor) ? (
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Filtrar por agente
                 </label>
-                <div className="flex flex-wrap gap-2 max-h-[160px] overflow-y-auto">
+                <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto">
                   <button
                     onClick={() => setAdvancedFilters(prev => ({ ...prev, agentId: 'all' }))}
                     className={cn(
@@ -5420,7 +5420,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               </div>
               
               {/* Container com scroll - Lista vertical com checkboxes */}
-              <div className="max-h-[200px] overflow-y-auto space-y-1">
+              <div className="max-h-[150px] overflow-y-auto space-y-1">
                 {/* Opção "Sem etiqueta" - sempre no topo */}
                 <label className="flex items-center gap-2 p-2 hover:bg-muted rounded-lg cursor-pointer transition-colors border-b border-border pb-2 mb-2">
                   <Checkbox
@@ -5577,7 +5577,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             </div>
           </div>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 flex-shrink-0 pt-4 border-t border-border">
             <Button variant="ghost" onClick={handleClearAdvancedFilters}>
               Limpar
             </Button>
