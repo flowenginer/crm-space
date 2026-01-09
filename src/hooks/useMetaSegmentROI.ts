@@ -106,27 +106,45 @@ export function useMetaSegmentROI(dateRange?: DateRange) {
         }
       });
 
-      // Buscar conversas de Meta Ads
-      let convQuery = supabase
-        .from('conversations')
-        .select(`
-          referral_data,
-          contact:contacts!inner(
-            lead_status,
-            negotiated_value
-          )
-        `)
-        .eq('referral_source', 'meta_ads')
-        .not('referral_data', 'is', null);
+      // Buscar conversas de Meta Ads (com paginação)
+      const PAGE_SIZE = 1000;
+      let allConversations: any[] = [];
+      let page = 0;
+      let hasMore = true;
 
-      if (dateRange?.from) {
-        convQuery = convQuery.gte('created_at', toUTCDate(dateRange.from, false));
-      }
-      if (dateRange?.to) {
-        convQuery = convQuery.lte('created_at', toUTCDate(dateRange.to, true));
+      while (hasMore) {
+        let convQuery = supabase
+          .from('conversations')
+          .select(`
+            referral_data,
+            contact:contacts!inner(
+              lead_status,
+              negotiated_value
+            )
+          `)
+          .eq('referral_source', 'meta_ads')
+          .not('referral_data', 'is', null)
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+        if (dateRange?.from) {
+          convQuery = convQuery.gte('created_at', toUTCDate(dateRange.from, false));
+        }
+        if (dateRange?.to) {
+          convQuery = convQuery.lte('created_at', toUTCDate(dateRange.to, true));
+        }
+
+        const { data: convData } = await convQuery;
+        
+        if (convData && convData.length > 0) {
+          allConversations = [...allConversations, ...convData];
+          hasMore = convData.length === PAGE_SIZE;
+          page++;
+        } else {
+          hasMore = false;
+        }
       }
 
-      const { data: conversations } = await convQuery;
+      const conversations = allConversations;
 
       // Agrupar leads/conversões/receita por segmento
       const crmDataMap: Record<string, { leads: number; conversions: number; revenue: number }> = {};
