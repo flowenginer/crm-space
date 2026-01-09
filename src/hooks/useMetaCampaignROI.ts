@@ -58,7 +58,7 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
   return useQuery({
     queryKey: ['meta_campaign_roi', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async (): Promise<{ campaigns: CampaignROIData[]; summary: ROISummary }> => {
-      // Buscar apenas campanhas ativas
+      // Buscar TODAS campanhas (não apenas ativas) para incluir leads de campanhas pausadas
       const { data: campaigns } = await supabase
         .from('meta_campaigns')
         .select(`
@@ -66,8 +66,7 @@ export function useMetaCampaignROI(dateRange?: DateRange) {
           campaign_id,
           name,
           status
-        `)
-        .eq('status', 'ACTIVE');
+        `);
 
       const campaignIdMap: Record<string, { name: string; internalId: string }> = {};
       campaigns?.forEach(c => {

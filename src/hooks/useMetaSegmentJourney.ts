@@ -64,11 +64,10 @@ export function useMetaSegmentJourney(dateRange?: DateRange) {
         return [];
       }
 
-      // Buscar campanhas ativas com seus nomes
+      // Buscar TODAS campanhas (não apenas ativas) para incluir leads de campanhas pausadas
       const { data: campaigns } = await supabase
         .from('meta_campaigns')
-        .select('id, name')
-        .eq('status', 'ACTIVE');
+        .select('id, name');
 
       if (!campaigns || campaigns.length === 0) {
         return [];
