@@ -85,29 +85,48 @@ export function useMetaLeadsCrossData(dateRange?: DateRange) {
       });
 
       // Build query for conversations with Meta Ads referral
-      let query = supabase
-        .from('conversations')
-        .select(`
-          id,
-          referral_data,
-          created_at,
-          contact:contacts!inner(
+      // Usar paginação para buscar TODOS os registros (Supabase limita a 1000 por default)
+      const PAGE_SIZE = 1000;
+      let allConversations: any[] = [];
+      let page = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from('conversations')
+          .select(`
             id,
-            lead_status,
-            negotiated_value
-          )
-        `)
-        .eq('referral_source', 'meta_ads')
-        .not('referral_data', 'is', null);
+            referral_data,
+            created_at,
+            contact:contacts!inner(
+              id,
+              lead_status,
+              negotiated_value
+            )
+          `)
+          .eq('referral_source', 'meta_ads')
+          .not('referral_data', 'is', null)
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-      if (dateRange?.from) {
-        query = query.gte('created_at', toUTCDate(dateRange.from, false));
-      }
-      if (dateRange?.to) {
-        query = query.lte('created_at', toUTCDate(dateRange.to, true));
+        if (dateRange?.from) {
+          query = query.gte('created_at', toUTCDate(dateRange.from, false));
+        }
+        if (dateRange?.to) {
+          query = query.lte('created_at', toUTCDate(dateRange.to, true));
+        }
+
+        const { data: conversations } = await query;
+        
+        if (conversations && conversations.length > 0) {
+          allConversations = [...allConversations, ...conversations];
+          hasMore = conversations.length === PAGE_SIZE;
+          page++;
+        } else {
+          hasMore = false;
+        }
       }
 
-      const { data: conversations } = await query;
+      const conversations = allConversations;
 
       if (!conversations || conversations.length === 0) {
         return {
