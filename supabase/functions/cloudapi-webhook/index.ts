@@ -222,7 +222,7 @@ async function processMessages(supabase: any, value: any) {
         content = `[${messageType}]`;
     }
 
-    // Insert message
+    // Insert message (usando whatsapp_message_id que é a coluna correta)
     await supabase.from('messages').insert({
       conversation_id: conversationId,
       contact_id: contactId,
@@ -231,17 +231,19 @@ async function processMessages(supabase: any, value: any) {
       message_type: messageType,
       media_url: mediaUrl,
       is_from_me: false,
-      provider_message_id: message.id,
+      whatsapp_message_id: message.id,
     });
 
-    // Update conversation
+    // Update conversation - incrementar unread_count usando SQL direto
+    await supabase.rpc('increment_unread', { conv_id: conversationId });
+
+    // Atualizar outros campos da conversa
     await supabase
       .from('conversations')
       .update({
         last_message_at: timestamp.toISOString(),
         last_message_preview: content.substring(0, 100),
         last_message_is_from_me: false,
-        unread_count: supabase.rpc('increment', { x: 1 }),
         is_unread: true,
       })
       .eq('id', conversationId);
@@ -266,10 +268,11 @@ async function processStatuses(supabase: any, value: any) {
       'failed': 'failed',
     };
 
+    // Usar whatsapp_message_id que é a coluna correta
     await supabase
       .from('messages')
       .update({ status: statusMap[statusValue] || statusValue })
-      .eq('provider_message_id', messageId);
+      .eq('whatsapp_message_id', messageId);
   }
 }
 
