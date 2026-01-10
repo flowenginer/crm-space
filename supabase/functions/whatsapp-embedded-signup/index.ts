@@ -203,6 +203,20 @@ serve(async (req) => {
           error: wabaData.error
         });
 
+        // Detailed logging of full WABAs response
+        console.log('[Embedded Signup] Full WABAs response data:', JSON.stringify(wabaData, null, 2));
+
+        // Log each business details
+        for (const business of wabaData.data || []) {
+          console.log('[Embedded Signup] Business details:', {
+            id: business.id,
+            name: business.name,
+            hasOwnedWabas: !!business.owned_whatsapp_business_accounts,
+            ownedWabasCount: business.owned_whatsapp_business_accounts?.data?.length || 0,
+            ownedWabas: JSON.stringify(business.owned_whatsapp_business_accounts)
+          });
+        }
+
         if (!wabaResponse.ok) {
           throw new Error(wabaData.error?.message || 'Failed to fetch WABAs');
         }
