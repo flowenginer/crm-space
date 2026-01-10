@@ -590,28 +590,42 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
               {(() => {
                 const channelData = channels?.find(c => c.id === conversation.channel_id);
                 const isConnected = channelData?.status === 'connected';
+                const isOfficial = (channelData as any)?.type === 'official';
                 const statusLabel = isConnected ? 'Ativo' : 'Inativo';
                 
                 return (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className={cn(
-                        "flex items-center gap-1 px-2 py-0.5 rounded-full cursor-default",
-                        isConnected ? "bg-green-500/20" : "bg-red-500/20"
-                      )}>
-                        <MessageCircle size={12} className={isConnected ? "text-green-500" : "text-red-500"} />
-                        <span className={cn(
-                          "text-xs font-medium truncate max-w-[80px]",
-                          isConnected ? "text-green-500" : "text-red-500"
+                  <>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className={cn(
+                          "flex items-center gap-1 px-2 py-0.5 rounded-full cursor-default",
+                          isConnected ? "bg-green-500/20" : "bg-red-500/20"
                         )}>
-                          {conversation.channel?.name || 'Chat'}
-                        </span>
+                          <MessageCircle size={12} className={isConnected ? "text-green-500" : "text-red-500"} />
+                          <span className={cn(
+                            "text-xs font-medium truncate max-w-[80px]",
+                            isConnected ? "text-green-500" : "text-red-500"
+                          )}>
+                            {conversation.channel?.name || 'Chat'}
+                          </span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p>{statusLabel}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    
+                    {/* Cloud API Badge for Official Channels */}
+                    {isOfficial && (
+                      <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/20 rounded-full">
+                        <svg className="w-3 h-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                          <path d="m9 12 2 2 4-4"/>
+                        </svg>
+                        <span className="text-xs text-emerald-600 font-medium">Cloud API</span>
                       </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      <p>{statusLabel}</p>
-                    </TooltipContent>
-                  </Tooltip>
+                    )}
+                  </>
                 );
               })()}
               
