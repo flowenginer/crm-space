@@ -98,8 +98,21 @@ serve(async (req) => {
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
         const error = url.searchParams.get('error');
+        const errorReason = url.searchParams.get('error_reason');
+        const errorDescription = url.searchParams.get('error_description');
+
+        console.log('[Embedded Signup] Callback received:', { 
+          hasCode: !!code, 
+          state, 
+          error, 
+          errorReason, 
+          errorDescription 
+        });
 
         if (error) {
+          console.error('[Embedded Signup] OAuth error:', { error, errorReason, errorDescription });
+          
+          const fullError = errorDescription || errorReason || error;
           const errorHtml = `
             <!DOCTYPE html>
             <html>
@@ -108,11 +121,11 @@ serve(async (req) => {
               <script>
                 localStorage.setItem('whatsapp_oauth_result', JSON.stringify({
                   type: 'WHATSAPP_OAUTH_ERROR',
-                  error: '${error}'
+                  error: '${fullError.replace(/'/g, "\\'")}'
                 }));
                 window.close();
               </script>
-              <p>Erro na autenticação. Você pode fechar esta janela.</p>
+              <p>Erro na autenticação: ${fullError}. Você pode fechar esta janela.</p>
             </body>
             </html>
           `;
@@ -144,6 +157,12 @@ serve(async (req) => {
         // Exchange code for access token
         const redirectUri = `${supabaseUrl}/functions/v1/whatsapp-embedded-signup?action=callback`;
         
+        console.log('[Embedded Signup] Exchanging code for token...', { 
+          META_APP_ID, 
+          redirectUri,
+          hasCode: !!code 
+        });
+        
         const tokenResponse = await fetch(
           `${GRAPH_API_URL}/${GRAPH_API_VERSION}/oauth/access_token?` + new URLSearchParams({
             client_id: META_APP_ID,
@@ -155,18 +174,34 @@ serve(async (req) => {
 
         const tokenData = await tokenResponse.json();
 
+        console.log('[Embedded Signup] Token exchange response:', { 
+          ok: tokenResponse.ok, 
+          status: tokenResponse.status,
+          hasAccessToken: !!tokenData.access_token,
+          error: tokenData.error 
+        });
+
         if (!tokenResponse.ok || tokenData.error) {
-          throw new Error(tokenData.error?.message || 'Failed to exchange token');
+          throw new Error(tokenData.error?.message || `Failed to exchange token: ${JSON.stringify(tokenData)}`);
         }
 
         const accessToken = tokenData.access_token;
 
         // Fetch WhatsApp Business Accounts
+        console.log('[Embedded Signup] Fetching WABAs...');
+        
         const wabaResponse = await fetch(
           `${GRAPH_API_URL}/${GRAPH_API_VERSION}/me/businesses?fields=id,name,owned_whatsapp_business_accounts{id,name,currency,timezone_id,account_review_status,on_behalf_of_business_info,primary_funding_id,purchase_order_number,message_template_namespace}&access_token=${accessToken}`
         );
 
         const wabaData = await wabaResponse.json();
+
+        console.log('[Embedded Signup] WABAs response:', { 
+          ok: wabaResponse.ok,
+          status: wabaResponse.status,
+          businessCount: wabaData.data?.length || 0,
+          error: wabaData.error
+        });
 
         if (!wabaResponse.ok) {
           throw new Error(wabaData.error?.message || 'Failed to fetch WABAs');
