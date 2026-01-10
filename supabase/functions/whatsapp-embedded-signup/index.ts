@@ -321,6 +321,213 @@ serve(async (req) => {
         );
       }
 
+      case 'exchange-code': {
+        // New action for Facebook JavaScript SDK flow
+        const body = await req.json();
+        const { code, wabaId, phoneNumberId, channelName, departmentId } = body;
+
+        if (!code) {
+          throw new Error('code is required');
+        }
+
+        console.log('[Embedded Signup] Exchange code request:', {
+          hasCode: !!code,
+          wabaId,
+          phoneNumberId,
+          channelName,
+        });
+
+        // Exchange code for access token
+        // Note: For JS SDK, we need to use a different redirect_uri or none at all
+        const tokenResponse = await fetch(
+          `${GRAPH_API_URL}/${GRAPH_API_VERSION}/oauth/access_token?` + new URLSearchParams({
+            client_id: META_APP_ID,
+            client_secret: META_APP_SECRET,
+            code: code,
+            redirect_uri: '', // Empty for JS SDK
+          }).toString()
+        );
+
+        const tokenData = await tokenResponse.json();
+
+        console.log('[Embedded Signup] Token exchange response:', {
+          ok: tokenResponse.ok,
+          status: tokenResponse.status,
+          hasAccessToken: !!tokenData.access_token,
+          error: tokenData.error,
+        });
+
+        if (!tokenResponse.ok || tokenData.error) {
+          throw new Error(tokenData.error?.message || `Failed to exchange token: ${JSON.stringify(tokenData)}`);
+        }
+
+        const accessToken = tokenData.access_token;
+
+        // If we don't have wabaId/phoneNumberId from the JS SDK callback, fetch them
+        let finalWabaId = wabaId;
+        let finalPhoneNumberId = phoneNumberId;
+        let selectedWaba: any = null;
+        let phoneData: any = null;
+
+        if (!finalWabaId || !finalPhoneNumberId) {
+          console.log('[Embedded Signup] Fetching WABAs since not provided by JS SDK...');
+          
+          // Fetch WABAs
+          const wabaResponse = await fetch(
+            `${GRAPH_API_URL}/${GRAPH_API_VERSION}/me/businesses?fields=id,name,owned_whatsapp_business_accounts{id,name,currency,timezone_id,account_review_status}&access_token=${accessToken}`
+          );
+
+          const wabaData = await wabaResponse.json();
+          
+          console.log('[Embedded Signup] WABAs response:', {
+            ok: wabaResponse.ok,
+            businessCount: wabaData.data?.length || 0,
+          });
+
+          // Find the first WABA
+          for (const business of wabaData.data || []) {
+            const ownedWabas = business.owned_whatsapp_business_accounts?.data || [];
+            if (ownedWabas.length > 0) {
+              finalWabaId = ownedWabas[0].id;
+              selectedWaba = {
+                ...ownedWabas[0],
+                business_id: business.id,
+                business_name: business.name,
+              };
+              break;
+            }
+          }
+
+          if (!finalWabaId) {
+            throw new Error('Nenhuma conta WhatsApp Business encontrada. Por favor, crie uma durante o processo de autorização.');
+          }
+
+          // Fetch phone numbers for this WABA
+          const phonesResponse = await fetch(
+            `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${finalWabaId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,messaging_limit_tier&access_token=${accessToken}`
+          );
+
+          const phonesData = await phonesResponse.json();
+          
+          console.log('[Embedded Signup] Phone numbers response:', {
+            ok: phonesResponse.ok,
+            phoneCount: phonesData.data?.length || 0,
+          });
+
+          if (phonesData.data?.length > 0) {
+            finalPhoneNumberId = phonesData.data[0].id;
+            phoneData = phonesData.data[0];
+          } else {
+            throw new Error('Nenhum número de telefone encontrado. Por favor, adicione um número durante o processo de autorização.');
+          }
+        } else {
+          // Fetch phone data for the provided phone number ID
+          const phoneResponse = await fetch(
+            `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${finalPhoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,messaging_limit_tier&access_token=${accessToken}`
+          );
+
+          phoneData = await phoneResponse.json();
+
+          if (!phoneResponse.ok) {
+            throw new Error(phoneData.error?.message || 'Failed to get phone details');
+          }
+        }
+
+        // Generate verify token for webhook
+        const verifyToken = crypto.randomUUID();
+
+        // Create channel
+        const { data: channel, error: channelError } = await supabase
+          .from('whatsapp_channels')
+          .insert({
+            name: channelName || phoneData?.verified_name || 'WhatsApp Oficial',
+            phone: phoneData?.display_phone_number || 'Unknown',
+            status: 'connected',
+            type: 'official',
+            tenant_id: tenantId,
+            department_id: departmentId || null,
+            instance_id: finalPhoneNumberId,
+          })
+          .select()
+          .single();
+
+        if (channelError) {
+          throw new Error(`Failed to create channel: ${channelError.message}`);
+        }
+
+        // Create Cloud API config
+        const { data: config, error: configError } = await supabase
+          .from('cloudapi_configs')
+          .insert({
+            tenant_id: tenantId,
+            channel_id: channel.id,
+            phone_number_id: finalPhoneNumberId,
+            waba_id: finalWabaId,
+            business_account_id: selectedWaba?.business_id || null,
+            access_token: accessToken,
+            verify_token: verifyToken,
+            is_active: true,
+            webhook_configured: false,
+          })
+          .select()
+          .single();
+
+        if (configError) {
+          // Rollback channel creation
+          await supabase.from('whatsapp_channels').delete().eq('id', channel.id);
+          throw new Error(`Failed to create config: ${configError.message}`);
+        }
+
+        // Try to register webhook
+        const webhookUrl = `${supabaseUrl}/functions/v1/cloudapi-webhook`;
+        
+        try {
+          const subscribeResponse = await fetch(
+            `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${finalWabaId}/subscribed_apps`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                override_callback_uri: webhookUrl,
+                verify_token: verifyToken,
+              }),
+            }
+          );
+
+          if (subscribeResponse.ok) {
+            await supabase
+              .from('cloudapi_configs')
+              .update({ webhook_configured: true })
+              .eq('id', config.id);
+          }
+        } catch (webhookError) {
+          console.warn('[Embedded Signup] Webhook registration failed:', webhookError);
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            channel,
+            config: {
+              id: config.id,
+              webhookUrl,
+              verifyToken,
+              webhookConfigured: config.webhook_configured,
+            },
+            phoneDetails: {
+              displayPhoneNumber: phoneData?.display_phone_number,
+              verifiedName: phoneData?.verified_name,
+              qualityRating: phoneData?.quality_rating,
+              messagingLimitTier: phoneData?.messaging_limit_tier,
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       case 'complete-setup': {
         const body = await req.json();
         const { wabaId, phoneNumberId, channelName, departmentId } = body;
