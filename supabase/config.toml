@@ -121,3 +121,9 @@ verify_jwt = false
 
 [functions.sync-whatsapp-channels]
 verify_jwt = false
+
+[functions.cloudapi-send-message]
+verify_jwt = true
+
+[functions.whatsapp-embedded-signup]
+verify_jwt = false
