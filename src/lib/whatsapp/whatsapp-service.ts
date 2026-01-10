@@ -1,6 +1,7 @@
 import { ZAPIAdapter } from './zapi-adapter';
 import { UAZAPIAdapter } from './uazapi-adapter';
 import { EvolutionAdapter } from './evolution-adapter';
+import { CloudAPIAdapter } from './cloudapi-adapter';
 import { WhatsAppAdapter } from './base-adapter';
 import { 
   WhatsAppProvider, 
@@ -65,7 +66,7 @@ class WhatsAppService {
     }
   }
 
-  private createAdapter(provider: WhatsAppProvider, config: ChannelConfig): WhatsAppAdapter {
+  private createAdapter(provider: WhatsAppProvider, config: ChannelConfig & { channelId?: string }): WhatsAppAdapter {
     switch (provider) {
       case 'zapi':
         return new ZAPIAdapter({
@@ -86,6 +87,11 @@ class WhatsAppService {
           baseUrl: config.baseUrl,
           apiKey: config.apiKey || '',
           instanceName: config.instanceId,
+        });
+
+      case 'cloudapi':
+        return new CloudAPIAdapter({
+          channelId: config.channelId || config.instanceId,
         });
         
       default:
