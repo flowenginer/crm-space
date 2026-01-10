@@ -1,22 +1,32 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, ExternalLink, Copy, Check, TestTube, Phone, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { 
+  Loader2, 
+  Copy, 
+  Check, 
+  Phone, 
+  AlertCircle, 
+  CheckCircle2,
+  Shield,
+  Zap,
+  Facebook,
+  ExternalLink,
+  Trash2,
+  Unlink,
+} from 'lucide-react';
 import { 
   useCloudAPIConfig, 
-  useCreateCloudAPIConfig, 
   useUpdateCloudAPIConfig,
-  useTestCloudAPIConnection,
-  useGenerateWebhookUrl
 } from '@/hooks/useCloudAPIConfig';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { VoIPProvider } from '@/types/cloudapi';
+import { CloudAPIConnect } from '@/components/whatsapp/CloudAPIConnect';
 
 interface CloudAPIConfigFormProps {
   onSuccess?: () => void;
@@ -25,23 +35,25 @@ interface CloudAPIConfigFormProps {
 export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
   const queryClient = useQueryClient();
   const { data: existingConfig, isLoading } = useCloudAPIConfig();
-  const createConfig = useCreateCloudAPIConfig();
   const updateConfig = useUpdateCloudAPIConfig();
-  const testConnection = useTestCloudAPIConnection();
-  const generateWebhookUrl = useGenerateWebhookUrl();
-
-  // Buscar canais WhatsApp disponíveis
-  const { data: channels } = useQuery({
-    queryKey: ['whatsapp-channels-for-cloudapi'],
+  
+  const [showConnect, setShowConnect] = useState(false);
+  const [copied, setCopied] = useState<'url' | 'token' | null>(null);
+  
+  // Buscar dados do canal associado
+  const { data: channelData } = useQuery({
+    queryKey: ['cloudapi-channel', existingConfig?.channel_id],
     queryFn: async () => {
+      if (!existingConfig?.channel_id) return null;
       const { data, error } = await supabase
         .from('whatsapp_channels')
-        .select('id, name, phone')
-        .eq('is_deleted', false)
-        .order('name');
+        .select('id, name, phone, status')
+        .eq('id', existingConfig.channel_id)
+        .single();
       if (error) throw error;
-      return data || [];
+      return data;
     },
+    enabled: !!existingConfig?.channel_id,
   });
 
   // Verificar status da Calling API no Meta
@@ -90,51 +102,40 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
     },
   });
 
-  const [formData, setFormData] = useState({
-    phone_number_id: '',
-    waba_id: '',
-    business_account_id: '',
-    access_token: '',
-    verify_token: '',
-    app_secret: '',
-    calling_enabled: false,
-    voip_provider: '' as VoIPProvider | '',
-    transcription_enabled: false,
-    sentiment_analysis_enabled: false,
-    channel_id: '',
+  // Mutation para desconectar
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      if (!existingConfig) throw new Error('No config to disconnect');
+      
+      // Desativar a config
+      const { error: configError } = await supabase
+        .from('cloudapi_configs')
+        .update({ is_active: false })
+        .eq('id', existingConfig.id);
+      
+      if (configError) throw configError;
+
+      // Se tem canal associado, atualizar status
+      if (existingConfig.channel_id) {
+        await supabase
+          .from('whatsapp_channels')
+          .update({ status: 'disconnected' })
+          .eq('id', existingConfig.channel_id);
+      }
+    },
+    onSuccess: () => {
+      toast.success('Cloud API desconectada!');
+      queryClient.invalidateQueries({ queryKey: ['cloudapi-config'] });
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+      onSuccess?.();
+    },
+    onError: (error: any) => {
+      console.error('Error disconnecting:', error);
+      toast.error(error.message || 'Erro ao desconectar');
+    },
   });
 
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [copied, setCopied] = useState<'url' | 'token' | null>(null);
-
-  useEffect(() => {
-    if (existingConfig) {
-      setFormData({
-        phone_number_id: existingConfig.phone_number_id || '',
-        waba_id: existingConfig.waba_id || '',
-        business_account_id: existingConfig.business_account_id || '',
-        access_token: existingConfig.access_token || '',
-        verify_token: existingConfig.verify_token || '',
-        app_secret: existingConfig.app_secret || '',
-        calling_enabled: existingConfig.calling_enabled || false,
-        voip_provider: existingConfig.voip_provider || '',
-        transcription_enabled: existingConfig.transcription_enabled || false,
-        sentiment_analysis_enabled: existingConfig.sentiment_analysis_enabled || false,
-        channel_id: existingConfig.channel_id || '',
-      });
-    }
-  }, [existingConfig]);
-
-  useEffect(() => {
-    // Gerar URL do webhook
-    setWebhookUrl('https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/cloudapi-webhook');
-  }, []);
-
-  const handleGenerateToken = async () => {
-    const result = await generateWebhookUrl.mutateAsync();
-    setFormData(prev => ({ ...prev, verify_token: result.verify_token }));
-    toast.success('Token de verificação gerado!');
-  };
+  const webhookUrl = 'https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/cloudapi-webhook';
 
   const handleCopy = async (type: 'url' | 'token', value: string) => {
     await navigator.clipboard.writeText(value);
@@ -143,41 +144,16 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const handleTestConnection = async () => {
-    if (!formData.phone_number_id || !formData.access_token) {
-      toast.error('Preencha o Phone Number ID e Access Token');
-      return;
-    }
-    await testConnection.mutateAsync({
-      phone_number_id: formData.phone_number_id,
-      access_token: formData.access_token,
-    });
-  };
-
-  const handleSave = async () => {
-    if (!formData.phone_number_id || !formData.access_token || !formData.verify_token) {
-      toast.error('Preencha os campos obrigatórios');
-      return;
-    }
-
+  const handleToggleCalling = async (enabled: boolean) => {
+    if (!existingConfig) return;
+    
     try {
-      if (existingConfig) {
-        await updateConfig.mutateAsync({
-          id: existingConfig.id,
-          ...formData,
-          voip_provider: formData.voip_provider || null,
-          channel_id: formData.channel_id || null,
-        });
-      } else {
-        await createConfig.mutateAsync({
-          ...formData,
-          voip_provider: formData.voip_provider || undefined,
-          channel_id: formData.channel_id || undefined,
-        });
-      }
-      onSuccess?.();
+      await updateConfig.mutateAsync({
+        id: existingConfig.id,
+        calling_enabled: enabled,
+      });
     } catch (error) {
-      console.error('Erro ao salvar:', error);
+      console.error('Error toggling calling:', error);
     }
   };
 
@@ -189,124 +165,138 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
     );
   }
 
-  const isSaving = createConfig.isPending || updateConfig.isPending;
+  // Se não tem configuração ativa, mostrar tela de conexão
+  if (!existingConfig) {
+    return (
+      <>
+        <div className="space-y-6">
+          {/* Vantagens */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Shield className="h-4 w-4 text-green-500" />
+                Vantagens da API Oficial do WhatsApp
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                <span>Conexão permanente (sem QR Code)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-green-500 shrink-0" />
+                <span>Alta disponibilidade e estabilidade</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Phone className="h-4 w-4 text-green-500 shrink-0" />
+                <span>Suporte a chamadas de voz (VoIP)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-500 shrink-0" />
+                <span>Templates de mensagem aprovados pelo Meta</span>
+              </div>
+            </CardContent>
+          </Card>
 
+          {/* Aviso */}
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Você será redirecionado para o Facebook para autorizar o acesso à sua conta WhatsApp Business.
+              O processo é rápido e seguro.
+            </AlertDescription>
+          </Alert>
+
+          {/* Botão de Conectar */}
+          <Button 
+            onClick={() => setShowConnect(true)} 
+            className="w-full gap-2 bg-[#1877F2] hover:bg-[#166FE5]"
+            size="lg"
+          >
+            <Facebook className="h-5 w-5" />
+            Conectar com Facebook
+          </Button>
+
+          {/* Link para documentação */}
+          <div className="flex justify-center">
+            <a 
+              href="https://developers.facebook.com/docs/whatsapp/cloud-api/get-started" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Documentação Cloud API
+            </a>
+          </div>
+        </div>
+
+        {/* Modal de Conexão */}
+        <CloudAPIConnect
+          open={showConnect}
+          onClose={() => setShowConnect(false)}
+          onSuccess={() => {
+            setShowConnect(false);
+            queryClient.invalidateQueries({ queryKey: ['cloudapi-config'] });
+            onSuccess?.();
+          }}
+        />
+      </>
+    );
+  }
+
+  // Se tem configuração, mostrar dados em modo visualização
   return (
     <div className="space-y-6">
-      {/* Documentação */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <a 
-          href="https://developers.facebook.com/docs/whatsapp/cloud-api/get-started" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-primary hover:underline"
-        >
-          <ExternalLink className="h-4 w-4" />
-          Documentação Cloud API
-        </a>
-      </div>
+      {/* Status da Conexão */}
+      <Card className="border-green-500/30 bg-green-500/5">
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-green-500/20 flex items-center justify-center">
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium text-green-700 dark:text-green-400">
+                WhatsApp Cloud API Conectada
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {channelData?.phone || 'Número conectado'}
+                {channelData?.name && ` • ${channelData.name}`}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Canal WhatsApp (opcional) */}
+      {/* Informações da Conexão */}
       <div className="space-y-4">
-        <h3 className="text-sm font-medium">Associação de Canal (opcional)</h3>
-        <div className="space-y-2">
-          <Label htmlFor="channel_id">Vincular ao Canal</Label>
-          <Select
-            value={formData.channel_id || "none"}
-            onValueChange={(value) => setFormData(prev => ({ 
-              ...prev, 
-              channel_id: value === "none" ? "" : value 
-            }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Nenhum (opcional)" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Nenhum</SelectItem>
-              {channels?.map((channel) => (
-                <SelectItem key={channel.id} value={channel.id}>
-                  {channel.name} {channel.phone && `(${channel.phone})`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Opcional: usado apenas para logs e exibição interna. As ligações usam o Phone Number ID acima.
-          </p>
-        </div>
-      </div>
-
-      {/* Credenciais */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium">Credenciais do Meta</h3>
+        <h3 className="text-sm font-medium">Informações da Conexão</h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="phone_number_id">Phone Number ID *</Label>
-            <Input
-              id="phone_number_id"
-              value={formData.phone_number_id}
-              onChange={(e) => setFormData(prev => ({ ...prev, phone_number_id: e.target.value }))}
-              placeholder="Ex: 123456789012345"
-            />
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Phone Number ID</Label>
+            <p className="font-mono text-xs bg-muted px-2 py-1 rounded">
+              {existingConfig.phone_number_id}
+            </p>
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="waba_id">WABA ID</Label>
-            <Input
-              id="waba_id"
-              value={formData.waba_id}
-              onChange={(e) => setFormData(prev => ({ ...prev, waba_id: e.target.value }))}
-              placeholder="WhatsApp Business Account ID"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="access_token">Access Token (Permanente) *</Label>
-          <Input
-            id="access_token"
-            type="password"
-            value={formData.access_token}
-            onChange={(e) => setFormData(prev => ({ ...prev, access_token: e.target.value }))}
-            placeholder="Token de acesso permanente do Meta"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="app_secret">App Secret</Label>
-          <Input
-            id="app_secret"
-            type="password"
-            value={formData.app_secret}
-            onChange={(e) => setFormData(prev => ({ ...prev, app_secret: e.target.value }))}
-            placeholder="Secret do App (para validar webhooks)"
-          />
-        </div>
-
-        <Button 
-          variant="outline" 
-          onClick={handleTestConnection}
-          disabled={testConnection.isPending}
-        >
-          {testConnection.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : (
-            <TestTube className="h-4 w-4 mr-2" />
+          
+          {existingConfig.waba_id && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">WABA ID</Label>
+              <p className="font-mono text-xs bg-muted px-2 py-1 rounded">
+                {existingConfig.waba_id}
+              </p>
+            </div>
           )}
-          Testar Conexão
-        </Button>
+        </div>
       </div>
 
       {/* Webhook */}
       <div className="space-y-4 border-t pt-4">
         <h3 className="text-sm font-medium">Configuração do Webhook</h3>
-        <p className="text-xs text-muted-foreground">
-          Configure essas informações no painel de desenvolvedores do Meta.
-        </p>
-
+        
         <div className="space-y-2">
-          <Label>URL do Webhook</Label>
+          <Label className="text-xs text-muted-foreground">URL do Webhook</Label>
           <div className="flex gap-2">
             <Input value={webhookUrl} readOnly className="font-mono text-xs" />
             <Button 
@@ -320,28 +310,38 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="verify_token">Verify Token *</Label>
+          <Label className="text-xs text-muted-foreground">Verify Token</Label>
           <div className="flex gap-2">
-            <Input
-              id="verify_token"
-              value={formData.verify_token}
-              onChange={(e) => setFormData(prev => ({ ...prev, verify_token: e.target.value }))}
-              placeholder="Token de verificação"
-              className="font-mono text-xs"
+            <Input 
+              value={existingConfig.verify_token} 
+              readOnly 
+              className="font-mono text-xs" 
             />
             <Button 
               variant="outline" 
               size="icon"
-              onClick={() => formData.verify_token && handleCopy('token', formData.verify_token)}
-              disabled={!formData.verify_token}
+              onClick={() => handleCopy('token', existingConfig.verify_token)}
             >
               {copied === 'token' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
             </Button>
-            <Button variant="outline" onClick={handleGenerateToken}>
-              Gerar
-            </Button>
           </div>
         </div>
+
+        {existingConfig.webhook_configured ? (
+          <Alert className="border-green-500/30 bg-green-500/5">
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+            <AlertDescription className="text-green-700 dark:text-green-400">
+              Webhook configurado automaticamente
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Configure o webhook manualmente no painel do Meta Developers usando os dados acima.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       {/* Calling API */}
@@ -353,158 +353,86 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
               API de Ligações
             </h3>
             <p className="text-xs text-muted-foreground">
-              Habilita chamadas de voz via WhatsApp (requer aprovação do Meta)
+              Habilita chamadas de voz via WhatsApp
             </p>
           </div>
           <Switch
-            checked={formData.calling_enabled}
-            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, calling_enabled: checked }))}
+            checked={existingConfig.calling_enabled || false}
+            onCheckedChange={handleToggleCalling}
+            disabled={updateConfig.isPending}
           />
         </div>
 
-        {formData.calling_enabled && (
-          <div className="space-y-4 pl-4 border-l-2 border-muted">
-            {/* Status da Calling API no Meta */}
-            {existingConfig && (
+        {existingConfig.calling_enabled && (
+          <div className="space-y-3 pl-4 border-l-2 border-muted">
+            {isLoadingCallingStatus ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Verificando status...
+              </div>
+            ) : callingStatus?.meta_calling_enabled ? (
+              <Alert className="border-green-500/50 bg-green-500/10">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <AlertDescription className="text-green-700 dark:text-green-400">
+                  <strong>Calling API habilitada no Meta!</strong>
+                </AlertDescription>
+              </Alert>
+            ) : (
               <div className="space-y-3">
-                <Label className="text-sm font-medium">Status no Meta</Label>
-                
-                {isLoadingCallingStatus ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Verificando status...
-                  </div>
-                ) : callingStatus?.meta_calling_enabled ? (
-                  <Alert className="border-green-500/50 bg-green-500/10">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    <AlertDescription className="text-green-700 dark:text-green-400">
-                      <strong>Calling API habilitada no Meta!</strong>
-                      <br />
-                      <span className="text-xs">
-                        Número: {callingStatus.display_phone_number} • 
-                        Tier: {callingStatus.messaging_limit_tier} • 
-                        Qualidade: {callingStatus.quality_rating}
-                      </span>
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <div className="space-y-3">
-                    <Alert className="border-amber-500/50 bg-amber-500/10">
-                      <AlertCircle className="h-4 w-4 text-amber-500" />
-                      <AlertDescription className="text-amber-700 dark:text-amber-400">
-                        <strong>Calling API não habilitada no Meta</strong>
-                        <br />
-                        <span className="text-xs">
-                          {callingStatus?.is_eligible_for_calling === false ? (
-                            <>
-                              Seu número está no Tier {callingStatus?.tier_number || 0}. 
-                              É necessário Tier 2+ (2.000 msgs/dia) para habilitar chamadas.
-                            </>
-                          ) : (
-                            <>
-                              Clique no botão abaixo para habilitar a Calling API no seu número.
-                              {callingStatus?.display_phone_number && ` (${callingStatus.display_phone_number})`}
-                            </>
-                          )}
-                        </span>
-                      </AlertDescription>
-                    </Alert>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => enableCallingMutation.mutate()}
-                      disabled={enableCallingMutation.isPending || callingStatus?.is_eligible_for_calling === false}
-                    >
-                      {enableCallingMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Alert className="border-amber-500/50 bg-amber-500/10">
+                  <AlertCircle className="h-4 w-4 text-amber-500" />
+                  <AlertDescription className="text-amber-700 dark:text-amber-400">
+                    <strong>Calling API não habilitada no Meta</strong>
+                    <br />
+                    <span className="text-xs">
+                      {callingStatus?.is_eligible_for_calling === false ? (
+                        <>É necessário Tier 2+ (2.000 msgs/dia) para habilitar.</>
                       ) : (
-                        <Phone className="h-4 w-4 mr-2" />
+                        <>Clique abaixo para habilitar a Calling API.</>
                       )}
-                      Habilitar Calling API no Meta
-                    </Button>
-
-                    {callingStatus?.error && (
-                      <p className="text-xs text-destructive">{callingStatus.error}</p>
-                    )}
-                  </div>
-                )}
+                    </span>
+                  </AlertDescription>
+                </Alert>
 
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  onClick={() => refetchCallingStatus()}
-                  className="text-xs"
+                  onClick={() => enableCallingMutation.mutate()}
+                  disabled={enableCallingMutation.isPending || callingStatus?.is_eligible_for_calling === false}
                 >
-                  <Loader2 className={`h-3 w-3 mr-1 ${isLoadingCallingStatus ? 'animate-spin' : ''}`} />
-                  Atualizar Status
+                  {enableCallingMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Phone className="h-4 w-4 mr-2" />
+                  )}
+                  Habilitar Calling API no Meta
                 </Button>
               </div>
             )}
-
-            <div className="space-y-2">
-              <Label>Provedor VoIP (para gravação)</Label>
-              <Select
-                value={formData.voip_provider}
-                onValueChange={(value) => setFormData(prev => ({ 
-                  ...prev, 
-                  voip_provider: value as VoIPProvider 
-                }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um provedor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum (sem gravação)</SelectItem>
-                  <SelectItem value="twilio">Twilio</SelectItem>
-                  <SelectItem value="asterisk">Asterisk</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                A Cloud API não grava chamadas automaticamente. Use um provedor VoIP para gravação.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Transcrição Automática</Label>
-                <p className="text-xs text-muted-foreground">
-                  Transcreve as gravações com Whisper
-                </p>
-              </div>
-              <Switch
-                checked={formData.transcription_enabled}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, transcription_enabled: checked }))}
-                disabled={!formData.voip_provider || formData.voip_provider === 'none'}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Análise de Sentimento</Label>
-                <p className="text-xs text-muted-foreground">
-                  Analisa o sentimento das conversas
-                </p>
-              </div>
-              <Switch
-                checked={formData.sentiment_analysis_enabled}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, sentiment_analysis_enabled: checked }))}
-                disabled={!formData.transcription_enabled}
-              />
-            </div>
           </div>
         )}
       </div>
 
-      {/* Salvar */}
-      <Button 
-        className="w-full" 
-        onClick={handleSave}
-        disabled={isSaving}
-      >
-        {isSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-        {existingConfig ? 'Atualizar Configuração' : 'Salvar Configuração'}
-      </Button>
+      {/* Desconectar */}
+      <div className="border-t pt-4">
+        <Button
+          variant="outline"
+          className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+          onClick={() => {
+            if (confirm('Tem certeza que deseja desconectar a Cloud API?')) {
+              disconnectMutation.mutate();
+            }
+          }}
+          disabled={disconnectMutation.isPending}
+        >
+          {disconnectMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <Unlink className="h-4 w-4 mr-2" />
+          )}
+          Desconectar Cloud API
+        </Button>
+      </div>
     </div>
   );
 }
