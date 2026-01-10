@@ -21,7 +21,11 @@ import {
   Download,
   AlertTriangle,
   Info,
+  Shield,
+  ChevronDown,
 } from 'lucide-react';
+import { CloudAPIConnect } from '@/components/whatsapp/CloudAPIConnect';
+import { CloudAPIChannelCard } from '@/components/whatsapp/CloudAPIChannelCard';
 import {
   Tooltip,
   TooltipContent,
@@ -134,6 +138,13 @@ export default function WhatsAppChannels() {
 
   const connectedCount = channels.filter(c => c.status === 'connected').length;
   const totalSlots = channels.length;
+  
+  // State for Cloud API Connect dialog
+  const [showCloudAPIConnect, setShowCloudAPIConnect] = useState(false);
+  
+  // Separate official and non-official channels
+  const officialChannels = channels.filter(c => c.type === 'official');
+  const nonOfficialChannels = channels.filter(c => c.type !== 'official');
 
   // Sincronização automática de status ao carregar a página
   const { isAutoSyncing, syncProgress: autoSyncProgress } = useAutoSyncChannelStatus(
@@ -866,10 +877,33 @@ export default function WhatsAppChannels() {
             )}
           </Button>
 
-          <Button onClick={handleAddChannel} className="btn-gradient">
-            <Plus size={18} />
-            Adicionar Canal
-          </Button>
+          {/* Dropdown para Adicionar Canal */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="btn-gradient">
+                <Plus size={18} />
+                Adicionar Canal
+                <ChevronDown size={16} className="ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={handleAddChannel}>
+                <QrCode size={16} className="mr-2" />
+                <div>
+                  <p className="font-medium">Canal Não-Oficial</p>
+                  <p className="text-xs text-muted-foreground">Conexão via QR Code</p>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowCloudAPIConnect(true)}>
+                <Shield size={16} className="mr-2 text-green-600" />
+                <div>
+                  <p className="font-medium text-green-600">Canal Oficial (Cloud API)</p>
+                  <p className="text-xs text-muted-foreground">API Oficial Meta - Recomendado</p>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -880,30 +914,83 @@ export default function WhatsAppChannels() {
           <h3 className="text-xl font-semibold text-foreground mb-2">Nenhum canal configurado</h3>
           <p className="text-muted-foreground mb-6">Adicione seu primeiro canal WhatsApp para começar</p>
           <div className="flex items-center justify-center gap-3">
-            <Button onClick={handleAddChannel} className="btn-gradient">
-              <Plus size={18} />
-              Adicionar Canal
+            <Button variant="outline" onClick={handleAddChannel}>
+              <QrCode size={18} className="mr-2" />
+              Canal Não-Oficial
+            </Button>
+            <Button className="btn-gradient" onClick={() => setShowCloudAPIConnect(true)}>
+              <Shield size={18} className="mr-2" />
+              Canal Oficial (Cloud API)
             </Button>
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {channels.map((channel) => (
-            <ChannelCard
-              key={channel.id}
-              channel={channel}
-              onOpenDetails={handleOpenDetails}
-              onSync={handleSync}
-              onDisconnect={handleDisconnect}
-              onConnect={handleConnect}
-              onDelete={handleDeleteClick}
-              onReconfigureWebhook={handleReconfigureWebhook}
-              onDiagnose={handleDiagnoseChannel}
-              getTimeSinceSync={getTimeSinceSync}
-            />
-          ))}
+        <div className="space-y-8">
+          {/* Official Channels Section */}
+          {officialChannels.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Shield size={20} className="text-green-600" />
+                <h2 className="text-lg font-semibold text-foreground">Canais Oficiais (Cloud API)</h2>
+                <span className="px-2 py-0.5 bg-green-500/20 text-green-600 rounded-full text-xs font-medium">
+                  {officialChannels.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {officialChannels.map((channel) => (
+                  <CloudAPIChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    onOpenDetails={handleOpenDetails}
+                    onDelete={handleDeleteClick}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Non-Official Channels Section */}
+          {nonOfficialChannels.length > 0 && (
+            <div>
+              {officialChannels.length > 0 && (
+                <div className="flex items-center gap-2 mb-4">
+                  <QrCode size={20} className="text-muted-foreground" />
+                  <h2 className="text-lg font-semibold text-foreground">Canais Não-Oficiais (QR Code)</h2>
+                  <span className="px-2 py-0.5 bg-muted text-muted-foreground rounded-full text-xs font-medium">
+                    {nonOfficialChannels.length}
+                  </span>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {nonOfficialChannels.map((channel) => (
+                  <ChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    onOpenDetails={handleOpenDetails}
+                    onSync={handleSync}
+                    onDisconnect={handleDisconnect}
+                    onConnect={handleConnect}
+                    onDelete={handleDeleteClick}
+                    onReconfigureWebhook={handleReconfigureWebhook}
+                    onDiagnose={handleDiagnoseChannel}
+                    getTimeSinceSync={getTimeSinceSync}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* Cloud API Connect Dialog */}
+      <CloudAPIConnect
+        open={showCloudAPIConnect}
+        onClose={() => setShowCloudAPIConnect(false)}
+        onSuccess={() => {
+          setShowCloudAPIConnect(false);
+          refetchChannels();
+        }}
+      />
 
       {/* Add Channel Modal */}
       <Dialog open={showAddModal} onOpenChange={(open) => {

@@ -28,10 +28,10 @@ import {
 } from '@/components/ui/tooltip';
 import type { WhatsAppChannel } from '@/hooks/useChannels';
 
-interface CloudAPIChannelCardProps {
+export interface CloudAPIChannelCardProps {
   channel: WhatsAppChannel;
   onOpenDetails: (channel: WhatsAppChannel) => void;
-  onSync: (channel: WhatsAppChannel) => void;
+  onSync?: (channel: WhatsAppChannel) => void;
   onDelete: (channel: WhatsAppChannel) => void;
   onReconfigure?: (channel: WhatsAppChannel) => void;
 }
@@ -88,10 +88,12 @@ export function CloudAPIChannelCard({
               <BarChart3 size={16} className="mr-2" />
               Ver detalhes
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onSync(channel)}>
-              <RefreshCw size={16} className="mr-2" />
-              Sincronizar
-            </DropdownMenuItem>
+            {onSync && (
+              <DropdownMenuItem onClick={() => onSync(channel)}>
+                <RefreshCw size={16} className="mr-2" />
+                Sincronizar
+              </DropdownMenuItem>
+            )}
             {onReconfigure && (
               <DropdownMenuItem onClick={() => onReconfigure(channel)}>
                 <Settings size={16} className="mr-2" />
@@ -198,13 +200,15 @@ export function CloudAPIChannelCard({
           <BarChart3 size={16} className="mr-1" />
           Detalhes
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onSync(channel)}
-        >
-          <RefreshCw size={16} />
-        </Button>
+        {onSync && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onSync(channel)}
+          >
+            <RefreshCw size={16} />
+          </Button>
+        )}
       </div>
     </div>
   );

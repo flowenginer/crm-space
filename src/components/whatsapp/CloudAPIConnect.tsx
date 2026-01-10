@@ -61,15 +61,15 @@ interface OAuthMessage {
   error?: string;
 }
 
-interface CloudAPIConnectProps {
-  isOpen: boolean;
-  onOpenChange: (open: boolean) => void;
+export interface CloudAPIConnectProps {
+  open: boolean;
+  onClose: () => void;
   onSuccess?: () => void;
 }
 
 type Step = 'initial' | 'loading' | 'select-waba' | 'select-phone' | 'configure' | 'saving' | 'success';
 
-export function CloudAPIConnect({ isOpen, onOpenChange, onSuccess }: CloudAPIConnectProps) {
+export function CloudAPIConnect({ open, onClose, onSuccess }: CloudAPIConnectProps) {
   const [step, setStep] = useState<Step>('initial');
   const [isLoading, setIsLoading] = useState(false);
   const [wabas, setWabas] = useState<WABA[]>([]);
@@ -104,7 +104,7 @@ export function CloudAPIConnect({ isOpen, onOpenChange, onSuccess }: CloudAPICon
     setWebhookInfo(null);
     setIsLoading(false);
     localStorage.removeItem('whatsapp_oauth_result');
-    onOpenChange(false);
+    onClose();
   };
 
   const processOAuthData = useCallback((data: OAuthMessage) => {
@@ -356,7 +356,7 @@ export function CloudAPIConnect({ isOpen, onOpenChange, onSuccess }: CloudAPICon
   const selectedPhone = phoneNumbers.find(p => p.id === selectedPhoneId);
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
