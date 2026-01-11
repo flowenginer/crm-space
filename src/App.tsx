@@ -23,6 +23,7 @@ import Checkout from "@/pages/Checkout";
 
 // Main pages
 import Dashboard from "@/pages/Dashboard";
+import BusinessDashboard from "@/pages/BusinessDashboard";
 import Conversations from "@/pages/Conversations";
 import QuickMessages from "@/pages/QuickMessages";
 import CRM from "@/pages/CRM";
@@ -148,6 +149,11 @@ const App = () => (
               <Route path="/marketing-dashboard" element={
                 <ProtectedRoute permission="marketing.view_campaigns">
                   <MarketingDashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/business-dashboard" element={
+                <ProtectedRoute permission="reports.view">
+                  <BusinessDashboard />
                 </ProtectedRoute>
               } />
               <Route path="/marketing-campaigns" element={
