@@ -163,7 +163,10 @@ async function processMessages(supabase: any, value: any) {
       contactId = newContact?.id;
     }
 
-    // Find or create conversation
+    // Find or create conversation - OTIMIZAÇÃO: Usar upsert com ON CONFLICT para evitar race condition
+    let conversationId: string | undefined;
+    
+    // Primeiro, tentar encontrar conversa aberta existente
     const { data: existingConversation } = await supabase
       .from('conversations')
       .select('id')
@@ -172,12 +175,13 @@ async function processMessages(supabase: any, value: any) {
       .eq('status', 'open')
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    let conversationId = existingConversation?.id;
-
-    if (!conversationId) {
-      const { data: newConversation } = await supabase
+    if (existingConversation?.id) {
+      conversationId = existingConversation.id;
+    } else {
+      // Tentar criar nova conversa com tratamento de conflito
+      const { data: newConversation, error: convError } = await supabase
         .from('conversations')
         .insert({
           contact_id: contactId,
@@ -187,7 +191,27 @@ async function processMessages(supabase: any, value: any) {
         })
         .select('id')
         .single();
-      conversationId = newConversation?.id;
+      
+      if (convError) {
+        // Se erro de chave duplicada, buscar a conversa que foi criada por outro processo
+        if (convError.code === '23505') {
+          console.log('[CloudAPI] Duplicate key detected, fetching existing conversation');
+          const { data: existingConv } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('contact_id', contactId)
+            .eq('channel_id', config.channel_id)
+            .eq('status', 'open')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          conversationId = existingConv?.id;
+        } else {
+          console.error('[CloudAPI] Error creating conversation:', convError);
+        }
+      } else {
+        conversationId = newConversation?.id;
+      }
     }
 
     // Extract message content

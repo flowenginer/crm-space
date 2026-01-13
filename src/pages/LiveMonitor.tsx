@@ -154,12 +154,12 @@ export default function LiveMonitorPage() {
         unassignedCount: unassignedConvs.length
       };
     },
-    // Sempre buscar dados atuais ao entrar na tela (evita "conversas vazias" por cache)
-    staleTime: 0,
+    // Otimizado: reduzir polling de 10s para 30s e desabilitar em background
+    staleTime: 15000,
     refetchOnMount: 'always',
-    refetchInterval: 10000,
-    refetchIntervalInBackground: true,
-    enabled: hasAccess,
+    refetchInterval: 30000, // Aumentado de 10s para 30s
+    refetchIntervalInBackground: false, // Desabilitar polling em background
+    enabled: hasAccess && typeof document !== 'undefined' && !document.hidden,
   });
 
   // Real-time subscription with debounce
