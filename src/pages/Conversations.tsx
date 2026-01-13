@@ -4325,47 +4325,87 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                         <ChevronDown size={12} className="text-muted-foreground" />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-64 bg-popover">
+                    <DropdownMenuContent align="end" className="w-72 bg-popover">
                       <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b">
                         Canal atual: {channels?.find(c => c.id === selectedConversation?.channel_id)?.name || 'Não definido'}
                       </div>
-                      {channels?.filter(c => c.status === 'connected').map(channel => (
-                        <DropdownMenuItem 
-                          key={channel.id}
-                          onClick={async () => {
-                            if (!selectedConversationId || channel.id === selectedConversation?.channel_id) return;
-                            try {
-                              const { error } = await supabase
-                                .from('conversations')
-                                .update({ channel_id: channel.id })
-                                .eq('id', selectedConversationId);
-                              if (error) throw error;
-                              queryClient.invalidateQueries({ queryKey: ['conversations'] });
-                              queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
-                              queryClient.invalidateQueries({ queryKey: ['conversation-direct', selectedConversationId] });
-                              toast.success(`Canal alterado para ${channel.name}`);
-                            } catch (error) {
-                              toast.error('Erro ao alterar canal');
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-2 cursor-pointer",
-                            channel.id === selectedConversation?.channel_id && "bg-primary/10"
-                          )}
-                        >
-                          <span className={cn(
-                            "w-2 h-2 rounded-full flex-shrink-0",
-                            channel.status === 'connected' ? "bg-green-500" : "bg-muted-foreground/40"
-                          )} />
-                          <span className="flex-1 truncate">{channel.name}</span>
-                          {channel.phone && (
-                            <span className="text-xs text-muted-foreground">{channel.phone}</span>
-                          )}
-                          {channel.id === selectedConversation?.channel_id && (
-                            <Check size={14} className="text-primary ml-1" />
-                          )}
-                        </DropdownMenuItem>
-                      ))}
+                      {channels?.filter(c => c.status === 'connected').map(channel => {
+                        const isOfficial = (channel as any)?.type === 'official';
+                        const currentChannelIsOfficial = (channels?.find(c => c.id === selectedConversation?.channel_id) as any)?.type === 'official';
+                        const isChangingToOfficial = isOfficial && !currentChannelIsOfficial;
+                        
+                        return (
+                          <DropdownMenuItem 
+                            key={channel.id}
+                            onClick={async () => {
+                              if (!selectedConversationId || channel.id === selectedConversation?.channel_id) return;
+                              
+                              // If changing TO official channel, show warning and reset window
+                              if (isChangingToOfficial) {
+                                const confirmed = window.confirm(
+                                  '⚠️ Atenção: Mudança para API Oficial\n\n' +
+                                  'Ao mudar para API Oficial:\n' +
+                                  '• A janela de 24h será resetada\n' +
+                                  '• Você só poderá enviar Templates aprovados\n' +
+                                  '• Até o cliente responder por este canal\n\n' +
+                                  'Mensagens fora da janela são cobradas.\n\n' +
+                                  'Deseja continuar?'
+                                );
+                                if (!confirmed) return;
+                              }
+                              
+                              try {
+                                const updateData: any = { channel_id: channel.id };
+                                
+                                // Reset last_client_message_at when switching TO official channel
+                                // This forces the 24h window to be expired
+                                if (isChangingToOfficial) {
+                                  updateData.last_client_message_at = null;
+                                }
+                                
+                                const { error } = await supabase
+                                  .from('conversations')
+                                  .update(updateData)
+                                  .eq('id', selectedConversationId);
+                                if (error) throw error;
+                                queryClient.invalidateQueries({ queryKey: ['conversations'] });
+                                queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
+                                queryClient.invalidateQueries({ queryKey: ['conversation-direct', selectedConversationId] });
+                                
+                                if (isChangingToOfficial) {
+                                  toast.success(`Canal alterado para ${channel.name}. Aguarde resposta do cliente ou envie um Template.`);
+                                } else {
+                                  toast.success(`Canal alterado para ${channel.name}`);
+                                }
+                              } catch (error) {
+                                toast.error('Erro ao alterar canal');
+                              }
+                            }}
+                            className={cn(
+                              "flex items-center gap-2 cursor-pointer",
+                              channel.id === selectedConversation?.channel_id && "bg-primary/10"
+                            )}
+                          >
+                            <span className={cn(
+                              "w-2 h-2 rounded-full flex-shrink-0",
+                              channel.status === 'connected' ? "bg-green-500" : "bg-muted-foreground/40"
+                            )} />
+                            <span className="flex-1 truncate">{channel.name}</span>
+                            {/* API Oficial Badge */}
+                            {isOfficial && (
+                              <span className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-600/20 rounded text-[10px] text-blue-600 font-semibold">
+                                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                </svg>
+                                API
+                              </span>
+                            )}
+                            {channel.id === selectedConversation?.channel_id && (
+                              <Check size={14} className="text-primary ml-1" />
+                            )}
+                          </DropdownMenuItem>
+                        );
+                      })}
                       {(!channels || channels.filter(c => c.status === 'connected').length === 0) && (
                         <div className="px-3 py-2 text-sm text-muted-foreground">
                           Nenhum canal conectado
