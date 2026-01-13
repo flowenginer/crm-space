@@ -205,6 +205,16 @@ function FlowEditorInner() {
     );
     setSelectedNode((prev) => prev?.id === nodeId ? { ...prev, config } : prev);
   }, [setNodes]);
+
+  // Manter selectedNode sincronizado com nodes
+  useEffect(() => {
+    if (selectedNode) {
+      const currentNode = nodes.find(n => n.id === selectedNode.id);
+      if (currentNode && JSON.stringify(currentNode.data.config) !== JSON.stringify(selectedNode.config)) {
+        setSelectedNode(currentNode.data);
+      }
+    }
+  }, [nodes, selectedNode]);
   
   // Criar fluxo inicial para fluxos vazios
   const createInitialFlow = async () => {

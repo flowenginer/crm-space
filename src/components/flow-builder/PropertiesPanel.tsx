@@ -687,7 +687,7 @@ function renderNodeConfig(
             selectedTemplateId={(config?.template_id as string) || undefined}
             onTemplateSelect={(template) => {
               onUpdate(node.id, { 
-                ...node.config, 
+                ...config, 
                 template_id: template?.id || null,
                 template_name: template?.name || null,
                 variables: {}
@@ -696,7 +696,7 @@ function renderNodeConfig(
             variableValues={(config?.variables as Record<string, string>) || {}}
             onVariableChange={(variables) => {
               onUpdate(node.id, { 
-                ...node.config, 
+                ...config, 
                 variables 
               });
             }}
