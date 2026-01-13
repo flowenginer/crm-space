@@ -552,7 +552,7 @@ export default function BulkDispatch() {
                 <Button 
                   className="w-full" 
                   size="lg" 
-                  disabled={!name || !templateId || !channelId || totalContacts === 0 || createDispatch.isPending || countLoading} 
+                  disabled={!name || (campaignType !== 'template_meta' && !templateId) || (campaignType === 'template_meta' && !metaTemplateId) || !channelId || totalContacts === 0 || createDispatch.isPending || countLoading} 
                   onClick={handleCreateAndStart}
                 >
                   {createDispatch.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
