@@ -12,6 +12,7 @@ import { useRedirectCampaigns } from '@/hooks/useRedirectCampaigns';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
 import { FlowNodeData } from '@/types/flow';
 import { WebhookBodyFields, BodyField, bodyFieldsToObject, objectToBodyFields } from './WebhookBodyFields';
+import { MetaTemplateSelector } from '@/components/meta-templates';
 
 interface PropertiesPanelProps {
   node: FlowNodeData | null;
@@ -676,6 +677,35 @@ function renderNodeConfig(
             <p className="font-medium">Variáveis disponíveis:</p>
             <p>{'{{nome}}'}, {'{{primeiro_nome}}'}, {'{{data}}'}, {'{{hora}}'}</p>
           </div>
+        </div>
+      );
+      
+    case 'send_meta_template':
+      return (
+        <div className="space-y-4">
+          <MetaTemplateSelector
+            selectedTemplateId={(config?.template_id as string) || undefined}
+            onTemplateSelect={(template) => {
+              onUpdate(node.id, { 
+                ...node.config, 
+                template_id: template?.id || null,
+                template_name: template?.name || null,
+                variables: {}
+              });
+            }}
+            variableValues={(config?.variables as Record<string, string>) || {}}
+            onVariableChange={(variables) => {
+              onUpdate(node.id, { 
+                ...node.config, 
+                variables 
+              });
+            }}
+            showPreview={true}
+          />
+          <p className="text-xs text-muted-foreground">
+            Selecione um template aprovado pela Meta para enviar.
+            O template será enviado via API Oficial do WhatsApp.
+          </p>
         </div>
       );
       

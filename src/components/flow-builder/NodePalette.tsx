@@ -35,6 +35,7 @@ const iconMap: Record<string, LucideIcon> = {
   ChevronDown: LucideIcons.ChevronDown,
   ChevronRight: LucideIcons.ChevronRight,
   Link2: LucideIcons.Link2,
+  Shield: LucideIcons.Shield,
 };
 
 const categoryLabels: Record<string, string> = {
