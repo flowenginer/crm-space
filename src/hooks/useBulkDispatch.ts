@@ -310,8 +310,10 @@ export function useCreateBulkDispatch() {
       totalContacts: number; // Total exato vindo do COUNT
       schedule_enabled?: boolean;
       schedule_override?: ScheduleOverride | null;
-      campaign_type?: 'followup' | 'marketing';
+      campaign_type?: 'followup' | 'marketing' | 'template_meta';
       marketing_campaign_id?: string | null;
+      meta_template_id?: string | null;
+      meta_template_variables?: Record<string, string> | null;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -322,7 +324,7 @@ export function useCreateBulkDispatch() {
         .from('bulk_dispatches')
         .insert({
           name: data.name,
-          template_id: data.campaign_type === 'marketing' ? null : data.template_id,
+          template_id: data.campaign_type === 'followup' ? data.template_id : null,
           channel_id: channelIdValue,
           filters: data.filters as any,
           interval_seconds: data.interval_seconds,
@@ -331,7 +333,9 @@ export function useCreateBulkDispatch() {
           schedule_enabled: data.schedule_enabled ?? true,
           schedule_override: data.schedule_override as any,
           campaign_type: data.campaign_type || 'followup',
-          marketing_campaign_id: data.marketing_campaign_id || null,
+          marketing_campaign_id: data.campaign_type === 'marketing' ? data.marketing_campaign_id : null,
+          meta_template_id: data.campaign_type === 'template_meta' ? data.meta_template_id : null,
+          meta_template_variables: data.campaign_type === 'template_meta' ? data.meta_template_variables : null,
         })
         .select()
         .single();
