@@ -2721,6 +2721,68 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
   }, []);
 
+  // Handler para enviar templates Meta via API oficial
+  const handleSendMetaTemplate = useCallback(async (
+    templateId: string,
+    templateName: string,
+    language: string,
+    variables: Record<string, string>
+  ) => {
+    const channelId = selectedConversation?.channel_id;
+    const contactPhone = selectedConversation?.contact?.phone;
+    
+    if (!channelId || !contactPhone || !selectedConversationId) {
+      toast.error('Dados insuficientes para enviar template');
+      return;
+    }
+    
+    try {
+      // Montar os componentes do template com as variáveis
+      const components: Array<{type: string; parameters: Array<{type: string; text: string}>}> = [];
+      const variableEntries = Object.entries(variables);
+      
+      if (variableEntries.length > 0) {
+        components.push({
+          type: 'body',
+          parameters: variableEntries.map(([_, value]) => ({
+            type: 'text',
+            text: value
+          }))
+        });
+      }
+      
+      // Enviar via Cloud API
+      const { data, error } = await supabase.functions.invoke('cloudapi-send-message', {
+        body: {
+          channelId,
+          phone: contactPhone,
+          type: 'template',
+          template: {
+            name: templateName,
+            language: language,
+            components
+          }
+        }
+      });
+      
+      if (error) throw error;
+      
+      // Salvar no banco
+      sendMessage.mutate({
+        conversation_id: selectedConversationId,
+        content: `[Template Meta: ${templateName}]`,
+        is_from_me: true,
+        message_type: 'template',
+        whatsapp_message_id: data?.messageId
+      });
+      
+      toast.success('Template enviado com sucesso!');
+    } catch (error) {
+      console.error('Erro ao enviar template Meta:', error);
+      toast.error('Erro ao enviar template');
+    }
+  }, [selectedConversation, selectedConversationId, sendMessage]);
+
   const handleSendMessage = async () => {
     if (!selectedConversationId) return;
     
@@ -5013,6 +5075,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             toast.error('Erro ao enviar template');
                           }
                         }}
+                        onSendMetaTemplate={handleSendMetaTemplate}
                       />
                     </div>
                   </div>
@@ -5299,6 +5362,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       toast.info('Executando gatilho...', { description: `Trigger ID: ${triggerId}` });
                       // TODO: Implement trigger execution
                     }}
+                    onSendMetaTemplate={handleSendMetaTemplate}
                   />
 
                   <div className="flex-1">
