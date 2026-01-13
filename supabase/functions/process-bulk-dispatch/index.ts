@@ -245,6 +245,152 @@ async function sendMessageDirectly(
   console.log(`[BulkDispatch] Message sent directly to ${phone}`);
 }
 
+// Function to send Meta template message via Cloud API
+async function sendMetaTemplateMessage(
+  supabase: any,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  channelId: string,
+  conversationId: string,
+  contactId: string,
+  phone: string,
+  metaTemplate: any,
+  metaVariables: Record<string, string> | null,
+  contact: { full_name?: string; phone?: string; email?: string }
+): Promise<void> {
+  console.log(`[BulkDispatch] Sending Meta template to ${phone} using template: ${metaTemplate.name}`);
+  
+  // Replace dynamic variables in the template variables
+  const processedVariables: Record<string, string> = {};
+  if (metaVariables) {
+    for (const [key, value] of Object.entries(metaVariables)) {
+      processedVariables[key] = replaceVariables(value, contact);
+    }
+  }
+
+  // Build template payload
+  const templatePayload: any = {
+    name: metaTemplate.name,
+    language: { code: metaTemplate.language || 'pt_BR' },
+  };
+
+  // Build components array from variables
+  const components: any[] = [];
+  
+  // Handle header variables
+  const headerVars = Object.entries(processedVariables)
+    .filter(([k]) => k.startsWith('header_'))
+    .sort(([a], [b]) => a.localeCompare(b));
+  
+  if (headerVars.length > 0) {
+    components.push({
+      type: 'header',
+      parameters: headerVars.map(([, v]) => ({ type: 'text', text: v })),
+    });
+  }
+
+  // Handle body variables
+  const bodyVars = Object.entries(processedVariables)
+    .filter(([k]) => k.startsWith('body_'))
+    .sort(([a], [b]) => a.localeCompare(b));
+  
+  if (bodyVars.length > 0) {
+    components.push({
+      type: 'body',
+      parameters: bodyVars.map(([, v]) => ({ type: 'text', text: v })),
+    });
+  }
+
+  // Handle button variables
+  const buttonVars = Object.entries(processedVariables)
+    .filter(([k]) => k.startsWith('button_'))
+    .sort(([a], [b]) => a.localeCompare(b));
+  
+  for (const [key, value] of buttonVars) {
+    const match = key.match(/button_(\d+)_/);
+    if (match) {
+      const buttonIndex = parseInt(match[1]);
+      components.push({
+        type: 'button',
+        sub_type: 'url',
+        index: buttonIndex,
+        parameters: [{ type: 'text', text: value }],
+      });
+    }
+  }
+
+  if (components.length > 0) {
+    templatePayload.components = components;
+  }
+
+  // Get Cloud API config for this channel
+  const { data: cloudConfig } = await supabase
+    .from('cloudapi_configs')
+    .select('*')
+    .eq('channel_id', channelId)
+    .eq('is_active', true)
+    .single();
+
+  if (!cloudConfig) {
+    throw new Error('Cloud API config not found for channel');
+  }
+
+  // Create message record
+  const templatePreview = metaTemplate.preview_text || `Template: ${metaTemplate.name}`;
+  const { data: msgData, error: msgError } = await supabase
+    .from('messages')
+    .insert({
+      conversation_id: conversationId,
+      contact_id: contactId,
+      content: templatePreview,
+      is_from_me: true,
+      message_type: 'template',
+      status: 'pending',
+      metadata: { template: templatePayload },
+    })
+    .select('id')
+    .single();
+
+  if (msgError) {
+    console.error(`[BulkDispatch] Error creating message:`, msgError);
+    throw new Error(`Failed to create message: ${msgError.message}`);
+  }
+
+  // Send via cloudapi-send-message
+  const sendRes = await fetch(`${supabaseUrl}/functions/v1/cloudapi-send-message`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${supabaseServiceKey}`,
+    },
+    body: JSON.stringify({
+      channelId,
+      to: phone,
+      type: 'template',
+      template: templatePayload,
+    }),
+  });
+
+  const result = await sendRes.json();
+  console.log(`[BulkDispatch] Cloud API send result:`, result);
+
+  // Update message status
+  await supabase
+    .from('messages')
+    .update({
+      whatsapp_message_id: result?.messageId || result?.messages?.[0]?.id || null,
+      status: sendRes.ok && result?.success !== false ? 'sent' : 'error',
+    })
+    .eq('id', msgData.id);
+
+  if (!sendRes.ok || result?.success === false) {
+    console.error(`[BulkDispatch] Failed to send Meta template:`, result);
+    throw new Error(result?.error || 'Failed to send Meta template');
+  }
+
+  console.log(`[BulkDispatch] Meta template sent to ${phone}`);
+}
+
 // Get schedule configuration from dispatch or company settings
 async function getScheduleConfig(supabase: any, dispatch: any): Promise<ScheduleConfig> {
   // If schedule is disabled for this dispatch, return disabled config
@@ -416,10 +562,10 @@ Deno.serve(async (req) => {
 
     console.log(`[BulkDispatch] Starting batch processing for dispatch: ${dispatchId}`);
 
-    // Fetch dispatch with both template (rescue) and marketing_campaign
+    // Fetch dispatch with both template (rescue), marketing_campaign and meta_template
     const { data: dispatch, error: dispatchError } = await supabase
       .from('bulk_dispatches')
-      .select('*, template:rescue_templates(*), channel:whatsapp_channels(*), marketing_campaign:marketing_campaigns(*)')
+      .select('*, template:rescue_templates(*), channel:whatsapp_channels(*), marketing_campaign:marketing_campaigns(*), meta_template:meta_message_templates(*)')
       .eq('id', dispatchId)
       .single();
 
@@ -550,10 +696,13 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
 
   // Determine campaign type
   const isMarketingCampaign = dispatch.campaign_type === 'marketing';
+  const isMetaTemplateCampaign = dispatch.campaign_type === 'template_meta';
+  const isFollowupCampaign = dispatch.campaign_type === 'followup' || (!isMarketingCampaign && !isMetaTemplateCampaign);
   const template = dispatch.template;
   const marketingCampaign = dispatch.marketing_campaign;
+  const metaTemplate = dispatch.meta_template;
 
-  console.log(`[BulkDispatch] Campaign type: ${dispatch.campaign_type}, isMarketing: ${isMarketingCampaign}`);
+  console.log(`[BulkDispatch] Campaign type: ${dispatch.campaign_type}, isMarketing: ${isMarketingCampaign}, isMetaTemplate: ${isMetaTemplateCampaign}`);
 
   // Check if contacts already generated, if not generate from filters
   const { count: existingCount } = await supabase
@@ -595,7 +744,16 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
     return { processed: 0, hasMore: false, nextBatchScheduled: false };
   }
 
-  if (!isMarketingCampaign && !template) {
+  if (isMetaTemplateCampaign && !metaTemplate) {
+    console.error(`[BulkDispatch] Meta template not found for dispatch ${dispatch.id}`);
+    await supabase
+      .from('bulk_dispatches')
+      .update({ status: 'error', completed_at: new Date().toISOString() })
+      .eq('id', dispatch.id);
+    return { processed: 0, hasMore: false, nextBatchScheduled: false };
+  }
+
+  if (isFollowupCampaign && !template) {
     console.error(`[BulkDispatch] Rescue template not found for dispatch ${dispatch.id}`);
     await supabase
       .from('bulk_dispatches')
@@ -604,19 +762,25 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
     return { processed: 0, hasMore: false, nextBatchScheduled: false };
   }
 
-  // Get steps based on campaign type
-  const steps = isMarketingCampaign 
-    ? (marketingCampaign.steps as MarketingStep[]) || []
-    : (template.steps as RescueStep[]) || [];
+  // For Meta template campaigns, we don't need steps
+  let steps: (RescueStep | MarketingStep)[] = [];
+  let firstStep: RescueStep | MarketingStep | null = null;
+  
+  if (!isMetaTemplateCampaign) {
+    // Get steps based on campaign type
+    steps = isMarketingCampaign 
+      ? (marketingCampaign.steps as MarketingStep[]) || []
+      : (template.steps as RescueStep[]) || [];
 
-  const firstStep = steps[0];
-  if (!firstStep) {
-    console.error(`[BulkDispatch] No steps found in ${isMarketingCampaign ? 'marketing campaign' : 'template'}`);
-    await supabase
-      .from('bulk_dispatches')
-      .update({ status: 'error', completed_at: new Date().toISOString() })
-      .eq('id', dispatch.id);
-    return { processed: 0, hasMore: false, nextBatchScheduled: false };
+    firstStep = steps[0] || null;
+    if (!firstStep) {
+      console.error(`[BulkDispatch] No steps found in ${isMarketingCampaign ? 'marketing campaign' : 'template'}`);
+      await supabase
+        .from('bulk_dispatches')
+        .update({ status: 'error', completed_at: new Date().toISOString() })
+        .eq('id', dispatch.id);
+      return { processed: 0, hasMore: false, nextBatchScheduled: false };
+    }
   }
 
   // channel_id "vazio" (null/undefined) indica que deve usar o canal da conversa existente
@@ -799,7 +963,25 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
 
       let activeRecordId: string | null = null;
 
-      if (isMarketingCampaign) {
+      // Handle Meta Template campaign - simple send without steps/follow-up
+      if (isMetaTemplateCampaign) {
+        console.log(`[BulkDispatch] Sending Meta template: ${metaTemplate.name}`);
+        
+        await sendMetaTemplateMessage(
+          supabase,
+          supabaseUrl,
+          supabaseKey,
+          effectiveChannelId,
+          conversationId,
+          contact.id,
+          contact.phone,
+          metaTemplate,
+          dispatch.meta_template_variables,
+          contact
+        );
+
+        console.log(`[BulkDispatch] Meta template sent successfully to ${contact.phone}`);
+      } else if (isMarketingCampaign) {
         console.log(`[BulkDispatch] Marketing campaign config - initial_department_id: ${marketingCampaign.initial_department_id}, initial_user_id: ${marketingCampaign.initial_user_id}`);
         
         // Build update object for both department and user transfer
@@ -858,7 +1040,7 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
         activeRecordId = activeMarketing?.id;
         console.log(`[BulkDispatch] Created active marketing campaign: ${activeRecordId}`);
 
-        if (activeMarketing) {
+        if (activeMarketing && firstStep) {
           const messageContent = replaceVariables(firstStep.message, contact, '');
           
           // SEND FIRST MESSAGE IMMEDIATELY
@@ -896,7 +1078,7 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
             console.log(`[BulkDispatch] Sent first marketing message for campaign ${activeMarketing.id}`);
           }
         }
-      } else {
+      } else if (isFollowupCampaign && firstStep) {
         // Create active rescue (follow-up)
         const { data: activeRescue, error: rescueError } = await supabase
           .from('active_rescues')
@@ -965,7 +1147,7 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
         .update({
           status: 'sent',
           sent_at: new Date().toISOString(),
-          active_rescue_id: isMarketingCampaign ? null : activeRecordId,
+          active_rescue_id: isFollowupCampaign ? activeRecordId : null,
         })
         .eq('id', dispatchContact.id);
 
@@ -982,7 +1164,7 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
       dispatch.sent_count++;
       processedCount++;
 
-      console.log(`[BulkDispatch] Successfully processed contact: ${contact.full_name} (${isMarketingCampaign ? 'marketing' : 'rescue'})`);
+      console.log(`[BulkDispatch] Successfully processed contact: ${contact.full_name} (${isMetaTemplateCampaign ? 'meta_template' : isMarketingCampaign ? 'marketing' : 'rescue'})`);
 
     } catch (err) {
       const error = err as Error;

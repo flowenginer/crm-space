@@ -800,6 +800,8 @@ export type Database = {
           id: string
           interval_seconds: number
           marketing_campaign_id: string | null
+          meta_template_id: string | null
+          meta_template_variables: Json | null
           name: string
           paused_at: string | null
           processed_count: number
@@ -826,6 +828,8 @@ export type Database = {
           id?: string
           interval_seconds?: number
           marketing_campaign_id?: string | null
+          meta_template_id?: string | null
+          meta_template_variables?: Json | null
           name: string
           paused_at?: string | null
           processed_count?: number
@@ -852,6 +856,8 @@ export type Database = {
           id?: string
           interval_seconds?: number
           marketing_campaign_id?: string | null
+          meta_template_id?: string | null
+          meta_template_variables?: Json | null
           name?: string
           paused_at?: string | null
           processed_count?: number
@@ -887,6 +893,13 @@ export type Database = {
             columns: ["marketing_campaign_id"]
             isOneToOne: false
             referencedRelation: "marketing_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bulk_dispatches_meta_template_id_fkey"
+            columns: ["meta_template_id"]
+            isOneToOne: false
+            referencedRelation: "meta_message_templates"
             referencedColumns: ["id"]
           },
           {
