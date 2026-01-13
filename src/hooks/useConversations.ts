@@ -14,6 +14,7 @@ export interface Conversation {
   last_message_at: string | null;
   last_message_preview: string | null;
   last_message_is_from_me: boolean | null;
+  last_client_message_at: string | null;
   lead_status: string | null;
   created_at: string;
   updated_at: string;
@@ -60,7 +61,7 @@ export interface Conversation {
     segment?: { id: string; name: string; color: string } | null;
   } | null;
   assignee?: { id: string; full_name: string | null } | null;
-  channel?: { id: string; name: string } | null;
+  channel?: { id: string; name: string; type?: string } | null;
 }
 
 export interface MessageReaction {
@@ -96,10 +97,10 @@ const CONVERSATION_FIELDS = `
   id, contact_id, channel_id, assigned_to, department_id,
   status, is_unread, unread_count, last_message_at, last_message_preview,
   last_message_is_from_me, lead_status, created_at, updated_at, closed_at, closed_by,
-  referral_source, referral_data,
+  referral_source, referral_data, last_client_message_at,
   contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data),
   assignee:profiles!conversations_assigned_to_fkey(id, full_name),
-  channel:whatsapp_channels(id, name)
+  channel:whatsapp_channels(id, name, type)
 `;
 
 export function useConversations(filter?: AssignmentFilter) {

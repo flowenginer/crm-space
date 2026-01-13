@@ -151,6 +151,7 @@ import { RescueButton } from '@/components/rescue/RescueButton';
 import { RescueActiveAlert } from '@/components/rescue/RescueActiveAlert';
 import { BulkTransferModal } from '@/components/conversations/BulkTransferModal';
 import { useBulkReturnToOriginalAgent } from '@/hooks/useBulkConversationActions';
+import { use24hWindow, formatRemainingTime } from '@/hooks/use24hWindow';
 import type { Profile } from '@/types';
 
 // Helper function to format WhatsApp-style text (bold, italic, strikethrough) and linkify URLs
@@ -615,14 +616,14 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
                       </TooltipContent>
                     </Tooltip>
                     
-                    {/* Cloud API Badge for Official Channels */}
+                    {/* Cloud API Badge for Official Channels - AZUL CHAMATIVO */}
                     {isOfficial && (
-                      <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/20 rounded-full">
-                        <svg className="w-3 h-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-600/25 rounded-full">
+                        <svg className="w-3 h-3 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                           <path d="m9 12 2 2 4-4"/>
                         </svg>
-                        <span className="text-xs text-emerald-600 font-medium">Cloud API</span>
+                        <span className="text-xs text-blue-600 font-semibold">API Oficial</span>
                       </div>
                     )}
                   </>
@@ -4875,6 +4876,21 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               const isAdmin = canAccessAllConversations;
               const canSendMessages = isOwner || isAdmin || sharePermission.canEdit || !sharePermission.isShared;
 
+              // Check 24h window for official channels
+              const channelData = channels?.find(c => c.id === selectedConversation?.channel_id);
+              const isOfficialChannel = (channelData as any)?.type === 'official';
+              const lastClientMessage = (selectedConversation as any)?.last_client_message_at;
+              
+              // Calculate window status
+              const windowExpired = (() => {
+                if (!isOfficialChannel) return false;
+                if (!lastClientMessage) return true; // No client message = expired
+                
+                const lastMsg = new Date(lastClientMessage);
+                const windowEnd = new Date(lastMsg.getTime() + 24 * 60 * 60 * 1000);
+                return new Date() > windowEnd;
+              })();
+
               if (!canSendMessages) {
                 // View-only access - show disabled state
                 return (
@@ -4884,6 +4900,57 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       <span className="text-sm text-muted-foreground">
                         Você tem acesso apenas para visualização desta conversa
                       </span>
+                    </div>
+                  </div>
+                );
+              }
+
+              // 24h window expired for official channel - show blocked state
+              if (windowExpired && isOfficialChannel) {
+                return (
+                  <div className="bg-card border-t border-border px-4 md:px-6 py-4">
+                    <div className="flex flex-col items-center justify-center gap-3 p-4 bg-amber-500/10 rounded-xl border border-amber-500/30">
+                      <div className="flex items-center gap-2">
+                        <Clock size={20} className="text-amber-600" />
+                        <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                          Janela de 24 horas expirada
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground text-center max-w-md">
+                        O cliente não enviou mensagem nas últimas 24h. Aguarde uma nova mensagem do cliente para responder, ou envie um Template aprovado.
+                      </p>
+                      <QuickTemplatesPopover
+                        contactName={selectedConversation?.contact?.full_name}
+                        contactPhone={selectedConversation?.contact?.phone}
+                        onSelectTemplate={async (content, type, mediaUrl, mediaType, mediaName, contentBlocks) => {
+                          // Template sending logic (same as below)
+                          const channelId = selectedConversation?.channel_id;
+                          const contactPhone = selectedConversation?.contact?.phone;
+                          
+                          if (!selectedConversationId || !channelId || !contactPhone) {
+                            toast.error('Dados insuficientes para enviar template');
+                            return;
+                          }
+
+                          try {
+                            // Send via WhatsApp as template
+                            await sendWhatsAppMessage(channelId, contactPhone, content, 'text');
+                            
+                            // Save to database
+                            sendMessage.mutate({
+                              conversation_id: selectedConversationId,
+                              content: content,
+                              is_from_me: true,
+                              message_type: 'text',
+                            });
+                            
+                            toast.success('Template enviado!');
+                          } catch (error) {
+                            console.error('Error sending template:', error);
+                            toast.error('Erro ao enviar template');
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                 );
