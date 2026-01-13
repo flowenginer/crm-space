@@ -24,6 +24,7 @@ import Checkout from "@/pages/Checkout";
 // Main pages
 import Dashboard from "@/pages/Dashboard";
 import BusinessDashboard from "@/pages/BusinessDashboard";
+import SalesEvaluationDashboard from "@/pages/SalesEvaluationDashboard";
 import Conversations from "@/pages/Conversations";
 import QuickMessages from "@/pages/QuickMessages";
 import CRM from "@/pages/CRM";
@@ -154,6 +155,11 @@ const App = () => (
               <Route path="/business-dashboard" element={
                 <ProtectedRoute permission="reports.view">
                   <BusinessDashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/sales-evaluation" element={
+                <ProtectedRoute permission="reports.view">
+                  <SalesEvaluationDashboard />
                 </ProtectedRoute>
               } />
               <Route path="/marketing-campaigns" element={
