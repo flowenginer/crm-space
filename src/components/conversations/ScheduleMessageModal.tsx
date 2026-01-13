@@ -107,12 +107,20 @@ export function ScheduleMessageModal({
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      
+      // Use OGG/Opus for WhatsApp compatibility, fallback to webm
+      const mimeType = MediaRecorder.isTypeSupported('audio/ogg; codecs=opus') 
+        ? 'audio/ogg; codecs=opus' 
+        : MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
+          ? 'audio/webm; codecs=opus'
+          : 'audio/webm';
+      
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       const chunks: BlobPart[] = [];
 
       mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const blob = new Blob(chunks, { type: mimeType });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach(track => track.stop());
