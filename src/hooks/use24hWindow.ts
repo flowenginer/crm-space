@@ -24,44 +24,13 @@ export function use24hWindow(
 ): Window24hStatus | null {
   const [now, setNow] = useState(new Date());
 
-  // Update "now" dynamically - faster updates only when close to expiration
-  // OPTIMIZATION: Reduce CPU usage by updating less frequently when not critical
+  // Update "now" every second for accurate countdown display
   useEffect(() => {
     if (!isOfficialChannel || !lastClientMessageAt) return;
 
-    // Calculate initial remaining time to determine update frequency
-    const calculateInterval = () => {
-      try {
-        const lastMessage = new Date(lastClientMessageAt);
-        const windowEnd = addHours(lastMessage, 24);
-        const remainingMs = differenceInMilliseconds(windowEnd, new Date());
-        const remainingMinutes = Math.floor(remainingMs / (1000 * 60));
-        
-        // If less than 10 minutes remaining, update every second
-        if (remainingMinutes < 10) return 1000;
-        // If less than 1 hour remaining, update every 10 seconds
-        if (remainingMinutes < 60) return 10000;
-        // Otherwise, update every 30 seconds (sufficient for display)
-        return 30000;
-      } catch {
-        return 30000;
-      }
-    };
-
-    let currentInterval = calculateInterval();
-    
-    const updateNow = () => {
+    const intervalRef = setInterval(() => {
       setNow(new Date());
-      // Recalculate interval as we might need faster updates
-      const newInterval = calculateInterval();
-      if (newInterval !== currentInterval) {
-        currentInterval = newInterval;
-        clearInterval(intervalRef);
-        intervalRef = setInterval(updateNow, currentInterval);
-      }
-    };
-
-    let intervalRef = setInterval(updateNow, currentInterval);
+    }, 1000);
 
     return () => clearInterval(intervalRef);
   }, [isOfficialChannel, lastClientMessageAt]);
