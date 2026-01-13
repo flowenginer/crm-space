@@ -441,7 +441,7 @@ async function executeAction(
         await supabase.from('messages').insert({
           conversation_id: execution.conversation_id,
           content: message,
-          sender_type: 'system',
+          is_from_me: true,
           message_type: 'text',
           whatsapp_message_id: textResult.messageId,
           status: 'sent',
@@ -509,7 +509,7 @@ async function executeAction(
         await supabase.from('messages').insert({
           conversation_id: execution.conversation_id,
           content: caption || `[${mediaType}]`,
-          sender_type: 'system',
+          is_from_me: true,
           message_type: mediaType,
           media_url: mediaUrl,
           whatsapp_message_id: mediaResult.messageId,
@@ -794,7 +794,7 @@ async function executeAction(
       await supabase.from('messages').insert({
         conversation_id: execution.conversation_id,
         content: templateContent,
-        sender_type: 'system',
+        is_from_me: true,
         message_type: 'template',
         whatsapp_message_id: sendResult.messageId,
         status: 'sent',
