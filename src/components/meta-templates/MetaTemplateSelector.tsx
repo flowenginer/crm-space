@@ -1,0 +1,203 @@
+import { useState, useEffect } from 'react';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { RefreshCw, FileText, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { 
+  useApprovedMetaTemplates, 
+  useSyncMetaTemplates,
+  extractTemplateVariables,
+  getTemplateBody,
+  getTemplateHeader,
+  getTemplateFooter,
+  type MetaMessageTemplate 
+} from '@/hooks/useMetaTemplates';
+
+interface MetaTemplateSelectorProps {
+  selectedTemplateId?: string;
+  onTemplateSelect: (template: MetaMessageTemplate | null) => void;
+  variableValues?: Record<string, string>;
+  onVariableChange?: (variables: Record<string, string>) => void;
+  className?: string;
+  showPreview?: boolean;
+}
+
+export function MetaTemplateSelector({
+  selectedTemplateId,
+  onTemplateSelect,
+  variableValues = {},
+  onVariableChange,
+  className,
+  showPreview = true,
+}: MetaTemplateSelectorProps) {
+  const { data: templates = [], isLoading } = useApprovedMetaTemplates();
+  const syncTemplates = useSyncMetaTemplates();
+  const [localVariables, setLocalVariables] = useState<Record<string, string>>(variableValues);
+
+  const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+  const variableCount = selectedTemplate ? extractTemplateVariables(selectedTemplate.components) : 0;
+
+  useEffect(() => {
+    setLocalVariables(variableValues);
+  }, [variableValues]);
+
+  const handleVariableChange = (index: number, value: string) => {
+    const newVariables = { ...localVariables, [`{{${index}}}`]: value };
+    setLocalVariables(newVariables);
+    onVariableChange?.(newVariables);
+  };
+
+  const getPreviewText = (text: string): string => {
+    let preview = text;
+    Object.entries(localVariables).forEach(([key, value]) => {
+      preview = preview.replace(key, value || `[${key}]`);
+    });
+    return preview;
+  };
+
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case 'MARKETING': return 'bg-purple-500/20 text-purple-500 border-purple-500/30';
+      case 'UTILITY': return 'bg-blue-500/20 text-blue-500 border-blue-500/30';
+      case 'AUTHENTICATION': return 'bg-orange-500/20 text-orange-500 border-orange-500/30';
+      default: return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  return (
+    <div className={cn('space-y-4', className)}>
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <Label htmlFor="template-select" className="mb-2 block">
+            Template Meta (API Oficial)
+          </Label>
+          <Select
+            value={selectedTemplateId || ''}
+            onValueChange={(value) => {
+              const template = templates.find(t => t.id === value);
+              onTemplateSelect(template || null);
+              setLocalVariables({});
+              onVariableChange?.({});
+            }}
+          >
+            <SelectTrigger id="template-select" className="bg-background">
+              <SelectValue placeholder="Selecione um template aprovado" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              {templates.length === 0 ? (
+                <div className="p-4 text-center text-sm text-muted-foreground">
+                  <FileText className="mx-auto mb-2 h-8 w-8 opacity-50" />
+                  <p>Nenhum template aprovado encontrado</p>
+                  <p className="text-xs">Sincronize ou crie templates primeiro</p>
+                </div>
+              ) : (
+                templates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{template.name}</span>
+                      <Badge 
+                        variant="outline" 
+                        className={cn('text-[10px] px-1.5 py-0', getCategoryColor(template.category))}
+                      >
+                        {template.category}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        ({template.language})
+                      </span>
+                    </div>
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => syncTemplates.mutate()}
+          disabled={syncTemplates.isPending}
+          className="mt-6"
+          title="Sincronizar templates da Meta"
+        >
+          <RefreshCw className={cn('h-4 w-4', syncTemplates.isPending && 'animate-spin')} />
+        </Button>
+      </div>
+
+      {selectedTemplate && variableCount > 0 && (
+        <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+          <Label className="text-sm font-medium">
+            Preencha as variáveis ({variableCount})
+          </Label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Array.from({ length: variableCount }, (_, i) => i + 1).map((num) => (
+              <div key={num} className="space-y-1">
+                <Label className="text-xs text-muted-foreground">
+                  Variável {`{{${num}}}`}
+                </Label>
+                <Input
+                  placeholder={`Valor para {{${num}}}`}
+                  value={localVariables[`{{${num}}}`] || ''}
+                  onChange={(e) => handleVariableChange(num, e.target.value)}
+                  className="bg-background"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selectedTemplate && showPreview && (
+        <div className="rounded-lg border bg-muted/30 overflow-hidden">
+          <div className="bg-muted/50 px-3 py-2 border-b flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">
+              Pré-visualização
+            </span>
+            <Badge 
+              variant="outline" 
+              className={cn('text-[10px]', getCategoryColor(selectedTemplate.category))}
+            >
+              {selectedTemplate.category}
+            </Badge>
+          </div>
+          <div className="p-4 space-y-2">
+            {getTemplateHeader(selectedTemplate.components) && (
+              <div className="font-semibold text-sm">
+                {getPreviewText(getTemplateHeader(selectedTemplate.components)!)}
+              </div>
+            )}
+            <div className="text-sm whitespace-pre-wrap">
+              {getPreviewText(getTemplateBody(selectedTemplate.components))}
+            </div>
+            {getTemplateFooter(selectedTemplate.components) && (
+              <div className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                {getPreviewText(getTemplateFooter(selectedTemplate.components)!)}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!selectedTemplate && templates.length === 0 && !isLoading && (
+        <div className="flex items-start gap-3 p-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
+          <AlertCircle className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium text-yellow-600">Nenhum template disponível</p>
+            <p className="text-muted-foreground mt-1">
+              Configure a API Cloud e sincronize seus templates, ou crie novos templates que serão 
+              enviados para aprovação da Meta.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
