@@ -1810,13 +1810,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           unread_count,
           last_message_at,
           last_message_preview,
+          last_client_message_at,
           lead_status,
           created_at,
           referral_source,
           referral_data,
           contact:contacts(id, full_name, phone, email, avatar_url, is_online, is_typing, first_contact_at, created_at, origin, origin_campaign, referral_data, segment_id, negotiated_value, assigned_to, lead_status, segment:segments(id, name, color)),
           assignee:profiles!conversations_assigned_to_fkey(id, full_name),
-          channel:whatsapp_channels(id, name)
+          channel:whatsapp_channels(id, name, type)
         `)
         .eq('id', selectedConversationId)
         .maybeSingle();
