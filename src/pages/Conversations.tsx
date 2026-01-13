@@ -4355,6 +4355,23 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                               }
                               
                               try {
+                                // Check if there's already an open/pending conversation for this contact on the target channel
+                                const { data: existingConv } = await supabase
+                                  .from('conversations')
+                                  .select('id')
+                                  .eq('contact_id', selectedConversation?.contact_id)
+                                  .eq('channel_id', channel.id)
+                                  .in('status', ['open', 'pending'])
+                                  .neq('id', selectedConversationId)
+                                  .maybeSingle();
+
+                                if (existingConv) {
+                                  toast.error(
+                                    'Já existe uma conversa ativa deste contato no canal selecionado. Feche a outra conversa ou selecione um canal diferente.'
+                                  );
+                                  return;
+                                }
+                                
                                 const updateData: any = { channel_id: channel.id };
                                 
                                 // Reset last_client_message_at when switching TO official channel
