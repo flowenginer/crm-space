@@ -13,7 +13,8 @@ import {
   ExternalLink,
   Send,
   Edit2,
-  Settings
+  Settings,
+  Shield
 } from 'lucide-react';
 import {
   Popover,
@@ -38,7 +39,10 @@ import { Link } from 'react-router-dom';
 import { QuickTemplatesConfigModal } from './QuickTemplatesConfigModal';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-type TemplateCategory = 'messages' | 'audios' | 'media' | 'documents' | 'flows' | 'triggers';
+import { useApprovedMetaTemplates, MetaMessageTemplate, getTemplateBody } from '@/hooks/useMetaTemplates';
+import { MetaTemplateUseModal } from '@/components/meta-templates';
+
+type TemplateCategory = 'messages' | 'audios' | 'media' | 'documents' | 'flows' | 'triggers' | 'meta';
 
 interface CategoryConfig {
   id: TemplateCategory;
@@ -54,7 +58,7 @@ const CATEGORIES: CategoryConfig[] = [
   { id: 'media', label: 'Mídias', icon: Image, color: 'text-pink-500', bgColor: 'bg-pink-500/10' },
   { id: 'documents', label: 'Docs', icon: FileText, color: 'text-amber-500', bgColor: 'bg-amber-500/10' },
   { id: 'flows', label: 'Funis', icon: GitBranch, color: 'text-green-500', bgColor: 'bg-green-500/10' },
-  { id: 'triggers', label: 'Gatilhos', icon: Zap, color: 'text-orange-500', bgColor: 'bg-orange-500/10' },
+  { id: 'meta', label: 'Meta', icon: Shield, color: 'text-sky-500', bgColor: 'bg-sky-500/10' },
 ];
 
 interface QuickTemplatesPopoverProps {
@@ -91,7 +95,11 @@ export function QuickTemplatesPopover({
   const { data: templates = [], isLoading: templatesLoading } = useTemplates();
   const { data: flows = [], isLoading: flowsLoading } = useChatbotFlows();
   const { data: quickTemplates = [] } = useUserQuickTemplates();
+  const { data: metaTemplates = [], isLoading: metaTemplatesLoading } = useApprovedMetaTemplates();
   const incrementUsage = useIncrementTemplateUsage();
+  
+  // Meta template modal state
+  const [selectedMetaTemplate, setSelectedMetaTemplate] = useState<MetaMessageTemplate | null>(null);
 
   // Filter templates by category
   const filteredTemplates = useMemo(() => {
@@ -138,6 +146,26 @@ export function QuickTemplatesPopover({
     const query = searchQuery.toLowerCase();
     return flows.filter(f => f.name.toLowerCase().includes(query));
   }, [flows, activeCategory, searchQuery]);
+
+  // Filter meta templates
+  const filteredMetaTemplates = useMemo(() => {
+    if (activeCategory !== 'meta') return [];
+    if (!searchQuery.trim()) return metaTemplates;
+    const query = searchQuery.toLowerCase();
+    return metaTemplates.filter(t => t.name.toLowerCase().includes(query));
+  }, [metaTemplates, activeCategory, searchQuery]);
+
+  // Handle meta template selection
+  const handleSelectMetaTemplate = useCallback((template: MetaMessageTemplate) => {
+    setSelectedMetaTemplate(template);
+  }, []);
+
+  const handleMetaTemplateUse = useCallback((content: string) => {
+    onCopyToInput?.(content);
+    setSelectedMetaTemplate(null);
+    setOpen(false);
+    setSearchQuery('');
+  }, [onCopyToInput]);
 
   // Replace variables in content
   const replaceVariables = useCallback((content: string) => {
@@ -374,6 +402,57 @@ export function QuickTemplatesPopover({
                 </button>
               ))
             )
+          ) : activeCategory === 'meta' ? (
+            // Meta Templates list
+            metaTemplatesLoading ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground">
+                <Sparkles className="w-5 h-5 animate-pulse" />
+              </div>
+            ) : filteredMetaTemplates.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                <Shield className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>{searchQuery ? 'Nenhum template encontrado' : 'Nenhum template aprovado'}</p>
+                {!searchQuery && (
+                  <Link 
+                    to="/whatsapp-channels" 
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
+                    onClick={() => setOpen(false)}
+                  >
+                    Gerenciar templates <ExternalLink size={10} />
+                  </Link>
+                )}
+              </div>
+            ) : (
+              filteredMetaTemplates.map((template) => (
+                <button
+                  key={template.id}
+                  onClick={() => handleSelectMetaTemplate(template)}
+                  className="w-full flex items-start gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors text-left group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-sky-500/10 flex items-center justify-center flex-shrink-0">
+                    <Shield size={16} className="text-sky-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-sm text-foreground truncate">
+                        {template.name}
+                      </p>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 font-medium">
+                        {template.language}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                      {getTemplateBody(template.components)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <span className="p-1.5 hover:bg-primary/10 rounded-md transition-colors">
+                      <Send size={14} className="text-primary" />
+                    </span>
+                  </div>
+                </button>
+              ))
+            )
           ) : activeCategory === 'triggers' ? (
             // Triggers (placeholder)
             <div className="text-center py-8 text-muted-foreground text-sm">
@@ -496,6 +575,13 @@ export function QuickTemplatesPopover({
           open={configModalOpen} 
           onOpenChange={setConfigModalOpen} 
         />
+        <MetaTemplateUseModal
+          template={selectedMetaTemplate}
+          open={!!selectedMetaTemplate}
+          onOpenChange={(open) => !open && setSelectedMetaTemplate(null)}
+          onCopyToInput={handleMetaTemplateUse}
+          contactName={contactName}
+        />
       </>
     );
   }
@@ -528,6 +614,13 @@ export function QuickTemplatesPopover({
       <QuickTemplatesConfigModal 
         open={configModalOpen} 
         onOpenChange={setConfigModalOpen} 
+      />
+      <MetaTemplateUseModal
+        template={selectedMetaTemplate}
+        open={!!selectedMetaTemplate}
+        onOpenChange={(open) => !open && setSelectedMetaTemplate(null)}
+        onCopyToInput={handleMetaTemplateUse}
+        contactName={contactName}
       />
     </>
   );
