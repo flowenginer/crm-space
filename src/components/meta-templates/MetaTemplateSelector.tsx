@@ -81,12 +81,11 @@ export function MetaTemplateSelector({
             Template Meta (API Oficial)
           </Label>
           <Select
-            value={selectedTemplateId || ''}
+            value={selectedTemplateId ?? undefined}
             onValueChange={(value) => {
               const template = templates.find(t => t.id === value);
               onTemplateSelect(template || null);
               setLocalVariables({});
-              onVariableChange?.({});
             }}
           >
             <SelectTrigger id="template-select" className="bg-background">
