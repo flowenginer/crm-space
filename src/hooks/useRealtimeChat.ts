@@ -410,7 +410,8 @@ export function useRealtimeConversations() {
         console.log('📡 [Realtime] new-conversations broadcast channel status:', status);
       });
 
-    // Fallback: Polling inteligente a cada 15 segundos (apenas se não houve eventos recentes)
+    // Fallback: Polling inteligente a cada 45 segundos (apenas se não houve eventos recentes)
+    // OPTIMIZATION: Increased from 15s to 45s, and only poll when tab is visible
     let lastRealtimeEvent = Date.now();
     
     // Atualizar lastRealtimeEvent quando qualquer evento de conversa chegar
@@ -419,10 +420,16 @@ export function useRealtimeConversations() {
     };
 
     const pollInterval = setInterval(() => {
+      // OPTIMIZATION: Skip polling if tab is not visible
+      if (document.hidden) {
+        console.log('🔄 [Polling] Tab hidden, skipping poll');
+        return;
+      }
+      
       const timeSinceLastEvent = Date.now() - lastRealtimeEvent;
-      // Só faz polling se não houve evento nos últimos 10 segundos
-      if (timeSinceLastEvent > 10000) {
-        console.log('🔄 [Polling] No realtime events in 10s, forcing refresh...');
+      // Só faz polling se não houve evento nos últimos 30 segundos
+      if (timeSinceLastEvent > 30000) {
+        console.log('🔄 [Polling] No realtime events in 30s, forcing refresh...');
         queryClient.invalidateQueries({ 
           queryKey: ['conversations-paginated'],
           refetchType: 'active'
@@ -432,7 +439,7 @@ export function useRealtimeConversations() {
           refetchType: 'active'
         });
       }
-    }, 15000);
+    }, 45000); // OPTIMIZATION: Increased from 15s to 45s
 
     return () => {
       console.log('🔌 [Realtime] Cleaning up conversation channels');
