@@ -346,7 +346,6 @@ async function sendMetaTemplateMessage(
       is_from_me: true,
       message_type: 'template',
       status: 'pending',
-      payload: { template: templatePayload },
     })
     .select('id')
     .single();
