@@ -41,9 +41,26 @@ serve(async (req) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     
-    if (authError || !user) {
+    let isAuthorized = false;
+
+    // First, try to validate as a user token
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (!authError && user) {
+      isAuthorized = true;
+      console.log('[CloudAPI Send] Authorized via user token');
+    }
+
+    // If not a user, check if the token is the service_role key (internal calls from other edge functions)
+    if (!isAuthorized) {
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (token === serviceRoleKey) {
+        isAuthorized = true;
+        console.log('[CloudAPI Send] Authorized via service role');
+      }
+    }
+
+    if (!isAuthorized) {
       throw new Error('Unauthorized');
     }
 
