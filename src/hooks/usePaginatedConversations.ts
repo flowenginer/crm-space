@@ -426,9 +426,20 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
 
       // *** BUSCA POR TELEFONE OU NOME - SERVIDOR (com busca sem acentos) ***
       if (searchQuery && searchQuery.length >= 3) {
-        // Busca usando função RPC que ignora acentos
+        // Use optimized search that filters by assigned_to when assignment is 'mine'
+        // This ensures vendors find their assigned contacts first when searching by name
+        const searchParams: { p_search_term: string; p_assigned_to?: string; p_limit?: number } = {
+          p_search_term: searchQuery.trim(),
+          p_limit: 200
+        };
+        
+        // If filtering by 'mine', pass the user ID to prioritize/filter assigned contacts
+        if (assignment === 'mine' && user) {
+          searchParams.p_assigned_to = user.id;
+        }
+        
         const { data: matchingContacts } = await supabase
-          .rpc('search_contacts_unaccent', { p_search_term: searchQuery.trim() });
+          .rpc('search_contacts_by_assignment', searchParams);
         
         if (matchingContacts && matchingContacts.length > 0) {
           const contactIds = matchingContacts.map((c: { id: string }) => c.id);

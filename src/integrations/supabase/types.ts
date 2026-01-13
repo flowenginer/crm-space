@@ -11240,6 +11240,16 @@ export type Database = {
           total_keys: number
         }[]
       }
+      search_contacts_by_assignment: {
+        Args: {
+          p_assigned_to?: string
+          p_limit?: number
+          p_search_term: string
+        }
+        Returns: {
+          id: string
+        }[]
+      }
       search_contacts_for_erp: {
         Args: { result_limit?: number; search_term: string }
         Returns: {
