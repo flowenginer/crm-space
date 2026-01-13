@@ -97,13 +97,12 @@ serve(async (req) => {
       .insert({
         tenant_id: tenantId,
         name: channelName,
-        phone_number: phoneData.display_phone_number || phoneNumberId,
+        phone: phoneData.display_phone_number || phoneNumberId,
         type: 'official',
         status: 'connected',
-        is_official: true,
         department_id: departmentId || null,
         webhook_url: webhookUrl,
-        settings: {
+        session_data: {
           verified_name: phoneData.verified_name,
           quality_rating: phoneData.quality_rating,
           messaging_limit_tier: phoneData.messaging_limit_tier,
