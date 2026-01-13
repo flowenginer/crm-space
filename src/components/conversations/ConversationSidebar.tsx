@@ -587,8 +587,15 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   });
 
   // Fetch profile photo from WhatsApp (hook must be before early returns)
+  // Note: Skip for official channels as they don't have third-party providers
   const fetchPhoto = async () => {
     if (!conversation?.channel_id || !conversation?.contact?.phone || conversation?.contact?.avatar_url) return;
+    
+    // Skip fetch for official channels - they don't have providers configured
+    if (isOfficialChannel) {
+      console.log('[Sidebar] Skipping profile fetch for official channel');
+      return;
+    }
     
     setIsFetchingPhoto(true);
     try {
