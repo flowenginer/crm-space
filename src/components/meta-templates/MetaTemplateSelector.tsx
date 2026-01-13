@@ -90,9 +90,24 @@ export function MetaTemplateSelector({
             }}
           >
             <SelectTrigger id="template-select" className="bg-background">
-              <SelectValue placeholder="Selecione um template aprovado" />
+              <SelectValue placeholder="Selecione um template...">
+                {selectedTemplate && (
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{selectedTemplate.name}</span>
+                    <Badge 
+                      variant="outline" 
+                      className={cn('text-[10px] px-1.5 py-0', getCategoryColor(selectedTemplate.category))}
+                    >
+                      {selectedTemplate.category}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      ({selectedTemplate.language})
+                    </span>
+                  </div>
+                )}
+              </SelectValue>
             </SelectTrigger>
-            <SelectContent className="bg-popover">
+            <SelectContent className="bg-popover z-50">
               {templates.length === 0 ? (
                 <div className="p-4 text-center text-sm text-muted-foreground">
                   <FileText className="mx-auto mb-2 h-8 w-8 opacity-50" />
