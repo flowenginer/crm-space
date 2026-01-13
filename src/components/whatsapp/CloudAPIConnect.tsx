@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Facebook, 
   Loader2, 
@@ -29,12 +30,14 @@ import {
   ExternalLink,
   MessageSquare,
   Settings,
+  KeyRound,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDepartments } from '@/hooks/useDepartments';
 import { initFacebookSDK, launchWhatsAppSignup } from '@/lib/facebook-sdk';
+import { ManualCloudAPIForm } from './ManualCloudAPIForm';
 
 export interface CloudAPIConnectProps {
   open: boolean;
@@ -199,75 +202,94 @@ export function CloudAPIConnect({ open, onClose, onSuccess }: CloudAPIConnectPro
     toast.success(`${label} copiado!`);
   };
 
+  const [connectionMode, setConnectionMode] = useState<'facebook' | 'manual'>('manual');
+
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5 text-green-600" />
             Conectar WhatsApp Oficial (Cloud API)
           </DialogTitle>
           <DialogDescription>
-            {step === 'initial' && 'Conecte seu número usando a API oficial do Meta.'}
-            {step === 'loading' && 'Aguardando autorização no Facebook...'}
-            {step === 'configure' && 'Configure o nome do canal.'}
-            {step === 'saving' && 'Salvando configuração...'}
-            {step === 'success' && 'Canal configurado com sucesso!'}
+            Conecte seu número usando a API oficial do Meta.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Initial Step */}
         {step === 'initial' && (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Vantagens da API Oficial:</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-green-500" />
-                  <span>Conexão permanente (sem QR Code)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-green-500" />
-                  <span>Alta disponibilidade e estabilidade</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-green-500" />
-                  <span>Suporte a chamadas de voz</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-500" />
-                  <span>Templates de mensagem aprovados</span>
-                </div>
-              </CardContent>
-            </Card>
+          <Tabs value={connectionMode} onValueChange={(v) => setConnectionMode(v as 'facebook' | 'manual')} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="manual" className="gap-2">
+                <KeyRound className="h-4 w-4" />
+                Manual
+              </TabsTrigger>
+              <TabsTrigger value="facebook" className="gap-2">
+                <Facebook className="h-4 w-4" />
+                Via Facebook
+              </TabsTrigger>
+            </TabsList>
 
-            <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg text-sm">
-              <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-              <p className="text-muted-foreground">
-                Você poderá criar ou selecionar uma conta WhatsApp Business diretamente no popup do Facebook.
-              </p>
-            </div>
+            <TabsContent value="manual" className="mt-4">
+              <ManualCloudAPIForm 
+                onSuccess={() => {
+                  onSuccess?.();
+                }}
+                onClose={handleClose}
+              />
+            </TabsContent>
 
-            <Button 
-              onClick={handleConnectWithFacebook} 
-              disabled={isLoading || !isSdkReady} 
-              className="w-full gap-2 bg-[#1877F2] hover:bg-[#166FE5]"
-            >
-              {!isSdkReady ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Carregando...
-                </>
-              ) : (
-                <>
-                  <Facebook className="h-4 w-4" />
-                  Conectar com Facebook
-                </>
-              )}
-            </Button>
-          </div>
+            <TabsContent value="facebook" className="mt-4 space-y-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Vantagens da API Oficial:</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-green-500" />
+                    <span>Conexão permanente (sem QR Code)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-green-500" />
+                    <span>Alta disponibilidade e estabilidade</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-green-500" />
+                    <span>Suporte a chamadas de voz</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-green-500" />
+                    <span>Templates de mensagem aprovados</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg text-sm">
+                <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                <p className="text-muted-foreground">
+                  Você poderá criar ou selecionar uma conta WhatsApp Business diretamente no popup do Facebook.
+                </p>
+              </div>
+
+              <Button 
+                onClick={handleConnectWithFacebook} 
+                disabled={isLoading || !isSdkReady} 
+                className="w-full gap-2 bg-[#1877F2] hover:bg-[#166FE5]"
+              >
+                {!isSdkReady ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Carregando...
+                  </>
+                ) : (
+                  <>
+                    <Facebook className="h-4 w-4" />
+                    Conectar com Facebook
+                  </>
+                )}
+              </Button>
+            </TabsContent>
+          </Tabs>
         )}
 
         {/* Loading Step */}

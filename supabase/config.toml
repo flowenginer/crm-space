@@ -127,3 +127,6 @@ verify_jwt = true
 
 [functions.whatsapp-embedded-signup]
 verify_jwt = false
+
+[functions.cloudapi-manual-connect]
+verify_jwt = false
