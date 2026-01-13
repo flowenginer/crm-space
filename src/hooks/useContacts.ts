@@ -85,40 +85,41 @@ export function useContacts() {
   return useQuery({
     queryKey: ['contacts'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('contacts')
-        .select(`
-          ${CONTACT_FIELDS},
-          assignee:profiles!contacts_assigned_to_fkey(id, full_name),
-          department:departments(id, name)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Fetch tags for contacts
-      const contactIds = data?.map(c => c.id) || [];
-      if (contactIds.length > 0) {
-        const { data: contactTags } = await supabase
+      // OTIMIZAÇÃO: Buscar contatos e tags em paralelo
+      // Evita query sequencial que causa overhead com muitos contatos
+      const [contactsResult, tagsResult] = await Promise.all([
+        supabase
+          .from('contacts')
+          .select(`
+            ${CONTACT_FIELDS},
+            assignee:profiles!contacts_assigned_to_fkey(id, full_name),
+            department:departments(id, name)
+          `)
+          .order('created_at', { ascending: false })
+          .limit(500), // Limitar para performance - usar paginação para mais
+        supabase
           .from('contact_tags')
           .select('contact_id, tag:tags(id, name, color)')
-          .in('contact_id', contactIds);
+      ]);
 
-        const tagMap: Record<string, { id: string; name: string; color: string | null }[]> = {};
-        contactTags?.forEach(ct => {
-          if (!tagMap[ct.contact_id]) tagMap[ct.contact_id] = [];
-          if (ct.tag) tagMap[ct.contact_id].push(ct.tag as { id: string; name: string; color: string | null });
-        });
+      if (contactsResult.error) throw contactsResult.error;
+      
+      const data = contactsResult.data;
+      const contactTags = tagsResult.data;
 
-        return data?.map(contact => ({
-          ...contact,
-          tags: tagMap[contact.id] || []
-        })) as Contact[];
-      }
+      // Criar mapa de tags por contato
+      const tagMap: Record<string, { id: string; name: string; color: string | null }[]> = {};
+      contactTags?.forEach(ct => {
+        if (!tagMap[ct.contact_id]) tagMap[ct.contact_id] = [];
+        if (ct.tag) tagMap[ct.contact_id].push(ct.tag as { id: string; name: string; color: string | null });
+      });
 
-      return data as Contact[];
+      return data?.map(contact => ({
+        ...contact,
+        tags: tagMap[contact.id] || []
+      })) as Contact[];
     },
-    staleTime: 30000, // 30 seconds cache
+    staleTime: 60000, // 60 seconds cache (aumentado para reduzir refetches)
   });
 }
 

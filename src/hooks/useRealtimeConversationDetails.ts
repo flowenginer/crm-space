@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -6,17 +6,28 @@ import { useQueryClient } from '@tanstack/react-query';
  * Hook para escutar mudanças em tempo real nos detalhes de uma conversa.
  * Invalida as queries quando houver mudanças no contato (lead_status, tags, etc.)
  * ou quando a conversa for transferida/modificada.
+ * 
+ * OTIMIZADO: Usa um único canal Realtime com múltiplos listeners ao invés de 3 canais separados.
+ * Isso reduz conexões WebSocket e melhora performance para agentes com múltiplas conversas abertas.
  */
 export function useRealtimeConversationDetails(
   conversationId: string | null,
   contactId: string | null
 ) {
   const queryClient = useQueryClient();
+  const lastInvalidationRef = useRef<number>(0);
 
   useEffect(() => {
     if (!conversationId || !contactId) return;
 
     const invalidateConversationDetails = () => {
+      // Debounce: evita múltiplas invalidações em sequência rápida
+      const now = Date.now();
+      if (now - lastInvalidationRef.current < 500) {
+        return;
+      }
+      lastInvalidationRef.current = now;
+
       console.log('🔔 [Realtime] Invalidating conversation details for:', conversationId);
       queryClient.invalidateQueries({ 
         queryKey: ['conversation-details', conversationId],
@@ -28,9 +39,11 @@ export function useRealtimeConversationDetails(
       });
     };
 
-    // Canal para mudanças no contato (lead_status, assigned_to, segment_id, etc.)
-    const contactChannel = supabase
-      .channel(`contact-realtime:${contactId}`)
+    // OTIMIZAÇÃO: Um único canal com múltiplos listeners
+    // Reduz de 3 conexões WebSocket para 1
+    const unifiedChannel = supabase
+      .channel(`conversation-unified:${conversationId}`)
+      // Listener para mudanças no contato
       .on(
         'postgres_changes',
         {
@@ -44,13 +57,7 @@ export function useRealtimeConversationDetails(
           invalidateConversationDetails();
         }
       )
-      .subscribe((status) => {
-        console.log(`[Realtime] Contact channel status:`, status);
-      });
-
-    // Canal para mudanças nas tags do contato
-    const tagsChannel = supabase
-      .channel(`contact-tags-realtime:${contactId}`)
+      // Listener para tags adicionadas
       .on(
         'postgres_changes',
         {
@@ -64,6 +71,7 @@ export function useRealtimeConversationDetails(
           invalidateConversationDetails();
         }
       )
+      // Listener para tags removidas
       .on(
         'postgres_changes',
         {
@@ -77,13 +85,7 @@ export function useRealtimeConversationDetails(
           invalidateConversationDetails();
         }
       )
-      .subscribe((status) => {
-        console.log(`[Realtime] Contact tags channel status:`, status);
-      });
-
-    // Canal para mudanças na conversa (transferências, status, etc.)
-    const conversationChannel = supabase
-      .channel(`conversation-realtime:${conversationId}`)
+      // Listener para mudanças na conversa
       .on(
         'postgres_changes',
         {
@@ -98,13 +100,11 @@ export function useRealtimeConversationDetails(
         }
       )
       .subscribe((status) => {
-        console.log(`[Realtime] Conversation channel status:`, status);
+        console.log(`[Realtime] Unified channel status:`, status);
       });
 
     return () => {
-      supabase.removeChannel(contactChannel);
-      supabase.removeChannel(tagsChannel);
-      supabase.removeChannel(conversationChannel);
+      supabase.removeChannel(unifiedChannel);
     };
   }, [conversationId, contactId, queryClient]);
 }

@@ -357,10 +357,14 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Get conversation and channel info
+        // Get conversation and channel info - OTIMIZADO: buscar tipo do canal junto
         const { data: conversation, error: convError } = await supabase
           .from('conversations')
-          .select('channel_id, assigned_to')
+          .select(`
+            channel_id, 
+            assigned_to,
+            channel:whatsapp_channels(id, type)
+          `)
           .eq('id', activeCampaign.conversation_id)
           .single();
 
@@ -369,6 +373,11 @@ Deno.serve(async (req) => {
           errors++;
           continue;
         }
+
+        // Verificar tipo do canal para routing correto
+        const channelType = (conversation.channel as any)?.type || 'evolution';
+        const isCloudAPI = channelType === 'cloudapi' || channelType === 'official';
+        console.log(`[process-marketing-messages] Channel type: ${channelType}, isCloudAPI: ${isCloudAPI}`);
 
         // Get contact info
         const { data: contact, error: contactError } = await supabase
@@ -397,6 +406,7 @@ Deno.serve(async (req) => {
         console.log(`[process-marketing-messages] Processing message for ${contact.phone}...`);
 
         // Helper function: INSERT first -> SEND to WhatsApp -> UPDATE with messageId
+        // OTIMIZADO: Roteia para cloudapi-send-message quando canal é CloudAPI
         const sendWithInsertFirst = async (type: string, content: string, mediaUrl: string | null) => {
           // 1. INSERT message first with status 'pending'
           const { data: insertedMsg, error: insertError } = await supabase
@@ -421,22 +431,45 @@ Deno.serve(async (req) => {
 
           console.log(`[process-marketing-messages] Inserted pending ${type} message:`, insertedMsg.id);
 
-          // 2. SEND to WhatsApp
-          const sendResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({
-              action: 'send',
-              channelId: conversation.channel_id,
-              phone: contact.phone,
-              content: content,
-              type: type,
-              mediaUrl: mediaUrl,
-            }),
-          });
+          // 2. SEND to WhatsApp - ROUTING CORRETO baseado no tipo de canal
+          let sendResponse: Response;
+          
+          if (isCloudAPI) {
+            // CloudAPI/Official: usar cloudapi-send-message
+            console.log(`[process-marketing-messages] Routing to cloudapi-send-message`);
+            sendResponse = await fetch(`${supabaseUrl}/functions/v1/cloudapi-send-message`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                channelId: conversation.channel_id,
+                phone: contact.phone,
+                type: type,
+                content: content,
+                mediaUrl: mediaUrl,
+              }),
+            });
+          } else {
+            // Evolution/Z-API/UAZAPI: usar whatsapp-instance
+            console.log(`[process-marketing-messages] Routing to whatsapp-instance`);
+            sendResponse = await fetch(`${supabaseUrl}/functions/v1/whatsapp-instance`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                action: 'send',
+                channelId: conversation.channel_id,
+                phone: contact.phone,
+                content: content,
+                type: type,
+                mediaUrl: mediaUrl,
+              }),
+            });
+          }
 
           const sendResult = await sendResponse.json();
           
