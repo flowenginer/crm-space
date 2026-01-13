@@ -75,6 +75,7 @@ interface QuickTemplatesPopoverProps {
   onCopyToInput?: (content: string) => void;
   onStartFlow?: (flowId: string) => void;
   onTriggerAutomation?: (triggerId: string) => void;
+  onSendMetaTemplate?: (templateId: string, templateName: string, language: string, variables: Record<string, string>) => void;
 }
 
 export function QuickTemplatesPopover({
@@ -84,6 +85,7 @@ export function QuickTemplatesPopover({
   onCopyToInput,
   onStartFlow,
   onTriggerAutomation,
+  onSendMetaTemplate,
 }: QuickTemplatesPopoverProps) {
   const [open, setOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<TemplateCategory>('messages');
@@ -580,6 +582,11 @@ export function QuickTemplatesPopover({
           open={!!selectedMetaTemplate}
           onOpenChange={(open) => !open && setSelectedMetaTemplate(null)}
           onCopyToInput={handleMetaTemplateUse}
+          onSend={onSendMetaTemplate ? (templateId, templateName, variables) => {
+            onSendMetaTemplate(templateId, templateName, selectedMetaTemplate?.language || 'pt_BR', variables);
+            setSelectedMetaTemplate(null);
+            setOpen(false);
+          } : undefined}
           contactName={contactName}
         />
       </>
@@ -620,6 +627,11 @@ export function QuickTemplatesPopover({
         open={!!selectedMetaTemplate}
         onOpenChange={(open) => !open && setSelectedMetaTemplate(null)}
         onCopyToInput={handleMetaTemplateUse}
+        onSend={onSendMetaTemplate ? (templateId, templateName, variables) => {
+          onSendMetaTemplate(templateId, templateName, selectedMetaTemplate?.language || 'pt_BR', variables);
+          setSelectedMetaTemplate(null);
+          setOpen(false);
+        } : undefined}
         contactName={contactName}
       />
     </>
