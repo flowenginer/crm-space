@@ -611,12 +611,20 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
                       <TooltipTrigger asChild>
                         <div className={cn(
                           "flex items-center gap-1 px-2 py-0.5 rounded-full cursor-default",
-                          isConnected ? "bg-green-500/20" : "bg-red-500/20"
+                          isOfficial 
+                            ? "bg-blue-500/20" 
+                            : isConnected ? "bg-green-500/20" : "bg-red-500/20"
                         )}>
-                          <MessageCircle size={12} className={isConnected ? "text-green-500" : "text-red-500"} />
+                          <MessageCircle size={12} className={cn(
+                            isOfficial 
+                              ? "text-blue-500" 
+                              : isConnected ? "text-green-500" : "text-red-500"
+                          )} />
                           <span className={cn(
                             "text-xs font-medium truncate max-w-[80px]",
-                            isConnected ? "text-green-500" : "text-red-500"
+                            isOfficial 
+                              ? "text-blue-500" 
+                              : isConnected ? "text-green-500" : "text-red-500"
                           )}>
                             {conversation.channel?.name || 'Chat'}
                           </span>
