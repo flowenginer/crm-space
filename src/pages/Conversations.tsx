@@ -77,6 +77,17 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { AlertTriangle } from 'lucide-react';
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -1402,6 +1413,10 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(new Set());
   const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
   const [isBulkReturning, setIsBulkReturning] = useState(false);
+  const [channelChangeDialog, setChannelChangeDialog] = useState<{
+    open: boolean;
+    channel: { id: string; name: string } | null;
+  }>({ open: false, channel: null });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -4340,18 +4355,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             onClick={async () => {
                               if (!selectedConversationId || channel.id === selectedConversation?.channel_id) return;
                               
-                              // If changing TO official channel, show warning and reset window
+                              // If changing TO official channel, show warning dialog
                               if (isChangingToOfficial) {
-                                const confirmed = window.confirm(
-                                  '⚠️ Atenção: Mudança para API Oficial\n\n' +
-                                  'Ao mudar para API Oficial:\n' +
-                                  '• A janela de 24h será resetada\n' +
-                                  '• Você só poderá enviar Templates aprovados\n' +
-                                  '• Até o cliente responder por este canal\n\n' +
-                                  'Mensagens fora da janela são cobradas.\n\n' +
-                                  'Deseja continuar?'
-                                );
-                                if (!confirmed) return;
+                                setChannelChangeDialog({ open: true, channel: { id: channel.id, name: channel.name } });
+                                return;
                               }
                               
                               try {
@@ -4374,12 +4381,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                                 
                                 const updateData: any = { channel_id: channel.id };
                                 
-                                // Reset last_client_message_at when switching TO official channel
-                                // This forces the 24h window to be expired
-                                if (isChangingToOfficial) {
-                                  updateData.last_client_message_at = null;
-                                }
-                                
                                 const { error } = await supabase
                                   .from('conversations')
                                   .update(updateData)
@@ -4389,11 +4390,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                                 queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
                                 queryClient.invalidateQueries({ queryKey: ['conversation-direct', selectedConversationId] });
                                 
-                                if (isChangingToOfficial) {
-                                  toast.success(`Canal alterado para ${channel.name}. Aguarde resposta do cliente ou envie um Template.`);
-                                } else {
-                                  toast.success(`Canal alterado para ${channel.name}`);
-                                }
+                                toast.success(`Canal alterado para ${channel.name}`);
                               } catch (error) {
                                 toast.error('Erro ao alterar canal');
                               }
@@ -6007,6 +6004,87 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         } : null}
         conversationId={selectedConversation?.id}
       />
+
+      {/* Channel Change to Official API Dialog */}
+      <AlertDialog 
+        open={channelChangeDialog.open} 
+        onOpenChange={(open) => !open && setChannelChangeDialog({ open: false, channel: null })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Mudança para API Oficial
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Ao mudar para API Oficial:</p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  <li>A janela de 24h será resetada</li>
+                  <li>Você só poderá enviar Templates aprovados</li>
+                  <li>Até o cliente responder por este canal</li>
+                </ul>
+                <p className="text-amber-600 dark:text-amber-500 font-medium text-sm">
+                  ⚠️ Mensagens fora da janela são cobradas.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!selectedConversationId || !channelChangeDialog.channel) return;
+                
+                try {
+                  // Check if there's already an open/pending conversation for this contact on the target channel
+                  const { data: existingConv } = await supabase
+                    .from('conversations')
+                    .select('id')
+                    .eq('contact_id', selectedConversation?.contact_id)
+                    .eq('channel_id', channelChangeDialog.channel.id)
+                    .in('status', ['open', 'pending'])
+                    .neq('id', selectedConversationId)
+                    .maybeSingle();
+
+                  if (existingConv) {
+                    toast.error(
+                      'Já existe uma conversa ativa deste contato no canal selecionado. Feche a outra conversa ou selecione um canal diferente.'
+                    );
+                    setChannelChangeDialog({ open: false, channel: null });
+                    return;
+                  }
+                  
+                  // Reset last_client_message_at when switching TO official channel
+                  // This forces the 24h window to be expired
+                  const updateData = { 
+                    channel_id: channelChangeDialog.channel.id,
+                    last_client_message_at: null 
+                  };
+                  
+                  const { error } = await supabase
+                    .from('conversations')
+                    .update(updateData)
+                    .eq('id', selectedConversationId);
+                  if (error) throw error;
+                  
+                  queryClient.invalidateQueries({ queryKey: ['conversations'] });
+                  queryClient.invalidateQueries({ queryKey: ['paginated-conversations'] });
+                  queryClient.invalidateQueries({ queryKey: ['conversation-direct', selectedConversationId] });
+                  
+                  toast.success(`Canal alterado para ${channelChangeDialog.channel.name}. Aguarde resposta do cliente ou envie um Template.`);
+                  setChannelChangeDialog({ open: false, channel: null });
+                } catch (error) {
+                  toast.error('Erro ao alterar canal');
+                  setChannelChangeDialog({ open: false, channel: null });
+                }
+              }}
+            >
+              Confirmar Mudança
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       </div>
     </MobileSwipeNavigation>
