@@ -5,6 +5,7 @@ export interface Window24hStatus {
   isExpired: boolean;
   remainingHours: number;
   remainingMinutes: number;
+  remainingSeconds: number;
   percentageUsed: number;
   windowEnd: Date | null;
   lastClientMessageAt: Date | null;
@@ -23,13 +24,13 @@ export function use24hWindow(
 ): Window24hStatus | null {
   const [now, setNow] = useState(new Date());
 
-  // Update "now" every minute to keep the countdown accurate
+  // Update "now" every second for real-time countdown
   useEffect(() => {
     if (!isOfficialChannel || !lastClientMessageAt) return;
 
     const interval = setInterval(() => {
       setNow(new Date());
-    }, 60000); // Update every minute
+    }, 1000); // Update every second for real-time countdown
 
     return () => clearInterval(interval);
   }, [isOfficialChannel, lastClientMessageAt]);
@@ -43,6 +44,7 @@ export function use24hWindow(
         isExpired: true,
         remainingHours: 0,
         remainingMinutes: 0,
+        remainingSeconds: 0,
         percentageUsed: 100,
         windowEnd: null,
         lastClientMessageAt: null,
@@ -62,6 +64,7 @@ export function use24hWindow(
           isExpired: true,
           remainingHours: 0,
           remainingMinutes: 0,
+          remainingSeconds: 0,
           percentageUsed: 100,
           windowEnd,
           lastClientMessageAt: lastMessage,
@@ -75,11 +78,13 @@ export function use24hWindow(
 
       const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
       const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+      const remainingSeconds = Math.floor((remainingMs % (1000 * 60)) / 1000);
 
       return {
         isExpired: false,
         remainingHours,
         remainingMinutes,
+        remainingSeconds,
         percentageUsed,
         windowEnd,
         lastClientMessageAt: lastMessage,
@@ -92,14 +97,15 @@ export function use24hWindow(
 }
 
 /**
- * Format the remaining time as a human-readable string
+ * Format the remaining time as a countdown timer (HH:MM:SS)
  */
 export function formatRemainingTime(status: Window24hStatus | null): string {
   if (!status || !status.isOfficialChannel) return '';
   if (status.isExpired) return 'Expirada';
 
-  if (status.remainingHours > 0) {
-    return `${status.remainingHours}h ${status.remainingMinutes}min`;
-  }
-  return `${status.remainingMinutes}min`;
+  const h = String(status.remainingHours).padStart(2, '0');
+  const m = String(status.remainingMinutes).padStart(2, '0');
+  const s = String(status.remainingSeconds).padStart(2, '0');
+
+  return `${h}:${m}:${s}`;
 }
