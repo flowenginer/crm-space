@@ -23,6 +23,7 @@ import {
   Info,
   Shield,
   ChevronDown,
+  FileText,
 } from 'lucide-react';
 import { CloudAPIConnect } from '@/components/whatsapp/CloudAPIConnect';
 import { CloudAPIChannelCard } from '@/components/whatsapp/CloudAPIChannelCard';
@@ -68,6 +69,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { 
@@ -87,6 +89,7 @@ import { whatsappService } from '@/lib/whatsapp';
 import { fetchProviderInstances, deleteProviderInstance, getInstanceStatus, getWhatsAppQRCode, reconfigureChannelWebhook, configureChannelFull, fetchChannelWebhook, syncChannelStatus, ProviderInstance } from '@/lib/whatsapp/instance-creator';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { MetaTemplatesTab } from '@/components/meta-templates';
 
 
 export default function WhatsAppChannels() {
@@ -837,8 +840,31 @@ export default function WhatsAppChannels() {
             <span className="font-semibold text-primary">{connectedCount}/{totalSlots}</span> canais conectados
           </p>
         </div>
+      </div>
 
-        <div className="flex items-center gap-3">
+      {/* Main Tabs */}
+      <Tabs defaultValue="channels" className="w-full">
+        <TabsList>
+          <TabsTrigger value="channels" className="gap-2">
+            <MessageCircle className="h-4 w-4" />
+            Canais
+          </TabsTrigger>
+          <TabsTrigger value="templates" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Templates (API Oficial)
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="channels" className="space-y-6 mt-6">
+          {/* Channels Actions Bar */}
+          <div className="flex items-center justify-end gap-3">
+            {/* Indicador de sincronização automática */}
+            {isAutoSyncing && autoSyncProgress && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 size={14} className="animate-spin" />
+                <span>Sincronizando {autoSyncProgress.current}/{autoSyncProgress.total}...</span>
+              </div>
+            )}
           {/* Indicador de sincronização automática */}
           {isAutoSyncing && autoSyncProgress && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -904,12 +930,11 @@ export default function WhatsAppChannels() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      </div>
+          </div>
 
-      {/* Channels Grid */}
-      {channels.length === 0 ? (
-        <div className="text-center py-16 bg-card rounded-2xl border border-border">
+          {/* Channels Grid */}
+          {channels.length === 0 ? (
+            <div className="text-center py-16 bg-card rounded-2xl border border-border">
           <MessageCircle className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-xl font-semibold text-foreground mb-2">Nenhum canal configurado</h3>
           <p className="text-muted-foreground mb-6">Adicione seu primeiro canal WhatsApp para começar</p>
@@ -981,6 +1006,12 @@ export default function WhatsAppChannels() {
           )}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="templates" className="mt-6">
+          <MetaTemplatesTab />
+        </TabsContent>
+      </Tabs>
 
       {/* Cloud API Connect Dialog */}
       <CloudAPIConnect

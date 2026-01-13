@@ -22,6 +22,7 @@ import {
   Radio,
   ChevronDown,
   Eye,
+  Shield,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,8 @@ import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useMarketingCampaigns } from '@/hooks/useMarketingCampaigns';
 import { BulkDispatchDetailsDialog } from '@/components/bulk-dispatch/BulkDispatchDetailsDialog';
+import { MetaTemplateSelector } from '@/components/meta-templates';
+import { type MetaMessageTemplate } from '@/hooks/useMetaTemplates';
 
 function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -122,8 +125,10 @@ export default function BulkDispatch() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   
   const [name, setName] = useState('');
-  const [campaignType, setCampaignType] = useState<'followup' | 'marketing'>('followup');
+  const [campaignType, setCampaignType] = useState<'followup' | 'marketing' | 'template_meta'>('followup');
   const [templateId, setTemplateId] = useState('');
+  const [metaTemplateId, setMetaTemplateId] = useState<string | undefined>();
+  const [metaVariables, setMetaVariables] = useState<Record<string, string>>({});
   const [channelId, setChannelId] = useState('');
   const [intervalSeconds, setIntervalSeconds] = useState(10);
   const [filters, setFilters] = useState<BulkDispatchFilters>({ includeBlocked: false });
@@ -224,9 +229,13 @@ export default function BulkDispatch() {
 
   const handleCreateAndStart = async () => {
     if (!name.trim()) { toast.error('Digite um nome para a campanha'); return; }
-    if (!templateId) { 
+    if (campaignType !== 'template_meta' && !templateId) { 
       toast.error(campaignType === 'followup' ? 'Selecione um template de follow-up' : 'Selecione uma campanha de marketing'); 
       return; 
+    }
+    if (campaignType === 'template_meta' && !metaTemplateId) {
+      toast.error('Selecione um template Meta aprovado');
+      return;
     }
     if (!channelId) { toast.error('Selecione um canal de envio'); return; }
     if (totalContacts === 0) { toast.error('Nenhum contato selecionado'); return; }
@@ -236,8 +245,8 @@ export default function BulkDispatch() {
         name, 
         template_id: campaignType === 'followup' ? templateId : null,
         marketing_campaign_id: campaignType === 'marketing' ? templateId : null,
-        campaign_type: campaignType,
-        channel_id: channelId, 
+        campaign_type: campaignType === 'template_meta' ? 'marketing' : campaignType,
+        channel_id: channelId,
         filters, 
         interval_seconds: intervalSeconds, 
         totalContacts,
@@ -250,6 +259,7 @@ export default function BulkDispatch() {
       setSelectedDispatchId(dispatch.id);
       setName(''); setTemplateId(''); setChannelId(''); setFilters({ includeBlocked: false });
       setCampaignType('followup'); setScheduleEnabled(true); setUseCustomSchedule(false);
+      setMetaTemplateId(undefined); setMetaVariables({});
     } catch (error) {
       toast.error('Erro ao criar disparo em massa');
     }
@@ -287,8 +297,10 @@ export default function BulkDispatch() {
                 <div className="space-y-2">
                   <Label>Tipo de Campanha *</Label>
                   <Select value={campaignType} onValueChange={(v) => {
-                    setCampaignType(v as 'followup' | 'marketing');
+                    setCampaignType(v as 'followup' | 'marketing' | 'template_meta');
                     setTemplateId('');
+                    setMetaTemplateId(undefined);
+                    setMetaVariables({});
                   }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -304,9 +316,16 @@ export default function BulkDispatch() {
                           Marketing
                         </div>
                       </SelectItem>
+                      <SelectItem value="template_meta">
+                        <div className="flex items-center gap-2">
+                          <Shield className="h-4 w-4 text-green-500" />
+                          Template Meta (API Oficial)
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+                {campaignType !== 'template_meta' && (
                 <div className="space-y-2">
                   <Label>{campaignType === 'followup' ? 'Template de Follow-up *' : 'Campanha de Marketing *'}</Label>
                   <Select value={templateId} onValueChange={setTemplateId}>
@@ -319,6 +338,18 @@ export default function BulkDispatch() {
                     </SelectContent>
                   </Select>
                 </div>
+                )}
+                {campaignType === 'template_meta' && (
+                  <MetaTemplateSelector
+                    selectedTemplateId={metaTemplateId}
+                    onTemplateSelect={(template) => {
+                      setMetaTemplateId(template?.id);
+                      setMetaVariables({});
+                    }}
+                    variableValues={metaVariables}
+                    onVariableChange={setMetaVariables}
+                  />
+                )}
                 <div className="space-y-2">
                   <Label>Canal de Envio *</Label>
                   <Select value={channelId} onValueChange={setChannelId}>
