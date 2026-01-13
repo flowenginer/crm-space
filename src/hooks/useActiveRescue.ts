@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
 import type { RescueStep } from './useRescueTemplates';
 import { toast } from 'sonner';
+import { sendWhatsAppMessage } from '@/lib/whatsapp/instance-creator';
 
 export interface ActiveRescue {
   id: string;
@@ -186,7 +187,7 @@ export function useActivateRescue() {
           // Helper to: INSERT first (pending) -> SEND to WhatsApp -> UPDATE with messageId
           // This prevents race condition with webhook creating duplicates
           const sendMessageWithInsertFirst = async (
-            type: string,
+            type: 'text' | 'image' | 'audio' | 'video' | 'document',
             content: string,
             mediaUrl: string | null
           ) => {
@@ -213,29 +214,26 @@ export function useActivateRescue() {
 
             console.log(`[useActivateRescue] Inserted pending ${type} message:`, insertedMsg.id);
 
-            // 2. SEND to WhatsApp
-            const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
-              body: {
-                action: 'send',
-                channelId,
-                phone,
-                content: content,
-                type: type,
-                mediaUrl: mediaUrl,
-              },
-            });
+            // 2. SEND to WhatsApp (routes CloudAPI vs providers automatically)
+            const sendResult = await sendWhatsAppMessage(
+              channelId,
+              phone,
+              content,
+              type,
+              mediaUrl || undefined
+            );
 
-            if (error) {
+            if (!sendResult.success) {
               // Rollback: delete the pending message
               await supabase.from('messages').delete().eq('id', insertedMsg.id);
-              throw error;
+              throw new Error(sendResult.error || 'Erro ao enviar mensagem');
             }
 
             // 3. UPDATE message with whatsapp_message_id and status 'sent'
             const { error: updateError } = await supabase
               .from('messages')
               .update({
-                whatsapp_message_id: data?.messageId,
+                whatsapp_message_id: sendResult.messageId,
                 status: 'sent',
               })
               .eq('id', insertedMsg.id);
@@ -244,8 +242,8 @@ export function useActivateRescue() {
               console.error(`[useActivateRescue] Error updating ${type} message:`, updateError);
             }
 
-            console.log(`[useActivateRescue] ${type} message sent and updated:`, data?.messageId);
-            return data;
+            console.log(`[useActivateRescue] ${type} message sent and updated:`, sendResult.messageId);
+            return sendResult;
           };
 
           // Send messages SEQUENTIALLY to maintain order, each with insert-first pattern
@@ -264,7 +262,12 @@ export function useActivateRescue() {
           // 3. Send ATTACHMENT (if exists)
           if (firstStep.attachment_url) {
             console.log('[useActivateRescue] Sending attachment message...');
-            const attachmentType = firstStep.attachment_type || 'document';
+            const attachmentType: 'image' | 'video' | 'document' =
+              firstStep.attachment_type === 'image' ||
+              firstStep.attachment_type === 'video' ||
+              firstStep.attachment_type === 'document'
+                ? firstStep.attachment_type
+                : 'document';
             await sendMessageWithInsertFirst(attachmentType, '', firstStep.attachment_url);
           }
           
