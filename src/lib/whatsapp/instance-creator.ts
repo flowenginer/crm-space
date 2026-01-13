@@ -74,7 +74,8 @@ export async function sendWhatsAppMessage(
     console.log('[Instance Creator] Channel type:', channel.type);
     
     // Use different edge function based on channel type
-    if (channel.type === 'cloudapi') {
+    // "official" = API Oficial (Cloud API)
+    if (channel.type === 'cloudapi' || channel.type === 'official') {
       // CloudAPI (Official WhatsApp API) uses cloudapi-send-message
       const { data, error } = await supabase.functions.invoke('cloudapi-send-message', {
         body: {
@@ -382,7 +383,24 @@ export async function fetchContactProfile(
 ): Promise<{ success: boolean; profilePictureUrl?: string | null; name?: string | null; error?: string }> {
   try {
     console.log('[Instance Creator] Fetching contact profile:', { channelId, phone });
-    
+
+    // CloudAPI (API Oficial) não fornece foto/nome do contato via API do provedor.
+    // Então evitamos chamar whatsapp-instance (que exige provider configurado) e retornamos vazio.
+    const { data: channel, error: channelError } = await supabase
+      .from('whatsapp_channels')
+      .select('type')
+      .eq('id', channelId)
+      .single();
+
+    if (channelError || !channel) {
+      console.error('[Instance Creator] Channel lookup error (fetchContactProfile):', channelError);
+      return { success: false, error: 'Canal não encontrado' };
+    }
+
+    if (channel.type === 'cloudapi' || channel.type === 'official') {
+      return { success: true, profilePictureUrl: null, name: null };
+    }
+
     const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
       body: {
         action: 'fetchProfile',
