@@ -6,6 +6,88 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Download media from Facebook and upload to Supabase Storage
+async function downloadAndUploadMedia(
+  supabase: any, 
+  mediaId: string, 
+  messageType: string, 
+  conversationId: string,
+  accessToken: string
+): Promise<string | null> {
+  try {
+    console.log(`[CloudAPI] Downloading media: ${mediaId} for conversation ${conversationId}`);
+    
+    // 1. Get download URL from Facebook
+    const mediaInfoResponse = await fetch(
+      `https://graph.facebook.com/v19.0/${mediaId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const mediaInfo = await mediaInfoResponse.json();
+    
+    if (!mediaInfo.url) {
+      console.error('[CloudAPI] No URL in media info:', mediaInfo);
+      return null;
+    }
+    
+    console.log(`[CloudAPI] Got media URL, mime_type: ${mediaInfo.mime_type}`);
+    
+    // 2. Download the file
+    const mediaResponse = await fetch(mediaInfo.url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    
+    if (!mediaResponse.ok) {
+      console.error('[CloudAPI] Failed to download media:', mediaResponse.status);
+      return null;
+    }
+    
+    const mediaBuffer = await mediaResponse.arrayBuffer();
+    
+    // 3. Determine extension from mime type
+    const mimeType = mediaInfo.mime_type || 'application/octet-stream';
+    const extensionMap: Record<string, string> = {
+      'audio/ogg': 'ogg',
+      'audio/mpeg': 'mp3',
+      'audio/mp4': 'm4a',
+      'audio/amr': 'amr',
+      'audio/aac': 'aac',
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'video/mp4': 'mp4',
+      'video/3gpp': '3gp',
+      'application/pdf': 'pdf',
+    };
+    
+    let extension = extensionMap[mimeType.split(';')[0]] || mimeType.split('/')[1]?.split(';')[0] || 'bin';
+    const fileName = `${conversationId}/${Date.now()}_${mediaId}.${extension}`;
+    
+    // 4. Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('conversation-attachments')
+      .upload(fileName, mediaBuffer, {
+        contentType: mimeType,
+        cacheControl: '3600'
+      });
+    
+    if (uploadError) {
+      console.error('[CloudAPI] Upload error:', uploadError);
+      return null;
+    }
+    
+    // 5. Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('conversation-attachments')
+      .getPublicUrl(fileName);
+    
+    console.log(`[CloudAPI] Media uploaded successfully: ${publicUrl}`);
+    return publicUrl;
+  } catch (error) {
+    console.error('[CloudAPI] Error downloading/uploading media:', error);
+    return null;
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -224,23 +306,33 @@ async function processMessages(supabase: any, value: any) {
         break;
       case 'image':
         content = message.image?.caption || '[Imagem]';
-        mediaUrl = message.image?.id; // Need to fetch actual URL
+        if (message.image?.id && config.access_token) {
+          mediaUrl = await downloadAndUploadMedia(supabase, message.image.id, 'image', conversationId!, config.access_token);
+        }
         break;
       case 'audio':
         content = '[Áudio]';
-        mediaUrl = message.audio?.id;
+        if (message.audio?.id && config.access_token) {
+          mediaUrl = await downloadAndUploadMedia(supabase, message.audio.id, 'audio', conversationId!, config.access_token);
+        }
         break;
       case 'video':
         content = message.video?.caption || '[Vídeo]';
-        mediaUrl = message.video?.id;
+        if (message.video?.id && config.access_token) {
+          mediaUrl = await downloadAndUploadMedia(supabase, message.video.id, 'video', conversationId!, config.access_token);
+        }
         break;
       case 'document':
         content = message.document?.filename || '[Documento]';
-        mediaUrl = message.document?.id;
+        if (message.document?.id && config.access_token) {
+          mediaUrl = await downloadAndUploadMedia(supabase, message.document.id, 'document', conversationId!, config.access_token);
+        }
         break;
       case 'sticker':
         content = '[Sticker]';
-        mediaUrl = message.sticker?.id;
+        if (message.sticker?.id && config.access_token) {
+          mediaUrl = await downloadAndUploadMedia(supabase, message.sticker.id, 'sticker', conversationId!, config.access_token);
+        }
         break;
       default:
         content = `[${messageType}]`;
