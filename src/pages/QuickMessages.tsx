@@ -52,8 +52,13 @@ import { AudioRecorder } from '@/components/quick-messages/AudioRecorder';
 import { FileUploader } from '@/components/quick-messages/FileUploader';
 import { EmojiPickerButton } from '@/components/quick-messages/EmojiPickerButton';
 
+import { useApprovedMetaTemplates, MetaMessageTemplate, getTemplateBody } from '@/hooks/useMetaTemplates';
+import { MetaTemplateUseModal } from '@/components/meta-templates';
+import { Shield } from 'lucide-react';
+
 const categoryConfig = [
   { id: 'messages', icon: MessageSquare, label: 'Mensagens' },
+  { id: 'meta_templates', icon: Shield, label: 'Templates Meta' },
 ];
 
 const variableOptions = [
@@ -81,6 +86,7 @@ export default function QuickMessages() {
 
   // Supabase hooks
   const { data: templates = [], isLoading } = useTemplates();
+  const { data: metaTemplates = [], isLoading: metaLoading } = useApprovedMetaTemplates();
   const createTemplate = useCreateTemplate();
   const updateTemplate = useUpdateTemplate();
   const deleteTemplate = useDeleteTemplate();
@@ -88,7 +94,9 @@ export default function QuickMessages() {
   // Modal states
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showUseTemplateModal, setShowUseTemplateModal] = useState(false);
+  const [showMetaTemplateModal, setShowMetaTemplateModal] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [selectedMetaTemplate, setSelectedMetaTemplate] = useState<MetaMessageTemplate | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
   // Form states
@@ -107,10 +115,14 @@ export default function QuickMessages() {
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     categoryConfig.forEach((cat) => {
-      counts[cat.id] = templates.filter((t) => t.category === cat.id).length;
+      if (cat.id === 'meta_templates') {
+        counts[cat.id] = metaTemplates.length;
+      } else {
+        counts[cat.id] = templates.filter((t) => t.category === cat.id).length;
+      }
     });
     return counts;
-  }, [templates]);
+  }, [templates, metaTemplates]);
 
   // Filter templates
   const filteredTemplates = useMemo(() => {
@@ -425,73 +437,79 @@ export default function QuickMessages() {
         <ScrollArea className="flex-1">
           <div className="p-4">
             <div className="bg-card rounded-lg border border-border overflow-hidden">
-              {/* Regular Templates Table */}
-              {isLoading ? (
-                <div className="p-4 space-y-3">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <Skeleton className="h-4 w-8" />
-                      <Skeleton className="h-4 w-32" />
-                      <Skeleton className="h-4 flex-1" />
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-8 w-24" />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50 hover:bg-muted/50">
-                      <TableHead className="w-12 text-center">#</TableHead>
-                      <TableHead className="w-48">Chave</TableHead>
-                      <TableHead>Mensagem</TableHead>
-                      <TableHead className="w-20 text-center">Blocos</TableHead>
-                      <TableHead className="w-20 text-center">Anexo</TableHead>
-                      <TableHead className="w-32 text-center">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTemplates.map((template, index) => {
-                      const blocks = template.content_blocks as ContentBlock[] | null;
-                      const blockCount = blocks?.length || 1;
-                      
-                      return (
+              {/* Meta Templates Table */}
+              {activeCategory === 'meta_templates' ? (
+                metaLoading ? (
+                  <div className="p-4 space-y-3">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="flex items-center gap-4">
+                        <Skeleton className="h-4 w-8" />
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-4 flex-1" />
+                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-8 w-24" />
+                      </div>
+                    ))}
+                  </div>
+                ) : metaTemplates.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Shield className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Nenhum template aprovado
+                    </h3>
+                    <p className="text-muted-foreground text-xs mt-1 max-w-md mx-auto">
+                      Acesse a página de Canais WhatsApp para sincronizar ou criar templates da API Oficial.
+                    </p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        <TableHead className="w-12 text-center">#</TableHead>
+                        <TableHead className="w-48">Nome</TableHead>
+                        <TableHead>Mensagem</TableHead>
+                        <TableHead className="w-24 text-center">Idioma</TableHead>
+                        <TableHead className="w-28 text-center">Categoria</TableHead>
+                        <TableHead className="w-28 text-center">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {metaTemplates.map((template, index) => (
                         <TableRow key={template.id} className="group">
                           <TableCell className="text-center text-muted-foreground font-mono text-sm">
                             {index + 1}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
+                              <Shield size={14} className="text-sky-500" />
                               <span className="font-semibold text-foreground">
-                                {template.title}
+                                {template.name}
                               </span>
-                              {template.is_favorite && (
-                                <Star size={12} className="text-yellow-500 fill-yellow-500" />
-                              )}
                             </div>
                           </TableCell>
                           <TableCell>
                             <span className="text-muted-foreground text-sm">
-                              {truncateMessage(template.content)}
+                              {truncateMessage(getTemplateBody(template.components))}
                             </span>
                           </TableCell>
                           <TableCell className="text-center">
-                            {blockCount > 1 ? (
-                              <Badge variant="secondary" className="text-xs">
-                                {blockCount}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">1</span>
-                            )}
+                            <Badge variant="outline" className="text-xs">
+                              {template.language}
+                            </Badge>
                           </TableCell>
                           <TableCell className="text-center">
-                            {template.media_url ? (
-                              <div className="flex items-center justify-center">
-                                {getMediaIcon(template.media_type)}
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            )}
+                            <Badge 
+                              variant="secondary" 
+                              className={`text-xs ${
+                                template.category === 'MARKETING' 
+                                  ? 'bg-purple-500/10 text-purple-600' 
+                                  : template.category === 'UTILITY'
+                                    ? 'bg-blue-500/10 text-blue-600'
+                                    : 'bg-amber-500/10 text-amber-600'
+                              }`}
+                            >
+                              {template.category}
+                            </Badge>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -499,40 +517,131 @@ export default function QuickMessages() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
-                                onClick={() => handleUseTemplate(template.id)}
+                                onClick={() => {
+                                  setSelectedMetaTemplate(template);
+                                  setShowMetaTemplateModal(true);
+                                }}
                                 title="Usar template"
                               >
                                 <Send size={14} />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => handleEditTemplate(template.id)}
-                                title="Editar"
-                              >
-                                <Edit3 size={14} />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                onClick={() => handleDeleteTemplate(template.id)}
-                                disabled={deleteTemplate.isPending}
-                                title="Excluir"
-                              >
-                                <Trash2 size={14} />
-                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )
+              ) : (
+                /* Regular Templates Table */
+                isLoading ? (
+                  <div className="p-4 space-y-3">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="flex items-center gap-4">
+                        <Skeleton className="h-4 w-8" />
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-4 flex-1" />
+                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-8 w-24" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        <TableHead className="w-12 text-center">#</TableHead>
+                        <TableHead className="w-48">Chave</TableHead>
+                        <TableHead>Mensagem</TableHead>
+                        <TableHead className="w-20 text-center">Blocos</TableHead>
+                        <TableHead className="w-20 text-center">Anexo</TableHead>
+                        <TableHead className="w-32 text-center">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredTemplates.map((template, index) => {
+                        const blocks = template.content_blocks as ContentBlock[] | null;
+                        const blockCount = blocks?.length || 1;
+                        
+                        return (
+                          <TableRow key={template.id} className="group">
+                            <TableCell className="text-center text-muted-foreground font-mono text-sm">
+                              {index + 1}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-foreground">
+                                  {template.title}
+                                </span>
+                                {template.is_favorite && (
+                                  <Star size={12} className="text-yellow-500 fill-yellow-500" />
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-muted-foreground text-sm">
+                                {truncateMessage(template.content)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {blockCount > 1 ? (
+                                <Badge variant="secondary" className="text-xs">
+                                  {blockCount}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">1</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {template.media_url ? (
+                                <div className="flex items-center justify-center">
+                                  {getMediaIcon(template.media_type)}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleUseTemplate(template.id)}
+                                  title="Usar template"
+                                >
+                                  <Send size={14} />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleEditTemplate(template.id)}
+                                  title="Editar"
+                                >
+                                  <Edit3 size={14} />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  onClick={() => handleDeleteTemplate(template.id)}
+                                  disabled={deleteTemplate.isPending}
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={14} />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )
               )}
 
-              {!isLoading && filteredTemplates.length === 0 && (
+              {!isLoading && activeCategory !== 'meta_templates' && filteredTemplates.length === 0 && (
                 <div className="text-center py-12">
                   <MessageSquare className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
                   <h3 className="text-sm font-semibold text-foreground">
@@ -940,6 +1049,20 @@ export default function QuickMessages() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Meta Template Use Modal */}
+      <MetaTemplateUseModal
+        template={selectedMetaTemplate}
+        open={showMetaTemplateModal}
+        onOpenChange={(open) => {
+          setShowMetaTemplateModal(open);
+          if (!open) setSelectedMetaTemplate(null);
+        }}
+        onCopyToInput={(content) => {
+          navigator.clipboard.writeText(content);
+          toast({ title: 'Template copiado!', description: 'Cole no chat para enviar.' });
+        }}
+      />
     </div>
   );
 }
