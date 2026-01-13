@@ -6,6 +6,56 @@
 import { supabase } from '@/integrations/supabase/client';
 
 // =====================================================
+// CACHE DE TIPO DE CANAL (OPTIMIZATION)
+// Evita queries repetidas ao banco para cada mensagem
+// TTL de 5 minutos
+// =====================================================
+const channelTypeCache = new Map<string, { type: string; timestamp: number }>();
+const CHANNEL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getChannelType(channelId: string): Promise<string | null> {
+  const now = Date.now();
+  const cached = channelTypeCache.get(channelId);
+  
+  // Return cached value if still valid
+  if (cached && (now - cached.timestamp) < CHANNEL_CACHE_TTL) {
+    console.log('[Instance Creator] Using cached channel type:', cached.type);
+    return cached.type;
+  }
+  
+  // Fetch from database
+  const { data: channel, error } = await supabase
+    .from('whatsapp_channels')
+    .select('type')
+    .eq('id', channelId)
+    .single();
+  
+  if (error || !channel) {
+    console.error('[Instance Creator] Channel lookup error:', error);
+    return null;
+  }
+  
+  // Cache the result
+  channelTypeCache.set(channelId, { type: channel.type, timestamp: now });
+  console.log('[Instance Creator] Cached channel type:', channel.type);
+  
+  return channel.type;
+}
+
+// Clear stale cache entries periodically (cleanup)
+function cleanupChannelCache() {
+  const now = Date.now();
+  for (const [key, value] of channelTypeCache.entries()) {
+    if (now - value.timestamp > CHANNEL_CACHE_TTL) {
+      channelTypeCache.delete(key);
+    }
+  }
+}
+
+// Run cleanup every 10 minutes
+setInterval(cleanupChannelCache, 10 * 60 * 1000);
+
+// =====================================================
 // TIPOS
 // =====================================================
 export interface CreateInstanceResult {
@@ -59,23 +109,18 @@ export async function sendWhatsAppMessage(
   try {
     console.log('[Instance Creator] Sending message:', { channelId, phone, type, quotedMessageId, filename });
     
-    // First, check the channel type to determine which edge function to call
-    const { data: channel, error: channelError } = await supabase
-      .from('whatsapp_channels')
-      .select('type')
-      .eq('id', channelId)
-      .single();
+    // OPTIMIZATION: Use cached channel type to avoid database query on every message
+    const channelType = await getChannelType(channelId);
     
-    if (channelError || !channel) {
-      console.error('[Instance Creator] Channel lookup error:', channelError);
+    if (!channelType) {
       return { success: false, error: 'Canal não encontrado' };
     }
     
-    console.log('[Instance Creator] Channel type:', channel.type);
+    console.log('[Instance Creator] Channel type:', channelType);
     
     // Use different edge function based on channel type
     // "official" = API Oficial (Cloud API)
-    if (channel.type === 'cloudapi' || channel.type === 'official') {
+    if (channelType === 'cloudapi' || channelType === 'official') {
       // CloudAPI (Official WhatsApp API) uses cloudapi-send-message
       const { data, error } = await supabase.functions.invoke('cloudapi-send-message', {
         body: {
@@ -384,20 +429,17 @@ export async function fetchContactProfile(
   try {
     console.log('[Instance Creator] Fetching contact profile:', { channelId, phone });
 
-    // CloudAPI (API Oficial) não fornece foto/nome do contato via API do provedor.
-    // Então evitamos chamar whatsapp-instance (que exige provider configurado) e retornamos vazio.
-    const { data: channel, error: channelError } = await supabase
-      .from('whatsapp_channels')
-      .select('type')
-      .eq('id', channelId)
-      .single();
+    // OPTIMIZATION: Use cached channel type
+    const channelType = await getChannelType(channelId);
 
-    if (channelError || !channel) {
-      console.error('[Instance Creator] Channel lookup error (fetchContactProfile):', channelError);
+    if (!channelType) {
+      console.error('[Instance Creator] Channel lookup error (fetchContactProfile)');
       return { success: false, error: 'Canal não encontrado' };
     }
 
-    if (channel.type === 'cloudapi' || channel.type === 'official') {
+    // CloudAPI (API Oficial) não fornece foto/nome do contato via API do provedor.
+    // Então evitamos chamar whatsapp-instance (que exige provider configurado) e retornamos vazio.
+    if (channelType === 'cloudapi' || channelType === 'official') {
       return { success: true, profilePictureUrl: null, name: null };
     }
 
