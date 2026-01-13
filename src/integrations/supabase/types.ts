@@ -5389,6 +5389,75 @@ export type Database = {
           },
         ]
       }
+      meta_message_templates: {
+        Row: {
+          category: string
+          cloudapi_config_id: string | null
+          components: Json
+          created_at: string
+          example_values: Json | null
+          id: string
+          language: string
+          last_synced_at: string | null
+          meta_template_id: string | null
+          name: string
+          quality_score: string | null
+          rejection_reason: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          cloudapi_config_id?: string | null
+          components?: Json
+          created_at?: string
+          example_values?: Json | null
+          id?: string
+          language?: string
+          last_synced_at?: string | null
+          meta_template_id?: string | null
+          name: string
+          quality_score?: string | null
+          rejection_reason?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          cloudapi_config_id?: string | null
+          components?: Json
+          created_at?: string
+          example_values?: Json | null
+          id?: string
+          language?: string
+          last_synced_at?: string | null
+          meta_template_id?: string | null
+          name?: string
+          quality_score?: string | null
+          rejection_reason?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_message_templates_cloudapi_config_id_fkey"
+            columns: ["cloudapi_config_id"]
+            isOneToOne: false
+            referencedRelation: "cloudapi_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_message_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_oauth_states: {
         Row: {
           created_at: string
