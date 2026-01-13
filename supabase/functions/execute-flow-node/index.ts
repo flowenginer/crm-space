@@ -673,6 +673,138 @@ async function executeAction(
           `Erro no webhook: ${errorMessage}`);
       }
       break;
+
+    case 'send_meta_template': {
+      let templateChannelId = execution.channel_id;
+      
+      // Fallback: se não tem canal, buscar um de tipo cloudapi/official
+      if (!templateChannelId) {
+        console.log('[execute-flow-node] Canal não definido para template Meta, buscando canal oficial...');
+        const { data: channels } = await supabase
+          .from('whatsapp_channels')
+          .select('id, name, type')
+          .eq('tenant_id', execution.tenant_id)
+          .in('type', ['cloudapi', 'official'])
+          .eq('status', 'connected')
+          .eq('is_deleted', false);
+        
+        if (channels && channels.length > 0) {
+          templateChannelId = channels[0].id;
+          console.log('[execute-flow-node] Canal oficial selecionado para template:', channels[0].name);
+          
+          await supabase
+            .from('flow_executions')
+            .update({ channel_id: templateChannelId })
+            .eq('id', execution.id);
+        }
+      }
+      
+      if (!templateChannelId) {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          'Nenhum canal Cloud API disponível para enviar template Meta');
+        break;
+      }
+      
+      const templateId = config.template_id as string;
+      if (!templateId) {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          'Template não configurado no nó - edite o fluxo e selecione um template');
+        break;
+      }
+      
+      // Buscar dados do template
+      const { data: template, error: templateError } = await supabase
+        .from('meta_message_templates')
+        .select('name, language, components')
+        .eq('id', templateId)
+        .single();
+      
+      if (templateError || !template) {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          `Template não encontrado: ${templateId}`);
+        break;
+      }
+      
+      console.log('[execute-flow-node] Template encontrado:', template.name);
+      
+      // Processar variáveis do template
+      const variables = config.variables as Record<string, string> || {};
+      const templateComponents: { type: string; parameters: { type: string; text: string }[] }[] = [];
+      
+      // Se houver variáveis, montar os components para o body
+      if (Object.keys(variables).length > 0) {
+        const bodyParams = Object.entries(variables).map(([_key, value]) => ({
+          type: 'text',
+          text: replaceVariables(value as string, execution)
+        }));
+        
+        if (bodyParams.length > 0) {
+          templateComponents.push({
+            type: 'body',
+            parameters: bodyParams
+          });
+        }
+      }
+      
+      // Enviar via cloudapi-send-message
+      const { data: sendResult, error: sendError } = await supabase.functions.invoke('cloudapi-send-message', {
+        body: {
+          channelId: templateChannelId,
+          phone: execution.contact?.phone || '',
+          type: 'template',
+          template: {
+            name: template.name,
+            language: template.language,
+            components: templateComponents
+          }
+        }
+      });
+      
+      if (sendError || !sendResult?.success) {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          `Erro ao enviar template Meta: ${sendError?.message || sendResult?.error || 'Erro desconhecido'}`);
+        break;
+      }
+      
+      console.log('[execute-flow-node] Template Meta enviado:', sendResult);
+      
+      // Reconstruir conteúdo do template para salvar na mensagem
+      let templateContent = '';
+      if (template.components && Array.isArray(template.components)) {
+        for (const comp of template.components as { type: string; text?: string }[]) {
+          if (comp.type === 'HEADER' && comp.text) {
+            templateContent += comp.text + '\n\n';
+          }
+          if (comp.type === 'BODY' && comp.text) {
+            let bodyText = comp.text;
+            // Substituir placeholders pelas variáveis
+            Object.entries(variables).forEach(([_key, value], index) => {
+              bodyText = bodyText.replace(`{{${index + 1}}}`, replaceVariables(value as string, execution));
+            });
+            templateContent += bodyText + '\n\n';
+          }
+          if (comp.type === 'FOOTER' && comp.text) {
+            templateContent += comp.text;
+          }
+        }
+      }
+      templateContent = templateContent.trim() || `[Template: ${template.name}]`;
+      
+      // Salvar mensagem no histórico
+      await supabase.from('messages').insert({
+        conversation_id: execution.conversation_id,
+        content: templateContent,
+        sender_type: 'system',
+        message_type: 'template',
+        whatsapp_message_id: sendResult.messageId,
+        status: 'sent',
+        tenant_id: execution.tenant_id
+      });
+      
+      await logExecution(supabase, execution.id, node.id, 'info',
+        `Template Meta enviado: ${template.name}`);
+      break;
+    }
   }
 }
 
