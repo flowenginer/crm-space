@@ -2558,18 +2558,64 @@ serve(async (req) => {
     }
 
     // =====================================================
-    // SATISFACTION SURVEY RESPONSE DETECTION
+    // OTIMIZAÇÃO: QUERIES PARALELAS para reduzir latência
+    // Todas essas verificações são independentes e podem rodar em paralelo
     // =====================================================
-    try {
-      // Check if there's a pending satisfaction survey for this contact
-      const { data: pendingSurvey, error: surveyError } = await supabase
+    const [
+      surveyResult,
+      quotesResult,
+      rescuesResult,
+      marketingResult
+    ] = await Promise.all([
+      // 1. Check pending satisfaction survey
+      supabase
         .from('satisfaction_surveys')
         .select('id, survey_type, conversation_id, agent_id')
         .eq('contact_id', contact.id)
         .eq('status', 'sent')
         .order('sent_at', { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle(),
+      
+      // 2. Check active quotes for auto-pause
+      supabase
+        .from('quotes')
+        .select('id, quote_number')
+        .eq('contact_id', contact.id)
+        .eq('notifications_auto_paused', false)
+        .in('status', ['sent', 'approved', 'pending']),
+      
+      // 3. Check active rescues for cancellation
+      supabase
+        .from('active_rescues')
+        .select('id, conversation_id, template_id')
+        .eq('contact_id', contact.id)
+        .eq('status', 'active'),
+      
+      // 4. Check active marketing campaigns
+      supabase
+        .from('active_marketing_campaigns')
+        .select(`
+          id,
+          campaign_id,
+          conversation_id,
+          current_step,
+          tenant_id,
+          dispatch_id,
+          created_at,
+          marketing_campaign:marketing_campaigns(id, steps, title),
+          bulk_dispatch:bulk_dispatches(id, created_by)
+        `)
+        .eq('contact_id', contact.id)
+        .eq('status', 'active')
+    ]);
+
+    // =====================================================
+    // SATISFACTION SURVEY RESPONSE DETECTION
+    // =====================================================
+    try {
+      const pendingSurvey = surveyResult.data;
+      const surveyError = surveyResult.error;
 
       if (!surveyError && pendingSurvey) {
         const messageContent = normalizedMessage.content.trim();
@@ -2657,13 +2703,8 @@ serve(async (req) => {
     // AUTO-PAUSE QUOTE NOTIFICATIONS ON CLIENT RESPONSE
     // =====================================================
     try {
-      // Check for active quotes linked to this contact that should be paused
-      const { data: activeQuotes, error: quotesError } = await supabase
-        .from('quotes')
-        .select('id, quote_number')
-        .eq('contact_id', contact.id)
-        .eq('notifications_auto_paused', false)
-        .in('status', ['sent', 'approved', 'pending']);
+      const activeQuotes = quotesResult.data;
+      const quotesError = quotesResult.error;
 
       if (quotesError) {
         console.error(`[Webhook] Error checking quotes for auto-pause:`, quotesError);
@@ -2711,12 +2752,8 @@ serve(async (req) => {
     // AUTO-CANCEL RESCUE ON CLIENT RESPONSE - BY CONTACT
     // =====================================================
     try {
-      // Check for ALL active rescues for this CONTACT (not just this conversation)
-      const { data: activeRescues, error: rescueError } = await supabase
-        .from('active_rescues')
-        .select('id, conversation_id, template_id')
-        .eq('contact_id', contact.id)
-        .eq('status', 'active');
+      const activeRescues = rescuesResult.data;
+      const rescueError = rescuesResult.error;
 
       if (rescueError) {
         console.error(`[Webhook] Error checking active rescues:`, rescueError);
@@ -2765,21 +2802,8 @@ serve(async (req) => {
     // When a client responds, execute on_reply_actions for active marketing campaigns
     // =====================================================
     try {
-      const { data: activeMarketingCampaigns, error: marketingError } = await supabase
-        .from('active_marketing_campaigns')
-        .select(`
-          id,
-          campaign_id,
-          conversation_id,
-          current_step,
-          tenant_id,
-          dispatch_id,
-          created_at,
-          marketing_campaign:marketing_campaigns(id, steps, title),
-          bulk_dispatch:bulk_dispatches(id, created_by)
-        `)
-        .eq('contact_id', contact.id)
-        .eq('status', 'active');
+      const activeMarketingCampaigns = marketingResult.data;
+      const marketingError = marketingResult.error;
 
       if (marketingError) {
         console.error(`[Webhook] Error checking active marketing campaigns:`, marketingError);
