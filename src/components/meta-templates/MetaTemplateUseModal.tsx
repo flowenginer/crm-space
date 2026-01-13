@@ -23,7 +23,7 @@ interface MetaTemplateUseModalProps {
   template: MetaMessageTemplate | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSend?: (templateId: string, templateName: string, variables: Record<string, string>) => void;
+  onSend?: (templateId: string, templateName: string, variables: Record<string, string>, previewContent: string) => void;
   onCopyToInput?: (content: string) => void;
   contactName?: string;
 }
@@ -106,7 +106,13 @@ export function MetaTemplateUseModal({
       }
     }
     
-    onSend?.(template.id, template.name, variables);
+    // Build full preview content with header and footer
+    let fullPreviewContent = '';
+    if (headerText) fullPreviewContent += headerText + '\n\n';
+    fullPreviewContent += previewContent;
+    if (footerText) fullPreviewContent += '\n\n' + footerText;
+    
+    onSend?.(template.id, template.name, variables, fullPreviewContent);
     onOpenChange(false);
   };
 

@@ -2726,7 +2726,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     templateId: string,
     templateName: string,
     language: string,
-    variables: Record<string, string>
+    variables: Record<string, string>,
+    previewContent: string
   ) => {
     const channelId = selectedConversation?.channel_id;
     const contactPhone = selectedConversation?.contact?.phone;
@@ -2767,10 +2768,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       
       if (error) throw error;
       
-      // Salvar no banco
+      // Salvar no banco com o conteúdo real do template
       sendMessage.mutate({
         conversation_id: selectedConversationId,
-        content: `[Template Meta: ${templateName}]`,
+        content: previewContent,
         is_from_me: true,
         message_type: 'template',
         whatsapp_message_id: data?.messageId
