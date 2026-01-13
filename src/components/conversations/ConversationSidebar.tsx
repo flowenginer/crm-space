@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
+import { Progress } from '@/components/ui/progress';
 import { 
-  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2, FileText, Package, Play, Pause, Layers, ChevronsUpDown, ChevronLeft, ChevronRight, UserCircle, Settings
+  X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2, FileText, Package, Play, Pause, Layers, ChevronsUpDown, ChevronLeft, ChevronRight, UserCircle, Settings, Clock, AlertTriangle
 } from 'lucide-react';
 import { InitiateCallButton } from '@/components/calls/InitiateCallButton';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -41,6 +42,7 @@ import { useContactQuotesNotificationStatus, useToggleContactQuotesNotifications
 import { useQuoteNotificationConfig } from '@/hooks/useQuoteNotificationConfig';
 import { useSegments, useCreateSegment, useUpdateContactSegment } from '@/hooks/useSegments';
 import { useRealtimeConversationDetails } from '@/hooks/useRealtimeConversationDetails';
+import { use24hWindow, formatRemainingTime } from '@/hooks/use24hWindow';
 
 interface ConversationSidebarProps {
   conversationId: string;
@@ -116,7 +118,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
         .select(`
           id, contact_id, channel_id, assigned_to, department_id,
           status, is_unread, unread_count, last_message_at, last_message_preview,
-          lead_status, created_at, referral_source, referral_data,
+          lead_status, created_at, referral_source, referral_data, last_client_message_at,
           contact:contacts(
             id, full_name, phone, email, avatar_url, is_online, is_typing,
             street, number, complement, neighborhood, city, state, zip_code,
@@ -135,6 +137,9 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
           ),
           department:departments(
             id, name
+          ),
+          channel:whatsapp_channels(
+            id, name, type
           )
         `)
         .eq('id', conversationId)
@@ -1833,6 +1838,48 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
                 </span>
               </div>
             )}
+
+            {/* 24h Window Status for Official API */}
+            {(() => {
+              const channel = Array.isArray(conversation.channel) 
+                ? conversation.channel[0] 
+                : conversation.channel;
+              const isOfficialChannel = channel?.type === 'official';
+              const windowStatus = use24hWindow(
+                conversation.last_client_message_at,
+                isOfficialChannel
+              );
+
+              if (!windowStatus || !isOfficialChannel) return null;
+
+              return (
+                <div className="flex flex-col gap-1.5 pt-2 mt-2 border-t border-border/50">
+                  <div className="flex items-center gap-1.5">
+                    <Clock size={14} className={windowStatus.isExpired ? 'text-destructive' : 'text-blue-600'} />
+                    <span className="text-xs text-muted-foreground">Janela 24h</span>
+                  </div>
+                  
+                  {windowStatus.isExpired ? (
+                    <div className="flex items-center gap-1.5 px-2 py-1.5 bg-destructive/10 rounded-lg border border-destructive/20">
+                      <AlertTriangle size={14} className="text-destructive" />
+                      <span className="text-xs font-medium text-destructive">Expirada</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-blue-600">
+                          {formatRemainingTime(windowStatus)} restantes
+                        </span>
+                      </div>
+                      <Progress 
+                        value={100 - windowStatus.percentageUsed} 
+                        className="h-1.5 bg-blue-100 dark:bg-blue-900/30"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
