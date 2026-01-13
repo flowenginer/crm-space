@@ -15,6 +15,8 @@ import type {
   MarketingActionConfig 
 } from '@/types/marketing';
 import { MARKETING_ACTION_LABELS } from '@/types/marketing';
+import { MetaTemplateSelector } from '@/components/meta-templates';
+import { useApprovedMetaTemplates } from '@/hooks/useMetaTemplates';
 
 interface ActionItemProps {
   action: MarketingAction;
@@ -283,6 +285,24 @@ export function ActionItem({
           <span className="text-xs text-muted-foreground">
             (dono do contato)
           </span>
+        );
+
+      case 'send_meta_template':
+        return (
+          <div className="w-full max-w-[300px]">
+            <MetaTemplateSelector
+              selectedTemplateId={action.config.meta_template_id}
+              onTemplateSelect={(template) => updateConfig({ 
+                meta_template_id: template?.id,
+                meta_template_variables: {} 
+              })}
+              variableValues={action.config.meta_template_variables || {}}
+              onVariableChange={(variables) => updateConfig({ 
+                meta_template_variables: variables 
+              })}
+              showPreview={false}
+            />
+          </div>
         );
 
       default:

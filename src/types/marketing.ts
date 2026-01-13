@@ -5,6 +5,7 @@ export type MarketingActionType =
   | 'none'
   | 'send_next_message'
   | 'cancel_campaign'  // Cancelar próximos envios para este contato
+  | 'send_meta_template'  // Enviar template Meta (API Oficial)
   
   // Transfers
   | 'transfer_agent'
@@ -39,6 +40,10 @@ export interface MarketingActionConfig {
   followup_template_id?: string;
   marketing_campaign_id?: string;
   automation_id?: string;
+  
+  // Meta Template
+  meta_template_id?: string;
+  meta_template_variables?: Record<string, string>;
 }
 
 export interface MarketingAction {
@@ -104,6 +109,7 @@ export const MARKETING_ACTION_LABELS: Record<MarketingActionType, string> = {
   none: 'Nenhuma ação',
   send_next_message: 'Enviar próxima mensagem',
   cancel_campaign: 'Cancelar próximos envios',
+  send_meta_template: 'Enviar Template Meta (API Oficial)',
   transfer_agent: 'Transferir para vendedor',
   transfer_department: 'Transferir para departamento',
   transfer_owner: 'Transferir para dono do contato',
@@ -121,7 +127,7 @@ export const MARKETING_ACTION_LABELS: Record<MarketingActionType, string> = {
 export const MARKETING_ACTION_CATEGORIES = [
   {
     label: 'Mensagens',
-    actions: ['send_next_message', 'cancel_campaign'] as MarketingActionType[],
+    actions: ['send_next_message', 'cancel_campaign', 'send_meta_template'] as MarketingActionType[],
   },
   {
     label: 'Transferências',
