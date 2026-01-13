@@ -195,7 +195,7 @@ async function processMessages(supabase: any, value: any) {
   // Find the channel/config for this phone_number_id
   const { data: config } = await supabase
     .from('cloudapi_configs')
-    .select('id, tenant_id, channel_id')
+    .select('id, tenant_id, channel_id, access_token')
     .eq('phone_number_id', phoneNumberId)
     .eq('is_active', true)
     .single();

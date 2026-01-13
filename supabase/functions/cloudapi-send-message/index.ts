@@ -139,7 +139,46 @@ serve(async (req) => {
       case 'audio':
         messagePayload.type = 'audio';
         if (mediaUrl?.startsWith('http')) {
-          messagePayload.audio = { link: mediaUrl };
+          // Check if it's a webm file (not supported by WhatsApp)
+          if (mediaUrl.includes('.webm')) {
+            console.log('[CloudAPI] WebM audio detected, uploading to Meta Media API...');
+            try {
+              // Download the audio file
+              const audioResponse = await fetch(mediaUrl);
+              const audioBuffer = await audioResponse.arrayBuffer();
+              
+              // Upload to Meta Media API as binary
+              const formData = new FormData();
+              formData.append('file', new Blob([audioBuffer], { type: 'audio/ogg' }), 'audio.ogg');
+              formData.append('messaging_product', 'whatsapp');
+              formData.append('type', 'audio/ogg');
+              
+              const uploadResponse = await fetch(
+                `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${config.phone_number_id}/media`,
+                {
+                  method: 'POST',
+                  headers: { 
+                    Authorization: `Bearer ${config.access_token}` 
+                  },
+                  body: formData
+                }
+              );
+              const uploadResult = await uploadResponse.json();
+              console.log('[CloudAPI] Media upload result:', uploadResult);
+              
+              if (uploadResult.id) {
+                messagePayload.audio = { id: uploadResult.id };
+              } else {
+                console.error('[CloudAPI] Failed to upload audio:', uploadResult);
+                throw new Error('Failed to upload audio to Meta');
+              }
+            } catch (uploadError) {
+              console.error('[CloudAPI] Audio upload error:', uploadError);
+              throw new Error('Failed to process audio file');
+            }
+          } else {
+            messagePayload.audio = { link: mediaUrl };
+          }
         } else {
           messagePayload.audio = { id: mediaUrl };
         }
