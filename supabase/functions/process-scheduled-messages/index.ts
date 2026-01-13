@@ -62,6 +62,7 @@ interface WhatsAppChannel {
   id: string
   instance_id: string
   instance_token: string
+  type?: string | null
   provider: WhatsAppProvider | WhatsAppProvider[] | null
 }
 
@@ -438,13 +439,14 @@ Deno.serve(async (req) => {
       try {
         console.log(`[Scheduled] Processing message ${scheduled.id} for contact ${scheduled.contact?.full_name}`)
 
-        // Get channel with provider info
+        // Get channel with provider info - OTIMIZAÇÃO: incluir type para verificar se é CloudAPI
         const { data: channel, error: channelError } = await supabase
           .from('whatsapp_channels')
           .select(`
             id,
             instance_id,
             instance_token,
+            type,
             provider:whatsapp_providers(code, base_url, api_key, admin_token)
           `)
           .eq('id', scheduled.channel_id)
@@ -468,11 +470,16 @@ Deno.serve(async (req) => {
         }
 
         const typedChannel = channel as WhatsAppChannel
+        const channelType = typedChannel.type
+        const isCloudAPI = channelType === 'cloudapi' || channelType === 'official'
+        
+        // Para canais CloudAPI, não precisamos de provider tradicional
         // Provider pode vir como array ou objeto único
         const providerRaw = typedChannel.provider
         const provider: WhatsAppProvider | null = Array.isArray(providerRaw) ? providerRaw[0] : providerRaw
 
-        if (!provider) {
+        // Verificar se temos provider (apenas para canais não-CloudAPI)
+        if (!isCloudAPI && !provider) {
           console.error(`[Scheduled] Provider not found for channel ${scheduled.channel_id}`)
           
           await supabase
@@ -512,11 +519,18 @@ Deno.serve(async (req) => {
         let sendResult: { success: boolean; messageId?: string; error?: string } = { success: true }
         let lastMessageId: string | undefined
 
-        console.log(`[Scheduled] Sending via provider: ${provider.code}`)
+        // Para canais CloudAPI, usar edge function cloudapi-send-message
+        if (isCloudAPI) {
+          console.log(`[Scheduled] Sending via CloudAPI channel type: ${channelType}`)
+        } else if (provider) {
+          console.log(`[Scheduled] Sending via provider: ${provider.code}`)
+        }
         
-        // Use api_key or admin_token as fallback
-        const apiKey = provider.api_key || provider.admin_token || ''
-        console.log(`[Scheduled] Using API key: ${apiKey ? 'present' : 'missing'}`)
+        // Use api_key or admin_token as fallback (apenas para não-CloudAPI)
+        const apiKey = provider?.api_key || provider?.admin_token || ''
+        if (!isCloudAPI) {
+          console.log(`[Scheduled] Using API key: ${apiKey ? 'present' : 'missing'}`)
+        }
 
         const msgType = scheduled.message_type || 'text'
         const hasText = scheduled.content && scheduled.content.trim().length > 0
@@ -585,89 +599,160 @@ Deno.serve(async (req) => {
         // For image/video/document, we can include caption but still send text separately for reliability
         const needsSeparateTextMessage = hasText && hasMedia && (msgType === 'audio' || msgType === 'text')
 
-        console.log(`[Scheduled] Has text: ${hasText}, Has media: ${hasMedia}, Type: ${msgType}, Separate text: ${needsSeparateTextMessage}`)
+        console.log(`[Scheduled] Has text: ${hasText}, Has media: ${hasMedia}, Type: ${msgType}, Separate text: ${needsSeparateTextMessage}, isCloudAPI: ${isCloudAPI}`)
 
-        // Step 1: Send text message first if we have both text and media
-        if (hasText && (needsSeparateTextMessage || !hasMedia)) {
-          console.log(`[Scheduled] Sending text message...`)
-          
-        if (provider.code === 'evolution') {
-            sendResult = await sendEvolutionText(
-              provider.base_url,
-              typedChannel.instance_id,
-              apiKey,
-              contactPhone,
-              finalTextContent
-            )
-          } else if (provider.code === 'zapi') {
-            sendResult = await sendZAPIText(
-              typedChannel.instance_id,
-              typedChannel.instance_token,
-              contactPhone,
-              finalTextContent
-            )
-          } else if (provider.code === 'uazapi') {
-            // UAZAPI V2
-            sendResult = await sendUAZAPIText(
-              provider.base_url,
-              typedChannel.instance_token,
-              contactPhone,
-              finalTextContent
-            )
-          } else {
-            sendResult = { success: false, error: `Provider ${provider.code} not supported` }
-          }
+        // =====================================================
+        // ENVIO VIA CLOUDAPI (Meta Cloud API / Official)
+        // =====================================================
+        if (isCloudAPI) {
+          try {
+            // Enviar texto primeiro se necessário
+            if (hasText && (needsSeparateTextMessage || !hasMedia)) {
+              console.log(`[Scheduled] Sending text via CloudAPI...`)
+              const cloudResponse = await fetch(`${supabaseUrl}/functions/v1/cloudapi-send-message`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({
+                  channelId: scheduled.channel_id,
+                  phone: contactPhone,
+                  message: finalTextContent,
+                  type: 'text',
+                }),
+              })
 
-          if (sendResult.success) {
-            lastMessageId = sendResult.messageId
-            console.log(`[Scheduled] Text sent successfully! WhatsApp ID: ${sendResult.messageId}`)
+              const cloudResult = await cloudResponse.json()
+              if (cloudResponse.ok && cloudResult.success) {
+                lastMessageId = cloudResult.messageId
+                console.log(`[Scheduled] CloudAPI text sent successfully! ID: ${cloudResult.messageId}`)
+              } else {
+                sendResult = { success: false, error: cloudResult.error || 'Erro ao enviar via CloudAPI' }
+              }
+            }
+
+            // Enviar mídia se necessário
+            if (sendResult.success && hasMedia) {
+              console.log(`[Scheduled] Sending media via CloudAPI...`)
+              const caption = (msgType !== 'audio' && !needsSeparateTextMessage) ? finalTextContent : undefined
+              
+              const cloudResponse = await fetch(`${supabaseUrl}/functions/v1/cloudapi-send-message`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({
+                  channelId: scheduled.channel_id,
+                  phone: contactPhone,
+                  type: msgType,
+                  mediaUrl: scheduled.media_url,
+                  caption: caption,
+                }),
+              })
+
+              const cloudResult = await cloudResponse.json()
+              if (cloudResponse.ok && cloudResult.success) {
+                lastMessageId = cloudResult.messageId
+                console.log(`[Scheduled] CloudAPI media sent successfully! ID: ${cloudResult.messageId}`)
+              } else {
+                sendResult = { success: false, error: cloudResult.error || 'Erro ao enviar mídia via CloudAPI' }
+              }
+            }
+          } catch (cloudError) {
+            console.error(`[Scheduled] CloudAPI error:`, cloudError)
+            sendResult = { success: false, error: cloudError instanceof Error ? cloudError.message : 'Erro de rede CloudAPI' }
           }
         }
+        // =====================================================
+        // ENVIO VIA PROVEDORES TRADICIONAIS
+        // =====================================================
+        else if (provider) {
+          // Step 1: Send text message first if we have both text and media
+          if (hasText && (needsSeparateTextMessage || !hasMedia)) {
+            console.log(`[Scheduled] Sending text message...`)
+            
+            if (provider.code === 'evolution') {
+              sendResult = await sendEvolutionText(
+                provider.base_url,
+                typedChannel.instance_id,
+                apiKey,
+                contactPhone,
+                finalTextContent
+              )
+            } else if (provider.code === 'zapi') {
+              sendResult = await sendZAPIText(
+                typedChannel.instance_id,
+                typedChannel.instance_token,
+                contactPhone,
+                finalTextContent
+              )
+            } else if (provider.code === 'uazapi') {
+              // UAZAPI V2
+              sendResult = await sendUAZAPIText(
+                provider.base_url,
+                typedChannel.instance_token,
+                contactPhone,
+                finalTextContent
+              )
+            } else {
+              sendResult = { success: false, error: `Provider ${provider.code} not supported` }
+            }
 
-        // Step 2: Send media if we have it and text was successful (or no text)
-        if (sendResult.success && hasMedia) {
-          console.log(`[Scheduled] Sending media message...`)
-          
-          // For image/video/document, include caption only if we didn't send text separately
-          const caption = (msgType !== 'audio' && !needsSeparateTextMessage) ? finalTextContent : undefined
-          
-          if (provider.code === 'evolution') {
-            sendResult = await sendEvolutionMedia(
-              provider.base_url,
-              typedChannel.instance_id,
-              apiKey,
-              contactPhone,
-              msgType,
-              scheduled.media_url!,
-              caption
-            )
-          } else if (provider.code === 'zapi') {
-            sendResult = await sendZAPIMedia(
-              typedChannel.instance_id,
-              typedChannel.instance_token,
-              contactPhone,
-              msgType,
-              scheduled.media_url!,
-              caption
-            )
-          } else if (provider.code === 'uazapi') {
-            // UAZAPI V2
-            sendResult = await sendUAZAPIMedia(
-              provider.base_url,
-              typedChannel.instance_token,
-              contactPhone,
-              msgType,
-              scheduled.media_url!,
-              caption
-            )
-          } else {
-            sendResult = { success: false, error: `Provider ${provider.code} not supported` }
+            if (sendResult.success) {
+              lastMessageId = sendResult.messageId
+              console.log(`[Scheduled] Text sent successfully! WhatsApp ID: ${sendResult.messageId}`)
+            }
           }
 
-          if (sendResult.success) {
-            lastMessageId = sendResult.messageId
-            console.log(`[Scheduled] Media sent successfully! WhatsApp ID: ${sendResult.messageId}`)
+          // Step 2: Send media if we have it and text was successful (or no text)
+          if (sendResult.success && hasMedia) {
+            console.log(`[Scheduled] Sending media message...`)
+            
+            // For image/video/document, include caption only if we didn't send text separately
+            const caption = (msgType !== 'audio' && !needsSeparateTextMessage) ? finalTextContent : undefined
+            
+            if (provider.code === 'evolution') {
+              sendResult = await sendEvolutionMedia(
+                provider.base_url,
+                typedChannel.instance_id,
+                apiKey,
+                contactPhone,
+                msgType,
+                scheduled.media_url!,
+                caption
+              )
+            } else if (provider.code === 'zapi') {
+              sendResult = await sendZAPIMedia(
+                typedChannel.instance_id,
+                typedChannel.instance_token,
+                contactPhone,
+                msgType,
+                scheduled.media_url!,
+                caption
+              )
+            } else if (provider.code === 'uazapi') {
+              // UAZAPI V2
+              sendResult = await sendUAZAPIMedia(
+                provider.base_url,
+                typedChannel.instance_token,
+                contactPhone,
+                msgType,
+                scheduled.media_url!,
+                caption
+              )
+            } else {
+              sendResult = { success: false, error: `Provider ${provider.code} not supported` }
+            }
+
+            if (sendResult.success) {
+              lastMessageId = sendResult.messageId
+              console.log(`[Scheduled] Media sent successfully! WhatsApp ID: ${sendResult.messageId}`)
+            }
           }
+        } else {
+          sendResult = { success: false, error: 'No valid provider or CloudAPI configuration' }
         }
 
         if (!sendResult.success) {

@@ -21,61 +21,138 @@ serve(async (req) => {
 
     console.log(`[process-flow-delays] Starting at ${now}`);
 
-    // 1. Processar delays de tempo (wait_time)
-    const { data: timeDelays } = await supabase
-      .from('flow_executions')
-      .select('*')
-      .eq('status', 'waiting_delay')
-      .lt('waiting_until', now);
+    // OTIMIZAÇÃO: Buscar ambos os tipos em paralelo
+    const [timeDelaysResult, replyTimeoutsResult] = await Promise.all([
+      supabase
+        .from('flow_executions')
+        .select('id, current_node_id')
+        .eq('status', 'waiting_delay')
+        .lt('waiting_until', now),
+      supabase
+        .from('flow_executions')
+        .select('id, current_node_id')
+        .eq('status', 'waiting_reply')
+        .lt('waiting_until', now)
+    ]);
 
-    for (const exec of timeDelays || []) {
+    const timeDelays = timeDelaysResult.data || [];
+    const replyTimeouts = replyTimeoutsResult.data || [];
+
+    // Se não há nada para processar, retorna cedo
+    if (timeDelays.length === 0 && replyTimeouts.length === 0) {
+      console.log(`[process-flow-delays] No executions to process`);
+      return new Response(JSON.stringify({ success: true, processed: 0 }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Coletar todos os node_ids para buscar connections em batch
+    const allNodeIds = [
+      ...timeDelays.filter(e => e.current_node_id).map(e => e.current_node_id!),
+      ...replyTimeouts.filter(e => e.current_node_id).map(e => e.current_node_id!)
+    ];
+
+    // OTIMIZAÇÃO: Buscar todas as connections de uma vez
+    const { data: allConnections } = await supabase
+      .from('flow_connections')
+      .select('source_node_id, target_node_id, source_handle')
+      .in('source_node_id', allNodeIds);
+
+    const connectionsMap = new Map<string, { target_node_id: string; source_handle?: string }[]>();
+    (allConnections || []).forEach(conn => {
+      if (!connectionsMap.has(conn.source_node_id)) {
+        connectionsMap.set(conn.source_node_id, []);
+      }
+      connectionsMap.get(conn.source_node_id)!.push(conn);
+    });
+
+    // Preparar updates e logs em batch
+    const delayUpdateIds: string[] = [];
+    const delayLogs: { execution_id: string; node_id: string; log_type: string; message: string }[] = [];
+    
+    const timeoutUpdateRunning: string[] = [];
+    const timeoutUpdateCompleted: string[] = [];
+    const timeoutLogs: { execution_id: string; node_id: string; log_type: string; message: string }[] = [];
+
+    // 1. Processar delays de tempo
+    for (const exec of timeDelays) {
       if (exec.current_node_id) {
-        const { data: conn } = await supabase
-          .from('flow_connections')
-          .select('target_node_id')
-          .eq('source_node_id', exec.current_node_id)
-          .single();
-
-        if (conn) {
-          await supabase.from('flow_executions').update({ status: 'running', waiting_until: null }).eq('id', exec.id);
-          await supabase.from('flow_execution_logs').insert({ execution_id: exec.id, node_id: exec.current_node_id, log_type: 'info', message: 'Delay concluído' });
+        const connections = connectionsMap.get(exec.current_node_id) || [];
+        if (connections.length > 0) {
+          delayUpdateIds.push(exec.id);
+          delayLogs.push({ 
+            execution_id: exec.id, 
+            node_id: exec.current_node_id, 
+            log_type: 'info', 
+            message: 'Delay concluído' 
+          });
           processedCount++;
         }
       }
     }
 
     // 2. Processar timeouts de wait_reply
-    const { data: replyTimeouts } = await supabase
-      .from('flow_executions')
-      .select('*')
-      .eq('status', 'waiting_reply')
-      .lt('waiting_until', now);
-
-    for (const exec of replyTimeouts || []) {
+    for (const exec of replyTimeouts) {
       if (exec.current_node_id) {
-        const { data: timeoutConn } = await supabase
-          .from('flow_connections')
-          .select('target_node_id')
-          .eq('source_node_id', exec.current_node_id)
-          .eq('source_handle', 'timeout')
-          .single();
-
-        await supabase.from('flow_executions').update({ 
-          status: timeoutConn ? 'running' : 'completed', 
-          waiting_until: null, 
-          waiting_for: null,
-          completed_at: timeoutConn ? null : now
-        }).eq('id', exec.id);
+        const connections = connectionsMap.get(exec.current_node_id) || [];
+        const hasTimeoutPath = connections.some(c => c.source_handle === 'timeout');
         
-        await supabase.from('flow_execution_logs').insert({ 
-          execution_id: exec.id, 
-          node_id: exec.current_node_id, 
-          log_type: 'info', 
-          message: timeoutConn ? 'Timeout - seguindo caminho' : 'Timeout - fluxo finalizado' 
-        });
+        if (hasTimeoutPath) {
+          timeoutUpdateRunning.push(exec.id);
+          timeoutLogs.push({ 
+            execution_id: exec.id, 
+            node_id: exec.current_node_id, 
+            log_type: 'info', 
+            message: 'Timeout - seguindo caminho' 
+          });
+        } else {
+          timeoutUpdateCompleted.push(exec.id);
+          timeoutLogs.push({ 
+            execution_id: exec.id, 
+            node_id: exec.current_node_id, 
+            log_type: 'info', 
+            message: 'Timeout - fluxo finalizado' 
+          });
+        }
         processedCount++;
       }
     }
+
+    // OTIMIZAÇÃO: Executar todos os updates e inserts em paralelo
+    const operations: (() => Promise<void>)[] = [];
+
+    if (delayUpdateIds.length > 0) {
+      operations.push(async () => {
+        await supabase.from('flow_executions')
+          .update({ status: 'running', waiting_until: null })
+          .in('id', delayUpdateIds);
+      });
+    }
+
+    if (timeoutUpdateRunning.length > 0) {
+      operations.push(async () => {
+        await supabase.from('flow_executions')
+          .update({ status: 'running', waiting_until: null, waiting_for: null })
+          .in('id', timeoutUpdateRunning);
+      });
+    }
+
+    if (timeoutUpdateCompleted.length > 0) {
+      operations.push(async () => {
+        await supabase.from('flow_executions')
+          .update({ status: 'completed', waiting_until: null, waiting_for: null, completed_at: now })
+          .in('id', timeoutUpdateCompleted);
+      });
+    }
+
+    const allLogs = [...delayLogs, ...timeoutLogs];
+    if (allLogs.length > 0) {
+      operations.push(async () => {
+        await supabase.from('flow_execution_logs').insert(allLogs);
+      });
+    }
+
+    await Promise.all(operations.map(op => op()));
 
     console.log(`[process-flow-delays] Processed ${processedCount} executions`);
 
