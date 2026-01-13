@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Conversation, AssignmentFilter } from './useConversations';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths, subDays } from 'date-fns';
+import { useCurrentUser, useCurrentUserProfile, useCurrentUserDepartments } from './useCurrentUser';
 
 const PAGE_SIZE = 50;
 
@@ -229,17 +230,26 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
     leadStatusFilter,
   } = filters || {};
 
+  // OTIMIZAÇÃO: Usar hooks centralizados ao invés de queries dentro do queryFn
+  const { data: currentUser } = useCurrentUser();
+  const { data: userProfile } = useCurrentUserProfile();
+  const { data: userDepartmentIds = [] } = useCurrentUserDepartments();
+
   // Determine effective sort order and filters
   // Support both legacy sortBy and new sortOrder/filter* props
   const effectiveSortOrder: SortOrder = sortOrder ?? (sortBy === 'oldest' ? 'oldest' : 'newest');
   const effectiveFilterUnread = filterUnread ?? (sortBy === 'unread');
   const effectiveFilterNotReplied = filterNotReplied ?? (sortBy === 'not_replied');
   const effectiveFilterClientNotReplied = filterClientNotReplied ?? (sortBy === 'client_not_replied');
+
+  // Pre-compute user role info
+  const isAdminOrSupervisor = userProfile?.role === 'admin' || userProfile?.role === 'supervisor';
   
   return useInfiniteQuery({
-    queryKey: ['conversations-paginated', assignment, effectiveSortOrder, effectiveFilterUnread, effectiveFilterNotReplied, effectiveFilterClientNotReplied, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery, statusFilter, leadStatusFilter],
+    queryKey: ['conversations-paginated', assignment, effectiveSortOrder, effectiveFilterUnread, effectiveFilterNotReplied, effectiveFilterClientNotReplied, channelId, isUnread, departmentId, agentId, origin, dateFilter, customDateFrom?.toISOString(), customDateTo?.toISOString(), tagIds?.join(','), searchQuery, statusFilter, leadStatusFilter, currentUser?.id, userProfile?.role, userDepartmentIds.join(',')],
     queryFn: async ({ pageParam = 0 }) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      // OTIMIZAÇÃO: Usar dados do cache ao invés de fazer query
+      const user = currentUser;
       
       // Se há filtro de data OU lead status, precisamos usar INNER JOIN para filtrar no servidor
       const hasDateFilter = dateFilter && dateFilter !== 'all';
@@ -309,14 +319,7 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         query = query.is('assigned_to', null);
       } else if (assignment === 'pending' && user) {
         // Pending = conversations with no assigned user but with a department
-        // Check if user is admin or supervisor
-        const { data: userProfile } = await supabase
-          .from('profiles')
-          .select('department_id, role')
-          .eq('id', user.id)
-          .single();
-        
-        const isAdminOrSupervisor = userProfile?.role === 'admin' || userProfile?.role === 'supervisor';
+        // OTIMIZAÇÃO: Usar dados do cache ao invés de fazer query
         
         if (isAdminOrSupervisor) {
           // Admin/Supervisor sees ALL pending conversations (no department filter)
@@ -325,20 +328,11 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
             .not('department_id', 'is', null);
         } else {
           // Regular users see only pending from their departments
-          const { data: userDepts } = await supabase
-            .from('user_departments')
-            .select('department_id')
-            .eq('user_id', user.id);
-          
-          const departmentIds = [
-            ...(userDepts?.map(ud => ud.department_id) || []),
-            userProfile?.department_id
-          ].filter(Boolean) as string[];
-          
-          if (departmentIds.length > 0) {
+          // OTIMIZAÇÃO: Usar userDepartmentIds do cache
+          if (userDepartmentIds.length > 0) {
             query = query
               .is('assigned_to', null)
-              .in('department_id', departmentIds);
+              .in('department_id', userDepartmentIds);
           } else {
             // User has no departments, return empty
             return {
@@ -363,32 +357,17 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         } else if (canSeePending && !canSeeUnassigned) {
           // Can see pending (has department) but not unassigned (no department)
           // Show: assigned to user OR (not assigned AND has department in user's departments)
-          const { data: userProfile } = await supabase
-            .from('profiles')
-            .select('department_id, role')
-            .eq('id', user.id)
-            .single();
-          
-          const isAdminOrSupervisor = userProfile?.role === 'admin' || userProfile?.role === 'supervisor';
+          // OTIMIZAÇÃO: Usar dados do cache ao invés de fazer query
           
           if (isAdminOrSupervisor) {
             // Admin/Supervisor: show assigned OR has department (not completely unassigned)
             query = query.or(`assigned_to.not.is.null,department_id.not.is.null`);
           } else {
             // Regular user: show assigned to them OR pending in their departments
-            const { data: userDepts } = await supabase
-              .from('user_departments')
-              .select('department_id')
-              .eq('user_id', user.id);
-            
-            const departmentIds = [
-              ...(userDepts?.map(ud => ud.department_id) || []),
-              userProfile?.department_id
-            ].filter(Boolean) as string[];
-            
-            if (departmentIds.length > 0) {
+            // OTIMIZAÇÃO: Usar userDepartmentIds do cache
+            if (userDepartmentIds.length > 0) {
               // Show: assigned to me OR (not assigned AND department in my departments)
-              const deptFilter = departmentIds.map(d => `department_id.eq.${d}`).join(',');
+              const deptFilter = userDepartmentIds.map(d => `department_id.eq.${d}`).join(',');
               query = query.or(`assigned_to.eq.${user.id},and(assigned_to.is.null,or(${deptFilter}))`);
             } else {
               // No departments, only show conversations assigned to user
@@ -658,22 +637,18 @@ export function useSortFilterCounts(
   statusFilter: StatusFilter = 'active',
   assignmentFilter?: AssignmentFilterExtended
 ) {
+  // OTIMIZAÇÃO: Usar hooks centralizados ao invés de queries dentro do queryFn
+  const { data: currentUser } = useCurrentUser();
+  const { data: userProfile } = useCurrentUserProfile();
+  
+  const isAdminOrSupervisor = userProfile?.role === 'admin' || userProfile?.role === 'supervisor';
+  
   return useQuery({
-    queryKey: ['sort-filter-counts', statusFilter, assignmentFilter],
+    queryKey: ['sort-filter-counts', statusFilter, assignmentFilter, currentUser?.id, userProfile?.role],
     queryFn: async () => {
-      // Get current user for filtering
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Check if user is admin/supervisor
-      let isAdmin = false;
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-        isAdmin = profile?.role === 'admin' || profile?.role === 'supervisor';
-      }
+      // OTIMIZAÇÃO: Usar dados do cache
+      const user = currentUser;
+      const isAdmin = isAdminOrSupervisor;
       
       // Build status condition
       const statusCondition = statusFilter === 'active' 

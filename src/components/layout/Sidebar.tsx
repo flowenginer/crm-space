@@ -75,10 +75,13 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   // Ativar listener de realtime para requisições
   useContactRequestsRealtime();
 
-  // Fetch pending scheduled messages count
+  // OTIMIZAÇÃO: Verificar se o módulo de agendamentos está habilitado antes de fazer a query
+  const hasScheduledMessagesAccess = tenantEnabledModules?.has('scheduled_messages') ?? false;
+  
+  // Fetch pending scheduled messages count - CONDICIONAL
   const { data: pendingCount } = useQuery({
     queryKey: ['pending-scheduled-count'],
-    staleTime: 30000,
+    staleTime: 60000, // OTIMIZAÇÃO: Aumentado de 30s para 60s
     queryFn: async () => {
       const { count, error } = await supabase
         .from('scheduled_messages')
@@ -87,7 +90,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       if (error) throw error;
       return count || 0;
     },
-    refetchInterval: 30000
+    enabled: hasScheduledMessagesAccess, // OTIMIZAÇÃO: Só executa se módulo habilitado
+    refetchInterval: 60000 // OTIMIZAÇÃO: Aumentado de 30s para 60s
   });
 
   // Expandir automaticamente menus que contêm a rota atual (respeitar fechamento manual)
