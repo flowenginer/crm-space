@@ -75,7 +75,7 @@ interface QuickTemplatesPopoverProps {
   onCopyToInput?: (content: string) => void;
   onStartFlow?: (flowId: string) => void;
   onTriggerAutomation?: (triggerId: string) => void;
-  onSendMetaTemplate?: (templateId: string, templateName: string, language: string, variables: Record<string, string>) => void;
+  onSendMetaTemplate?: (templateId: string, templateName: string, language: string, variables: Record<string, string>, previewContent: string) => void;
 }
 
 export function QuickTemplatesPopover({
@@ -582,8 +582,8 @@ export function QuickTemplatesPopover({
           open={!!selectedMetaTemplate}
           onOpenChange={(open) => !open && setSelectedMetaTemplate(null)}
           onCopyToInput={handleMetaTemplateUse}
-          onSend={onSendMetaTemplate ? (templateId, templateName, variables) => {
-            onSendMetaTemplate(templateId, templateName, selectedMetaTemplate?.language || 'pt_BR', variables);
+          onSend={onSendMetaTemplate ? (templateId, templateName, variables, previewContent) => {
+            onSendMetaTemplate(templateId, templateName, selectedMetaTemplate?.language || 'pt_BR', variables, previewContent);
             setSelectedMetaTemplate(null);
             setOpen(false);
           } : undefined}
@@ -627,8 +627,8 @@ export function QuickTemplatesPopover({
         open={!!selectedMetaTemplate}
         onOpenChange={(open) => !open && setSelectedMetaTemplate(null)}
         onCopyToInput={handleMetaTemplateUse}
-        onSend={onSendMetaTemplate ? (templateId, templateName, variables) => {
-          onSendMetaTemplate(templateId, templateName, selectedMetaTemplate?.language || 'pt_BR', variables);
+        onSend={onSendMetaTemplate ? (templateId, templateName, variables, previewContent) => {
+          onSendMetaTemplate(templateId, templateName, selectedMetaTemplate?.language || 'pt_BR', variables, previewContent);
           setSelectedMetaTemplate(null);
           setOpen(false);
         } : undefined}
