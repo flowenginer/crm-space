@@ -45,6 +45,7 @@ export interface ProviderInstance {
 
 // =====================================================
 // FUNÇÃO UNIFICADA - ENVIAR MENSAGEM VIA EDGE FUNCTION
+// Detecta automaticamente o tipo de canal (cloudapi vs outros)
 // =====================================================
 export async function sendWhatsAppMessage(
   channelId: string,
@@ -58,26 +59,65 @@ export async function sendWhatsAppMessage(
   try {
     console.log('[Instance Creator] Sending message:', { channelId, phone, type, quotedMessageId, filename });
     
-    const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
-      body: {
-        action: 'send',
-        channelId,
-        phone,
-        content,
-        type,
-        mediaUrl,
-        quotedMessageId,
-        filename,
-      },
-    });
-
-    console.log('[Instance Creator] Send Response:', data, error);
-
-    if (error) {
-      return { success: false, error: error.message || 'Erro ao enviar mensagem' };
+    // First, check the channel type to determine which edge function to call
+    const { data: channel, error: channelError } = await supabase
+      .from('whatsapp_channels')
+      .select('type')
+      .eq('id', channelId)
+      .single();
+    
+    if (channelError || !channel) {
+      console.error('[Instance Creator] Channel lookup error:', channelError);
+      return { success: false, error: 'Canal não encontrado' };
     }
+    
+    console.log('[Instance Creator] Channel type:', channel.type);
+    
+    // Use different edge function based on channel type
+    if (channel.type === 'cloudapi') {
+      // CloudAPI (Official WhatsApp API) uses cloudapi-send-message
+      const { data, error } = await supabase.functions.invoke('cloudapi-send-message', {
+        body: {
+          channelId,
+          phone,
+          type,
+          content,
+          mediaUrl,
+          caption: type !== 'text' ? content : undefined,
+          filename,
+        },
+      });
 
-    return data as { success: boolean; messageId?: string; error?: string };
+      console.log('[Instance Creator] CloudAPI Send Response:', data, error);
+
+      if (error) {
+        return { success: false, error: error.message || 'Erro ao enviar mensagem via CloudAPI' };
+      }
+
+      return data as { success: boolean; messageId?: string; error?: string };
+    } else {
+      // Regular providers (zapi, uazapi, evolution) use whatsapp-instance
+      const { data, error } = await supabase.functions.invoke('whatsapp-instance', {
+        body: {
+          action: 'send',
+          channelId,
+          phone,
+          content,
+          type,
+          mediaUrl,
+          quotedMessageId,
+          filename,
+        },
+      });
+
+      console.log('[Instance Creator] WhatsApp Instance Send Response:', data, error);
+
+      if (error) {
+        return { success: false, error: error.message || 'Erro ao enviar mensagem' };
+      }
+
+      return data as { success: boolean; messageId?: string; error?: string };
+    }
   } catch (error: any) {
     console.error('[Instance Creator] Send Error:', error);
     return { success: false, error: error.message || 'Erro ao enviar mensagem' };
