@@ -139,10 +139,9 @@ serve(async (req) => {
     for (const local of localTemplates || []) {
       const key = `${local.name}_${local.language}`;
       
-      // If not returned from Meta and not already DELETED or manually DISABLED
+      // If not returned from Meta and not already DELETED
       if (!metaTemplateKeys.includes(key) && 
-          local.status !== 'DELETED' && 
-          local.status !== 'DISABLED') {
+          local.status !== 'DELETED') {
         
         const { error: deleteError } = await supabase
           .from('meta_message_templates')
