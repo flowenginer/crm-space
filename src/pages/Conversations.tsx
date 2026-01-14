@@ -1445,6 +1445,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
+  const savedConversationScrollTop = useRef<number | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   // Set persistente de conversas que NÃO devem ser auto-marcadas como lidas
   // A proteção só é removida por ação EXPLÍCITA do usuário (clicar na conversa ou enviar mensagem)
@@ -2314,6 +2315,19 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     return filtered;
   }, [conversations, channelFilter, sortOrder, statusFiltersSelected, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery, allSharedConversationIds]);
 
+  // Restore conversation list scroll position after list updates (after sending message)
+  useEffect(() => {
+    if (savedConversationScrollTop.current !== null && conversationListRef.current) {
+      // Use requestAnimationFrame to ensure DOM has updated
+      requestAnimationFrame(() => {
+        if (conversationListRef.current && savedConversationScrollTop.current !== null) {
+          conversationListRef.current.scrollTop = savedConversationScrollTop.current;
+          savedConversationScrollTop.current = null; // Clear after restoring
+        }
+      });
+    }
+  }, [filteredConversations]);
+
   // Calculate unread count for pinned conversations (for notification badge)
   const pinnedUnreadCount = useMemo(() => {
     const pinnedIds = new Set(pinnedConversations.map(p => p.conversation_id));
@@ -2799,6 +2813,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     
     // Prevent duplicate sends
     if (isSendingRef.current) return;
+    
+    // Save scroll position before sending message (to restore after list reorders)
+    if (conversationListRef.current) {
+      savedConversationScrollTop.current = conversationListRef.current.scrollTop;
+    }
     
     // Check if we have either text or files
     const hasText = messageInput.trim().length > 0;
