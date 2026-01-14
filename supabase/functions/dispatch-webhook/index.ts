@@ -66,11 +66,13 @@ async function handleDispatch(supabase: any, params: { event: DispatchEvent }) {
   console.log(`[dispatch-webhook] Dispatching event: ${event.type}`);
 
   // Fetch active webhooks that listen to this event
+  console.log(`[dispatch-webhook] Looking for webhooks with event: ${event.type}`);
+  
   const { data: webhooks, error: webhooksError } = await supabase
     .from('webhook_configs')
     .select('*')
     .eq('is_active', true)
-    .contains('events', [event.type]);
+    .filter('events', 'cs', JSON.stringify([event.type]));
 
   if (webhooksError) {
     console.error('[dispatch-webhook] Error fetching webhooks:', webhooksError);
