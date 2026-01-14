@@ -3405,8 +3405,43 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         });
         
         // BACKGROUND: Send via WhatsApp (don't await)
+        console.log('[Audio Send] Attempting to send audio via WhatsApp:', {
+          channelId,
+          contactPhone,
+          mediaUrl: result.url,
+          conversationId: selectedConversationId
+        });
+
         if (channelId && contactPhone) {
-          sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url, undefined, undefined, selectedConversationId).catch(console.error);
+          sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url, undefined, undefined, selectedConversationId)
+            .then(async (response) => {
+              console.log('[Audio Send] WhatsApp response:', response);
+              if (response.success && response.messageId) {
+                // Update the message with the WhatsApp ID
+                const { error: updateError } = await supabase
+                  .from('messages')
+                  .update({ whatsapp_message_id: response.messageId, status: 'sent' })
+                  .eq('conversation_id', selectedConversationId)
+                  .eq('media_url', result.url)
+                  .is('whatsapp_message_id', null);
+                
+                if (updateError) {
+                  console.error('[Audio Send] Failed to update message with WhatsApp ID:', updateError);
+                } else {
+                  console.log('[Audio Send] Message updated with WhatsApp ID:', response.messageId);
+                }
+              } else if (!response.success) {
+                console.error('[Audio Send] WhatsApp send failed:', response.error);
+                toast.error('Áudio salvo mas não enviado ao WhatsApp: ' + (response.error || 'Erro desconhecido'));
+              }
+            })
+            .catch((error) => {
+              console.error('[Audio Send] Failed to send audio via WhatsApp:', error);
+              toast.error('Erro ao enviar áudio para o WhatsApp');
+            });
+        } else {
+          console.error('[Audio Send] Missing channelId or contactPhone:', { channelId, contactPhone });
+          toast.error('Não foi possível enviar o áudio: dados do canal incompletos');
         }
       }
     } catch (error) {
