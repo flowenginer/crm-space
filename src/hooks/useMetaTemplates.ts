@@ -153,41 +153,50 @@ export function useCreateMetaTemplate() {
   });
 }
 
-// Delete template from Meta
-export function useDeleteMetaTemplate() {
+// Disable template locally (does not call Meta API)
+export function useDisableMetaTemplate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ templateId, templateName }: { templateId?: string; templateName?: string }) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
+    mutationFn: async ({ templateId }: { templateId: string }) => {
+      const { error } = await supabase
+        .from('meta_message_templates')
+        .update({ status: 'DISABLED' })
+        .eq('id', templateId);
 
-      const response = await fetch(
-        'https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/meta-delete-template',
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ templateId, templateName }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to delete template');
-      }
-
-      return result;
+      if (error) throw error;
+      return { success: true };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['meta-templates'] });
-      toast.success('Template excluído com sucesso!');
+      toast.success('Template desativado com sucesso!');
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Erro ao excluir template');
+      toast.error(error.message || 'Erro ao desativar template');
+    },
+  });
+}
+
+// Reactivate a disabled template locally
+export function useReactivateMetaTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ templateId }: { templateId: string }) => {
+      const { error } = await supabase
+        .from('meta_message_templates')
+        .update({ status: 'APPROVED' })
+        .eq('id', templateId);
+
+      if (error) throw error;
+      return { success: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['meta-templates'] });
+      toast.success('Template reativado com sucesso!');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Erro ao reativar template');
     },
   });
 }

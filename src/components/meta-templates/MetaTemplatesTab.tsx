@@ -3,7 +3,8 @@ import {
   RefreshCw, 
   Plus, 
   Eye, 
-  Trash2, 
+  EyeOff,
+  RotateCcw,
   FileText,
   CheckCircle2,
   Clock,
@@ -35,7 +36,8 @@ import { cn } from '@/lib/utils';
 import { 
   useMetaTemplates, 
   useSyncMetaTemplates, 
-  useDeleteMetaTemplate,
+  useDisableMetaTemplate,
+  useReactivateMetaTemplate,
   type MetaMessageTemplate 
 } from '@/hooks/useMetaTemplates';
 import { MetaTemplateModal } from './MetaTemplateModal';
@@ -100,20 +102,26 @@ function CategoryBadge({ category }: { category: string }) {
 export function MetaTemplatesTab() {
   const { data: templates = [], isLoading } = useMetaTemplates();
   const syncMutation = useSyncMetaTemplates();
-  const deleteMutation = useDeleteMetaTemplate();
+  const disableMutation = useDisableMetaTemplate();
+  const reactivateMutation = useReactivateMetaTemplate();
   
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<MetaMessageTemplate | null>(null);
-  const [deleteTemplate, setDeleteTemplate] = useState<MetaMessageTemplate | null>(null);
+  const [disableTemplate, setDisableTemplate] = useState<MetaMessageTemplate | null>(null);
 
-  const handleDelete = async () => {
-    if (!deleteTemplate) return;
+  const handleDisable = async () => {
+    if (!disableTemplate) return;
     try {
-      await deleteMutation.mutateAsync({ 
-        templateId: deleteTemplate.id,
-        templateName: deleteTemplate.name 
-      });
-      setDeleteTemplate(null);
+      await disableMutation.mutateAsync({ templateId: disableTemplate.id });
+      setDisableTemplate(null);
+    } catch (error) {
+      // Error handled by mutation
+    }
+  };
+
+  const handleReactivate = async (template: MetaMessageTemplate) => {
+    try {
+      await reactivateMutation.mutateAsync({ templateId: template.id });
     } catch (error) {
       // Error handled by mutation
     }
@@ -189,46 +197,71 @@ export function MetaTemplatesTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {templates.map((template) => (
-                <TableRow key={template.id}>
-                  <TableCell className="font-medium">{template.name}</TableCell>
-                  <TableCell>{template.language}</TableCell>
-                  <TableCell>
-                    <CategoryBadge category={template.category} />
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={template.status} />
-                  </TableCell>
-                  <TableCell>
-                    {template.quality_score ? (
-                      <Badge variant="outline" className="text-xs">
-                        {template.quality_score}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => setPreviewTemplate(template)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTemplate(template)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {templates.map((template) => {
+                const isDisabled = template.status === 'DISABLED';
+                return (
+                  <TableRow 
+                    key={template.id}
+                    className={cn(isDisabled && 'opacity-50')}
+                  >
+                    <TableCell className={cn(
+                      'font-medium',
+                      isDisabled && 'line-through text-muted-foreground'
+                    )}>
+                      {template.name}
+                    </TableCell>
+                    <TableCell className={cn(isDisabled && 'text-muted-foreground')}>
+                      {template.language}
+                    </TableCell>
+                    <TableCell>
+                      <CategoryBadge category={template.category} />
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={template.status} />
+                    </TableCell>
+                    <TableCell>
+                      {template.quality_score ? (
+                        <Badge variant="outline" className="text-xs">
+                          {template.quality_score}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => setPreviewTemplate(template)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {isDisabled ? (
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            className="text-green-600 hover:text-green-700 hover:bg-green-500/10"
+                            onClick={() => handleReactivate(template)}
+                            disabled={reactivateMutation.isPending}
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setDisableTemplate(template)}
+                          >
+                            <EyeOff className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -245,27 +278,28 @@ export function MetaTemplatesTab() {
         onOpenChange={() => setPreviewTemplate(null)}
       />
 
-      <AlertDialog open={!!deleteTemplate} onOpenChange={() => setDeleteTemplate(null)}>
+      <AlertDialog open={!!disableTemplate} onOpenChange={() => setDisableTemplate(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir Template</AlertDialogTitle>
+            <AlertDialogTitle>Desativar Template</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir o template "{deleteTemplate?.name}"? 
-              Esta ação irá remover o template tanto localmente quanto na Meta.
+              Tem certeza que deseja desativar o template "{disableTemplate?.name}"? 
+              Ele ficará indisponível para novos disparos, mas continuará visível aqui.
+              Você pode reativá-lo a qualquer momento.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDelete}
+              onClick={handleDisable}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleteMutation.isPending ? (
+              {disableMutation.isPending ? (
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
               ) : (
-                <Trash2 className="h-4 w-4 mr-2" />
+                <EyeOff className="h-4 w-4 mr-2" />
               )}
-              Excluir
+              Desativar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
