@@ -108,22 +108,33 @@ export function ScheduleMessageModal({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Use OGG/Opus for WhatsApp compatibility, fallback to webm
-      const mimeType = MediaRecorder.isTypeSupported('audio/ogg; codecs=opus') 
-        ? 'audio/ogg; codecs=opus' 
-        : MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
-          ? 'audio/webm; codecs=opus'
-          : 'audio/webm';
+      // Record in webm (browser native), will convert to MP3 after
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
+        ? 'audio/webm; codecs=opus'
+        : 'audio/webm';
       
       const mediaRecorder = new MediaRecorder(stream, { mimeType });
       const chunks: BlobPart[] = [];
 
       mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mimeType });
-        setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
+      mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(track => track.stop());
+        
+        const webmBlob = new Blob(chunks, { type: mimeType });
+        
+        // Convert to MP3 for WhatsApp compatibility
+        try {
+          console.log('[ScheduleModal] Converting to MP3...');
+          const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
+          const mp3Blob = await encodeToMp3(webmBlob);
+          console.log('[ScheduleModal] MP3 conversion successful, size:', mp3Blob.size);
+          setAudioBlob(mp3Blob);
+          setAudioUrl(URL.createObjectURL(mp3Blob));
+        } catch (mp3Error) {
+          console.error('[ScheduleModal] MP3 conversion failed:', mp3Error);
+          toast.error('Erro ao converter áudio para MP3');
+          // Don't save the webm blob since it won't work with WhatsApp
+        }
       };
 
       mediaRecorderRef.current = mediaRecorder;
@@ -266,14 +277,14 @@ export function ScheduleMessageModal({
       let mediaUrl: string | null = null;
       let messageType = 'text';
 
-      // Upload audio if present
+      // Upload audio if present (already converted to MP3)
       if (audioBlob) {
         messageType = 'audio';
-        const audioFileName = `scheduled_audio_${Date.now()}.webm`;
+        const audioFileName = `scheduled_audio_${Date.now()}.mp3`;
         const { data: audioData, error: audioError } = await supabase.storage
           .from('conversation-attachments')
           .upload(`scheduled/${audioFileName}`, audioBlob, {
-            contentType: 'audio/webm',
+            contentType: 'audio/mpeg',
             cacheControl: '3600'
           });
         

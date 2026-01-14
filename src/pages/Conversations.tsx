@@ -3290,12 +3290,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Use OGG/Opus for WhatsApp compatibility, fallback to webm
-      const mimeType = MediaRecorder.isTypeSupported('audio/ogg; codecs=opus') 
-        ? 'audio/ogg; codecs=opus' 
-        : MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
-          ? 'audio/webm; codecs=opus'
-          : 'audio/webm';
+      // Record in webm (browser native), will convert to MP3 after
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
+        ? 'audio/webm; codecs=opus'
+        : 'audio/webm';
       
       const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
@@ -3318,11 +3316,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           return;
         }
         
-        // Determine extension based on mime type
-        const extension = mimeType.includes('ogg') ? 'ogg' : 'webm';
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        const audioFile = new File([audioBlob], `audio_${Date.now()}.${extension}`, { type: mimeType });
-        
         // Prevent duplicate sends
         if (isSendingRef.current) return;
         
@@ -3335,6 +3328,25 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           try {
             isSendingRef.current = true;
             setIsUploading(true);
+            
+            // Create webm blob from recorded chunks
+            const webmBlob = new Blob(audioChunksRef.current, { type: mimeType });
+            
+            // Convert to MP3 for WhatsApp compatibility
+            console.log('[Audio] Converting to MP3...');
+            const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
+            let audioFile: File;
+            
+            try {
+              const mp3Blob = await encodeToMp3(webmBlob);
+              audioFile = new File([mp3Blob], `audio_${Date.now()}.mp3`, { type: 'audio/mpeg' });
+              console.log('[Audio] MP3 conversion successful, size:', mp3Blob.size);
+            } catch (mp3Error) {
+              console.error('[Audio] MP3 conversion failed:', mp3Error);
+              toast.error('Erro ao converter áudio para MP3');
+              return;
+            }
+            
             const result = await uploadAttachment(audioFile, selectedConversationId);
             
             // INSTANT: Save to database first
@@ -3344,7 +3356,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               is_from_me: true,
               message_type: 'audio',
               media_url: result.url,
-              media_mime_type: result.mimeType,
+              media_mime_type: 'audio/mpeg',
             });
             
             // BACKGROUND: Send via WhatsApp (don't await)
@@ -3352,7 +3364,6 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url).catch(console.error);
             }
             
-            // Toast removed - user preference for cleaner chat experience
           } catch (error) {
             console.error('Error sending audio:', error);
             toast.error('Erro ao enviar áudio');
