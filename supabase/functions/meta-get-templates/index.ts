@@ -126,6 +126,41 @@ serve(async (req) => {
       }
     }
 
+    // Mark templates as DELETED if they no longer exist in Meta
+    const metaTemplateKeys = templates.map(t => `${t.name}_${t.language}`);
+    
+    const { data: localTemplates } = await supabase
+      .from('meta_message_templates')
+      .select('id, name, language, status')
+      .eq('tenant_id', tenantId)
+      .eq('cloudapi_config_id', config.id);
+
+    let deletedCount = 0;
+    for (const local of localTemplates || []) {
+      const key = `${local.name}_${local.language}`;
+      
+      // If not returned from Meta and not already DELETED or manually DISABLED
+      if (!metaTemplateKeys.includes(key) && 
+          local.status !== 'DELETED' && 
+          local.status !== 'DISABLED') {
+        
+        const { error: deleteError } = await supabase
+          .from('meta_message_templates')
+          .update({ 
+            status: 'DELETED',
+            last_synced_at: new Date().toISOString()
+          })
+          .eq('id', local.id);
+
+        if (!deleteError) {
+          deletedCount++;
+          console.log('[Meta Templates] Marked as deleted:', local.name);
+        }
+      }
+    }
+
+    console.log('[Meta Templates] Marked as deleted count:', deletedCount);
+
     // Get synced templates from database
     const { data: syncedTemplates, error: fetchError } = await supabase
       .from('meta_message_templates')

@@ -27,7 +27,7 @@ export interface MetaMessageTemplate {
   name: string;
   language: string;
   category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
-  status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED' | 'DISABLED';
+  status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED' | 'DISABLED' | 'DELETED';
   components: MetaTemplateComponent[];
   example_values: Record<string, any> | null;
   rejection_reason: string | null;
@@ -197,6 +197,30 @@ export function useReactivateMetaTemplate() {
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Erro ao reativar template');
+    },
+  });
+}
+
+// Purge templates marked as DELETED (permanently remove from database)
+export function usePurgeDeletedTemplates() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const { error, count } = await supabase
+        .from('meta_message_templates')
+        .delete()
+        .eq('status', 'DELETED');
+
+      if (error) throw error;
+      return { count };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['meta-templates'] });
+      toast.success('Templates excluídos removidos permanentemente!');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Erro ao remover templates');
     },
   });
 }

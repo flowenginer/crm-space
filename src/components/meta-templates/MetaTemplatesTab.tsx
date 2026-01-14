@@ -11,6 +11,7 @@ import {
   XCircle,
   AlertCircle,
   Pause,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +39,7 @@ import {
   useSyncMetaTemplates, 
   useDisableMetaTemplate,
   useReactivateMetaTemplate,
+  usePurgeDeletedTemplates,
   type MetaMessageTemplate 
 } from '@/hooks/useMetaTemplates';
 import { MetaTemplateModal } from './MetaTemplateModal';
@@ -80,6 +82,13 @@ function StatusBadge({ status }: { status: string }) {
           Desativado
         </Badge>
       );
+    case 'DELETED':
+      return (
+        <Badge className="bg-red-500/20 text-red-500 border-red-500/30 hover:bg-red-500/30">
+          <Trash2 className="w-3 h-3 mr-1" />
+          Excluído no Meta
+        </Badge>
+      );
     default:
       return <Badge variant="outline">{status}</Badge>;
   }
@@ -104,10 +113,15 @@ export function MetaTemplatesTab() {
   const syncMutation = useSyncMetaTemplates();
   const disableMutation = useDisableMetaTemplate();
   const reactivateMutation = useReactivateMetaTemplate();
+  const purgeMutation = usePurgeDeletedTemplates();
   
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<MetaMessageTemplate | null>(null);
   const [disableTemplate, setDisableTemplate] = useState<MetaMessageTemplate | null>(null);
+  const [showPurgeDialog, setShowPurgeDialog] = useState(false);
+
+  const deletedTemplates = templates.filter(t => t.status === 'DELETED');
+  const hasDeletedTemplates = deletedTemplates.length > 0;
 
   const handleDisable = async () => {
     if (!disableTemplate) return;
@@ -141,6 +155,17 @@ export function MetaTemplatesTab() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {hasDeletedTemplates && (
+            <Button 
+              variant="outline"
+              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              onClick={() => setShowPurgeDialog(true)}
+              disabled={purgeMutation.isPending}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Limpar Excluídos ({deletedTemplates.length})
+            </Button>
+          )}
           <Button 
             variant="outline" 
             onClick={handleSync}
@@ -197,20 +222,25 @@ export function MetaTemplatesTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {templates.map((template) => {
+            {templates.map((template) => {
                 const isDisabled = template.status === 'DISABLED';
+                const isDeleted = template.status === 'DELETED';
+                const isInactive = isDisabled || isDeleted;
                 return (
                   <TableRow 
                     key={template.id}
-                    className={cn(isDisabled && 'opacity-50')}
+                    className={cn(
+                      isDisabled && 'opacity-50',
+                      isDeleted && 'opacity-40 bg-red-50/30 dark:bg-red-950/10'
+                    )}
                   >
                     <TableCell className={cn(
                       'font-medium',
-                      isDisabled && 'line-through text-muted-foreground'
+                      isInactive && 'line-through text-muted-foreground'
                     )}>
                       {template.name}
                     </TableCell>
-                    <TableCell className={cn(isDisabled && 'text-muted-foreground')}>
+                    <TableCell className={cn(isInactive && 'text-muted-foreground')}>
                       {template.language}
                     </TableCell>
                     <TableCell>
@@ -237,7 +267,7 @@ export function MetaTemplatesTab() {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        {isDisabled ? (
+                        {isDeleted ? null : isDisabled ? (
                           <Button 
                             variant="ghost" 
                             size="icon"
@@ -300,6 +330,35 @@ export function MetaTemplatesTab() {
                 <EyeOff className="h-4 w-4 mr-2" />
               )}
               Desativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showPurgeDialog} onOpenChange={setShowPurgeDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Limpar Templates Excluídos</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover permanentemente {deletedTemplates.length} template(s) 
+              que foram excluídos no Meta? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                purgeMutation.mutate();
+                setShowPurgeDialog(false);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {purgeMutation.isPending ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Remover Permanentemente
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
