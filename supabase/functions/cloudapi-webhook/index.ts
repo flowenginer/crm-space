@@ -250,13 +250,13 @@ async function processMessages(supabase: any, value: any) {
       contactId = newContact?.id;
     }
 
-    // Find or create conversation - OTIMIZAÇÃO: Usar upsert com ON CONFLICT para evitar race condition
+    // Find or create conversation - COM MIGRAÇÃO AUTOMÁTICA DE CANAL
     let conversationId: string | undefined;
     
-    // Primeiro, tentar encontrar conversa aberta existente
+    // 1. Primeiro, tentar encontrar conversa aberta existente NO MESMO CANAL
     const { data: existingConversation } = await supabase
       .from('conversations')
-      .select('id')
+      .select('id, channel_id')
       .eq('contact_id', contactId)
       .eq('channel_id', config.channel_id)
       .eq('status', 'open')
@@ -267,37 +267,82 @@ async function processMessages(supabase: any, value: any) {
     if (existingConversation?.id) {
       conversationId = existingConversation.id;
     } else {
-      // Tentar criar nova conversa com tratamento de conflito
-      const { data: newConversation, error: convError } = await supabase
+      // 2. Se não encontrou, buscar conversa aberta EM QUALQUER CANAL para este contato
+      const { data: anyChannelConversation } = await supabase
         .from('conversations')
-        .insert({
-          contact_id: contactId,
-          channel_id: config.channel_id,
+        .select('id, channel_id, assigned_to, department_id, status')
+        .eq('contact_id', contactId)
+        .eq('tenant_id', config.tenant_id)
+        .in('status', ['open', 'pending'])
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (anyChannelConversation) {
+        // 3. Migrar a conversa para o novo canal (mantém atendente e departamento)
+        const oldChannelId = anyChannelConversation.channel_id;
+        
+        console.log(`[CloudAPI] 🔄 Migrating conversation ${anyChannelConversation.id} from channel ${oldChannelId} to ${config.channel_id}`);
+        
+        await supabase
+          .from('conversations')
+          .update({
+            channel_id: config.channel_id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', anyChannelConversation.id);
+
+        // 4. Registrar evento de mudança de canal no histórico
+        await supabase.from('conversation_events').insert({
+          conversation_id: anyChannelConversation.id,
+          event_type: 'channel_changed',
           tenant_id: config.tenant_id,
-          status: 'open',
-        })
-        .select('id')
-        .single();
-      
-      if (convError) {
-        // Se erro de chave duplicada, buscar a conversa que foi criada por outro processo
-        if (convError.code === '23505') {
-          console.log('[CloudAPI] Duplicate key detected, fetching existing conversation');
-          const { data: existingConv } = await supabase
-            .from('conversations')
-            .select('id')
-            .eq('contact_id', contactId)
-            .eq('channel_id', config.channel_id)
-            .eq('status', 'open')
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-          conversationId = existingConv?.id;
-        } else {
-          console.error('[CloudAPI] Error creating conversation:', convError);
-        }
+          data: {
+            from_channel_id: oldChannelId,
+            to_channel_id: config.channel_id,
+            reason: 'client_message_from_different_channel',
+            preserved: {
+              assigned_to: anyChannelConversation.assigned_to,
+              department_id: anyChannelConversation.department_id,
+            }
+          }
+        });
+
+        conversationId = anyChannelConversation.id;
+        console.log(`[CloudAPI] ✅ Conversation migrated successfully - Agent and department preserved`);
       } else {
-        conversationId = newConversation?.id;
+        // 5. Nenhuma conversa encontrada - criar nova
+        const { data: newConversation, error: convError } = await supabase
+          .from('conversations')
+          .insert({
+            contact_id: contactId,
+            channel_id: config.channel_id,
+            tenant_id: config.tenant_id,
+            status: 'open',
+          })
+          .select('id')
+          .single();
+        
+        if (convError) {
+          // Se erro de chave duplicada, buscar a conversa que foi criada por outro processo
+          if (convError.code === '23505') {
+            console.log('[CloudAPI] Duplicate key detected, fetching existing conversation');
+            const { data: existingConv } = await supabase
+              .from('conversations')
+              .select('id')
+              .eq('contact_id', contactId)
+              .eq('channel_id', config.channel_id)
+              .eq('status', 'open')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single();
+            conversationId = existingConv?.id;
+          } else {
+            console.error('[CloudAPI] Error creating conversation:', convError);
+          }
+        } else {
+          conversationId = newConversation?.id;
+        }
       }
     }
 

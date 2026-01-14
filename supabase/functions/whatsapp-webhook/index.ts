@@ -1988,16 +1988,69 @@ serve(async (req) => {
     
     const ownerAgentId = contactWithOwner?.assigned_to;
 
-    // Find or create conversation
+    // Find or create conversation - COM MIGRAÇÃO AUTOMÁTICA DE CANAL
+    // 1. Primeiro, buscar conversa aberta NO MESMO CANAL
     let { data: conversation } = await supabase
       .from("conversations")
-      .select("id, status, assigned_to, close_reason, last_message_at")
+      .select("id, status, assigned_to, close_reason, last_message_at, channel_id, department_id")
       .eq("contact_id", contact.id)
       .eq("channel_id", channel.id)
       .in("status", ["open", "pending"])
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
+
+    // 2. Se não encontrou no mesmo canal, buscar conversa aberta EM QUALQUER CANAL
+    if (!conversation) {
+      const { data: anyChannelConversation } = await supabase
+        .from("conversations")
+        .select("id, status, assigned_to, close_reason, last_message_at, channel_id, department_id")
+        .eq("contact_id", contact.id)
+        .eq("tenant_id", channel.tenant_id)
+        .in("status", ["open", "pending"])
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (anyChannelConversation) {
+        // 3. Migrar a conversa para o novo canal (mantém atendente e departamento)
+        const oldChannelId = anyChannelConversation.channel_id;
+        
+        console.log(`[Webhook] 🔄 Migrating conversation ${anyChannelConversation.id} from channel ${oldChannelId} to ${channel.id}`);
+        
+        await supabase
+          .from("conversations")
+          .update({
+            channel_id: channel.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", anyChannelConversation.id);
+
+        // 4. Registrar evento de mudança de canal no histórico
+        await supabase.from("conversation_events").insert({
+          conversation_id: anyChannelConversation.id,
+          event_type: "channel_changed",
+          tenant_id: channel.tenant_id,
+          data: {
+            from_channel_id: oldChannelId,
+            to_channel_id: channel.id,
+            reason: "client_message_from_different_channel",
+            preserved: {
+              assigned_to: anyChannelConversation.assigned_to,
+              department_id: anyChannelConversation.department_id,
+            }
+          }
+        });
+
+        // Atualizar referência local com o novo channel_id
+        conversation = {
+          ...anyChannelConversation,
+          channel_id: channel.id,
+        };
+        
+        console.log(`[Webhook] ✅ Conversation migrated successfully - Agent and department preserved`);
+      }
+    }
 
     if (!conversation) {
       // Check if there's a closed conversation to potentially reopen
@@ -2008,7 +2061,7 @@ serve(async (req) => {
       const findClosedConversation = async () => {
         const { data } = await supabase
           .from("conversations")
-          .select("id, status, assigned_to, close_reason, closed_at, closed_by, last_message_at")
+          .select("id, status, assigned_to, close_reason, closed_at, closed_by, last_message_at, department_id")
           .eq("contact_id", contact.id)
           .eq("channel_id", channel.id)
           .eq("status", "closed")
@@ -2121,7 +2174,9 @@ serve(async (req) => {
           status: "open", 
           assigned_to: newAssignedTo,
           close_reason: null,
-          last_message_at: new Date().toISOString()
+          last_message_at: new Date().toISOString(),
+          channel_id: channel.id,
+          department_id: closedConversation.department_id || null,
         };
       } else {
         // No existing conversation - create new one
@@ -2225,7 +2280,7 @@ serve(async (req) => {
             origin_detection_method: originDetectionMethod,
             assigned_to: initialAssignedTo,
           })
-          .select("id, status, assigned_to, close_reason, last_message_at, department_id")
+          .select("id, status, assigned_to, close_reason, last_message_at, department_id, channel_id")
           .single();
 
         if (convError) {
@@ -2317,7 +2372,9 @@ serve(async (req) => {
             status: reopenStatusRecent, 
             assigned_to: newAssignedToRecent,
             close_reason: null,
-            last_message_at: new Date().toISOString()
+            last_message_at: new Date().toISOString(),
+            channel_id: channel.id,
+            department_id: null,
           };
         } else {
           conversation = newConversation;
