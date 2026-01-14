@@ -159,11 +159,16 @@ serve(async (req) => {
             processed: false,
           });
 
-          if (field === 'messages') {
-            await processMessages(supabase, value);
-          } else if (field === 'statuses') {
+          // A Meta envia status com field="messages" mas com array "statuses" no value
+          // Verificar o conteúdo do payload ao invés de confiar apenas no field
+          if (value.statuses && value.statuses.length > 0) {
+            // Evento de status (sent, delivered, read, failed)
+            console.log('[CloudAPI] Processing status update from webhook, count:', value.statuses.length);
             await processStatuses(supabase, value);
-          } else if (field === 'calls') {
+          } else if (value.messages && value.messages.length > 0) {
+            // Mensagem nova recebida
+            await processMessages(supabase, value);
+          } else if (field === 'calls' || (value.calls && value.calls.length > 0)) {
             await processCalls(supabase, value);
           }
         }
@@ -369,12 +374,18 @@ async function processMessages(supabase: any, value: any) {
 async function processStatuses(supabase: any, value: any) {
   const statuses = value.statuses || [];
   
+  console.log(`[CloudAPI] Processing ${statuses.length} status updates`);
+  
   for (const status of statuses) {
     const messageId = status.id;
     const statusValue = status.status; // sent, delivered, read, failed
     const timestamp = new Date(parseInt(status.timestamp) * 1000);
 
-    console.log('Processing status:', { messageId, status: statusValue, timestamp });
+    console.log('[CloudAPI] Updating message status:', { 
+      whatsappMessageId: messageId, 
+      status: statusValue, 
+      timestamp: timestamp.toISOString() 
+    });
 
     // Map Cloud API status to our status
     const statusMap: Record<string, string> = {
@@ -385,10 +396,16 @@ async function processStatuses(supabase: any, value: any) {
     };
 
     // Usar whatsapp_message_id que é a coluna correta
-    await supabase
+    const { error } = await supabase
       .from('messages')
       .update({ status: statusMap[statusValue] || statusValue })
       .eq('whatsapp_message_id', messageId);
+
+    if (error) {
+      console.error('[CloudAPI] Error updating message status:', error);
+    } else {
+      console.log('[CloudAPI] Message status updated successfully:', statusValue);
+    }
   }
 }
 
