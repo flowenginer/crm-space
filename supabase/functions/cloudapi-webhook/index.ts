@@ -344,7 +344,7 @@ async function processMessages(supabase: any, value: any) {
     }
 
     // Insert message (usando whatsapp_message_id que é a coluna correta)
-    await supabase.from('messages').insert({
+    const { data: insertedMessage } = await supabase.from('messages').insert({
       conversation_id: conversationId,
       contact_id: contactId,
       tenant_id: config.tenant_id,
@@ -353,13 +353,13 @@ async function processMessages(supabase: any, value: any) {
       media_url: mediaUrl,
       is_from_me: false,
       whatsapp_message_id: message.id,
-    });
+    }).select('id').single();
 
     // Update conversation - incrementar unread_count usando SQL direto
     await supabase.rpc('increment_unread', { conv_id: conversationId });
 
     // Atualizar outros campos da conversa
-    await supabase
+    const { data: conversationData } = await supabase
       .from('conversations')
       .update({
         last_message_at: timestamp.toISOString(),
@@ -367,7 +367,48 @@ async function processMessages(supabase: any, value: any) {
         last_message_is_from_me: false,
         is_unread: true,
       })
-      .eq('id', conversationId);
+      .eq('id', conversationId)
+      .select('department_id, assigned_to')
+      .single();
+
+    // Disparar webhook de mensagem recebida
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      
+      await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({
+          action: 'dispatch',
+          event: {
+            type: 'message.received',
+            data: {
+              message_id: insertedMessage?.id,
+              conversation_id: conversationId,
+              contact_id: contactId,
+              content,
+              message_type: messageType,
+              media_url: mediaUrl,
+              whatsapp_message_id: message.id,
+              timestamp: timestamp.toISOString(),
+            },
+            context: {
+              department: { id: conversationData?.department_id },
+              channel: { id: config.channel_id },
+              assigned_to: conversationData?.assigned_to,
+              tenant_id: config.tenant_id,
+            },
+          },
+        }),
+      });
+      console.log('[CloudAPI] Webhook dispatched for message.received');
+    } catch (webhookError) {
+      console.error('[CloudAPI] Error dispatching webhook:', webhookError);
+    }
   }
 }
 

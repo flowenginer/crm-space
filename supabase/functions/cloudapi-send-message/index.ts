@@ -26,6 +26,7 @@ interface SendMessagePayload {
   mediaUrl?: string;
   caption?: string;
   filename?: string;
+  conversationId?: string;
   template?: {
     name: string;
     language: string;
@@ -74,7 +75,7 @@ serve(async (req) => {
     }
 
     const payload: SendMessagePayload = await req.json();
-    const { channelId, phone, type, content, mediaUrl, caption, filename, template } = payload;
+    const { channelId, phone, type, content, mediaUrl, caption, filename, template, conversationId } = payload;
 
     if (!channelId || !phone) {
       throw new Error('channelId and phone are required');
@@ -301,6 +302,54 @@ serve(async (req) => {
     }
 
     console.log('[CloudAPI Send] Message sent successfully:', result);
+
+    // Disparar webhook de mensagem enviada
+    if (conversationId) {
+      try {
+        // Buscar dados da conversa para o contexto
+        const { data: conversationData } = await supabase
+          .from('conversations')
+          .select('department_id, channel_id, assigned_to, contact_id')
+          .eq('id', conversationId)
+          .single();
+
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+        await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({
+            action: 'dispatch',
+            event: {
+              type: 'message.sent',
+              data: {
+                conversation_id: conversationId,
+                contact_id: conversationData?.contact_id,
+                to: phone,
+                content,
+                message_type: type,
+                media_url: mediaUrl,
+                whatsapp_message_id: result.messages?.[0]?.id,
+                timestamp: new Date().toISOString(),
+              },
+              context: {
+                department: { id: conversationData?.department_id },
+                channel: { id: conversationData?.channel_id || channelId },
+                assigned_to: conversationData?.assigned_to,
+                tenant_id: config.tenant_id,
+              },
+            },
+          }),
+        });
+        console.log('[CloudAPI Send] Webhook dispatched for message.sent');
+      } catch (webhookError) {
+        console.error('[CloudAPI Send] Error dispatching webhook:', webhookError);
+      }
+    }
 
     return new Response(
       JSON.stringify({

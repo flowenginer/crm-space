@@ -104,10 +104,11 @@ export async function sendWhatsAppMessage(
   type: 'text' | 'image' | 'audio' | 'video' | 'document' = 'text',
   mediaUrl?: string,
   quotedMessageId?: string,
-  filename?: string
+  filename?: string,
+  conversationId?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    console.log('[Instance Creator] Sending message:', { channelId, phone, type, quotedMessageId, filename });
+    console.log('[Instance Creator] Sending message:', { channelId, phone, type, quotedMessageId, filename, conversationId });
     
     // OPTIMIZATION: Use cached channel type to avoid database query on every message
     const channelType = await getChannelType(channelId);
@@ -131,6 +132,7 @@ export async function sendWhatsAppMessage(
           mediaUrl,
           caption: type !== 'text' ? content : undefined,
           filename,
+          conversationId,
         },
       });
 
