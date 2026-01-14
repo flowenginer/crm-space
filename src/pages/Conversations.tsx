@@ -1429,6 +1429,16 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Cleanup recording interval on unmount to prevent orphaned timers
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+    };
+  }, []);
   const dragCounterRef = useRef<number>(0);
   const isSendingRef = useRef(false);
   const recordingCancelledRef = useRef(false);
@@ -3294,6 +3304,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const isOfficialRecordingRef = useRef<boolean>(false);
   
   const startRecording = async () => {
+    // Prevent starting if already recording (avoid multiple intervals)
+    if (isRecording) {
+      console.log('[Audio] Already recording, ignoring start request');
+      return;
+    }
+    
     try {
       // Detect channel type
       const selectedConv = conversations?.find(c => c.id === selectedConversationId);
@@ -3326,6 +3342,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       setIsRecording(true);
       setRecordingTime(0);
 
+      // Clear any existing interval before starting new one (prevent timer acceleration bug)
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+      
       // Start recording timer
       recordingIntervalRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
