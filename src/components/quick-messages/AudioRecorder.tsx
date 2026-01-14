@@ -26,7 +26,26 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      
+      // Try to use OGG/Opus first (WhatsApp compatible), fallback to WebM
+      let mimeType = 'audio/webm';
+      let fileExtension = 'webm';
+      
+      // Check for OGG support (preferred for WhatsApp)
+      if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+        mimeType = 'audio/ogg;codecs=opus';
+        fileExtension = 'ogg';
+      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+        mimeType = 'audio/ogg';
+        fileExtension = 'ogg';
+      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+        fileExtension = 'webm';
+      }
+      
+      console.log('[AudioRecorder] Using mimeType:', mimeType);
+      
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -38,8 +57,8 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        await uploadAudio(audioBlob, 'audio/webm', `gravacao_${Date.now()}.webm`);
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType.split(';')[0] });
+        await uploadAudio(audioBlob, mimeType.split(';')[0], `gravacao_${Date.now()}.${fileExtension}`);
         stream.getTracks().forEach(track => track.stop());
       };
 
