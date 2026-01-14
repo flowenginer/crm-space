@@ -303,18 +303,63 @@ serve(async (req) => {
 
     console.log('[CloudAPI Send] Message sent successfully:', result);
 
-    // Disparar webhook de mensagem enviada
+    // Disparar webhook de mensagem enviada com dados enriquecidos
     if (conversationId) {
       try {
-        // Buscar dados da conversa para o contexto
+        // Buscar dados completos da conversa
         const { data: conversationData } = await supabase
           .from('conversations')
-          .select('department_id, channel_id, assigned_to, contact_id')
+          .select('department_id, channel_id, assigned_to, contact_id, status, priority, unread_count, created_at')
           .eq('id', conversationId)
           .single();
 
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
         const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+        // Buscar dados completos do contato
+        let contactData = null;
+        if (conversationData?.contact_id) {
+          const { data: contact } = await supabase
+            .from('contacts')
+            .select('id, full_name, phone, email, lead_status, lead_score')
+            .eq('id', conversationData.contact_id)
+            .single();
+          contactData = contact;
+        }
+
+        // Buscar nome do departamento
+        let departmentData = null;
+        if (conversationData?.department_id) {
+          const { data: dept } = await supabase
+            .from('departments')
+            .select('id, name')
+            .eq('id', conversationData.department_id)
+            .single();
+          departmentData = dept;
+        }
+
+        // Buscar dados do agente que enviou
+        let senderData = null;
+        if (user) {
+          const { data: sender } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .eq('id', user.id)
+            .single();
+          senderData = sender;
+        }
+
+        // Buscar nome do canal
+        let channelData = null;
+        const channelToFetch = conversationData?.channel_id || channelId;
+        if (channelToFetch) {
+          const { data: channel } = await supabase
+            .from('whatsapp_channels')
+            .select('id, name, phone_number')
+            .eq('id', channelToFetch)
+            .single();
+          channelData = channel;
+        }
 
         await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
           method: 'POST',
@@ -327,18 +372,47 @@ serve(async (req) => {
             event: {
               type: 'message.sent',
               data: {
-                conversation_id: conversationId,
-                contact_id: conversationData?.contact_id,
-                to: phone,
-                content,
-                message_type: type,
-                media_url: mediaUrl,
-                whatsapp_message_id: result.messages?.[0]?.id,
-                timestamp: new Date().toISOString(),
+                message: {
+                  id: result.messages?.[0]?.id,
+                  whatsapp_message_id: result.messages?.[0]?.id,
+                  type,
+                  content: content || caption || null,
+                  media_url: mediaUrl || null,
+                  timestamp: new Date().toISOString(),
+                },
+                contact: {
+                  id: conversationData?.contact_id,
+                  name: contactData?.full_name || null,
+                  phone: contactData?.phone || phone,
+                  email: contactData?.email || null,
+                  lead_status: contactData?.lead_status || null,
+                  lead_score: contactData?.lead_score || null,
+                },
+                conversation: {
+                  id: conversationId,
+                  status: conversationData?.status || null,
+                  priority: conversationData?.priority || null,
+                  unread_count: conversationData?.unread_count || 0,
+                  created_at: conversationData?.created_at || null,
+                },
+                department: {
+                  id: conversationData?.department_id || null,
+                  name: departmentData?.name || null,
+                },
+                channel: {
+                  id: channelToFetch,
+                  name: channelData?.name || null,
+                  phone_number: channelData?.phone_number || null,
+                },
+                sender: senderData ? {
+                  id: senderData.id,
+                  name: senderData.full_name,
+                  email: senderData.email,
+                } : null,
               },
               context: {
                 department: { id: conversationData?.department_id },
-                channel: { id: conversationData?.channel_id || channelId },
+                channel: { id: channelToFetch },
                 assigned_to: conversationData?.assigned_to,
                 tenant_id: config.tenant_id,
               },
