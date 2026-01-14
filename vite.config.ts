@@ -18,4 +18,12 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    include: ['lamejs'],
+  },
+  build: {
+    commonjsOptions: {
+      include: [/lamejs/, /node_modules/],
+    },
+  },
 }));

@@ -1,4 +1,4 @@
-import lamejs from 'lamejs';
+import * as lamejs from 'lamejs';
 
 /**
  * Mp3Recorder - Records audio directly to MP3 format
@@ -26,8 +26,17 @@ export class Mp3Recorder {
   async start(): Promise<void> {
     this.mp3Data = [];
     
+    console.log('[Mp3Recorder] Starting, lamejs:', lamejs);
+    console.log('[Mp3Recorder] Mp3Encoder:', (lamejs as any).Mp3Encoder);
+    
+    // Check if Mp3Encoder is available
+    const Mp3EncoderClass = (lamejs as any).Mp3Encoder || (lamejs as any).default?.Mp3Encoder;
+    if (!Mp3EncoderClass) {
+      throw new Error('Mp3Encoder not available - lamejs import failed');
+    }
+    
     try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({ 
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: { 
           echoCancellation: true, 
           noiseSuppression: true,
@@ -45,8 +54,8 @@ export class Mp3Recorder {
       this.processor = this.audioContext.createScriptProcessor(this.bufferSize, this.channels, this.channels);
       
       // Initialize MP3 encoder with actual sample rate
-      // @ts-ignore - lamejs types are incomplete
-      this.mp3Encoder = new lamejs.Mp3Encoder(this.channels, actualSampleRate, this.kbps);
+      const Mp3EncoderClass = (lamejs as any).Mp3Encoder || (lamejs as any).default?.Mp3Encoder;
+      this.mp3Encoder = new Mp3EncoderClass(this.channels, actualSampleRate, this.kbps);
       
       this.processor.onaudioprocess = (e) => {
         if (!this.isRecording || !this.mp3Encoder) return;
