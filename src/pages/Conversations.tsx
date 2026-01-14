@@ -5045,10 +5045,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               const isAdmin = canAccessAllConversations;
               const canSendMessages = isOwner || isAdmin || sharePermission.canEdit || !sharePermission.isShared;
 
-              // Check 24h window for official channels
+              // Check 24h/72h window for official channels
               const channelData = channels?.find(c => c.id === selectedConversation?.channel_id);
               const isOfficialChannel = (channelData as any)?.type === 'official';
               const lastClientMessage = (selectedConversation as any)?.last_client_message_at;
+              const isCTWA = (selectedConversation as any)?.referral_source === 'ctwa_ad';
+              const windowHours = isCTWA ? 72 : 24;
               
               // Calculate window status
               const windowExpired = (() => {
@@ -5056,7 +5058,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                 if (!lastClientMessage) return true; // No client message = expired
                 
                 const lastMsg = new Date(lastClientMessage);
-                const windowEnd = new Date(lastMsg.getTime() + 24 * 60 * 60 * 1000);
+                const windowEnd = new Date(lastMsg.getTime() + windowHours * 60 * 60 * 1000);
                 return new Date() > windowEnd;
               })();
 
