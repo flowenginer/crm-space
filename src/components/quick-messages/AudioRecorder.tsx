@@ -3,6 +3,7 @@ import { Mic, Square, Upload, Play, Pause, Trash2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { encodeToMp3 } from '@/lib/audio/mp3-encoder';
 
 interface AudioRecorderProps {
   onAudioUploaded: (url: string, type: string, name: string) => void;
@@ -13,6 +14,7 @@ interface AudioRecorderProps {
 export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(existingUrl || null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -22,28 +24,19 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
       
-      // Try to use OGG/Opus first (WhatsApp compatible), fallback to WebM
-      let mimeType = 'audio/webm';
-      let fileExtension = 'webm';
+      // Use WebM for recording (browser native), will convert to MP3 after
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+        ? 'audio/webm;codecs=opus' 
+        : 'audio/webm';
       
-      // Check for OGG support (preferred for WhatsApp)
-      if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-        mimeType = 'audio/ogg;codecs=opus';
-        fileExtension = 'ogg';
-      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-        mimeType = 'audio/ogg';
-        fileExtension = 'ogg';
-      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-        mimeType = 'audio/webm;codecs=opus';
-        fileExtension = 'webm';
-      }
-      
-      console.log('[AudioRecorder] Using mimeType:', mimeType);
+      console.log('[AudioRecorder] Recording with mimeType:', mimeType);
       
       const mediaRecorder = new MediaRecorder(stream, { mimeType });
       
@@ -57,8 +50,23 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType.split(';')[0] });
-        await uploadAudio(audioBlob, mimeType.split(';')[0], `gravacao_${Date.now()}.${fileExtension}`);
+        const webmBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        console.log('[AudioRecorder] WebM blob size:', webmBlob.size);
+        
+        // Convert to MP3 for WhatsApp compatibility
+        setIsConverting(true);
+        try {
+          const mp3Blob = await encodeToMp3(webmBlob);
+          console.log('[AudioRecorder] MP3 blob size:', mp3Blob.size);
+          await uploadAudio(mp3Blob, 'audio/mpeg', `gravacao_${Date.now()}.mp3`);
+        } catch (convertError) {
+          console.error('[AudioRecorder] MP3 conversion failed:', convertError);
+          // Fallback: upload as WebM
+          await uploadAudio(webmBlob, 'audio/webm', `gravacao_${Date.now()}.webm`);
+        } finally {
+          setIsConverting(false);
+        }
+        
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -242,6 +250,14 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
         <div className="flex items-center justify-center gap-2 text-destructive">
           <span className="w-3 h-3 bg-destructive rounded-full animate-pulse" />
           <span className="text-sm font-medium">Gravando...</span>
+        </div>
+      )}
+
+      {/* Converting Indicator */}
+      {isConverting && (
+        <div className="flex items-center justify-center gap-2 text-muted-foreground">
+          <Loader2 size={16} className="animate-spin" />
+          <span className="text-sm font-medium">Convertendo áudio...</span>
         </div>
       )}
     </div>
