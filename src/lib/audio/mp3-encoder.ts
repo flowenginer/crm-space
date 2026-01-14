@@ -1,7 +1,15 @@
-import * as lamejs from 'lamejs';
-
+/**
+ * Encodes audio Blob to MP3 format using lamejs (loaded globally via CDN)
+ */
 export async function encodeToMp3(audioBlob: Blob): Promise<Blob> {
   console.log('[MP3Encoder] Starting conversion, input size:', audioBlob.size);
+  
+  // Access lamejs from global scope (loaded via script in index.html)
+  const lamejs = (window as any).lamejs;
+  
+  if (!lamejs?.Mp3Encoder) {
+    throw new Error('lamejs not loaded - Mp3Encoder not available');
+  }
   
   const audioContext = new AudioContext();
   const arrayBuffer = await audioBlob.arrayBuffer();
@@ -13,8 +21,7 @@ export async function encodeToMp3(audioBlob: Blob): Promise<Blob> {
   const sampleRate = audioBuffer.sampleRate;
   const kbps = 128;
   
-  const Mp3EncoderClass = (lamejs as any).Mp3Encoder || (lamejs as any).default?.Mp3Encoder;
-  const mp3encoder = new Mp3EncoderClass(channels, sampleRate, kbps);
+  const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, kbps);
   
   // Get audio samples from the first channel
   const samples = audioBuffer.getChannelData(0);
