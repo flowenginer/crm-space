@@ -2892,7 +2892,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       
       // Função auxiliar para enviar via WhatsApp (Edge Function - sem CORS)
       // NOTE: Content should already have signature added before calling this
-      const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string, quotedMsgId?: string): Promise<string | undefined> => {
+      const sendViaWhatsApp = async (content: string, type: string, mediaUrl?: string, quotedMsgId?: string, filename?: string): Promise<string | undefined> => {
         if (channelId && contactPhone) {
           try {
             const result = await sendWhatsAppMessage(
@@ -2901,7 +2901,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               content, 
               type as 'text' | 'image' | 'audio' | 'video' | 'document',
               mediaUrl,
-              quotedMsgId
+              quotedMsgId,
+              filename,
+              selectedConversationId // Pass conversationId for webhook dispatch
             );
             if (!result.success) {
               console.error('[WhatsApp Send Error]', result.error);
@@ -3404,7 +3406,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         
         // BACKGROUND: Send via WhatsApp (don't await)
         if (channelId && contactPhone) {
-          sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url).catch(console.error);
+          sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url, undefined, undefined, selectedConversationId).catch(console.error);
         }
       }
     } catch (error) {
