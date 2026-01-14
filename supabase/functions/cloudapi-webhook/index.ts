@@ -268,6 +268,19 @@ async function processMessages(supabase: any, value: any) {
     // Get contact name
     const contact = contacts.find((c: any) => c.wa_id === from);
     const contactName = contact?.profile?.name || from;
+    
+    // Detect Click-to-WhatsApp Ad referral (72h window)
+    const referral = message.referral;
+    const isCTWA = referral?.source_type === 'ad';
+    
+    if (referral) {
+      console.log('[CloudAPI] 📢 Referral detected:', {
+        source_type: referral.source_type,
+        source_id: referral.source_id,
+        headline: referral.headline,
+        isCTWA,
+      });
+    }
 
     console.log('Processing message:', {
       from,
@@ -275,6 +288,8 @@ async function processMessages(supabase: any, value: any) {
       timestamp,
       contactName,
       tenantId: config.tenant_id,
+      hasReferral: !!referral,
+      isCTWA,
     });
 
     // Find or create contact - COM MATCH FLEXÍVEL DE TELEFONE
@@ -384,8 +399,8 @@ async function processMessages(supabase: any, value: any) {
         conversationId = anyChannelConversation.id;
         console.log(`[CloudAPI] ✅ Conversation migrated successfully - Agent and department preserved`);
       } else {
-        // 5. Nenhuma conversa encontrada - criar nova COM departamento do canal
-        console.log(`[CloudAPI] Creating new conversation with department_id: ${channelDepartmentId}`);
+        // 5. Nenhuma conversa encontrada - criar nova COM departamento do canal e dados CTWA
+        console.log(`[CloudAPI] Creating new conversation with department_id: ${channelDepartmentId}, isCTWA: ${isCTWA}`);
         const { data: newConversation, error: convError } = await supabase
           .from('conversations')
           .insert({
@@ -394,6 +409,8 @@ async function processMessages(supabase: any, value: any) {
             tenant_id: config.tenant_id,
             status: 'open',
             department_id: channelDepartmentId, // Departamento configurado no canal
+            referral_source: isCTWA ? 'ctwa_ad' : (referral?.source_type || null),
+            referral_data: referral || null,
           })
           .select('id')
           .single();
@@ -421,7 +438,22 @@ async function processMessages(supabase: any, value: any) {
       }
     }
 
-    // Extract message content
+    // If we have a referral and conversation exists, update referral data if not already set
+    if (referral && conversationId) {
+      const { error: referralUpdateError } = await supabase
+        .from('conversations')
+        .update({
+          referral_source: isCTWA ? 'ctwa_ad' : referral.source_type,
+          referral_data: referral,
+        })
+        .eq('id', conversationId)
+        .is('referral_data', null); // Only if not already set
+      
+      if (!referralUpdateError) {
+        console.log(`[CloudAPI] 📢 Updated conversation ${conversationId} with CTWA referral data`);
+      }
+    }
+
     let content = '';
     let mediaUrl = null;
 

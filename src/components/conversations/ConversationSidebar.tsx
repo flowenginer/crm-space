@@ -168,14 +168,19 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   const { data: quoteNotificationConfig } = useQuoteNotificationConfig();
   const isNotificationsGloballyEnabled = quoteNotificationConfig?.quote_expiration_enabled ?? false;
 
-  // 24h window calculation - must be at top level (React hooks rule)
+  // 24h/72h window calculation - must be at top level (React hooks rule)
   const channel = conversation?.channel 
     ? (Array.isArray(conversation.channel) ? conversation.channel[0] : conversation.channel)
     : null;
   const isOfficialChannel = channel?.type === 'official';
+  
+  // Check if this is a Click-to-WhatsApp Ad conversation (72h window)
+  const isCTWA = conversation?.referral_source === 'ctwa_ad';
+  
   const windowStatus = use24hWindow(
     conversation?.last_client_message_at ?? null,
-    isOfficialChannel ?? false
+    isOfficialChannel ?? false,
+    isCTWA
   );
 
   // Fetch referral_data from any conversation of the contact (fallback when current conversation doesn't have it)
@@ -1856,12 +1861,19 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
               </div>
             )}
 
-            {/* 24h Window Status for Official API */}
+            {/* 24h/72h Window Status for Official API */}
             {windowStatus && isOfficialChannel && (
               <div className="flex flex-col gap-1.5 pt-2 mt-2 border-t border-border/50">
                 <div className="flex items-center gap-1.5">
                   <Clock size={14} className={windowStatus.isExpired ? 'text-destructive' : 'text-blue-600'} />
-                  <span className="text-xs text-muted-foreground">Janela 24h</span>
+                  <span className="text-xs text-muted-foreground">
+                    Janela {windowStatus.windowDurationHours}h
+                  </span>
+                  {windowStatus.isCTWA && (
+                    <span className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded font-medium">
+                      CTWA
+                    </span>
+                  )}
                 </div>
                 
                 {windowStatus.isExpired ? (

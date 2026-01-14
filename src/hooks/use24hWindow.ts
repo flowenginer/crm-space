@@ -10,19 +10,26 @@ export interface Window24hStatus {
   windowEnd: Date | null;
   lastClientMessageAt: Date | null;
   isOfficialChannel: boolean;
+  windowDurationHours: number; // 24 or 72 for CTWA
+  isCTWA: boolean;
 }
 
 /**
- * Hook to calculate the 24h messaging window status for official WhatsApp API channels
+ * Hook to calculate the messaging window status for official WhatsApp API channels
  * @param lastClientMessageAt - Timestamp of the last message from the client
  * @param isOfficialChannel - Whether the channel is an official Meta Cloud API channel
+ * @param isCTWA - Whether this is a Click-to-WhatsApp Ad conversation (72h window)
  * @returns Window24hStatus object with expiration info and remaining time
  */
 export function use24hWindow(
   lastClientMessageAt: string | null | undefined,
-  isOfficialChannel: boolean
+  isOfficialChannel: boolean,
+  isCTWA: boolean = false
 ): Window24hStatus | null {
   const [now, setNow] = useState(new Date());
+
+  // Window duration: 72h for CTWA, 24h for regular messages
+  const windowDurationHours = isCTWA ? 72 : 24;
 
   // Update "now" every second for accurate countdown display
   useEffect(() => {
@@ -49,12 +56,14 @@ export function use24hWindow(
         windowEnd: null,
         lastClientMessageAt: null,
         isOfficialChannel: true,
+        windowDurationHours,
+        isCTWA,
       };
     }
 
     try {
       const lastMessage = new Date(lastClientMessageAt);
-      const windowEnd = addHours(lastMessage, 24);
+      const windowEnd = addHours(lastMessage, windowDurationHours);
       const remainingMs = differenceInMilliseconds(windowEnd, now);
 
       const isExpired = remainingMs <= 0;
@@ -69,10 +78,12 @@ export function use24hWindow(
           windowEnd,
           lastClientMessageAt: lastMessage,
           isOfficialChannel: true,
+          windowDurationHours,
+          isCTWA,
         };
       }
 
-      const totalWindowMs = 24 * 60 * 60 * 1000; // 24 hours in ms
+      const totalWindowMs = windowDurationHours * 60 * 60 * 1000;
       const elapsedMs = totalWindowMs - remainingMs;
       const percentageUsed = Math.min(100, (elapsedMs / totalWindowMs) * 100);
 
@@ -89,11 +100,13 @@ export function use24hWindow(
         windowEnd,
         lastClientMessageAt: lastMessage,
         isOfficialChannel: true,
+        windowDurationHours,
+        isCTWA,
       };
     } catch {
       return null;
     }
-  }, [lastClientMessageAt, isOfficialChannel, now]);
+  }, [lastClientMessageAt, isOfficialChannel, now, windowDurationHours, isCTWA]);
 }
 
 /**
