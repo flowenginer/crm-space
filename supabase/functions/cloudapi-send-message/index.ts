@@ -139,23 +139,22 @@ serve(async (req) => {
       case 'audio':
         messagePayload.type = 'audio';
         if (mediaUrl?.startsWith('http')) {
-          // Check if it's a webm file (not directly supported by WhatsApp)
+          // OGG files are directly supported by WhatsApp
+          // For WebM, we need to upload to Meta which may convert it
           if (mediaUrl.includes('.webm')) {
-            console.log('[CloudAPI] WebM audio detected, uploading via Media API...');
+            console.log('[CloudAPI] WebM audio detected, uploading via Media API with OGG type...');
             try {
-              // 1. Download the WebM audio file
+              // Download the WebM audio file
               const audioResponse = await fetch(mediaUrl);
               const audioBuffer = await audioResponse.arrayBuffer();
               console.log('[CloudAPI] Downloaded WebM, size:', audioBuffer.byteLength);
               
-              // 2. Upload to Meta Media API - Meta will process the audio
-              // Note: WhatsApp requires OGG/Opus, but we'll try uploading as AAC/MP4 
-              // which Meta can sometimes transcode
+              // Upload to Meta Media API as OGG (WebM with Opus codec is similar)
               const formData = new FormData();
-              const audioBlob = new Blob([audioBuffer], { type: 'audio/mp4' });
-              formData.append('file', audioBlob, 'audio.m4a');
+              const audioBlob = new Blob([audioBuffer], { type: 'audio/ogg; codecs=opus' });
+              formData.append('file', audioBlob, 'audio.ogg');
               formData.append('messaging_product', 'whatsapp');
-              formData.append('type', 'audio/mp4');
+              formData.append('type', 'audio/ogg');
               
               const uploadResponse = await fetch(
                 `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${config.phone_number_id}/media`,
@@ -174,16 +173,14 @@ serve(async (req) => {
                 messagePayload.audio = { id: uploadResult.id };
               } else {
                 console.error('[CloudAPI] Failed to upload audio:', uploadResult);
-                // Fallback: try sending as link anyway
                 messagePayload.audio = { link: mediaUrl };
               }
             } catch (uploadError) {
               console.error('[CloudAPI] Audio upload error:', uploadError);
-              // Fallback: try sending as link anyway
               messagePayload.audio = { link: mediaUrl };
             }
           } else {
-            // For already compatible formats (mp3, ogg, m4a, etc.)
+            // OGG, MP3, M4A - send directly as link
             messagePayload.audio = { link: mediaUrl };
           }
         } else {
