@@ -1,10 +1,8 @@
-import * as lamejs from 'lamejs';
-
 /**
  * Mp3Recorder - Records audio directly to MP3 format
  * 
  * Uses ScriptProcessorNode to capture PCM samples from the microphone
- * and encodes them to MP3 in real-time using lamejs.
+ * and encodes them to MP3 in real-time using lamejs (loaded globally via CDN).
  * 
  * This bypasses the need for AudioContext.decodeAudioData() which
  * doesn't reliably support WebM/Opus in all browsers.
@@ -26,13 +24,14 @@ export class Mp3Recorder {
   async start(): Promise<void> {
     this.mp3Data = [];
     
-    console.log('[Mp3Recorder] Starting, lamejs:', lamejs);
-    console.log('[Mp3Recorder] Mp3Encoder:', (lamejs as any).Mp3Encoder);
+    // Access lamejs from global scope (loaded via script in index.html)
+    const lamejs = (window as any).lamejs;
     
-    // Check if Mp3Encoder is available
-    const Mp3EncoderClass = (lamejs as any).Mp3Encoder || (lamejs as any).default?.Mp3Encoder;
-    if (!Mp3EncoderClass) {
-      throw new Error('Mp3Encoder not available - lamejs import failed');
+    console.log('[Mp3Recorder] Starting, lamejs:', lamejs);
+    console.log('[Mp3Recorder] Mp3Encoder:', lamejs?.Mp3Encoder);
+    
+    if (!lamejs?.Mp3Encoder) {
+      throw new Error('Mp3Encoder not available - lamejs script may not be loaded');
     }
     
     try {
@@ -53,9 +52,8 @@ export class Mp3Recorder {
       this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.processor = this.audioContext.createScriptProcessor(this.bufferSize, this.channels, this.channels);
       
-      // Initialize MP3 encoder with actual sample rate
-      const Mp3EncoderClass = (lamejs as any).Mp3Encoder || (lamejs as any).default?.Mp3Encoder;
-      this.mp3Encoder = new Mp3EncoderClass(this.channels, actualSampleRate, this.kbps);
+      // Initialize MP3 encoder with actual sample rate using global lamejs
+      this.mp3Encoder = new lamejs.Mp3Encoder(this.channels, actualSampleRate, this.kbps);
       
       this.processor.onaudioprocess = (e) => {
         if (!this.isRecording || !this.mp3Encoder) return;
