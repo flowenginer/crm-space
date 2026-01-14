@@ -6,6 +6,44 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Gera variações do telefone para busca (com e sem 9º dígito brasileiro)
+function getPhoneVariations(phone: string): string[] {
+  const digits = phone.replace(/\D/g, '');
+  const variations: string[] = [digits];
+  
+  // Versão com código do país se não tiver
+  if (!digits.startsWith('55') && digits.length >= 10) {
+    variations.push(`55${digits}`);
+  }
+  
+  // Versão sem código do país
+  if (digits.startsWith('55')) {
+    variations.push(digits.slice(2));
+  }
+  
+  // Extrair DDD e resto do número
+  const hasCountry = digits.startsWith('55');
+  const baseNumber = hasCountry ? digits.slice(2) : digits;
+  const ddd = baseNumber.slice(0, 2);
+  const rest = baseNumber.slice(2);
+  
+  // Se tem 9 dígitos após DDD e começa com 9, tentar SEM o 9
+  if (rest.length === 9 && rest.startsWith('9')) {
+    const without9 = rest.slice(1);
+    variations.push(`55${ddd}${without9}`);
+    variations.push(`${ddd}${without9}`);
+  }
+  
+  // Se tem 8 dígitos após DDD, tentar COM o 9 na frente
+  if (rest.length === 8) {
+    const with9 = `9${rest}`;
+    variations.push(`55${ddd}${with9}`);
+    variations.push(`${ddd}${with9}`);
+  }
+  
+  return [...new Set(variations)];
+}
+
 // Download media from Facebook and upload to Supabase Storage
 async function downloadAndUploadMedia(
   supabase: any, 
@@ -239,21 +277,44 @@ async function processMessages(supabase: any, value: any) {
       tenantId: config.tenant_id,
     });
 
-    // Find or create contact
+    // Find or create contact - COM MATCH FLEXÍVEL DE TELEFONE
+    // Buscar contato por variações do telefone (com e sem 9º dígito brasileiro)
+    const phoneVariations = getPhoneVariations(from);
+    console.log('[CloudAPI] Phone variations for search:', phoneVariations);
+
     const { data: existingContact } = await supabase
       .from('contacts')
-      .select('id')
-      .eq('phone', from)
+      .select('id, phone, assigned_to')
+      .in('phone', phoneVariations)
       .eq('tenant_id', config.tenant_id)
-      .single();
+      .order('created_at', { ascending: true }) // Pegar o mais antigo
+      .limit(1)
+      .maybeSingle();
 
     let contactId = existingContact?.id;
 
+    if (existingContact) {
+      console.log(`[CloudAPI] ✅ Found existing contact with phone ${existingContact.phone} (searched: ${from})`);
+    }
+
     if (!contactId) {
+      // Normalizar telefone para armazenamento (sempre com 55 e 9º dígito)
+      let normalizedPhone = from.replace(/\D/g, '');
+      if (!normalizedPhone.startsWith('55')) {
+        normalizedPhone = `55${normalizedPhone}`;
+      }
+      // Se tem 12 dígitos (55 + DDD + 8), adicionar o 9
+      if (normalizedPhone.length === 12) {
+        const ddd = normalizedPhone.slice(2, 4);
+        const rest = normalizedPhone.slice(4);
+        normalizedPhone = `55${ddd}9${rest}`;
+      }
+      
+      console.log(`[CloudAPI] Creating new contact with normalized phone: ${normalizedPhone} (original: ${from})`);
       const { data: newContact } = await supabase
         .from('contacts')
         .insert({
-          phone: from,
+          phone: normalizedPhone,
           full_name: contactName,
           tenant_id: config.tenant_id,
         })
