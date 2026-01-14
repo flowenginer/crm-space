@@ -210,6 +210,18 @@ async function processMessages(supabase: any, value: any) {
     return;
   }
 
+  // Buscar o department_id configurado no canal
+  let channelDepartmentId: string | null = null;
+  if (config.channel_id) {
+    const { data: channelInfo } = await supabase
+      .from('whatsapp_channels')
+      .select('department_id')
+      .eq('id', config.channel_id)
+      .single();
+    channelDepartmentId = channelInfo?.department_id || null;
+    console.log('[CloudAPI] Channel department_id:', channelDepartmentId);
+  }
+
   for (const message of messages) {
     const from = message.from;
     const messageType = message.type;
@@ -311,7 +323,8 @@ async function processMessages(supabase: any, value: any) {
         conversationId = anyChannelConversation.id;
         console.log(`[CloudAPI] ✅ Conversation migrated successfully - Agent and department preserved`);
       } else {
-        // 5. Nenhuma conversa encontrada - criar nova
+        // 5. Nenhuma conversa encontrada - criar nova COM departamento do canal
+        console.log(`[CloudAPI] Creating new conversation with department_id: ${channelDepartmentId}`);
         const { data: newConversation, error: convError } = await supabase
           .from('conversations')
           .insert({
@@ -319,6 +332,7 @@ async function processMessages(supabase: any, value: any) {
             channel_id: config.channel_id,
             tenant_id: config.tenant_id,
             status: 'open',
+            department_id: channelDepartmentId, // Departamento configurado no canal
           })
           .select('id')
           .single();
