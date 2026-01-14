@@ -204,6 +204,16 @@ async function sendUAZAPIMessage(
   
   console.log('[UAZAPI V2] Sending message:', { instanceName, phone: formattedPhone, type, quotedMessageId });
   
+  // Log detalhado para requisições de áudio/PTT
+  if (type === 'audio') {
+    console.log('[UAZAPI V2] Audio/PTT request details:', {
+      phone: formattedPhone,
+      mediaUrl: mediaUrl?.substring(0, 100) + (mediaUrl && mediaUrl.length > 100 ? '...' : ''),
+      mediaUrlLength: mediaUrl?.length,
+      hasQuotedMessage: !!quotedMessageId
+    });
+  }
+  
   let endpoint = '';
   let body: any = {};
   

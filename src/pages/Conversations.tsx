@@ -3423,13 +3423,34 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         const rawBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         console.log('[Audio] Raw recording from MediaRecorder, size:', rawBlob.size);
         
-        // Convert to MP3 for universal WhatsApp compatibility
-        const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
-        const mp3Blob = await encodeToMp3(rawBlob);
+        if (rawBlob.size === 0) {
+          console.error('[Audio] Raw recording is empty');
+          toast.error('Gravação vazia. Tente novamente.');
+          throw new Error('Empty raw audio recording');
+        }
         
-        audioFile = new File([mp3Blob], `audio_${Date.now()}.mp3`, { type: 'audio/mpeg' });
+        // Convert to MP3 for universal WhatsApp compatibility
+        let mp3Blob: Blob;
+        try {
+          const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
+          mp3Blob = await encodeToMp3(rawBlob);
+          console.log('[Audio] MP3 conversion successful, size:', mp3Blob.size);
+        } catch (encodeError) {
+          console.error('[Audio] MP3 conversion failed:', encodeError);
+          toast.error('Erro na conversão do áudio. Tente novamente.');
+          throw encodeError;
+        }
+        
+        if (mp3Blob.size === 0) {
+          console.error('[Audio] MP3 conversion resulted in empty file');
+          toast.error('Áudio vazio após conversão. Tente gravar novamente.');
+          throw new Error('Empty MP3 after conversion');
+        }
+        
+        const audioFileName = `audio_${Date.now()}.mp3`;
+        audioFile = new File([mp3Blob], audioFileName, { type: 'audio/mpeg' });
         mimeType = 'audio/mpeg';
-        console.log('[Audio] Converted to MP3 for non-official API, size:', mp3Blob.size);
+        console.log('[Audio] Created MP3 file:', audioFileName, 'size:', mp3Blob.size, 'bytes');
       } else {
         throw new Error('No recorder available');
       }
