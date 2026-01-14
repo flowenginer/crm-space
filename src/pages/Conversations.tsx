@@ -3368,20 +3368,27 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         mp3RecorderRef.current = null;
         console.log('[Audio] MP3 recorded for official API, size:', mp3Blob.size);
       } else if (mediaRecorderRef.current) {
-        // Non-official API: get OGG from native MediaRecorder
+        // Non-official API: get audio from native MediaRecorder and convert to MP3
         await new Promise<void>((resolve) => {
           mediaRecorderRef.current!.onstop = () => resolve();
           mediaRecorderRef.current!.stop();
         });
         
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/ogg' });
-        audioFile = new File([audioBlob], `audio_${Date.now()}.ogg`, { type: 'audio/ogg' });
-        mimeType = 'audio/ogg';
-        
-        // Stop stream tracks
+        // Stop stream tracks first
         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
         mediaRecorderRef.current = null;
-        console.log('[Audio] OGG recorded for non-official API, size:', audioBlob.size);
+        
+        // Get raw audio blob (WebM/Opus from Chrome, may vary by browser)
+        const rawBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        console.log('[Audio] Raw recording from MediaRecorder, size:', rawBlob.size);
+        
+        // Convert to MP3 for universal WhatsApp compatibility
+        const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
+        const mp3Blob = await encodeToMp3(rawBlob);
+        
+        audioFile = new File([mp3Blob], `audio_${Date.now()}.mp3`, { type: 'audio/mpeg' });
+        mimeType = 'audio/mpeg';
+        console.log('[Audio] Converted to MP3 for non-official API, size:', mp3Blob.size);
       } else {
         throw new Error('No recorder available');
       }
