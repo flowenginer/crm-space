@@ -3,7 +3,6 @@ import { Mic, Square, Upload, Play, Pause, Trash2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { encodeToMp3 } from '@/lib/audio/mp3-encoder';
 
 interface AudioRecorderProps {
   onAudioUploaded: (url: string, type: string, name: string) => void;
@@ -26,51 +25,15 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Mp3Recorder for direct MP3 recording
+  const mp3RecorderRef = useRef<any>(null);
+  
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      const { Mp3Recorder } = await import('@/lib/audio/mp3-recorder');
+      mp3RecorderRef.current = new Mp3Recorder();
+      await mp3RecorderRef.current.start();
       
-      // Use WebM for recording (browser native), will convert to MP3 after
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-        ? 'audio/webm;codecs=opus' 
-        : 'audio/webm';
-      
-      console.log('[AudioRecorder] Recording with mimeType:', mimeType);
-      
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const webmBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        console.log('[AudioRecorder] WebM blob size:', webmBlob.size);
-        
-        // Convert to MP3 for WhatsApp compatibility
-        setIsConverting(true);
-        try {
-          const mp3Blob = await encodeToMp3(webmBlob);
-          console.log('[AudioRecorder] MP3 blob size:', mp3Blob.size);
-          await uploadAudio(mp3Blob, 'audio/mpeg', `gravacao_${Date.now()}.mp3`);
-        } catch (convertError) {
-          console.error('[AudioRecorder] MP3 conversion failed:', convertError);
-          // Fallback: upload as WebM
-          await uploadAudio(webmBlob, 'audio/webm', `gravacao_${Date.now()}.webm`);
-        } finally {
-          setIsConverting(false);
-        }
-        
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
       
@@ -78,7 +41,7 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
         setRecordingTime(prev => prev + 1);
       }, 1000);
     } catch (error) {
-      console.error('Error starting recording:', error);
+      console.error('[AudioRecorder] Error starting recording:', error);
       toast({ 
         title: 'Erro ao iniciar gravação', 
         description: 'Verifique as permissões do microfone',
@@ -87,13 +50,25 @@ export function AudioRecorder({ onAudioUploaded, existingUrl, onRemove }: AudioR
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+  const stopRecording = async () => {
+    if (!mp3RecorderRef.current || !isRecording) return;
+    
+    setIsRecording(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    try {
+      const mp3Blob = mp3RecorderRef.current.stop();
+      console.log('[AudioRecorder] MP3 recorded, size:', mp3Blob.size);
+      mp3RecorderRef.current = null;
+      await uploadAudio(mp3Blob, 'audio/mpeg', `gravacao_${Date.now()}.mp3`);
+    } catch (error) {
+      console.error('[AudioRecorder] Error stopping recording:', error);
+      toast({ 
+        title: 'Erro ao finalizar gravação', 
+        variant: 'destructive' 
+      });
     }
   };
 

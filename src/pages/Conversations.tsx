@@ -3285,96 +3285,15 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
   };
 
-  // Audio recording handlers
+  // Audio recording with Mp3Recorder (records directly to MP3)
+  const mp3RecorderRef = useRef<any>(null);
+  
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const { Mp3Recorder } = await import('@/lib/audio/mp3-recorder');
+      mp3RecorderRef.current = new Mp3Recorder();
+      await mp3RecorderRef.current.start();
       
-      // Record in webm (browser native), will convert to MP3 after
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
-        ? 'audio/webm; codecs=opus'
-        : 'audio/webm';
-      
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        // Stop all tracks first
-        stream.getTracks().forEach(track => track.stop());
-        
-        // Check if recording was cancelled - if so, don't send
-        if (recordingCancelledRef.current) {
-          recordingCancelledRef.current = false;
-          audioChunksRef.current = [];
-          return;
-        }
-        
-        // Prevent duplicate sends
-        if (isSendingRef.current) return;
-        
-        // Send audio directly without confirmation
-        const selectedConv = conversations?.find(c => c.id === selectedConversationId);
-        const channelId = selectedConv?.channel_id;
-        const contactPhone = selectedConv?.contact?.phone;
-        
-        if (selectedConversationId) {
-          try {
-            isSendingRef.current = true;
-            setIsUploading(true);
-            
-            // Create webm blob from recorded chunks
-            const webmBlob = new Blob(audioChunksRef.current, { type: mimeType });
-            
-            // Convert to MP3 for WhatsApp compatibility
-            console.log('[Audio] Converting to MP3...');
-            const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
-            let audioFile: File;
-            
-            try {
-              const mp3Blob = await encodeToMp3(webmBlob);
-              audioFile = new File([mp3Blob], `audio_${Date.now()}.mp3`, { type: 'audio/mpeg' });
-              console.log('[Audio] MP3 conversion successful, size:', mp3Blob.size);
-            } catch (mp3Error) {
-              console.error('[Audio] MP3 conversion failed:', mp3Error);
-              toast.error('Erro ao converter áudio para MP3');
-              return;
-            }
-            
-            const result = await uploadAttachment(audioFile, selectedConversationId);
-            
-            // INSTANT: Save to database first
-            sendMessage.mutate({
-              conversation_id: selectedConversationId,
-              content: '',
-              is_from_me: true,
-              message_type: 'audio',
-              media_url: result.url,
-              media_mime_type: 'audio/mpeg',
-            });
-            
-            // BACKGROUND: Send via WhatsApp (don't await)
-            if (channelId && contactPhone) {
-              sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url).catch(console.error);
-            }
-            
-          } catch (error) {
-            console.error('Error sending audio:', error);
-            toast.error('Erro ao enviar áudio');
-          } finally {
-            setIsUploading(false);
-            isSendingRef.current = false;
-          }
-        }
-      };
-
-      mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
 
@@ -3389,28 +3308,66 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
   };
 
-  const stopRecording = () => {
-    // Ensure we're sending (not cancelling)
-    recordingCancelledRef.current = false;
+  const stopRecording = async () => {
+    if (!mp3RecorderRef.current) return;
     
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
+    // Prevent duplicate sends
+    if (isSendingRef.current) return;
+    
     setIsRecording(false);
     if (recordingIntervalRef.current) {
       clearInterval(recordingIntervalRef.current);
       recordingIntervalRef.current = null;
     }
+    
+    try {
+      isSendingRef.current = true;
+      setIsUploading(true);
+      
+      // Get MP3 blob directly from recorder
+      const mp3Blob = mp3RecorderRef.current.stop();
+      const audioFile = new File([mp3Blob], `audio_${Date.now()}.mp3`, { type: 'audio/mpeg' });
+      console.log('[Audio] MP3 recorded, size:', mp3Blob.size);
+      
+      mp3RecorderRef.current = null;
+      
+      // Get conversation details
+      const selectedConv = conversations?.find(c => c.id === selectedConversationId);
+      const channelId = selectedConv?.channel_id;
+      const contactPhone = selectedConv?.contact?.phone;
+      
+      if (selectedConversationId) {
+        const result = await uploadAttachment(audioFile, selectedConversationId);
+        
+        // INSTANT: Save to database first
+        sendMessage.mutate({
+          conversation_id: selectedConversationId,
+          content: '',
+          is_from_me: true,
+          message_type: 'audio',
+          media_url: result.url,
+          media_mime_type: 'audio/mpeg',
+        });
+        
+        // BACKGROUND: Send via WhatsApp (don't await)
+        if (channelId && contactPhone) {
+          sendWhatsAppMessage(channelId, contactPhone, '', 'audio', result.url).catch(console.error);
+        }
+      }
+    } catch (error) {
+      console.error('Error sending audio:', error);
+      toast.error('Erro ao enviar áudio');
+    } finally {
+      setIsUploading(false);
+      isSendingRef.current = false;
+    }
   };
 
   const cancelRecording = () => {
-    // IMPORTANT: Set cancelled flag BEFORE calling stop()
-    recordingCancelledRef.current = true;
-    
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+    if (mp3RecorderRef.current) {
+      mp3RecorderRef.current.cancel();
+      mp3RecorderRef.current = null;
     }
-    audioChunksRef.current = [];
     setIsRecording(false);
     setRecordingTime(0);
     if (recordingIntervalRef.current) {

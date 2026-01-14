@@ -51,10 +51,7 @@ export function InternalChatInput({
   const [recordingTime, setRecordingTime] = useState(0);
   const [emojiOpen, setEmojiOpen] = useState(false);
   
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const shouldSendAudioRef = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -141,47 +138,15 @@ export function InternalChatInput({
     }
   }, [threadId, onStartChat, uploadMedia, sendMessage, replyingTo?.id, onCancelReply]);
 
+  // Mp3Recorder for direct MP3 recording
+  const mp3RecorderRef = useRef<any>(null);
+  
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const { Mp3Recorder } = await import('@/lib/audio/mp3-recorder');
+      mp3RecorderRef.current = new Mp3Recorder();
+      await mp3RecorderRef.current.start();
       
-      // Record in webm (browser native), will convert to MP3 after
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
-        ? 'audio/webm; codecs=opus'
-        : 'audio/webm';
-      
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-      shouldSendAudioRef.current = true;
-
-      mediaRecorder.ondataavailable = (e) => {
-        audioChunksRef.current.push(e.data);
-      };
-
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(track => track.stop());
-        
-        // Só envia se não foi cancelado
-        if (shouldSendAudioRef.current && audioChunksRef.current.length > 0) {
-          const webmBlob = new Blob(audioChunksRef.current, { type: mimeType });
-          
-          // Convert to MP3 for better compatibility
-          try {
-            console.log('[InternalChat] Converting to MP3...');
-            const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
-            const mp3Blob = await encodeToMp3(webmBlob);
-            const audioFile = new File([mp3Blob], `audio_${Date.now()}.mp3`, { type: 'audio/mpeg' });
-            console.log('[InternalChat] MP3 conversion successful, size:', mp3Blob.size);
-            await handleFileUpload(audioFile, 'audio');
-          } catch (mp3Error) {
-            console.error('[InternalChat] MP3 conversion failed:', mp3Error);
-            toast.error('Erro ao converter áudio para MP3');
-          }
-        }
-      };
-
-      mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
 
@@ -190,27 +155,36 @@ export function InternalChatInput({
       }, 1000);
 
     } catch (error) {
+      console.error('[InternalChat] Recording error:', error);
       toast.error('Erro ao acessar microfone');
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      shouldSendAudioRef.current = true;
-      mediaRecorderRef.current.stop();
-    }
+  const stopRecording = async () => {
+    if (!mp3RecorderRef.current) return;
+    
     setIsRecording(false);
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
+    
+    try {
+      const mp3Blob = mp3RecorderRef.current.stop();
+      const audioFile = new File([mp3Blob], `audio_${Date.now()}.mp3`, { type: 'audio/mpeg' });
+      console.log('[InternalChat] MP3 recorded, size:', mp3Blob.size);
+      mp3RecorderRef.current = null;
+      await handleFileUpload(audioFile, 'audio');
+    } catch (error) {
+      console.error('[InternalChat] Error sending audio:', error);
+      toast.error('Erro ao enviar áudio');
+    }
   };
 
   const cancelRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      shouldSendAudioRef.current = false;
-      mediaRecorderRef.current.stop();
+    if (mp3RecorderRef.current) {
+      mp3RecorderRef.current.cancel();
+      mp3RecorderRef.current = null;
     }
-    audioChunksRef.current = [];
     setIsRecording(false);
     setRecordingTime(0);
     if (timerRef.current) {

@@ -102,43 +102,16 @@ export function ScheduleMessageModal({
   });
 
   // ============================================
-  // AUDIO RECORDING
+  // AUDIO RECORDING with Mp3Recorder (direct MP3)
   // ============================================
+  const mp3RecorderRef = useRef<any>(null);
+  
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const { Mp3Recorder } = await import('@/lib/audio/mp3-recorder');
+      mp3RecorderRef.current = new Mp3Recorder();
+      await mp3RecorderRef.current.start();
       
-      // Record in webm (browser native), will convert to MP3 after
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
-        ? 'audio/webm; codecs=opus'
-        : 'audio/webm';
-      
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      const chunks: BlobPart[] = [];
-
-      mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(track => track.stop());
-        
-        const webmBlob = new Blob(chunks, { type: mimeType });
-        
-        // Convert to MP3 for WhatsApp compatibility
-        try {
-          console.log('[ScheduleModal] Converting to MP3...');
-          const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
-          const mp3Blob = await encodeToMp3(webmBlob);
-          console.log('[ScheduleModal] MP3 conversion successful, size:', mp3Blob.size);
-          setAudioBlob(mp3Blob);
-          setAudioUrl(URL.createObjectURL(mp3Blob));
-        } catch (mp3Error) {
-          console.error('[ScheduleModal] MP3 conversion failed:', mp3Error);
-          toast.error('Erro ao converter áudio para MP3');
-          // Don't save the webm blob since it won't work with WhatsApp
-        }
-      };
-
-      mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
 
@@ -146,17 +119,28 @@ export function ScheduleMessageModal({
         setRecordingTime(prev => prev + 1);
       }, 1000);
     } catch (error) {
+      console.error('[ScheduleModal] Recording error:', error);
       toast.error('Não foi possível acessar o microfone');
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-      }
+    if (!mp3RecorderRef.current || !isRecording) return;
+    
+    setIsRecording(false);
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+    }
+    
+    try {
+      const mp3Blob = mp3RecorderRef.current.stop();
+      console.log('[ScheduleModal] MP3 recorded, size:', mp3Blob.size);
+      setAudioBlob(mp3Blob);
+      setAudioUrl(URL.createObjectURL(mp3Blob));
+      mp3RecorderRef.current = null;
+    } catch (error) {
+      console.error('[ScheduleModal] Error stopping recording:', error);
+      toast.error('Erro ao finalizar gravação');
     }
   };
 
