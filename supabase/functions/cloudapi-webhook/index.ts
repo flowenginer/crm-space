@@ -368,13 +368,53 @@ async function processMessages(supabase: any, value: any) {
         is_unread: true,
       })
       .eq('id', conversationId)
-      .select('department_id, assigned_to')
+      .select('department_id, assigned_to, status, priority, unread_count, created_at')
       .single();
 
-    // Disparar webhook de mensagem recebida
+    // Disparar webhook de mensagem recebida com dados enriquecidos
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL');
       const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      
+      // Buscar dados completos do contato
+      const { data: contactData } = await supabase
+        .from('contacts')
+        .select('id, full_name, phone, email, lead_status, lead_score')
+        .eq('id', contactId)
+        .single();
+
+      // Buscar nome do departamento
+      let departmentData = null;
+      if (conversationData?.department_id) {
+        const { data: dept } = await supabase
+          .from('departments')
+          .select('id, name')
+          .eq('id', conversationData.department_id)
+          .single();
+        departmentData = dept;
+      }
+
+      // Buscar dados do agente atribuído
+      let agentData = null;
+      if (conversationData?.assigned_to) {
+        const { data: agent } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('id', conversationData.assigned_to)
+          .single();
+        agentData = agent;
+      }
+
+      // Buscar nome do canal
+      let channelData = null;
+      if (config.channel_id) {
+        const { data: channel } = await supabase
+          .from('whatsapp_channels')
+          .select('id, name, phone_number')
+          .eq('id', config.channel_id)
+          .single();
+        channelData = channel;
+      }
       
       await fetch(`${supabaseUrl}/functions/v1/dispatch-webhook`, {
         method: 'POST',
@@ -387,14 +427,43 @@ async function processMessages(supabase: any, value: any) {
           event: {
             type: 'message.received',
             data: {
-              message_id: insertedMessage?.id,
-              conversation_id: conversationId,
-              contact_id: contactId,
-              content,
-              message_type: messageType,
-              media_url: mediaUrl,
-              whatsapp_message_id: message.id,
-              timestamp: timestamp.toISOString(),
+              message: {
+                id: insertedMessage?.id,
+                whatsapp_message_id: message.id,
+                type: messageType,
+                content,
+                media_url: mediaUrl,
+                timestamp: timestamp.toISOString(),
+              },
+              contact: {
+                id: contactId,
+                name: contactData?.full_name || contactName,
+                phone: contactData?.phone || from,
+                email: contactData?.email || null,
+                lead_status: contactData?.lead_status || null,
+                lead_score: contactData?.lead_score || null,
+              },
+              conversation: {
+                id: conversationId,
+                status: conversationData?.status || 'open',
+                priority: conversationData?.priority || null,
+                unread_count: conversationData?.unread_count || 0,
+                created_at: conversationData?.created_at || null,
+              },
+              department: {
+                id: conversationData?.department_id || null,
+                name: departmentData?.name || null,
+              },
+              channel: {
+                id: config.channel_id,
+                name: channelData?.name || null,
+                phone_number: channelData?.phone_number || null,
+              },
+              agent: agentData ? {
+                id: agentData.id,
+                name: agentData.full_name,
+                email: agentData.email,
+              } : null,
             },
             context: {
               department: { id: conversationData?.department_id },

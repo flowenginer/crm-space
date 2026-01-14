@@ -90,13 +90,13 @@ async function handleDispatch(supabase: any, params: { event: DispatchEvent }) {
       continue;
     }
 
-    // Build payload
+    // Build payload - spread dos dados enriquecidos diretamente no root
     const payload = {
       event: event.type,
       timestamp: new Date().toISOString(),
       webhook_id: webhook.id,
-      data: event.data,
-      context: event.context,
+      ...(event.data as Record<string, unknown>),
+      tenant_id: (event.context as any)?.tenant_id,
     };
 
     // Create delivery record
