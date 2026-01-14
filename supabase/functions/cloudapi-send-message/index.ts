@@ -9,6 +9,15 @@ const corsHeaders = {
 const GRAPH_API_VERSION = 'v21.0';
 const GRAPH_API_URL = 'https://graph.facebook.com';
 
+// Supported audio formats by WhatsApp Cloud API
+const SUPPORTED_AUDIO_TYPES = [
+  'audio/mpeg',      // MP3
+  'audio/mp4',       // M4A
+  'audio/aac',       // AAC
+  'audio/amr',       // AMR
+  'audio/ogg',       // OGG (opus codec)
+];
+
 interface SendMessagePayload {
   channelId: string;
   phone: string;
@@ -72,14 +81,15 @@ serve(async (req) => {
     }
 
     // Get Cloud API config for this channel
-    const { data: config, error: configError } = await supabase
+    let config: any = null;
+    const { data: configData, error: configError } = await supabase
       .from('cloudapi_configs')
       .select('*')
       .eq('channel_id', channelId)
       .eq('is_active', true)
       .single();
 
-    if (configError || !config) {
+    if (configError || !configData) {
       // Try to find by tenant
       const { data: channel } = await supabase
         .from('whatsapp_channels')
@@ -99,10 +109,12 @@ serve(async (req) => {
           throw new Error('No Cloud API configuration found for this channel');
         }
         
-        Object.assign(config || {}, tenantConfig);
+        config = tenantConfig;
       } else {
         throw new Error('Channel not found');
       }
+    } else {
+      config = configData;
     }
 
     // Format phone number (remove + and spaces)
@@ -139,9 +151,78 @@ serve(async (req) => {
       case 'audio':
         messagePayload.type = 'audio';
         if (mediaUrl?.startsWith('http')) {
-          // MP3, OGG, M4A are directly supported by WhatsApp - send as link
-          console.log('[CloudAPI] Sending audio as link:', mediaUrl);
-          messagePayload.audio = { link: mediaUrl };
+          // Fetch the audio file to upload to Meta's servers
+          console.log('[CloudAPI] Fetching audio from:', mediaUrl);
+          
+          const audioResponse = await fetch(mediaUrl);
+          if (!audioResponse.ok) {
+            throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
+          }
+          
+          const contentType = audioResponse.headers.get('content-type') || 'audio/mpeg';
+          console.log('[CloudAPI] Audio content-type:', contentType);
+          
+          // Validate audio format
+          const isSupported = SUPPORTED_AUDIO_TYPES.some(t => contentType.includes(t.split('/')[1]));
+          if (!isSupported && !contentType.includes('octet-stream')) {
+            console.error('[CloudAPI] Unsupported audio format:', contentType);
+            throw new Error(`Unsupported audio format: ${contentType}. Supported: MP3, M4A, AAC, AMR, OGG`);
+          }
+          
+          const audioBuffer = await audioResponse.arrayBuffer();
+          console.log('[CloudAPI] Audio size:', audioBuffer.byteLength, 'bytes');
+          
+          // Determine file extension and mime type
+          let finalMimeType = contentType;
+          let extension = 'mp3';
+          
+          if (contentType.includes('mpeg') || contentType.includes('mp3')) {
+            finalMimeType = 'audio/mpeg';
+            extension = 'mp3';
+          } else if (contentType.includes('ogg')) {
+            finalMimeType = 'audio/ogg';
+            extension = 'ogg';
+          } else if (contentType.includes('mp4') || contentType.includes('m4a')) {
+            finalMimeType = 'audio/mp4';
+            extension = 'm4a';
+          } else if (contentType.includes('aac')) {
+            finalMimeType = 'audio/aac';
+            extension = 'aac';
+          } else if (contentType.includes('octet-stream') && mediaUrl.includes('.mp3')) {
+            // Fallback for octet-stream with .mp3 extension
+            finalMimeType = 'audio/mpeg';
+            extension = 'mp3';
+          }
+          
+          // Upload to Meta's Media API
+          const formData = new FormData();
+          formData.append('messaging_product', 'whatsapp');
+          formData.append('type', finalMimeType);
+          formData.append('file', new Blob([audioBuffer], { type: finalMimeType }), `audio.${extension}`);
+          
+          console.log('[CloudAPI] Uploading audio to Meta Media API...');
+          const mediaUploadResponse = await fetch(
+            `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${config.phone_number_id}/media`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${config.access_token}`,
+              },
+              body: formData,
+            }
+          );
+          
+          const mediaUploadResult = await mediaUploadResponse.json();
+          
+          if (!mediaUploadResponse.ok) {
+            console.error('[CloudAPI] Media upload failed:', mediaUploadResult);
+            throw new Error(mediaUploadResult.error?.message || 'Failed to upload audio to Meta');
+          }
+          
+          console.log('[CloudAPI] Audio uploaded to Meta, media_id:', mediaUploadResult.id);
+          
+          // Use the uploaded media ID
+          messagePayload.audio = { id: mediaUploadResult.id };
         } else {
           messagePayload.audio = { id: mediaUrl };
         }

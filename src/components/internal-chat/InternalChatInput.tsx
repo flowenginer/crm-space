@@ -144,7 +144,13 @@ export function InternalChatInput({
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      
+      // Record in webm (browser native), will convert to MP3 after
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
+        ? 'audio/webm; codecs=opus'
+        : 'audio/webm';
+      
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
       shouldSendAudioRef.current = true;
@@ -158,9 +164,20 @@ export function InternalChatInput({
         
         // Só envia se não foi cancelado
         if (shouldSendAudioRef.current && audioChunksRef.current.length > 0) {
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          const audioFile = new File([audioBlob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
-          await handleFileUpload(audioFile, 'audio');
+          const webmBlob = new Blob(audioChunksRef.current, { type: mimeType });
+          
+          // Convert to MP3 for better compatibility
+          try {
+            console.log('[InternalChat] Converting to MP3...');
+            const { encodeToMp3 } = await import('@/lib/audio/mp3-encoder');
+            const mp3Blob = await encodeToMp3(webmBlob);
+            const audioFile = new File([mp3Blob], `audio_${Date.now()}.mp3`, { type: 'audio/mpeg' });
+            console.log('[InternalChat] MP3 conversion successful, size:', mp3Blob.size);
+            await handleFileUpload(audioFile, 'audio');
+          } catch (mp3Error) {
+            console.error('[InternalChat] MP3 conversion failed:', mp3Error);
+            toast.error('Erro ao converter áudio para MP3');
+          }
         }
       };
 
