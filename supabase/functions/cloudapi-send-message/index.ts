@@ -221,10 +221,10 @@ serve(async (req) => {
           
           console.log('[CloudAPI] Audio uploaded to Meta, media_id:', mediaUploadResult.id);
           
-          // Use the uploaded media ID
-          messagePayload.audio = { id: mediaUploadResult.id };
+          // Use the uploaded media ID - voice: true sends as native PTT (Push To Talk)
+          messagePayload.audio = { id: mediaUploadResult.id, voice: true };
         } else {
-          messagePayload.audio = { id: mediaUrl };
+          messagePayload.audio = { id: mediaUrl, voice: true };
         }
         break;
 
