@@ -3285,14 +3285,41 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     }
   };
 
-  // Audio recording with Mp3Recorder (records directly to MP3)
+  // Audio recording - conditional based on channel type
+  // Official API (cloudapi): uses Mp3Recorder for MP3 format
+  // Non-official APIs (zapi, uazapi, evolution): uses native MediaRecorder for OGG/WebM
   const mp3RecorderRef = useRef<any>(null);
+  const isOfficialRecordingRef = useRef<boolean>(false);
   
   const startRecording = async () => {
     try {
-      const { Mp3Recorder } = await import('@/lib/audio/mp3-recorder');
-      mp3RecorderRef.current = new Mp3Recorder();
-      await mp3RecorderRef.current.start();
+      // Detect channel type
+      const selectedConv = conversations?.find(c => c.id === selectedConversationId);
+      const channelData = channels?.find(c => c.id === selectedConv?.channel_id);
+      const isOfficialChannel = (channelData as any)?.type === 'official';
+      isOfficialRecordingRef.current = isOfficialChannel;
+      
+      console.log('[Audio] Starting recording, channel type:', isOfficialChannel ? 'official (MP3)' : 'non-official (OGG)');
+      
+      if (isOfficialChannel) {
+        // Official API: use Mp3Recorder for MP3 format
+        const { Mp3Recorder } = await import('@/lib/audio/mp3-recorder');
+        mp3RecorderRef.current = new Mp3Recorder();
+        await mp3RecorderRef.current.start();
+      } else {
+        // Non-official API: use native MediaRecorder for OGG/WebM
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorderRef.current = new MediaRecorder(stream);
+        audioChunksRef.current = [];
+        
+        mediaRecorderRef.current.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            audioChunksRef.current.push(e.data);
+          }
+        };
+        
+        mediaRecorderRef.current.start();
+      }
       
       setIsRecording(true);
       setRecordingTime(0);
@@ -3309,10 +3336,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   };
 
   const stopRecording = async () => {
-    if (!mp3RecorderRef.current) return;
-    
     // Prevent duplicate sends
     if (isSendingRef.current) return;
+    
+    const isOfficialChannel = isOfficialRecordingRef.current;
+    
+    // Check if we have a valid recorder
+    if (isOfficialChannel && !mp3RecorderRef.current) return;
+    if (!isOfficialChannel && !mediaRecorderRef.current) return;
     
     setIsRecording(false);
     if (recordingIntervalRef.current) {
@@ -3324,12 +3355,34 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       isSendingRef.current = true;
       setIsUploading(true);
       
-      // Get MP3 blob directly from recorder
-      const mp3Blob = mp3RecorderRef.current.stop();
-      const audioFile = new File([mp3Blob], `audio_${Date.now()}.mp3`, { type: 'audio/mpeg' });
-      console.log('[Audio] MP3 recorded, size:', mp3Blob.size);
+      let audioFile: File;
+      let mimeType: string;
       
-      mp3RecorderRef.current = null;
+      if (isOfficialChannel && mp3RecorderRef.current) {
+        // Official API: get MP3 from Mp3Recorder
+        const mp3Blob = mp3RecorderRef.current.stop();
+        audioFile = new File([mp3Blob], `audio_${Date.now()}.mp3`, { type: 'audio/mpeg' });
+        mimeType = 'audio/mpeg';
+        mp3RecorderRef.current = null;
+        console.log('[Audio] MP3 recorded for official API, size:', mp3Blob.size);
+      } else if (mediaRecorderRef.current) {
+        // Non-official API: get OGG from native MediaRecorder
+        await new Promise<void>((resolve) => {
+          mediaRecorderRef.current!.onstop = () => resolve();
+          mediaRecorderRef.current!.stop();
+        });
+        
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/ogg' });
+        audioFile = new File([audioBlob], `audio_${Date.now()}.ogg`, { type: 'audio/ogg' });
+        mimeType = 'audio/ogg';
+        
+        // Stop stream tracks
+        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        mediaRecorderRef.current = null;
+        console.log('[Audio] OGG recorded for non-official API, size:', audioBlob.size);
+      } else {
+        throw new Error('No recorder available');
+      }
       
       // Get conversation details
       const selectedConv = conversations?.find(c => c.id === selectedConversationId);
@@ -3346,7 +3399,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           is_from_me: true,
           message_type: 'audio',
           media_url: result.url,
-          media_mime_type: 'audio/mpeg',
+          media_mime_type: mimeType,
         });
         
         // BACKGROUND: Send via WhatsApp (don't await)
@@ -3364,10 +3417,20 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   };
 
   const cancelRecording = () => {
+    // Cancel Mp3Recorder if active
     if (mp3RecorderRef.current) {
       mp3RecorderRef.current.cancel();
       mp3RecorderRef.current = null;
     }
+    
+    // Cancel native MediaRecorder if active
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current = null;
+    }
+    
+    audioChunksRef.current = [];
     setIsRecording(false);
     setRecordingTime(0);
     if (recordingIntervalRef.current) {
