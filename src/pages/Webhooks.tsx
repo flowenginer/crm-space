@@ -26,7 +26,8 @@ import {
   XCircle,
   Clock,
   ExternalLink,
-  BookOpen
+  BookOpen,
+  Key
 } from "lucide-react";
 import { useWebhooks, useUpdateWebhook, useDeleteWebhook, WebhookConfig } from "@/hooks/useWebhooks";
 import { WebhookConfigModal } from "@/components/webhooks/WebhookConfigModal";
@@ -34,6 +35,7 @@ import { WebhookLogsModal } from "@/components/webhooks/WebhookLogsModal";
 import { WebhookTestModal } from "@/components/webhooks/WebhookTestModal";
 import { WebhookApiDocs } from "@/components/webhooks/WebhookApiDocs";
 import { RestApiDocs } from "@/components/webhooks/RestApiDocs";
+import { APIKeysTab } from "@/components/webhooks/APIKeysTab";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -116,6 +118,10 @@ export default function Webhooks() {
           <TabsTrigger value="webhooks" className="flex items-center gap-2">
             <Link2 className="h-4 w-4" />
             Webhooks
+          </TabsTrigger>
+          <TabsTrigger value="api-keys" className="flex items-center gap-2">
+            <Key className="h-4 w-4" />
+            API Keys
           </TabsTrigger>
           <TabsTrigger value="api-docs" className="flex items-center gap-2">
             <BookOpen className="h-4 w-4" />
@@ -248,6 +254,10 @@ export default function Webhooks() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="api-keys" className="mt-6">
+          <APIKeysTab />
         </TabsContent>
 
         <TabsContent value="api-docs" className="mt-6">
