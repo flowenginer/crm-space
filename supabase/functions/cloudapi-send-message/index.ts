@@ -9,6 +9,45 @@ const corsHeaders = {
 const GRAPH_API_VERSION = 'v21.0';
 const GRAPH_API_URL = 'https://graph.facebook.com';
 
+// Function to convert WebM audio to OGG/Opus using FFmpeg WASM
+async function convertWebmToOpus(webmBuffer: ArrayBuffer): Promise<Uint8Array> {
+  console.log('[CloudAPI] Starting FFmpeg WASM conversion...');
+  
+  const { FFmpeg } = await import('https://esm.sh/@ffmpeg/ffmpeg@0.12.10');
+  const { toBlobURL } = await import('https://esm.sh/@ffmpeg/util@0.12.1');
+  
+  const ffmpeg = new FFmpeg();
+  
+  const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+  
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+  });
+  
+  console.log('[CloudAPI] FFmpeg loaded successfully');
+  
+  // Write input file
+  await ffmpeg.writeFile('input.webm', new Uint8Array(webmBuffer));
+  
+  // Convert WebM to OGG with Opus codec (required by WhatsApp)
+  await ffmpeg.exec([
+    '-i', 'input.webm',
+    '-c:a', 'libopus',
+    '-b:a', '64k',
+    '-vbr', 'on',
+    '-application', 'voip',
+    '-ar', '48000',
+    '-ac', '1',
+    'output.ogg'
+  ]);
+  
+  // Read output file
+  const data = await ffmpeg.readFile('output.ogg');
+  console.log('[CloudAPI] Conversion complete, output size:', (data as Uint8Array).length);
+  
+  return data as Uint8Array;
+}
 interface SendMessagePayload {
   channelId: string;
   phone: string;
@@ -139,18 +178,24 @@ serve(async (req) => {
       case 'audio':
         messagePayload.type = 'audio';
         if (mediaUrl?.startsWith('http')) {
-          // Check if it's a webm file (not supported by WhatsApp)
+          // Check if it's a webm file (not supported by WhatsApp - needs conversion to OGG/Opus)
           if (mediaUrl.includes('.webm')) {
-            console.log('[CloudAPI] WebM audio detected, uploading to Meta Media API...');
+            console.log('[CloudAPI] WebM audio detected, converting to OGG/Opus...');
             try {
-              // Download the audio file
+              // 1. Download the WebM audio file
               const audioResponse = await fetch(mediaUrl);
-              const audioBuffer = await audioResponse.arrayBuffer();
+              const webmBuffer = await audioResponse.arrayBuffer();
+              console.log('[CloudAPI] Downloaded WebM, size:', webmBuffer.byteLength);
               
-              // Upload to Meta Media API as binary
+              // 2. Convert WebM to OGG/Opus using FFmpeg WASM
+              const opusData = await convertWebmToOpus(webmBuffer);
+              
+              // 3. Upload converted audio to Meta Media API
               const formData = new FormData();
-              formData.append('file', new Blob([audioBuffer], { type: 'audio/ogg' }), 'audio.ogg');
+              const audioBlob = new Blob([new Uint8Array(opusData)], { type: 'audio/ogg' });
+              formData.append('file', audioBlob, 'audio.ogg');
               formData.append('messaging_product', 'whatsapp');
+              formData.append('type', 'audio/ogg');
               formData.append('type', 'audio/ogg');
               
               const uploadResponse = await fetch(
@@ -170,13 +215,14 @@ serve(async (req) => {
                 messagePayload.audio = { id: uploadResult.id };
               } else {
                 console.error('[CloudAPI] Failed to upload audio:', uploadResult);
-                throw new Error('Failed to upload audio to Meta');
+                throw new Error('Failed to upload audio to Meta: ' + JSON.stringify(uploadResult));
               }
             } catch (uploadError) {
-              console.error('[CloudAPI] Audio upload error:', uploadError);
-              throw new Error('Failed to process audio file');
+              console.error('[CloudAPI] Audio conversion/upload error:', uploadError);
+              throw new Error('Failed to process audio file: ' + (uploadError instanceof Error ? uploadError.message : 'Unknown error'));
             }
           } else {
+            // For already compatible formats (mp3, ogg, etc.)
             messagePayload.audio = { link: mediaUrl };
           }
         } else {
