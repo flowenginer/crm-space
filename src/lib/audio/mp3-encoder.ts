@@ -1,4 +1,4 @@
-import lamejs from 'lamejs';
+import * as lamejs from 'lamejs';
 
 export async function encodeToMp3(audioBlob: Blob): Promise<Blob> {
   console.log('[MP3Encoder] Starting conversion, input size:', audioBlob.size);
@@ -13,8 +13,8 @@ export async function encodeToMp3(audioBlob: Blob): Promise<Blob> {
   const sampleRate = audioBuffer.sampleRate;
   const kbps = 128;
   
-  // @ts-ignore - lamejs types are incomplete
-  const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, kbps);
+  const Mp3EncoderClass = (lamejs as any).Mp3Encoder || (lamejs as any).default?.Mp3Encoder;
+  const mp3encoder = new Mp3EncoderClass(channels, sampleRate, kbps);
   
   // Get audio samples from the first channel
   const samples = audioBuffer.getChannelData(0);
