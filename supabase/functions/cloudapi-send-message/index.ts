@@ -264,11 +264,29 @@ serve(async (req) => {
           throw new Error('Template name is required for template messages');
         }
         messagePayload.type = 'template';
+        
+        // Handle language - can be string or { code: string }
+        let languageCode = 'pt_BR';
+        const lang = template.language as string | { code: string } | undefined;
+        if (typeof lang === 'string') {
+          languageCode = lang;
+        } else if (lang && typeof lang === 'object' && 'code' in lang) {
+          // Extract code if language is already an object
+          languageCode = typeof lang.code === 'string' 
+            ? lang.code 
+            : 'pt_BR';
+        }
+        
         messagePayload.template = {
           name: template.name,
-          language: { code: template.language || 'pt_BR' },
+          language: { code: languageCode },
           components: template.components || []
         };
+        console.log('[CloudAPI Send] Template payload:', {
+          name: template.name,
+          languageCode,
+          componentsCount: template.components?.length || 0
+        });
         break;
 
       default:
