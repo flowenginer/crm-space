@@ -335,8 +335,20 @@ async function sendMetaTemplateMessage(
     throw new Error('Cloud API config not found for channel');
   }
 
-  // Create message record
-  const templatePreview = metaTemplate.preview_text || `Template: ${metaTemplate.name}`;
+  // Extract body text from template components for better preview
+  let templatePreview = `Template: ${metaTemplate.name}`;
+  if (metaTemplate.components && Array.isArray(metaTemplate.components)) {
+    const bodyComponent = metaTemplate.components.find(
+      (c: any) => c.type === 'BODY'
+    );
+    if (bodyComponent?.text) {
+      templatePreview = bodyComponent.text;
+    }
+  } else if (metaTemplate.preview_text) {
+    templatePreview = metaTemplate.preview_text;
+  }
+
+  // Create message record with full template content
   const { data: msgData, error: msgError } = await supabase
     .from('messages')
     .insert({
