@@ -1446,6 +1446,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const savedConversationScrollTop = useRef<number | null>(null);
+  const shouldRestoreScrollRef = useRef<boolean>(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   // Set persistente de conversas que NÃO devem ser auto-marcadas como lidas
   // A proteção só é removida por ação EXPLÍCITA do usuário (clicar na conversa ou enviar mensagem)
@@ -2317,15 +2318,42 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
 
   // Restore conversation list scroll position after list updates (after sending message)
   useEffect(() => {
-    if (savedConversationScrollTop.current !== null && conversationListRef.current) {
-      // Use requestAnimationFrame to ensure DOM has updated
+    // Only attempt restore if we have a pending restore and valid ref
+    if (!shouldRestoreScrollRef.current || savedConversationScrollTop.current === null) {
+      return;
+    }
+    
+    const targetScrollTop = savedConversationScrollTop.current;
+    
+    // Attempt restoration with multiple retries to handle async DOM updates
+    const attemptRestore = (attempts: number) => {
+      if (attempts <= 0 || !shouldRestoreScrollRef.current) {
+        return;
+      }
+      
       requestAnimationFrame(() => {
-        if (conversationListRef.current && savedConversationScrollTop.current !== null) {
-          conversationListRef.current.scrollTop = savedConversationScrollTop.current;
-          savedConversationScrollTop.current = null; // Clear after restoring
+        if (conversationListRef.current && shouldRestoreScrollRef.current) {
+          conversationListRef.current.scrollTop = targetScrollTop;
+          
+          // Verify scroll was applied, retry if not
+          setTimeout(() => {
+            if (conversationListRef.current && 
+                shouldRestoreScrollRef.current &&
+                Math.abs(conversationListRef.current.scrollTop - targetScrollTop) > 10) {
+              attemptRestore(attempts - 1);
+            } else {
+              // Successfully restored, clear flags
+              shouldRestoreScrollRef.current = false;
+              savedConversationScrollTop.current = null;
+            }
+          }, 50);
         }
       });
-    }
+    };
+    
+    // Start restoration attempts after a small delay for DOM to stabilize
+    setTimeout(() => attemptRestore(3), 100);
+    
   }, [filteredConversations]);
 
   // Calculate unread count for pinned conversations (for notification badge)
@@ -2817,6 +2845,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     // Save scroll position before sending message (to restore after list reorders)
     if (conversationListRef.current) {
       savedConversationScrollTop.current = conversationListRef.current.scrollTop;
+      shouldRestoreScrollRef.current = true;
     }
     
     // Check if we have either text or files
