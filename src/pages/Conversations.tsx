@@ -1445,8 +1445,11 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
-  const savedConversationScrollTop = useRef<number | null>(null);
-  const shouldRestoreScrollRef = useRef<boolean>(false);
+  // Sistema de âncora para preservar scroll - salva a conversa visível e seu offset
+  const scrollAnchorRef = useRef<{
+    conversationId: string;
+    offsetFromTop: number;
+  } | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   // Set persistente de conversas que NÃO devem ser auto-marcadas como lidas
   // A proteção só é removida por ação EXPLÍCITA do usuário (clicar na conversa ou enviar mensagem)
@@ -2316,44 +2319,65 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     return filtered;
   }, [conversations, channelFilter, sortOrder, statusFiltersSelected, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery, allSharedConversationIds]);
 
-  // Restore conversation list scroll position after list updates (after sending message)
-  useEffect(() => {
-    // Only attempt restore if we have a pending restore and valid ref
-    if (!shouldRestoreScrollRef.current || savedConversationScrollTop.current === null) {
-      return;
-    }
+  // Função para identificar qual conversa está no topo visível
+  const getVisibleAnchorConversation = useCallback(() => {
+    if (!conversationListRef.current) return null;
     
-    const targetScrollTop = savedConversationScrollTop.current;
+    const container = conversationListRef.current;
+    const containerRect = container.getBoundingClientRect();
     
-    // Attempt restoration with multiple retries to handle async DOM updates
-    const attemptRestore = (attempts: number) => {
-      if (attempts <= 0 || !shouldRestoreScrollRef.current) {
-        return;
-      }
-      
-      requestAnimationFrame(() => {
-        if (conversationListRef.current && shouldRestoreScrollRef.current) {
-          conversationListRef.current.scrollTop = targetScrollTop;
-          
-          // Verify scroll was applied, retry if not
-          setTimeout(() => {
-            if (conversationListRef.current && 
-                shouldRestoreScrollRef.current &&
-                Math.abs(conversationListRef.current.scrollTop - targetScrollTop) > 10) {
-              attemptRestore(attempts - 1);
-            } else {
-              // Successfully restored, clear flags
-              shouldRestoreScrollRef.current = false;
-              savedConversationScrollTop.current = null;
-            }
-          }, 50);
+    // Buscar todos os items de conversa
+    const items = container.querySelectorAll('[data-conversation-id]');
+    
+    for (const item of items) {
+      const itemRect = item.getBoundingClientRect();
+      // Encontrar o primeiro item que está pelo menos parcialmente visível
+      if (itemRect.bottom > containerRect.top && itemRect.top < containerRect.bottom) {
+        const conversationId = item.getAttribute('data-conversation-id');
+        if (conversationId) {
+          const offsetFromTop = itemRect.top - containerRect.top;
+          return { conversationId, offsetFromTop };
         }
+      }
+    }
+    return null;
+  }, []);
+
+  // Restaurar scroll baseado na âncora após lista atualizar
+  useEffect(() => {
+    if (!scrollAnchorRef.current || !conversationListRef.current) return;
+    
+    const { conversationId, offsetFromTop } = scrollAnchorRef.current;
+    
+    // Agendar restauração após DOM estabilizar
+    const restoreTimeout = setTimeout(() => {
+      requestAnimationFrame(() => {
+        if (!conversationListRef.current || !scrollAnchorRef.current) return;
+        
+        // Encontrar o elemento âncora na nova lista
+        const anchorElement = conversationListRef.current.querySelector(
+          `[data-conversation-id="${conversationId}"]`
+        );
+        
+        if (anchorElement) {
+          const container = conversationListRef.current;
+          const containerRect = container.getBoundingClientRect();
+          const anchorRect = anchorElement.getBoundingClientRect();
+          
+          // Calcular quanto precisamos scrollar para manter o item na mesma posição visual
+          const currentOffsetFromTop = anchorRect.top - containerRect.top;
+          const scrollAdjustment = currentOffsetFromTop - offsetFromTop;
+          
+          container.scrollTop += scrollAdjustment;
+          console.log('[Scroll Anchor] Restored. Adjustment:', scrollAdjustment);
+        }
+        
+        // Limpar âncora
+        scrollAnchorRef.current = null;
       });
-    };
+    }, 150); // Delay maior para garantir que o DOM estabilizou
     
-    // Start restoration attempts after a small delay for DOM to stabilize
-    setTimeout(() => attemptRestore(3), 100);
-    
+    return () => clearTimeout(restoreTimeout);
   }, [filteredConversations]);
 
   // Calculate unread count for pinned conversations (for notification badge)
@@ -2842,10 +2866,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     // Prevent duplicate sends
     if (isSendingRef.current) return;
     
-    // Save scroll position before sending message (to restore after list reorders)
-    if (conversationListRef.current) {
-      savedConversationScrollTop.current = conversationListRef.current.scrollTop;
-      shouldRestoreScrollRef.current = true;
+    // Salvar âncora de scroll antes de enviar (para restaurar após reordenação da lista)
+    const anchor = getVisibleAnchorConversation();
+    if (anchor) {
+      scrollAnchorRef.current = anchor;
+      console.log('[Scroll Anchor] Saved:', anchor);
     }
     
     // Check if we have either text or files
@@ -4264,23 +4289,24 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         ) : (
           <>
             {filteredConversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conversation={conv}
-                isSelected={selectedConversationId === conv.id}
-                isPinned={isPinned(conv.id)}
-                isShared={sharedConversationIds.includes(conv.id)}
-                isNewTransfer={!!(conv as any).is_new_transfer && conv.assigned_to === profile?.id}
-                onClick={() => handleSelectConversation(conv)}
-                onTogglePin={() => {
-                  togglePin(conv.id);
-                  toast.success(isPinned(conv.id) ? 'Conversa desafixada' : 'Conversa fixada');
-                }}
-                isSelectionMode={isConversationSelectionMode}
-                isChecked={selectedConversationIds.has(conv.id)}
-                onToggleCheck={() => toggleConversationSelection(conv.id)}
-                channels={channels}
-              />
+              <div key={conv.id} data-conversation-id={conv.id}>
+                <ConversationItem
+                  conversation={conv}
+                  isSelected={selectedConversationId === conv.id}
+                  isPinned={isPinned(conv.id)}
+                  isShared={sharedConversationIds.includes(conv.id)}
+                  isNewTransfer={!!(conv as any).is_new_transfer && conv.assigned_to === profile?.id}
+                  onClick={() => handleSelectConversation(conv)}
+                  onTogglePin={() => {
+                    togglePin(conv.id);
+                    toast.success(isPinned(conv.id) ? 'Conversa desafixada' : 'Conversa fixada');
+                  }}
+                  isSelectionMode={isConversationSelectionMode}
+                  isChecked={selectedConversationIds.has(conv.id)}
+                  onToggleCheck={() => toggleConversationSelection(conv.id)}
+                  channels={channels}
+                />
+              </div>
             ))}
             {/* Loading indicator for more conversations */}
             {isFetchingMoreConversations && (
