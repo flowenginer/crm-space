@@ -528,7 +528,7 @@ async function processMessages(supabase: any, value: any) {
     // Update conversation - incrementar unread_count usando SQL direto
     await supabase.rpc('increment_unread', { conv_id: conversationId });
 
-    // Atualizar outros campos da conversa
+    // Atualizar outros campos da conversa (incluindo last_client_message_at para abrir janela 24h)
     const { data: conversationData } = await supabase
       .from('conversations')
       .update({
@@ -536,6 +536,7 @@ async function processMessages(supabase: any, value: any) {
         last_message_preview: content.substring(0, 100),
         last_message_is_from_me: false,
         is_unread: true,
+        last_client_message_at: timestamp.toISOString(), // Abre janela de 24 horas
       })
       .eq('id', conversationId)
       .select('department_id, assigned_to, status, priority, unread_count, created_at')
