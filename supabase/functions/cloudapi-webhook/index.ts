@@ -491,8 +491,26 @@ async function processMessages(supabase: any, value: any) {
           mediaUrl = await downloadAndUploadMedia(supabase, message.sticker.id, 'sticker', conversationId!, config.access_token);
         }
         break;
+      case 'interactive':
+        // Quick reply button or list selection
+        if (message.interactive?.button_reply) {
+          content = message.interactive.button_reply.title || '[Botão]';
+          console.log('[CloudAPI] Interactive button_reply:', message.interactive.button_reply);
+        } else if (message.interactive?.list_reply) {
+          content = message.interactive.list_reply.title || '[Lista]';
+          console.log('[CloudAPI] Interactive list_reply:', message.interactive.list_reply);
+        } else {
+          content = '[Interativo]';
+        }
+        break;
+      case 'button':
+        // Simple button response (template button clicks)
+        content = message.button?.text || '[Botão]';
+        console.log('[CloudAPI] Button message:', message.button);
+        break;
       default:
         content = `[${messageType}]`;
+        console.log('[CloudAPI] Unknown message type:', messageType, JSON.stringify(message));
     }
 
     // Insert message (usando whatsapp_message_id que é a coluna correta)
