@@ -57,8 +57,14 @@ export function TransferEventCard({
     staleTime: 60000,
   });
 
-  const fromName = data.from_user_name || 'Sistema N8N';
-  const toName = data.to_user_name || toUser?.full_name || data.to_department_name || toDept?.name || 'Destino';
+  // Determinar origem: se é auto-distribuição ou tem actor, usar nome apropriado
+  const isAutoDistribution = (data as any).is_auto_distribution === true;
+  const fromName = data.from_user_name || (isAutoDistribution ? 'Distribuição Automática' : 'Sistema');
+  
+  // Determinar destino: preferir nome já no evento, senão buscar
+  const toName = data.to_user_name || toUser?.full_name || data.to_department_name || toDept?.name || 
+    (data.to_user_id || data.to_department_id ? 'Carregando...' : 'Sem destino');
+  
   const isTransferToDepartment = !!data.to_department_id && !data.to_user_id;
   const isReturn = (data as any).is_return === true;
 
