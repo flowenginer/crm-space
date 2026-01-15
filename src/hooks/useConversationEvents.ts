@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 export interface ConversationEvent {
   id: string;
   conversation_id: string;
-  event_type: 'transfer' | 'close' | 'reopen' | 'auto_reassign' | 'share' | 'share_cancelled';
+  event_type: 'transfer' | 'close' | 'reopen' | 'auto_reassign' | 'share' | 'share_cancelled' | 'channel_changed';
   actor_id: string | null;
   data: {
     from_user_id?: string;
@@ -51,6 +51,7 @@ export function useConversationEvents(conversationId: string | null) {
           actor:profiles!conversation_events_actor_id_fkey(full_name)
         `)
         .eq('conversation_id', conversationId)
+        .neq('event_type', 'channel_changed')
         .order('created_at', { ascending: true });
 
       if (error) throw error;
