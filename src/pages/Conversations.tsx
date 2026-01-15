@@ -1445,11 +1445,8 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
-  // Sistema de âncora para preservar scroll - salva a conversa visível e seu offset
-  const scrollAnchorRef = useRef<{
-    conversationId: string;
-    offsetFromTop: number;
-  } | null>(null);
+  // Sistema simples de preservação de scroll - salva apenas o scrollTop
+  const savedScrollTopRef = useRef<number | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   // Set persistente de conversas que NÃO devem ser auto-marcadas como lidas
   // A proteção só é removida por ação EXPLÍCITA do usuário (clicar na conversa ou enviar mensagem)
@@ -2319,63 +2316,23 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     return filtered;
   }, [conversations, channelFilter, sortOrder, statusFiltersSelected, advancedFilters.protocolNumber, pinnedConversations, quickFilter, selectedConversationId, profile?.id, debouncedSearchQuery, allSharedConversationIds]);
 
-  // Função para identificar qual conversa está no topo visível
-  const getVisibleAnchorConversation = useCallback(() => {
-    if (!conversationListRef.current) return null;
-    
-    const container = conversationListRef.current;
-    const containerRect = container.getBoundingClientRect();
-    
-    // Buscar todos os items de conversa
-    const items = container.querySelectorAll('[data-conversation-id]');
-    
-    for (const item of items) {
-      const itemRect = item.getBoundingClientRect();
-      // Encontrar o primeiro item que está pelo menos parcialmente visível
-      if (itemRect.bottom > containerRect.top && itemRect.top < containerRect.bottom) {
-        const conversationId = item.getAttribute('data-conversation-id');
-        if (conversationId) {
-          const offsetFromTop = itemRect.top - containerRect.top;
-          return { conversationId, offsetFromTop };
-        }
-      }
-    }
-    return null;
-  }, []);
-
-  // Restaurar scroll baseado na âncora após lista atualizar
+  // Restaurar scroll após lista atualizar (sistema simples - mantém posição exata)
   useEffect(() => {
-    if (!scrollAnchorRef.current || !conversationListRef.current) return;
+    if (savedScrollTopRef.current === null || !conversationListRef.current) return;
     
-    const { conversationId, offsetFromTop } = scrollAnchorRef.current;
+    const targetScrollTop = savedScrollTopRef.current;
     
     // Agendar restauração após DOM estabilizar
     const restoreTimeout = setTimeout(() => {
-      requestAnimationFrame(() => {
-        if (!conversationListRef.current || !scrollAnchorRef.current) return;
-        
-        // Encontrar o elemento âncora na nova lista
-        const anchorElement = conversationListRef.current.querySelector(
-          `[data-conversation-id="${conversationId}"]`
-        );
-        
-        if (anchorElement) {
-          const container = conversationListRef.current;
-          const containerRect = container.getBoundingClientRect();
-          const anchorRect = anchorElement.getBoundingClientRect();
-          
-          // Calcular quanto precisamos scrollar para manter o item na mesma posição visual
-          const currentOffsetFromTop = anchorRect.top - containerRect.top;
-          const scrollAdjustment = currentOffsetFromTop - offsetFromTop;
-          
-          container.scrollTop += scrollAdjustment;
-          console.log('[Scroll Anchor] Restored. Adjustment:', scrollAdjustment);
-        }
-        
-        // Limpar âncora
-        scrollAnchorRef.current = null;
-      });
-    }, 150); // Delay maior para garantir que o DOM estabilizou
+      if (!conversationListRef.current) return;
+      
+      // Aplicar o scrollTop salvo diretamente
+      conversationListRef.current.scrollTop = targetScrollTop;
+      console.log('[Scroll] Restored scrollTop:', targetScrollTop);
+      
+      // Limpar após restaurar
+      savedScrollTopRef.current = null;
+    }, 100);
     
     return () => clearTimeout(restoreTimeout);
   }, [filteredConversations]);
@@ -2866,11 +2823,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     // Prevent duplicate sends
     if (isSendingRef.current) return;
     
-    // Salvar âncora de scroll antes de enviar (para restaurar após reordenação da lista)
-    const anchor = getVisibleAnchorConversation();
-    if (anchor) {
-      scrollAnchorRef.current = anchor;
-      console.log('[Scroll Anchor] Saved:', anchor);
+    // Salvar posição do scroll antes de enviar (para restaurar após reordenação da lista)
+    if (conversationListRef.current) {
+      savedScrollTopRef.current = conversationListRef.current.scrollTop;
+      console.log('[Scroll] Saved scrollTop:', savedScrollTopRef.current);
     }
     
     // Check if we have either text or files
