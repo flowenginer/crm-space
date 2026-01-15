@@ -364,7 +364,7 @@ async function sendMetaTemplateMessage(
     },
     body: JSON.stringify({
       channelId,
-      to: phone,
+      phone,
       type: 'template',
       template: templatePayload,
     }),
