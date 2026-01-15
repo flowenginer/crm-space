@@ -4968,6 +4968,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                               event={item as ConversationEvent}
                               currentUserId={currentUser?.id}
                             />
+                          ) : (item as ConversationEvent).event_type === 'channel_changed' ? (
+                            null
                           ) : (
                             <TransferEventCard
                               key={`event-${item.id}`} 
