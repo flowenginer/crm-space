@@ -367,37 +367,42 @@ async function processMessages(supabase: any, value: any) {
         .maybeSingle();
 
       if (anyChannelConversation) {
-        // 3. Migrar a conversa para o novo canal (mantém atendente e departamento)
+        // 3. Verificar se realmente houve mudança de canal
         const oldChannelId = anyChannelConversation.channel_id;
+        const channelActuallyChanged = oldChannelId !== config.channel_id;
         
-        console.log(`[CloudAPI] 🔄 Migrating conversation ${anyChannelConversation.id} from channel ${oldChannelId} to ${config.channel_id}`);
-        
-        await supabase
-          .from('conversations')
-          .update({
-            channel_id: config.channel_id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', anyChannelConversation.id);
+        if (channelActuallyChanged) {
+          // Migrar a conversa para o novo canal (mantém atendente e departamento)
+          console.log(`[CloudAPI] 🔄 Migrating conversation ${anyChannelConversation.id} from channel ${oldChannelId} to ${config.channel_id}`);
+          
+          await supabase
+            .from('conversations')
+            .update({
+              channel_id: config.channel_id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', anyChannelConversation.id);
 
-        // 4. Registrar evento de mudança de canal no histórico
-        await supabase.from('conversation_events').insert({
-          conversation_id: anyChannelConversation.id,
-          event_type: 'channel_changed',
-          tenant_id: config.tenant_id,
-          data: {
-            from_channel_id: oldChannelId,
-            to_channel_id: config.channel_id,
-            reason: 'client_message_from_different_channel',
-            preserved: {
-              assigned_to: anyChannelConversation.assigned_to,
-              department_id: anyChannelConversation.department_id,
+          // 4. Registrar evento de mudança de canal no histórico (APENAS se canal mudou)
+          await supabase.from('conversation_events').insert({
+            conversation_id: anyChannelConversation.id,
+            event_type: 'channel_changed',
+            tenant_id: config.tenant_id,
+            data: {
+              from_channel_id: oldChannelId,
+              to_channel_id: config.channel_id,
+              reason: 'client_message_from_different_channel',
+              preserved: {
+                assigned_to: anyChannelConversation.assigned_to,
+                department_id: anyChannelConversation.department_id,
+              }
             }
-          }
-        });
+          });
+
+          console.log(`[CloudAPI] ✅ Conversation migrated successfully - Agent and department preserved`);
+        }
 
         conversationId = anyChannelConversation.id;
-        console.log(`[CloudAPI] ✅ Conversation migrated successfully - Agent and department preserved`);
       } else {
         // 5. Nenhuma conversa encontrada - criar nova COM departamento do canal e dados CTWA
         console.log(`[CloudAPI] Creating new conversation with department_id: ${channelDepartmentId}, isCTWA: ${isCTWA}`);
