@@ -152,16 +152,46 @@ serve(async (req) => {
       case 'audio':
         messagePayload.type = 'audio';
         if (mediaUrl?.startsWith('http')) {
-          // Fetch the audio file to upload to Meta's servers
+          // Fetch the audio file to upload to Meta's servers with timeout
           console.log('[CloudAPI] Fetching audio from:', mediaUrl);
           
-          const audioResponse = await fetch(mediaUrl);
-          if (!audioResponse.ok) {
-            throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
+          const fetchController = new AbortController();
+          const fetchTimeoutId = setTimeout(() => fetchController.abort(), 15000); // 15s timeout
+          
+          let audioResponse;
+          try {
+            audioResponse = await fetch(mediaUrl, { signal: fetchController.signal });
+            clearTimeout(fetchTimeoutId);
+          } catch (fetchErr: any) {
+            clearTimeout(fetchTimeoutId);
+            if (fetchErr.name === 'AbortError') {
+              console.error('[CloudAPI] Timeout fetching audio from storage');
+              throw new Error('Timeout ao buscar áudio do storage (15s)');
+            }
+            throw fetchErr;
           }
           
-          const contentType = audioResponse.headers.get('content-type') || 'audio/mpeg';
-          console.log('[CloudAPI] Audio content-type:', contentType);
+          if (!audioResponse.ok) {
+            throw new Error(`Failed to fetch audio: HTTP ${audioResponse.status}`);
+          }
+          
+          let contentType = audioResponse.headers.get('content-type') || 'audio/mpeg';
+          console.log('[CloudAPI] Audio content-type from storage:', contentType);
+          
+          // Force correct content-type for octet-stream based on URL extension
+          if (contentType.includes('octet-stream')) {
+            const urlLower = mediaUrl.toLowerCase();
+            if (urlLower.endsWith('.mp3')) {
+              contentType = 'audio/mpeg';
+              console.log('[CloudAPI] Forced content-type to audio/mpeg based on .mp3 extension');
+            } else if (urlLower.endsWith('.ogg')) {
+              contentType = 'audio/ogg';
+              console.log('[CloudAPI] Forced content-type to audio/ogg based on .ogg extension');
+            } else if (urlLower.endsWith('.m4a')) {
+              contentType = 'audio/mp4';
+              console.log('[CloudAPI] Forced content-type to audio/mp4 based on .m4a extension');
+            }
+          }
           
           // Validate audio format
           const isSupported = SUPPORTED_AUDIO_TYPES.some(t => contentType.includes(t.split('/')[1]));
@@ -172,6 +202,10 @@ serve(async (req) => {
           
           const audioBuffer = await audioResponse.arrayBuffer();
           console.log('[CloudAPI] Audio size:', audioBuffer.byteLength, 'bytes');
+          
+          if (audioBuffer.byteLength === 0) {
+            throw new Error('Audio file is empty (0 bytes)');
+          }
           
           // Determine file extension and mime type
           let finalMimeType = contentType;
@@ -189,38 +223,52 @@ serve(async (req) => {
           } else if (contentType.includes('aac')) {
             finalMimeType = 'audio/aac';
             extension = 'aac';
-          } else if (contentType.includes('octet-stream') && mediaUrl.includes('.mp3')) {
-            // Fallback for octet-stream with .mp3 extension
-            finalMimeType = 'audio/mpeg';
-            extension = 'mp3';
           }
           
-          // Upload to Meta's Media API
+          console.log('[CloudAPI] Final mime type:', finalMimeType, 'extension:', extension);
+          
+          // Upload to Meta's Media API with retry
           const formData = new FormData();
           formData.append('messaging_product', 'whatsapp');
           formData.append('type', finalMimeType);
           formData.append('file', new Blob([audioBuffer], { type: finalMimeType }), `audio.${extension}`);
           
-          console.log('[CloudAPI] Uploading audio to Meta Media API...');
-          const mediaUploadResponse = await fetch(
-            `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${config.phone_number_id}/media`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${config.access_token}`,
-              },
-              body: formData,
+          let mediaUploadResult: any = null;
+          const maxUploadAttempts = 2;
+          
+          for (let attempt = 1; attempt <= maxUploadAttempts; attempt++) {
+            console.log(`[CloudAPI] Upload attempt ${attempt}/${maxUploadAttempts} to Meta Media API...`);
+            
+            const mediaUploadResponse = await fetch(
+              `${GRAPH_API_URL}/${GRAPH_API_VERSION}/${config.phone_number_id}/media`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${config.access_token}`,
+                },
+                body: formData,
+              }
+            );
+            
+            mediaUploadResult = await mediaUploadResponse.json();
+            
+            if (mediaUploadResponse.ok && mediaUploadResult.id) {
+              console.log('[CloudAPI] Audio uploaded to Meta, media_id:', mediaUploadResult.id);
+              break;
             }
-          );
-          
-          const mediaUploadResult = await mediaUploadResponse.json();
-          
-          if (!mediaUploadResponse.ok) {
-            console.error('[CloudAPI] Media upload failed:', mediaUploadResult);
-            throw new Error(mediaUploadResult.error?.message || 'Failed to upload audio to Meta');
+            
+            console.warn(`[CloudAPI] Upload attempt ${attempt} failed:`, mediaUploadResult);
+            
+            if (attempt < maxUploadAttempts) {
+              console.log('[CloudAPI] Retrying upload in 1 second...');
+              await new Promise(r => setTimeout(r, 1000));
+            }
           }
           
-          console.log('[CloudAPI] Audio uploaded to Meta, media_id:', mediaUploadResult.id);
+          if (!mediaUploadResult?.id) {
+            console.error('[CloudAPI] Media upload failed after all retries:', mediaUploadResult);
+            throw new Error(mediaUploadResult?.error?.message || 'Failed to upload audio to Meta after retries');
+          }
           
           // Use the uploaded media ID - voice: true sends as native PTT (Push To Talk)
           messagePayload.audio = { id: mediaUploadResult.id, voice: true };

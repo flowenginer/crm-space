@@ -3473,8 +3473,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
       if (selectedConversationId) {
         const result = await uploadAttachment(audioFile, selectedConversationId);
         
-        // INSTANT: Save to database first
-        sendMessage.mutate({
+        // Save to database first and capture the message ID
+        const savedMessage = await sendMessage.mutateAsync({
           conversation_id: selectedConversationId,
           content: '',
           is_from_me: true,
@@ -3483,12 +3483,16 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           media_mime_type: mimeType,
         });
         
+        const audioMessageId = savedMessage?.id;
+        console.log('[Audio Send] Message saved with ID:', audioMessageId);
+        
         // BACKGROUND: Send via WhatsApp (don't await)
         console.log('[Audio Send] Attempting to send audio via WhatsApp:', {
           channelId,
           contactPhone,
           mediaUrl: result.url,
-          conversationId: selectedConversationId
+          conversationId: selectedConversationId,
+          messageId: audioMessageId
         });
 
         if (channelId && contactPhone) {
@@ -3496,26 +3500,42 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             .then(async (response) => {
               console.log('[Audio Send] WhatsApp response:', response);
               if (response.success && response.messageId) {
-                // Update the message with the WhatsApp ID
+                // Update the message with the WhatsApp ID using the saved message ID
                 const { error: updateError } = await supabase
                   .from('messages')
                   .update({ whatsapp_message_id: response.messageId, status: 'sent' })
-                  .eq('conversation_id', selectedConversationId)
-                  .eq('media_url', result.url)
-                  .is('whatsapp_message_id', null);
+                  .eq('id', audioMessageId);
                 
                 if (updateError) {
                   console.error('[Audio Send] Failed to update message with WhatsApp ID:', updateError);
                 } else {
                   console.log('[Audio Send] Message updated with WhatsApp ID:', response.messageId);
+                  // Invalidate queries to refresh UI
+                  queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
                 }
               } else if (!response.success) {
                 console.error('[Audio Send] WhatsApp send failed:', response.error);
+                // Mark message as failed
+                if (audioMessageId) {
+                  await supabase
+                    .from('messages')
+                    .update({ status: 'failed' })
+                    .eq('id', audioMessageId);
+                  queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
+                }
                 toast.error('Áudio salvo mas não enviado ao WhatsApp: ' + (response.error || 'Erro desconhecido'));
               }
             })
-            .catch((error) => {
+            .catch(async (error) => {
               console.error('[Audio Send] Failed to send audio via WhatsApp:', error);
+              // Mark message as failed
+              if (audioMessageId) {
+                await supabase
+                  .from('messages')
+                  .update({ status: 'failed' })
+                  .eq('id', audioMessageId);
+                queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
+              }
               toast.error('Erro ao enviar áudio para o WhatsApp');
             });
         } else {
