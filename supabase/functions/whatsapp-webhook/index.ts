@@ -818,6 +818,23 @@ serve(async (req) => {
     // === DEBUG LOGGING ===
     console.log(`[Webhook] Received from ${provider}:`, JSON.stringify(payload).substring(0, 800));
     
+    // =====================================================
+    // LOG DE EVENTOS DE ACK/STATUS PARA DIAGNÓSTICO
+    // =====================================================
+    const payloadStr = JSON.stringify(payload);
+    const hasAckSignal = 
+      payloadStr.includes('"ack"') || 
+      payloadStr.includes('"ACK"') ||
+      payloadStr.includes('messages.update') ||
+      payloadStr.includes('message_ack') ||
+      payloadStr.includes('messages_ack');
+    
+    if (hasAckSignal) {
+      console.log(`[Webhook] 🔔 ACK/STATUS EVENT DETECTED from ${provider}!`);
+      console.log(`[Webhook] 🔔 Event: ${payload.event || payload.EventType || 'unknown'}`);
+      console.log(`[Webhook] 🔔 ACK value: ${payload.ack ?? payload.message?.ack ?? payload.body?.message?.ack ?? payload.data?.[0]?.ack ?? payload.data?.[0]?.update?.status ?? 'not found'}`);
+    }
+    
     // Audio detection debug
     const hasAudio = 
       payload.audio ||
@@ -1634,10 +1651,21 @@ serve(async (req) => {
       // PROCESSAR ACK INLINE NA MENSAGEM fromMe (UAZAPI)
       // Quando a UAZAPI envia mensagem fromMe, pode já incluir o ack (delivered/read)
       // =====================================================
-      const messageAck = payload.message?.ack ?? payload.body?.message?.ack ?? payload.ack;
-      if (messageAck !== undefined && messageAck > 0 && normalizedMessage.originalId) {
+      // Buscar ACK em múltiplos locais possíveis do payload
+      const messageAck = 
+        payload.message?.ack ?? 
+        payload.body?.message?.ack ?? 
+        payload.ack ??
+        payload.body?.ack ??
+        payload.data?.ack ??
+        payload.data?.[0]?.ack ??
+        payload.data?.[0]?.update?.ack;
+      
+      if (messageAck !== undefined && normalizedMessage.originalId) {
+        console.log(`[Webhook] 📊 Found inline ACK: ${messageAck} for message ${normalizedMessage.originalId}`);
         const ackStatus = mapProviderStatus(String(messageAck));
-        if (ackStatus && ackStatus !== 'sent') {
+        // Atualizar se tiver status válido (incluindo sent para ack=1)
+        if (ackStatus && ackStatus !== 'pending') {
           await supabase
             .from("messages")
             .update({ status: ackStatus })
@@ -3895,8 +3923,16 @@ function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusU
 function mapProviderStatus(providerStatus: string): string | null {
   const status = String(providerStatus).toUpperCase();
   
-  if (status === "DELIVERY_ACK" || status === "DELIVERED" || status === "SERVER_ACK") {
+  // =====================================================
+  // MAPEAMENTO DE STATUS DO WHATSAPP
+  // =====================================================
+  // String statuses
+  if (status === "DELIVERY_ACK" || status === "DELIVERED") {
     return "delivered";
+  }
+  if (status === "SERVER_ACK") {
+    // SERVER_ACK = mensagem chegou no servidor WhatsApp, mas não foi entregue ao dispositivo
+    return "sent";
   }
   if (status === "READ" || status === "PLAYED" || status === "VIEWED") {
     return "read";
@@ -3908,18 +3944,30 @@ function mapProviderStatus(providerStatus: string): string | null {
     return "failed";
   }
   
+  // =====================================================
+  // MAPEAMENTO NUMÉRICO (padrão WhatsApp/Baileys)
+  // =====================================================
+  // -1 = ERROR (falha no envio)
+  // 0 = PENDING (pendente)
+  // 1 = SERVER_ACK (enviado ao servidor WhatsApp)
+  // 2 = DELIVERY_ACK (entregue ao dispositivo do destinatário) ✓✓
+  // 3 = READ (lido pelo destinatário) ✓✓ azul
+  // 4 = PLAYED (áudio/vídeo reproduzido)
+  // 5 = PLAYED (legacy)
   const numStatus = parseInt(providerStatus);
   if (!isNaN(numStatus)) {
     switch (numStatus) {
-      case 0: return "failed";
-      case 1: return "sent";
-      case 2: return "sent";
-      case 3: return "delivered";
-      case 4: return "read";
-      case 5: return "read";
+      case -1: return "failed";    // ERROR
+      case 0: return "pending";    // PENDING
+      case 1: return "sent";       // SERVER_ACK - ✓ (um tracinho)
+      case 2: return "delivered";  // DELIVERY_ACK - ✓✓ (dois tracinhos)
+      case 3: return "read";       // READ - ✓✓ azul
+      case 4: return "read";       // PLAYED (áudios)
+      case 5: return "read";       // PLAYED (legacy)
     }
   }
   
+  console.log(`[Webhook] ⚠️ Unknown status value: ${providerStatus}`);
   return null;
 }
 
