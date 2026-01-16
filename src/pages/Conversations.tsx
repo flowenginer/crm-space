@@ -1049,32 +1049,7 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
               'flex items-center justify-end gap-1 mt-1',
               isMe ? 'text-purple-200' : 'text-muted-foreground'
             )}>
-              {/* Media processing indicator */}
-              {(() => {
-                const isMediaMessage = ['image', 'video', 'audio', 'document'].includes(message.message_type || '');
-                const minutesSinceCreation = (Date.now() - new Date(message.created_at).getTime()) / (1000 * 60);
-                const isPossiblyProcessing = 
-                  isMediaMessage && 
-                  isMe && 
-                  ['sent', 'delivered'].includes(message.status || '') &&
-                  minutesSinceCreation < 10;
-                
-                if (isPossiblyProcessing) {
-                  return (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="inline-flex items-center gap-0.5 mr-1">
-                          <Loader2 size={10} className="animate-spin text-amber-400" />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">Mídia pode estar sendo baixada pelo destinatário</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  );
-                }
-                return null;
-              })()}
+              {/* Status já indicado pelos ícones de check (✓/✓✓) - loading removido pois causava confusão */}
               <span className="text-xs">
                 {new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
               </span>
