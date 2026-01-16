@@ -2507,8 +2507,13 @@ serve(async (req) => {
     // OUTRAS AÇÕES - Requerem providerCode
     // =====================================================
     if (!providerCode) {
+      console.error('[WhatsApp Instance] providerCode não fornecido. Body recebido:', JSON.stringify(body));
       return new Response(
-        JSON.stringify({ success: false, error: 'providerCode é obrigatório' }),
+        JSON.stringify({ 
+          success: false, 
+          error: 'providerCode é obrigatório',
+          received: { action, instanceId, instanceToken: !!instanceToken }
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }

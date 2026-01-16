@@ -6,7 +6,7 @@ import { createWhatsAppInstance, getWhatsAppQRCode, syncChannelStatus, reconfigu
 interface CreateChannelData {
   name: string;
   phone: string;
-  providerCode: 'zapi' | 'uazapi' | 'evolution';
+  providerCode: 'zapi' | 'uazapi' | 'evolution' | 'cloudapi';
   departmentId?: string;
 }
 
@@ -37,6 +37,12 @@ export function useCreateChannelWithInstance() {
         throw new Error(`Configure as credenciais do ${provider.name} em Configurações > Integrações`);
       }
 
+      // Validar se é um provedor que suporta criação automática de instância
+      const validProviderCodes = ['zapi', 'uazapi', 'evolution'];
+      if (!validProviderCodes.includes(data.providerCode)) {
+        throw new Error(`Provedor ${provider.name} não suporta criação automática de instância. Use o método manual.`);
+      }
+
       // 2. Gerar nome único para instância
       const instanceName = data.name
         .toLowerCase()
@@ -50,7 +56,7 @@ export function useCreateChannelWithInstance() {
       toast.loading('Criando instância no provedor...');
       
       const result = await createWhatsAppInstance(
-        data.providerCode,
+        data.providerCode as 'zapi' | 'uazapi' | 'evolution',
         instanceName,
         supabaseUrl
       );
@@ -127,12 +133,12 @@ export function useRefreshQRCode() {
 
   return useMutation({
     mutationFn: async (channelId: string) => {
-      // Buscar canal
+      // Buscar canal com admin_token do provedor
       const { data: channel, error } = await supabase
         .from('whatsapp_channels')
         .select(`
           *,
-          provider:whatsapp_providers(id, name, code, base_url)
+          provider:whatsapp_providers(id, name, code, base_url, admin_token)
         `)
         .eq('id', channelId)
         .single();
@@ -146,13 +152,24 @@ export function useRefreshQRCode() {
         name: string;
         code: string;
         base_url: string;
-      };
+        admin_token?: string;
+      } | null;
+
+      // Validar se o provider existe e é suportado
+      if (!providerData || !providerData.code) {
+        throw new Error('Canal sem provedor configurado');
+      }
+
+      const validCodes = ['zapi', 'uazapi', 'evolution'];
+      if (!validCodes.includes(providerData.code)) {
+        throw new Error('Provedor não suporta reconexão via QR Code');
+      }
 
       // Buscar novo QR Code
       const result = await getWhatsAppQRCode(
         providerData.code as 'zapi' | 'uazapi' | 'evolution',
         channel.instance_id || '',
-        channel.instance_token || ''
+        channel.instance_token || providerData.admin_token || ''
       );
 
       if (result.connected) {

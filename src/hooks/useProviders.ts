@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 export interface WhatsAppProvider {
   id: string;
   name: string;
-  code: 'zapi' | 'uazapi' | 'evolution';
+  code: 'zapi' | 'uazapi' | 'evolution' | 'cloudapi';
   base_url: string;
   api_key: string | null;
   api_secret: string | null;

@@ -126,7 +126,7 @@ export default function WhatsAppChannels() {
   // Form state
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelPhone, setNewChannelPhone] = useState('');
-  const [selectedProviderCode, setSelectedProviderCode] = useState<'zapi' | 'uazapi' | 'evolution' | ''>('');
+  const [selectedProviderCode, setSelectedProviderCode] = useState<'zapi' | 'uazapi' | 'evolution' | 'cloudapi' | ''>('');
   const [selectedProviderId, setSelectedProviderId] = useState('');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
   const [instanceId, setInstanceId] = useState('');
@@ -591,9 +591,29 @@ export default function WhatsAppChannels() {
   };
 
   const handleConnect = async (channel: WhatsAppChannel) => {
-    const provider = providers.find(p => p.id === channel.provider_id);
-    if (!provider || !channel.instance_id) {
-      toast.error('Canal sem provedor ou instância configurada');
+    // Buscar provider - pode estar no objeto channel.provider ou precisamos buscar via providers
+    const provider = (channel.provider as any) || providers.find(p => p.id === channel.provider_id);
+    
+    // Validação robusta antes de chamar a API
+    if (!provider || !provider.code) {
+      toast.error('Canal sem provedor configurado. Edite o canal para associar um provedor.');
+      return;
+    }
+    
+    if (!channel.instance_id) {
+      toast.error('Canal sem instância configurada');
+      return;
+    }
+    
+    // Validar se é um provedor suportado para reconexão via QR
+    const validCodes = ['zapi', 'uazapi', 'evolution'];
+    if (!validCodes.includes(provider.code)) {
+      // CloudAPI usa fluxo diferente (não usa QR Code)
+      if (provider.code === 'cloudapi') {
+        toast.info('Canais Cloud API não usam QR Code para reconexão');
+        return;
+      }
+      toast.error('Provedor não suportado para reconexão via QR Code');
       return;
     }
 
