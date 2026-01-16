@@ -958,9 +958,38 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
         if (existingConv) {
           conversationId = existingConv.id;
         } else {
+          // Fetch original conversation from any channel to inherit attributes
+          const { data: originalConv } = await supabase
+            .from('conversations')
+            .select('assigned_to, department_id')
+            .eq('contact_id', contact.id)
+            .not('channel_id', 'is', null)
+            .order('last_message_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          // Also fetch contact data as fallback for attributes
+          const { data: contactData } = await supabase
+            .from('contacts')
+            .select('assigned_to, department_id')
+            .eq('id', contact.id)
+            .single();
+
+          // Determine inherited attributes (prioritize original conversation, then contact)
+          const inheritedAssignedTo = originalConv?.assigned_to || contactData?.assigned_to || null;
+          const inheritedDepartmentId = originalConv?.department_id || contactData?.department_id || null;
+
+          console.log(`[BulkDispatch] Creating new conversation for contact ${contact.id} - inheriting assigned_to: ${inheritedAssignedTo}, department_id: ${inheritedDepartmentId}`);
+
           const { data: newConv } = await supabase
             .from('conversations')
-            .insert({ contact_id: contact.id, channel_id: effectiveChannelId, status: 'open' })
+            .insert({ 
+              contact_id: contact.id, 
+              channel_id: effectiveChannelId, 
+              status: 'open',
+              assigned_to: inheritedAssignedTo,
+              department_id: inheritedDepartmentId
+            })
             .select()
             .single();
           conversationId = newConv?.id;
