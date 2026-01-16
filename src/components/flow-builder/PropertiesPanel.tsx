@@ -13,6 +13,7 @@ import { useLeadStatuses } from '@/hooks/useLeadStatuses';
 import { FlowNodeData } from '@/types/flow';
 import { WebhookBodyFields, BodyField, bodyFieldsToObject, objectToBodyFields } from './WebhookBodyFields';
 import { MetaTemplateSelector } from '@/components/meta-templates';
+import { FlowAudioUploader } from './FlowAudioUploader';
 
 interface PropertiesPanelProps {
   node: FlowNodeData | null;
@@ -258,14 +259,12 @@ function renderNodeConfig(
       return (
         <>
           <div className="space-y-2">
-            <Label>URL do Áudio</Label>
-            <Input
-              value={(config?.audio_url as string) || ''}
-              onChange={(e) => updateConfig('audio_url', e.target.value)}
-              placeholder="https://exemplo.com/audio.mp3"
+            <Label>Áudio</Label>
+            <FlowAudioUploader
+              value={(config?.audio_url as string) || null}
+              onChange={(url) => updateConfig('audio_url', url)}
             />
             <p className="text-xs text-muted-foreground">
-              Cole a URL direta para um arquivo de áudio (MP3, OGG, WAV).
               O arquivo será enviado como mensagem de voz no WhatsApp.
             </p>
           </div>
