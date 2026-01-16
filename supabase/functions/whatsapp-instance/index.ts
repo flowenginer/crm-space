@@ -259,9 +259,32 @@ async function sendUAZAPIMessage(
   const data = await safeJsonParse(response, 'UAZAPI V2 Send');
   
   // UAZAPI V2 retorna 'messageid' (minúsculo) e status: "Pending" (string)
+  // Capturar ACK da resposta se disponível (pode vir como ack ou status numérico)
+  const ackFromResponse = data.ack ?? data.status ?? data.message?.ack;
+  let messageStatus: string | undefined;
+  
+  // Mapear ACK numérico para status
+  if (ackFromResponse !== undefined) {
+    const numAck = typeof ackFromResponse === 'number' ? ackFromResponse : parseInt(ackFromResponse);
+    if (!isNaN(numAck)) {
+      switch (numAck) {
+        case 1: messageStatus = 'sent'; break;
+        case 2: messageStatus = 'delivered'; break;
+        case 3: messageStatus = 'read'; break;
+      }
+    } else if (typeof ackFromResponse === 'string') {
+      const strStatus = ackFromResponse.toUpperCase();
+      if (strStatus === 'DELIVERY_ACK' || strStatus === 'DELIVERED') messageStatus = 'delivered';
+      else if (strStatus === 'READ' || strStatus === 'PLAYED') messageStatus = 'read';
+      else if (strStatus === 'SERVER_ACK' || strStatus === 'SENT') messageStatus = 'sent';
+    }
+    console.log(`[UAZAPI V2 Send] ACK from response: ${ackFromResponse} -> status: ${messageStatus}`);
+  }
+  
   return {
     success: !!data.messageid || !!data.messageId || !!data.id || !!data.key?.id || data.status === 'Pending',
     messageId: data.messageid || data.messageId || data.key?.id || data.id,
+    status: messageStatus,  // Retornar status capturado da resposta
     data,
   };
 }
@@ -1503,12 +1526,24 @@ async function setUAZAPIWebhook(config: ProviderConfig, instanceName: string, we
   const webhookPayload = { 
     url: webhookUrl,
     enabled: true,
-    // UAZAPI V2: eventos expandidos para ACK e conexão
+    // UAZAPI V2: eventos expandidos para ACK, status updates e conexão
+    // IMPORTANTE: messages.update é crítico para receber notificações de delivered/read
     events: [
-      'messages', 'messages_ack', 'message_ack', 'ack', 
-      'status', 'connection', 'connection.update', 'connection_update',
-      'instance.status', 'status.instance', 'status.update',
-      'presence', 'calls'
+      'messages',            // Mensagens recebidas/enviadas
+      'messages.upsert',     // Mensagens novas (formato Baileys)
+      'messages.update',     // Atualizações de status (ACK delivered/read) - CRÍTICO!
+      'messages_ack',        // ACK direto (formato antigo)
+      'message_ack',         // ACK alternativo
+      'ack',                 // ACK simplificado
+      'status',              // Status genérico
+      'connection',          // Status de conexão
+      'connection.update',   // Atualização de conexão
+      'connection_update',   // Formato alternativo
+      'instance.status',     // Status da instância
+      'status.instance',     // Formato alternativo
+      'status.update',       // Atualização de status
+      'presence',            // Status online/offline
+      'calls'                // Chamadas
     ]
   };
   

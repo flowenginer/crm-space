@@ -835,6 +835,31 @@ serve(async (req) => {
       console.log(`[Webhook] 🔔 ACK value: ${payload.ack ?? payload.message?.ack ?? payload.body?.message?.ack ?? payload.data?.[0]?.ack ?? payload.data?.[0]?.update?.status ?? 'not found'}`);
     }
     
+    // =====================================================
+    // LOG DETALHADO PARA MENSAGENS fromMe (UAZAPI)
+    // Para diagnosticar onde está o ACK nas mensagens enviadas
+    // =====================================================
+    if (provider === 'uazapi') {
+      const isFromMe = 
+        payload.message?.fromMe ||
+        payload.body?.message?.fromMe ||
+        payload.fromMe ||
+        payload.data?.key?.fromMe ||
+        payload.data?.fromMe ||
+        payload.key?.fromMe;
+      
+      if (isFromMe) {
+        console.log(`[Webhook UAZAPI] 🔍 fromMe=true - Looking for ACK in payload...`);
+        console.log(`[Webhook UAZAPI] 🔍 payload.ack: ${payload.ack}`);
+        console.log(`[Webhook UAZAPI] 🔍 payload.status: ${payload.status}`);
+        console.log(`[Webhook UAZAPI] 🔍 payload.message?.ack: ${payload.message?.ack}`);
+        console.log(`[Webhook UAZAPI] 🔍 payload.body?.ack: ${payload.body?.ack}`);
+        console.log(`[Webhook UAZAPI] 🔍 payload.body?.message?.ack: ${payload.body?.message?.ack}`);
+        console.log(`[Webhook UAZAPI] 🔍 payload.data?.ack: ${payload.data?.ack}`);
+        console.log(`[Webhook UAZAPI] 🔍 Full fromMe payload:`, JSON.stringify(payload).substring(0, 1500));
+      }
+    }
+    
     // Audio detection debug
     const hasAudio = 
       payload.audio ||

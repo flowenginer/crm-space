@@ -290,11 +290,22 @@ export function useSendMessage() {
   });
 }
 
-// Update message with WhatsApp message ID (for status tracking)
-export async function updateMessageWhatsAppId(messageId: string, whatsappMessageId: string) {
+// Update message with WhatsApp message ID and status (for status tracking)
+export async function updateMessageWhatsAppId(
+  messageId: string, 
+  whatsappMessageId: string, 
+  status?: string
+) {
+  const updateData: { whatsapp_message_id: string; status?: string } = {
+    whatsapp_message_id: whatsappMessageId
+  };
+  
+  // Se tiver status, usar; senão default 'sent'
+  updateData.status = status || 'sent';
+  
   const { error } = await supabase
     .from('messages')
-    .update({ whatsapp_message_id: whatsappMessageId })
+    .update(updateData)
     .eq('id', messageId);
   
   if (error) console.error('Error updating whatsapp_message_id:', error);

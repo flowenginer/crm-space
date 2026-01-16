@@ -3475,16 +3475,21 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             .then(async (response) => {
               console.log('[Audio Send] WhatsApp response:', response);
               if (response.success && response.messageId) {
+                // Use status from response if available (UAZAPI can return delivered/read)
+                // Otherwise default to 'sent'
+                const messageStatus = (response as any).status || 'sent';
+                console.log('[Audio Send] Using status:', messageStatus);
+                
                 // Update the message with the WhatsApp ID using the saved message ID
                 const { error: updateError } = await supabase
                   .from('messages')
-                  .update({ whatsapp_message_id: response.messageId, status: 'sent' })
+                  .update({ whatsapp_message_id: response.messageId, status: messageStatus })
                   .eq('id', audioMessageId);
                 
                 if (updateError) {
                   console.error('[Audio Send] Failed to update message with WhatsApp ID:', updateError);
                 } else {
-                  console.log('[Audio Send] Message updated with WhatsApp ID:', response.messageId);
+                  console.log('[Audio Send] Message updated with WhatsApp ID:', response.messageId, 'Status:', messageStatus);
                   // Invalidate queries to refresh UI
                   queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] });
                 }
