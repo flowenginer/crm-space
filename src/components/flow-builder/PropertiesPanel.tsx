@@ -254,6 +254,98 @@ function renderNodeConfig(
         </>
       );
       
+    case 'send_audio':
+      return (
+        <>
+          <div className="space-y-2">
+            <Label>URL do Áudio</Label>
+            <Input
+              value={(config?.audio_url as string) || ''}
+              onChange={(e) => updateConfig('audio_url', e.target.value)}
+              placeholder="https://exemplo.com/audio.mp3"
+            />
+            <p className="text-xs text-muted-foreground">
+              Cole a URL direta para um arquivo de áudio (MP3, OGG, WAV).
+              O arquivo será enviado como mensagem de voz no WhatsApp.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Delay de digitação (ms)</Label>
+            <Input
+              type="number"
+              value={(config?.typing_delay as number) || 1000}
+              onChange={(e) => updateConfig('typing_delay', parseInt(e.target.value))}
+            />
+          </div>
+        </>
+      );
+      
+    case 'send_video':
+      return (
+        <>
+          <div className="space-y-2">
+            <Label>URL do Vídeo</Label>
+            <Input
+              value={(config?.video_url as string) || ''}
+              onChange={(e) => updateConfig('video_url', e.target.value)}
+              placeholder="https://exemplo.com/video.mp4"
+            />
+            <p className="text-xs text-muted-foreground">
+              Cole a URL direta para um arquivo de vídeo (MP4).
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Legenda (opcional)</Label>
+            <Textarea
+              value={(config?.caption as string) || ''}
+              onChange={(e) => updateConfig('caption', e.target.value)}
+              rows={2}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Delay de digitação (ms)</Label>
+            <Input
+              type="number"
+              value={(config?.typing_delay as number) || 1000}
+              onChange={(e) => updateConfig('typing_delay', parseInt(e.target.value))}
+            />
+          </div>
+        </>
+      );
+      
+    case 'send_document':
+      return (
+        <>
+          <div className="space-y-2">
+            <Label>URL do Documento</Label>
+            <Input
+              value={(config?.document_url as string) || ''}
+              onChange={(e) => updateConfig('document_url', e.target.value)}
+              placeholder="https://exemplo.com/documento.pdf"
+            />
+            <p className="text-xs text-muted-foreground">
+              Cole a URL direta para o arquivo (PDF, DOC, XLS, etc).
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Nome do arquivo</Label>
+            <Input
+              value={(config?.filename as string) || ''}
+              onChange={(e) => updateConfig('filename', e.target.value)}
+              placeholder="documento.pdf"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Legenda (opcional)</Label>
+            <Textarea
+              value={(config?.caption as string) || ''}
+              onChange={(e) => updateConfig('caption', e.target.value)}
+              rows={2}
+            />
+          </div>
+        </>
+      );
+      
     case 'tag_added':
       return (
         <div className="space-y-2">
