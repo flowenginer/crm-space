@@ -3885,13 +3885,39 @@ function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusU
     
     case "uazapi":
       // =====================================================
-      // UAZAPI V2: O ack pode estar em body.message.ack
+      // UAZAPI / CloudZAPI: Múltiplos formatos de ACK
       // ack: 0=PENDING, 1=SENT, 2=DELIVERED, 3=READ, 4=PLAYED
       // =====================================================
       const uazapiBody = payload.body || payload;
       const uazapiMessage = uazapiBody.message || payload.message;
+      const uazapiEvent = payload.event || payload.body?.event || "";
       
-      // Formato UAZAPI V2: ack diretamente na mensagem
+      console.log(`[Webhook UAZAPI] extractStatusUpdates - event: ${uazapiEvent}`);
+      
+      // =====================================================
+      // FORMATO CloudZAPI: evento "messagesUpdate" com booleanos
+      // =====================================================
+      if (uazapiEvent === "messagesUpdate" || uazapiEvent === "messages.update" || uazapiEvent === "message.update") {
+        const updateData = payload.data || payload.body?.data;
+        console.log(`[Webhook UAZAPI] 📊 messagesUpdate event detected:`, JSON.stringify(updateData));
+        
+        if (updateData) {
+          // Pode vir como array ou objeto único
+          const updates = Array.isArray(updateData) ? updateData : [updateData];
+          return updates.map((item: any) => {
+            const messageId = item.header?.messageId || item.messageId || item.key?.id || item.id || "";
+            // Status pode ser textual (READ, DELIVERY_ACK) ou numérico
+            const rawStatus = item.status || item.update?.status || item.ack;
+            const status = mapCloudZAPIStatusToNumeric(rawStatus);
+            console.log(`[Webhook UAZAPI] 📊 messagesUpdate - messageId: ${messageId}, rawStatus: ${rawStatus}, mappedStatus: ${status}`);
+            return { messageId, status };
+          }).filter((u: any) => u.messageId && u.status);
+        }
+      }
+      
+      // =====================================================
+      // FORMATO UAZAPI V2: ack diretamente na mensagem
+      // =====================================================
       if (uazapiMessage && uazapiMessage.ack !== undefined) {
         const messageId = uazapiMessage.messageid || uazapiMessage.key?.id || uazapiMessage.id || "";
         const ackValue = String(uazapiMessage.ack);
@@ -3902,7 +3928,9 @@ function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusU
         }];
       }
       
+      // =====================================================
       // Formato antigo (fallback)
+      // =====================================================
       const uazapiData = payload.data || payload;
       if (Array.isArray(uazapiData)) {
         return uazapiData.map((item: any) => ({
@@ -3942,6 +3970,33 @@ function extractStatusUpdates(provider: WhatsAppProvider, payload: any): StatusU
     
     default:
       return [];
+  }
+}
+
+// =====================================================
+// Mapear status textual CloudZAPI para numérico
+// =====================================================
+function mapCloudZAPIStatusToNumeric(status: any): string {
+  if (status === undefined || status === null) return "";
+  
+  const strStatus = String(status).toUpperCase();
+  
+  switch (strStatus) {
+    case 'PENDING': return '0';
+    case 'SERVER_ACK':
+    case 'SENT': return '1';
+    case 'DELIVERY_ACK':
+    case 'DELIVERED': return '2';
+    case 'READ': return '3';
+    case 'PLAYED': return '4';
+    case 'ERROR':
+    case 'FAILED': return '-1';
+    default:
+      // Se já for numérico, retorna como está
+      if (!isNaN(parseInt(strStatus))) {
+        return strStatus;
+      }
+      return strStatus;
   }
 }
 
