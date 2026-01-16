@@ -81,6 +81,17 @@ export function useRealtimeConversations() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Garantir que Realtime tem o token atualizado antes de criar canais
+    const setupRealtimeAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        console.log('📡 [Realtime] Syncing auth token before channel setup');
+        supabase.realtime.setAuth(session.access_token);
+      }
+    };
+    
+    setupRealtimeAuth();
+
     // OTIMIZAÇÃO: Invalidação imediata apenas para queries ativas
     const invalidateImmediately = () => {
       queryClient.invalidateQueries({ 
@@ -93,7 +104,7 @@ export function useRealtimeConversations() {
       });
     };
 
-// OTIMIZAÇÃO: Debounce de INSERT reduzido para 300ms (novas conversas devem aparecer rápido)
+    // OTIMIZAÇÃO: Debounce de INSERT reduzido para 300ms (novas conversas devem aparecer rápido)
     const invalidateConversationsInsert = debounce(() => {
       console.log('🔄 [Realtime] Invalidating conversations (INSERT)');
       queryClient.invalidateQueries({ 

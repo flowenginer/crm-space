@@ -97,6 +97,18 @@ export function useAuth() {
         setUser(session?.user as any ?? null);
         setIsLoading(false);
 
+        // Sincronizar token com Realtime para RLS funcionar corretamente
+        if (session?.access_token) {
+          console.log('[useAuth] Syncing Realtime with access token');
+          supabase.realtime.setAuth(session.access_token);
+        }
+
+        // Garantir sincronização em TOKEN_REFRESHED
+        if (event === 'TOKEN_REFRESHED' && session?.access_token) {
+          console.log('[useAuth] TOKEN_REFRESHED - Re-syncing Realtime');
+          supabase.realtime.setAuth(session.access_token);
+        }
+
         // Execute auth setup without setTimeout for faster loading
         if (session?.user) {
           (async () => {
@@ -174,6 +186,12 @@ export function useAuth() {
       setSession(session as any);
       setUser(session?.user as any ?? null);
       setIsLoading(false);
+
+      // Sincronizar token com Realtime para RLS funcionar
+      if (session?.access_token) {
+        console.log('[useAuth] Initial session - Syncing Realtime with access token');
+        supabase.realtime.setAuth(session.access_token);
+      }
 
       if (session?.user) {
         const userId = session.user.id;
