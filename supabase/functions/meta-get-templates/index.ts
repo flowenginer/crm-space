@@ -91,7 +91,33 @@ serve(async (req) => {
 
     if (!response.ok) {
       console.error('[Meta Templates] Error fetching templates:', result);
-      throw new Error(result.error?.message || 'Failed to fetch templates from Meta');
+      
+      const errorMessage = result.error?.message || 'Erro desconhecido';
+      const errorCode = result.error?.code;
+      
+      // Provide helpful error messages based on common error codes
+      let userMessage = errorMessage;
+      let suggestion = '';
+      
+      if (errorCode === 100 || errorMessage.includes('permission') || errorMessage.includes('Permission')) {
+        userMessage = 'Sem permissão para acessar templates da WhatsApp Business Account';
+        suggestion = 'Verifique se: 1) Seu token de acesso tem as permissões "whatsapp_business_management" e "business_management", 2) Você é admin ou proprietário da conta no Meta Business Suite, 3) O WABA ID está correto na configuração.';
+      } else if (errorCode === 190 || errorMessage.includes('access token') || errorMessage.includes('OAuthException')) {
+        userMessage = 'Token de acesso inválido ou expirado';
+        suggestion = 'Reconecte sua conta WhatsApp Business ou gere um novo token de acesso permanente no Meta for Developers.';
+      } else if (errorCode === 10 || errorMessage.includes('Application does not have permission')) {
+        userMessage = 'Aplicativo sem permissão para acessar esta conta';
+        suggestion = 'O aplicativo Meta precisa ter acesso concedido à sua WhatsApp Business Account. Vá até Meta Business Suite > Configurações > Parceiros e verifique as permissões.';
+      } else if (errorMessage.includes('does not exist') || errorMessage.includes('not found')) {
+        userMessage = 'WhatsApp Business Account não encontrada';
+        suggestion = 'Verifique se o WABA ID configurado está correto. Você pode encontrar o ID correto no Meta Business Suite.';
+      }
+      
+      const fullError = suggestion 
+        ? `${userMessage}. ${suggestion}` 
+        : userMessage;
+      
+      throw new Error(fullError);
     }
 
     console.log('[Meta Templates] Fetched templates count:', result.data?.length || 0);
