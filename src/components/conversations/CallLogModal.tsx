@@ -418,7 +418,7 @@ export function CallLogModal({ open, onOpenChange, contact, conversationId }: Ca
                     <TableCell>
                       <div className="flex items-center gap-1 text-sm">
                         <Calendar className="h-3 w-3 text-muted-foreground" />
-                        {format(new Date(log.call_date), 'dd/MM/yyyy', { locale: ptBR })}
+                        {format(new Date(log.call_date + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
                       </div>
                     </TableCell>
                     <TableCell>
