@@ -103,7 +103,7 @@ export function CallHistoryPanel({ dateRange }: CallHistoryPanelProps) {
   // Chart data - calls per day
   const dailyChartData = useMemo(() => {
     return callStats?.byDate?.map(item => ({
-      date: format(new Date(item.date), 'dd/MM', { locale: ptBR }),
+      date: format(new Date(item.date + 'T12:00:00'), 'dd/MM', { locale: ptBR }),
       ligações: item.count,
     })) || [];
   }, [callStats]);
@@ -125,7 +125,7 @@ export function CallHistoryPanel({ dateRange }: CallHistoryPanelProps) {
     // Create CSV
     const headers = ['Data', 'Hora', 'Cliente', 'Telefone', 'Resultado', 'Agente', 'Observações'];
     const rows = filteredLogs.map(log => [
-      format(new Date(log.call_date), 'dd/MM/yyyy'),
+      format(new Date(log.call_date + 'T12:00:00'), 'dd/MM/yyyy'),
       log.call_time.substring(0, 5),
       log.contact?.full_name || '',
       log.contact?.phone || '',
@@ -356,7 +356,7 @@ export function CallHistoryPanel({ dateRange }: CallHistoryPanelProps) {
               ) : filteredLogs.map((log) => (
                 <TableRow key={log.id}>
                   <TableCell>
-                    {format(new Date(log.call_date), 'dd/MM/yyyy', { locale: ptBR })}
+                    {format(new Date(log.call_date + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
                   </TableCell>
                   <TableCell>{log.call_time.substring(0, 5)}</TableCell>
                   <TableCell className="font-medium">
