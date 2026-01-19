@@ -15,6 +15,10 @@ import {
   RotateCcw,
   Eye,
   Clock,
+  Trash2,
+  AlertTriangle,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +33,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import {
   parseBlingHtml,
@@ -255,6 +260,23 @@ export default function ExternalListDispatch() {
       {/* Step: Matching */}
       {step === 'matching' && (
         <div className="grid gap-6 lg:grid-cols-2">
+          {/* Low confidence warning */}
+          {matchedContacts.filter(c => c.matchScore < 85).length > 0 && (
+            <Card className="lg:col-span-2 border-yellow-500/50 bg-yellow-500/10">
+              <CardContent className="flex items-center gap-3 py-4">
+                <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
+                <div>
+                  <p className="font-medium text-yellow-600">
+                    {matchedContacts.filter(c => c.matchScore < 85).length} contato(s) com baixa confiança no cruzamento
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Revise os matches destacados em amarelo/vermelho e remova os incorretos antes de continuar.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -262,7 +284,7 @@ export default function ExternalListDispatch() {
                 Contatos Encontrados ({matchedContacts.length})
               </CardTitle>
               <CardDescription>
-                Estes contatos serão incluídos no disparo
+                Revise os matches e remova os incorretos clicando no ícone de lixeira
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -270,24 +292,102 @@ export default function ExternalListDispatch() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Pedido</TableHead>
+                      <TableHead className="w-[80px]">Pedido</TableHead>
                       <TableHead>Cliente (Lista)</TableHead>
                       <TableHead>Contato (CRM)</TableHead>
-                      <TableHead>Telefone</TableHead>
+                      <TableHead className="w-[90px]">Score</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {matchedContacts.map((c) => (
-                      <TableRow key={c.orderId}>
-                        <TableCell className="font-mono">{c.orderNumber}</TableCell>
-                        <TableCell>{c.customerName}</TableCell>
-                        <TableCell>{c.contactName}</TableCell>
-                        <TableCell className="font-mono">{c.phone}</TableCell>
-                      </TableRow>
-                    ))}
+                    {matchedContacts.map((c) => {
+                      const isLowConfidence = c.matchScore < 85;
+                      const isVeryLow = c.matchScore < 75;
+                      
+                      return (
+                        <TableRow 
+                          key={c.orderId}
+                          className={
+                            isVeryLow 
+                              ? 'bg-red-500/10 hover:bg-red-500/20' 
+                              : isLowConfidence 
+                                ? 'bg-yellow-500/10 hover:bg-yellow-500/20' 
+                                : ''
+                          }
+                        >
+                          <TableCell className="font-mono text-xs">{c.orderNumber}</TableCell>
+                          <TableCell className="text-sm">{c.customerName}</TableCell>
+                          <TableCell className="text-sm">{c.contactName}</TableCell>
+                          <TableCell>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Badge 
+                                    variant={c.matchType === 'exact' ? 'default' : c.matchType === 'high' ? 'secondary' : 'outline'}
+                                    className={`text-xs ${
+                                      isVeryLow 
+                                        ? 'bg-red-500 text-white hover:bg-red-600' 
+                                        : isLowConfidence 
+                                          ? 'bg-yellow-500 text-white hover:bg-yellow-600' 
+                                          : c.matchType === 'exact' 
+                                            ? 'bg-green-500 hover:bg-green-600' 
+                                            : ''
+                                    }`}
+                                  >
+                                    {c.matchScore}%
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>
+                                    {c.matchType === 'exact' && 'Match exato - alta confiança'}
+                                    {c.matchType === 'high' && 'Match alto - boa confiança'}
+                                    {c.matchType === 'medium' && 'Match médio - revisar'}
+                                    {c.matchType === 'low' && 'Match baixo - revisar com atenção'}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={() => {
+                                setMatchedContacts(prev => prev.filter(mc => mc.orderId !== c.orderId));
+                                setUnmatchedOrders(prev => [...prev, {
+                                  orderNumber: c.orderNumber,
+                                  customerName: c.customerName,
+                                  value: c.value,
+                                }]);
+                                toast.info(`${c.customerName} removido da lista`);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </ScrollArea>
+              
+              {/* Match quality summary */}
+              <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <ShieldCheck className="h-3 w-3 text-green-500" />
+                  <span>{matchedContacts.filter(c => c.matchScore >= 85).length} alta confiança</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <ShieldAlert className="h-3 w-3 text-yellow-500" />
+                  <span>{matchedContacts.filter(c => c.matchScore >= 75 && c.matchScore < 85).length} média</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 text-red-500" />
+                  <span>{matchedContacts.filter(c => c.matchScore < 75).length} baixa</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
           

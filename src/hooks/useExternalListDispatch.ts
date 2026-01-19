@@ -21,6 +21,8 @@ export interface MatchedContact {
   phone: string;
   value?: number;
   rawData?: Record<string, string>;
+  matchScore: number; // 0-100 confidence score
+  matchType: 'exact' | 'high' | 'medium' | 'low'; // Match quality indicator
 }
 
 export interface UnmatchedOrder {
@@ -84,7 +86,56 @@ export function extractFirstName(fullName: string): string {
   return fullName.split(' ')[0] || fullName;
 }
 
-// Match orders with CRM contacts
+// Helper function to calculate name similarity with stricter rules
+function calculateNameSimilarity(orderName: string, contactName: string): { score: number; matchType: 'exact' | 'high' | 'medium' | 'low' } {
+  const orderNameLower = orderName.toLowerCase().trim();
+  const contactNameLower = contactName.toLowerCase().trim();
+  
+  // Exact match = 100 points
+  if (orderNameLower === contactNameLower) {
+    return { score: 100, matchType: 'exact' };
+  }
+  
+  const orderParts = orderNameLower.split(' ').filter(p => p.length > 2);
+  const contactParts = contactNameLower.split(' ').filter(p => p.length > 2);
+  
+  // If order has multiple name parts, require at least 2 to match
+  if (orderParts.length >= 2) {
+    const matchingParts = orderParts.filter(part => 
+      contactParts.some(cp => cp === part || cp.includes(part) || part.includes(cp))
+    );
+    
+    // Require at least 2 parts to match for composite names
+    if (matchingParts.length < 2) {
+      return { score: 0, matchType: 'low' };
+    }
+    
+    // Calculate score based on matching parts
+    const score = Math.round((matchingParts.length / orderParts.length) * 100);
+    
+    if (score >= 90) return { score, matchType: 'high' };
+    if (score >= 75) return { score, matchType: 'medium' };
+    return { score: 0, matchType: 'low' }; // Below 75% threshold = no match
+  }
+  
+  // Single word name: require very high similarity
+  const orderFirst = orderParts[0] || '';
+  const contactFirst = contactParts[0] || '';
+  
+  // For single-word names, require exact first word match
+  if (orderFirst === contactFirst) {
+    return { score: 70, matchType: 'medium' }; // Lower score for single-word match
+  }
+  
+  // Partial match on single word - very restrictive
+  if (orderFirst.length >= 4 && contactFirst.includes(orderFirst)) {
+    return { score: 50, matchType: 'low' };
+  }
+  
+  return { score: 0, matchType: 'low' };
+}
+
+// Match orders with CRM contacts - STRICT matching with confidence scores
 export function useMatchContacts() {
   return useMutation({
     mutationFn: async (orders: ExternalListOrder[]): Promise<{
@@ -104,30 +155,19 @@ export function useMatchContacts() {
       if (error) throw error;
       
       for (const order of orders) {
-        const customerNameLower = order.customerName.toLowerCase();
-        const nameParts = customerNameLower.split(' ').filter(p => p.length > 2);
-        
-        // Try to find a matching contact
+        // Try to find a matching contact with strict rules
         let bestMatch: typeof contacts[0] | null = null;
         let bestScore = 0;
+        let bestMatchType: 'exact' | 'high' | 'medium' | 'low' = 'low';
         
         for (const contact of contacts || []) {
-          const contactNameLower = contact.full_name.toLowerCase();
+          const { score, matchType } = calculateNameSimilarity(order.customerName, contact.full_name);
           
-          // Exact match
-          if (contactNameLower === customerNameLower) {
-            bestMatch = contact;
-            bestScore = 100;
-            break;
-          }
-          
-          // Partial match - all name parts present
-          const matchingParts = nameParts.filter(part => contactNameLower.includes(part));
-          const score = (matchingParts.length / nameParts.length) * 100;
-          
-          if (score > bestScore && score >= 60) { // At least 60% of name parts match
+          // Only consider matches with score >= 70 (stricter threshold)
+          if (score > bestScore && score >= 70) {
             bestMatch = contact;
             bestScore = score;
+            bestMatchType = matchType;
           }
         }
         
@@ -141,6 +181,9 @@ export function useMatchContacts() {
             contactName: bestMatch.full_name,
             phone: bestMatch.phone,
             value: order.value,
+            rawData: order.rawData,
+            matchScore: bestScore,
+            matchType: bestMatchType,
           });
         } else if (!bestMatch) {
           unmatched.push({
@@ -150,6 +193,9 @@ export function useMatchContacts() {
           });
         }
       }
+      
+      // Sort matched by score (lowest first to highlight potential issues)
+      matched.sort((a, b) => a.matchScore - b.matchScore);
       
       return { matched, unmatched };
     },
