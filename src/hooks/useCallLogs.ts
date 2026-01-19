@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 export interface CallResult {
   id: string;
@@ -145,8 +146,8 @@ export function useCreateCallLog() {
         .insert({
           ...data,
           user_id: user.user.id,
-          call_date: now.toISOString().split('T')[0],
-          call_time: now.toTimeString().split(' ')[0],
+          call_date: format(now, 'yyyy-MM-dd'),
+          call_time: format(now, 'HH:mm:ss'),
         })
         .select(`
           *,
