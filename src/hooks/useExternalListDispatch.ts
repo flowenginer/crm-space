@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -279,7 +279,7 @@ export function useExecuteDispatch() {
     current: null,
     status: 'idle',
   });
-  const [shouldCancel, setShouldCancel] = useState(false);
+  const cancelRef = useRef(false);
   
   const execute = useCallback(async (config: DispatchConfig) => {
     const { contacts, templateName, templateLanguage, channelId, apiKey, intervalSeconds, variableMapping } = config;
@@ -291,12 +291,13 @@ export function useExecuteDispatch() {
       current: null,
       status: 'running',
     });
-    setShouldCancel(false);
+    cancelRef.current = false;
     
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     
     for (let i = 0; i < contacts.length; i++) {
-      if (shouldCancel) {
+      // Check cancellation using ref for immediate effect
+      if (cancelRef.current) {
         setProgress(prev => ({ ...prev, status: 'cancelled' }));
         break;
       }
@@ -390,7 +391,7 @@ export function useExecuteDispatch() {
       }
       
       // Wait interval before next send (except for last one)
-      if (i < contacts.length - 1 && !shouldCancel) {
+      if (i < contacts.length - 1 && !cancelRef.current) {
         await new Promise(resolve => setTimeout(resolve, intervalSeconds * 1000));
       }
     }
@@ -400,10 +401,11 @@ export function useExecuteDispatch() {
       current: null,
       status: prev.status === 'cancelled' ? 'cancelled' : 'completed',
     }));
-  }, [shouldCancel]);
+  }, []);
   
   const cancel = useCallback(() => {
-    setShouldCancel(true);
+    cancelRef.current = true;
+    setProgress(prev => ({ ...prev, status: 'cancelled' }));
   }, []);
   
   const reset = useCallback(() => {
@@ -414,7 +416,7 @@ export function useExecuteDispatch() {
       current: null,
       status: 'idle',
     });
-    setShouldCancel(false);
+    cancelRef.current = false;
   }, []);
   
   return { progress, execute, cancel, reset };
