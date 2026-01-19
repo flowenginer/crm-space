@@ -86,7 +86,44 @@ export function extractFirstName(fullName: string): string {
   return fullName.split(' ')[0] || fullName;
 }
 
-// Helper function to calculate name similarity with stricter rules
+// Levenshtein distance calculation for fuzzy matching
+function levenshteinDistance(s1: string, s2: string): number {
+  const m = s1.length;
+  const n = s2.length;
+  
+  if (m === 0) return n;
+  if (n === 0) return m;
+  
+  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+  
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (s1[i - 1] === s2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+  
+  return dp[m][n];
+}
+
+// Calculate string similarity (0 to 1) using Levenshtein distance
+function stringSimilarity(s1: string, s2: string): number {
+  const longer = s1.length > s2.length ? s1 : s2;
+  const shorter = s1.length > s2.length ? s2 : s1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  const distance = levenshteinDistance(longer, shorter);
+  return (longer.length - distance) / longer.length;
+}
+
+// Helper function to calculate name similarity with STRICT bilateral rules
 function calculateNameSimilarity(orderName: string, contactName: string): { score: number; matchType: 'exact' | 'high' | 'medium' | 'low' } {
   const orderNameLower = orderName.toLowerCase().trim();
   const contactNameLower = contactName.toLowerCase().trim();
@@ -96,40 +133,84 @@ function calculateNameSimilarity(orderName: string, contactName: string): { scor
     return { score: 100, matchType: 'exact' };
   }
   
-  const orderParts = orderNameLower.split(' ').filter(p => p.length > 2);
-  const contactParts = contactNameLower.split(' ').filter(p => p.length > 2);
+  // Split into parts, keeping only meaningful words (>2 chars)
+  const orderParts = orderNameLower.split(/[\s\/]+/).filter(p => p.length > 2);
+  const contactParts = contactNameLower.split(/[\s\/]+/).filter(p => p.length > 2);
   
-  // If order has multiple name parts, require at least 2 to match
+  // CRITICAL: Bilateral requirement - if order has 2+ words, contact MUST have 2+ words
+  // This prevents matching "EDUARDO GRUBER" with just "Eduardo"
+  if (orderParts.length >= 2 && contactParts.length < 2) {
+    return { score: 0, matchType: 'low' };
+  }
+  
+  // If order has multiple name parts, require at least 2 to match with fuzzy logic
   if (orderParts.length >= 2) {
-    const matchingParts = orderParts.filter(part => 
-      contactParts.some(cp => cp === part || cp.includes(part) || part.includes(cp))
-    );
+    let exactMatches = 0;
+    let fuzzyMatches = 0;
     
-    // Require at least 2 parts to match for composite names
-    if (matchingParts.length < 2) {
+    for (const orderPart of orderParts) {
+      let bestPartSimilarity = 0;
+      
+      for (const contactPart of contactParts) {
+        // Exact part match
+        if (orderPart === contactPart) {
+          bestPartSimilarity = 1.0;
+          break;
+        }
+        
+        // Fuzzy match using Levenshtein (e.g., GRUBER vs GRUBE)
+        const similarity = stringSimilarity(orderPart, contactPart);
+        if (similarity > bestPartSimilarity) {
+          bestPartSimilarity = similarity;
+        }
+      }
+      
+      if (bestPartSimilarity === 1.0) {
+        exactMatches++;
+      } else if (bestPartSimilarity >= 0.80) {
+        // Accept fuzzy match if 80%+ similar (e.g., GRUBE/GRUBER = 83%)
+        fuzzyMatches++;
+      }
+    }
+    
+    const totalGoodMatches = exactMatches + fuzzyMatches;
+    
+    // Require at least 2 good matches for composite names
+    if (totalGoodMatches < 2) {
       return { score: 0, matchType: 'low' };
     }
     
-    // Calculate score based on matching parts
-    const score = Math.round((matchingParts.length / orderParts.length) * 100);
+    // Calculate score based on matching quality
+    const matchRatio = totalGoodMatches / orderParts.length;
+    const exactRatio = exactMatches / orderParts.length;
     
-    if (score >= 90) return { score, matchType: 'high' };
-    if (score >= 75) return { score, matchType: 'medium' };
-    return { score: 0, matchType: 'low' }; // Below 75% threshold = no match
+    // Score: weight exact matches higher than fuzzy
+    const score = Math.round((exactRatio * 60 + matchRatio * 40));
+    
+    if (exactMatches >= 2 && matchRatio >= 0.8) {
+      return { score: Math.max(score, 90), matchType: 'high' };
+    }
+    if (totalGoodMatches >= 2 && matchRatio >= 0.5) {
+      return { score: Math.max(score, 75), matchType: 'medium' };
+    }
+    
+    return { score: 0, matchType: 'low' };
   }
   
-  // Single word name: require very high similarity
+  // Single word order name: require very high similarity and exact first word match
+  // This is very restrictive - single word matches are risky
   const orderFirst = orderParts[0] || '';
   const contactFirst = contactParts[0] || '';
   
   // For single-word names, require exact first word match
-  if (orderFirst === contactFirst) {
-    return { score: 70, matchType: 'medium' }; // Lower score for single-word match
+  if (orderFirst === contactFirst && orderFirst.length >= 4) {
+    return { score: 60, matchType: 'medium' }; // Lower score for single-word match
   }
   
-  // Partial match on single word - very restrictive
-  if (orderFirst.length >= 4 && contactFirst.includes(orderFirst)) {
-    return { score: 50, matchType: 'low' };
+  // Fuzzy match on single word - only if very high similarity
+  const similarity = stringSimilarity(orderFirst, contactFirst);
+  if (similarity >= 0.90 && orderFirst.length >= 4) {
+    return { score: 55, matchType: 'low' };
   }
   
   return { score: 0, matchType: 'low' };
