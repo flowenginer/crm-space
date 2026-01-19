@@ -81,7 +81,7 @@ serve(async (req) => {
 
     // Parse payload
     const payload: SendMessagePayload = await req.json();
-    const { channelId, phone, type, content, mediaUrl, caption, filename, template } = payload;
+    let { channelId, phone, type, content, mediaUrl, caption, filename, template } = payload;
 
     if (!channelId || !phone) {
       return new Response(
@@ -312,6 +312,45 @@ serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+        
+        // Fetch template from database to get the body text
+        const { data: templateData } = await supabase
+          .from('meta_message_templates')
+          .select('components')
+          .eq('name', template.name)
+          .eq('tenant_id', tenantId)
+          .single();
+        
+        // Extract body text and replace variables
+        if (templateData?.components) {
+          const bodyComponent = templateData.components.find(
+            (c: any) => c.type === 'BODY'
+          );
+          if (bodyComponent?.text) {
+            let templateBodyText = bodyComponent.text;
+            
+            // Find body parameters from the request
+            const bodyParams = template.components?.find(
+              (c: any) => c.type === 'body'
+            )?.parameters || [];
+            
+            // Replace {{1}}, {{2}}, etc. with actual values
+            bodyParams.forEach((param: any, index: number) => {
+              const placeholder = `{{${index + 1}}}`;
+              const value = param.text || param.value || '';
+              templateBodyText = templateBodyText.replace(placeholder, value);
+            });
+            
+            content = templateBodyText;
+            console.log('[API Send] Template body text:', content);
+          }
+        }
+        
+        // Fallback if template not found in DB
+        if (!content) {
+          content = `[Template: ${template.name}]`;
+        }
+        
         messagePayload.type = 'template';
         messagePayload.template = {
           name: template.name,
