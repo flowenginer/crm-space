@@ -1015,13 +1015,17 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
+                            // Placeholder visual discreto sem texto
                             target.parentElement?.insertAdjacentHTML('beforeend', 
-                              '<span class="text-sm text-muted-foreground">🎭 Sticker</span>'
+                              '<div class="w-24 h-24 rounded-lg bg-muted/50 border border-border/50 flex items-center justify-center"><span class="text-2xl opacity-50">🎭</span></div>'
                             );
                           }}
                         />
                       ) : (
-                        <span className="text-sm text-muted-foreground">🎭 Sticker</span>
+                        // Placeholder visual discreto sem texto
+                        <div className="w-24 h-24 rounded-lg bg-muted/50 border border-border/50 flex items-center justify-center">
+                          <span className="text-2xl opacity-50">🎭</span>
+                        </div>
                       )
                     )}
                   </div>
@@ -1042,8 +1046,28 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                   <p className="text-sm leading-relaxed mt-2 whitespace-pre-wrap">{linkifyText(message.content)}</p>
                 )}
                 
-                {/* Other message types with content */}
-                {message.content && !['text', 'document', 'audio', 'video', 'image'].includes(message.message_type || '') && (
+                {/* Contact (vCard) messages - styled card */}
+                {message.message_type === 'contacts' && message.content && (
+                  <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg border border-border/50">
+                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                      <User size={16} className="text-primary" />
+                    </div>
+                    <span className="text-sm">{message.content}</span>
+                  </div>
+                )}
+                
+                {/* Location messages - styled card */}
+                {message.message_type === 'location' && message.content && (
+                  <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg border border-border/50">
+                    <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                      <Globe size={16} className="text-blue-500" />
+                    </div>
+                    <span className="text-sm">{message.content}</span>
+                  </div>
+                )}
+                
+                {/* Other message types with content - exclude handled types */}
+                {message.content && !['text', 'document', 'audio', 'video', 'image', 'sticker', 'contacts', 'location'].includes(message.message_type || '') && (
                   <p className="text-sm leading-relaxed mt-1 whitespace-pre-wrap">{linkifyText(message.content)}</p>
                 )}
               </>
@@ -2947,20 +2971,26 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
         const contentWithSignature = addSignatureToContent(textContent);
         
         // INSTANT: Save to database first (optimistic update shows immediately)
-        sendMessage.mutate({
+        // Use mutateAsync to get the real message ID for linking with WhatsApp
+        sendMessage.mutateAsync({
           conversation_id: selectedConversationId,
           content: contentWithSignature,
           is_from_me: true,
           message_type: 'text',
           reply_to_message_id: replyingTo?.id,
-        });
+        }).then(async (savedMessage) => {
+          // BACKGROUND: Send to WhatsApp with same content (already has signature)
+          const whatsAppId = await sendViaWhatsApp(contentWithSignature, 'text', undefined, quotedWhatsAppId);
+          
+          // Update the message with the WhatsApp message ID for future reply linking
+          if (whatsAppId && savedMessage?.id) {
+            updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
+          }
+        }).catch(console.error);
         
         // Clear input immediately for better UX
         setMessageInput('');
         setReplyingTo(null);
-        
-        // BACKGROUND: Send to WhatsApp with same content (already has signature)
-        sendViaWhatsApp(contentWithSignature, 'text', undefined, quotedWhatsAppId).catch(console.error);
       } else if (hasFiles) {
         // For files, we need to upload first (can't be avoided)
         for (const file of selectedFiles) {
@@ -2975,8 +3005,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             messageType = 'audio';
           }
 
-          // INSTANT: Save to database first
-          sendMessage.mutate({
+          // INSTANT: Save to database first - use mutateAsync for message ID
+          sendMessage.mutateAsync({
             conversation_id: selectedConversationId,
             content: file.name,
             is_from_me: true,
@@ -2984,10 +3014,15 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
             media_url: result.url,
             media_mime_type: result.mimeType,
             reply_to_message_id: replyingTo?.id,
-          });
-
-          // BACKGROUND: Send to WhatsApp (don't await)
-          sendViaWhatsApp(file.name, messageType, result.url, quotedWhatsAppId).catch(console.error);
+          }).then(async (savedMessage) => {
+            // BACKGROUND: Send to WhatsApp
+            const whatsAppId = await sendViaWhatsApp(file.name, messageType, result.url, quotedWhatsAppId);
+            
+            // Update the message with the WhatsApp message ID for future reply linking
+            if (whatsAppId && savedMessage?.id) {
+              updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
+            }
+          }).catch(console.error);
         }
         
         // Send text after files if exists
@@ -2996,15 +3031,20 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
           // Add signature BEFORE saving to database for consistency
           const contentWithSignature = addSignatureToContent(textContent);
           
-          sendMessage.mutate({
+          sendMessage.mutateAsync({
             conversation_id: selectedConversationId,
             content: contentWithSignature,
             is_from_me: true,
             message_type: 'text',
-          });
-          
-          // BACKGROUND: Send to WhatsApp with same content (already has signature)
-          sendViaWhatsApp(contentWithSignature, 'text', undefined, undefined).catch(console.error);
+          }).then(async (savedMessage) => {
+            // BACKGROUND: Send to WhatsApp with same content (already has signature)
+            const whatsAppId = await sendViaWhatsApp(contentWithSignature, 'text', undefined, undefined);
+            
+            // Update the message with the WhatsApp message ID for future reply linking
+            if (whatsAppId && savedMessage?.id) {
+              updateMessageWhatsAppId(savedMessage.id, whatsAppId, 'sent');
+            }
+          }).catch(console.error);
         }
         
         setMessageInput('');
