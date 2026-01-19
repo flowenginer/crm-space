@@ -564,7 +564,7 @@ async function processMessages(supabase: any, value: any) {
     }
 
     // Insert message (usando whatsapp_message_id que é a coluna correta)
-    const { data: insertedMessage } = await supabase.from('messages').insert({
+    const { data: insertedMessage, error: insertError } = await supabase.from('messages').insert({
       conversation_id: conversationId,
       contact_id: contactId,
       tenant_id: config.tenant_id,
@@ -575,6 +575,17 @@ async function processMessages(supabase: any, value: any) {
       whatsapp_message_id: message.id,
       reply_to_message_id: replyToMessageId,
     }).select('id').single();
+
+    if (insertError) {
+      console.error('[CloudAPI] ❌ Error inserting message:', insertError.message, {
+        messageType,
+        conversationId,
+        content: content.substring(0, 50),
+        whatsapp_message_id: message.id,
+      });
+    } else if (insertedMessage) {
+      console.log('[CloudAPI] ✅ Message inserted successfully:', insertedMessage.id, 'type:', messageType);
+    }
 
     // Update conversation - incrementar unread_count usando SQL direto
     await supabase.rpc('increment_unread', { conv_id: conversationId });
