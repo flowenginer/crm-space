@@ -710,6 +710,67 @@ async function sendZAPIReaction(
   };
 }
 
+// Cloud API Reaction - Send reaction via WhatsApp Business API
+async function sendCloudAPIReaction(
+  phoneNumberId: string,
+  accessToken: string,
+  messageId: string,
+  recipientPhone: string,
+  emoji: string
+) {
+  console.log('[CloudAPI] Sending reaction:', { phoneNumberId, messageId, recipientPhone, emoji });
+  
+  const endpoint = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+  
+  const body = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: recipientPhone,
+    type: "reaction",
+    reaction: {
+      message_id: messageId,
+      emoji: emoji || "", // Empty string removes the reaction
+    },
+  };
+  
+  console.log('[CloudAPI] Reaction Request:', { endpoint, body });
+  
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+    
+    const text = await response.text();
+    console.log(`[CloudAPI Reaction] Raw response (${response.status}):`, text.substring(0, 500));
+    
+    if (!response.ok) {
+      const errorData = JSON.parse(text);
+      return {
+        success: false,
+        error: errorData.error?.message || `HTTP ${response.status}`,
+      };
+    }
+    
+    const data = JSON.parse(text);
+    return {
+      success: true,
+      messageId: data.messages?.[0]?.id,
+      data,
+    };
+  } catch (error: any) {
+    console.error('[CloudAPI Reaction] Error:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
 // =====================================================
 // Z-API
 // =====================================================
@@ -2133,6 +2194,64 @@ serve(async (req) => {
       }
       
       const channelProvider = channel.provider as any;
+      
+      // Check if it's an official Cloud API channel (no provider, type='official')
+      if (!channelProvider && channel.type === 'official') {
+        // Handle Cloud API reaction
+        console.log('[WhatsApp Reaction] Cloud API channel detected, fetching config...');
+        
+        const { data: cloudConfig, error: cloudError } = await supabase
+          .from('cloudapi_configs')
+          .select('*')
+          .eq('channel_id', channelId)
+          .eq('is_active', true)
+          .single();
+        
+        if (cloudError || !cloudConfig) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Configuração Cloud API não encontrada' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+          );
+        }
+        
+        // Get recipient phone from remoteJid or phone parameter, or fetch from message
+        let recipientPhone = phone || remoteJid?.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+        
+        if (!recipientPhone && whatsappMessageId) {
+          // Try to get phone from the original message's contact
+          const { data: msg } = await supabase
+            .from('messages')
+            .select('conversations!inner(contacts!inner(phone))')
+            .eq('whatsapp_message_id', whatsappMessageId)
+            .single();
+          
+          // Access nested data safely - Supabase returns single objects with !inner
+          const contactPhone = (msg as any)?.conversations?.contacts?.phone;
+          recipientPhone = contactPhone?.replace(/\D/g, '');
+        }
+        
+        if (!recipientPhone) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Telefone do destinatário não encontrado' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+          );
+        }
+        
+        // Send reaction via Cloud API
+        const result = await sendCloudAPIReaction(
+          cloudConfig.phone_number_id,
+          cloudConfig.access_token,
+          whatsappMessageId,
+          recipientPhone,
+          emoji || ""
+        );
+        
+        return new Response(
+          JSON.stringify(result),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       if (!channelProvider) {
         return new Response(
           JSON.stringify({ success: false, error: 'Provedor do canal não encontrado' }),
