@@ -20,6 +20,7 @@ export interface MatchedContact {
   contactName: string;
   phone: string;
   value?: number;
+  rawData?: Record<string, string>;
 }
 
 export interface UnmatchedOrder {
@@ -261,31 +262,48 @@ export function useExecuteDispatch() {
       const bodyParams: { type: string; text: string }[] = [];
       const sortedVars = Object.keys(variableMapping).sort((a, b) => parseInt(a) - parseInt(b));
       
+      let hasEmptyRequiredParam = false;
+      
       for (const varIndex of sortedVars) {
         const field = variableMapping[varIndex];
         let value = '';
         
         switch (field) {
           case 'firstName':
-            value = extractFirstName(contact.customerName);
+            value = extractFirstName(contact.customerName || contact.contactName || '');
             break;
           case 'fullName':
-            value = contact.customerName;
+            value = contact.customerName || contact.contactName || '';
             break;
           case 'orderNumber':
-            value = contact.orderNumber;
+            value = contact.orderNumber || '';
             break;
           case 'contactName':
-            value = contact.contactName;
+            value = contact.contactName || contact.customerName || '';
             break;
           case 'phone':
-            value = contact.phone;
+            value = contact.phone || '';
             break;
           default:
-            value = '';
+            // Check if it's a rawData field from CSV/spreadsheet
+            if (field && contact.rawData && contact.rawData[field]) {
+              value = contact.rawData[field];
+            }
+            break;
         }
         
-        bodyParams.push({ type: 'text', text: value });
+        // Validate: Meta requires non-empty text parameters
+        if (!value || value.trim() === '') {
+          console.warn(`[Dispatch] Empty value for variable {{${varIndex}}} (field: ${field}) for contact:`, contact.contactName);
+          hasEmptyRequiredParam = true;
+        }
+        
+        bodyParams.push({ type: 'text', text: value || '-' }); // Fallback to "-" to prevent Meta error
+      }
+      
+      // Log warning if required param was empty
+      if (hasEmptyRequiredParam) {
+        console.warn(`[Dispatch] Contact ${contact.contactName} has empty template variables, using fallback values`);
       }
       
       try {
