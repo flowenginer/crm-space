@@ -254,27 +254,47 @@ function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, '').replace(/^0+/, '');
 }
 
-// Calculate name similarity score (0-100)
+// Calculate name similarity score (0-100) - Improved algorithm
 function calculateNameSimilarity(name1: string, name2: string): number {
   const a = name1.toLowerCase().trim();
   const b = name2.toLowerCase().trim();
   
+  // Exact match
   if (a === b) return 100;
   
-  // Check if one contains the other
-  if (a.includes(b) || b.includes(a)) return 85;
+  // One contains the other completely
+  if (a.includes(b) || b.includes(a)) return 90;
   
-  // Split into parts and compare
-  const partsA = a.split(/\s+/).filter(p => p.length > 2);
-  const partsB = b.split(/\s+/).filter(p => p.length > 2);
+  // Split into parts - keep words with >= 2 chars (not 3)
+  const partsA = a.split(/\s+/).filter(p => p.length >= 2);
+  const partsB = b.split(/\s+/).filter(p => p.length >= 2);
   
   if (partsA.length === 0 || partsB.length === 0) return 0;
   
+  // Single word matching - check if CRM name starts with it or vice versa
+  if (partsA.length === 1) {
+    const singleWord = partsA[0];
+    // Check if first word of CRM name starts with or matches the single word
+    if (partsB[0].startsWith(singleWord) || singleWord.startsWith(partsB[0])) {
+      return 85;
+    }
+    // Check if any part matches
+    if (partsB.some(p => p === singleWord || p.startsWith(singleWord) || singleWord.startsWith(p))) {
+      return 75;
+    }
+  }
+  
+  // Count matching parts with flexible comparison
   const matchingParts = partsA.filter(part => 
-    partsB.some(partB => partB.includes(part) || part.includes(partB))
+    partsB.some(partB => 
+      partB.includes(part) || part.includes(partB) ||
+      partB.startsWith(part) || part.startsWith(partB)
+    )
   );
   
-  return Math.round((matchingParts.length / Math.max(partsA.length, partsB.length)) * 100);
+  // Score based on matches - use min length for better scoring with partial names
+  const score = Math.round((matchingParts.length / Math.min(partsA.length, partsB.length)) * 100);
+  return score;
 }
 
 // Smart match contacts - phone first, then name
@@ -357,7 +377,7 @@ export function useSmartMatchContacts() {
             
           for (const contact of contacts || []) {
             const score = calculateNameSimilarity(searchName, contact.full_name);
-            if (score > matchScore && score >= 60) {
+            if (score > matchScore && score >= 40) {
               bestMatch = contact;
               matchScore = score;
               matchedBy = 'name';
@@ -365,7 +385,8 @@ export function useSmartMatchContacts() {
           }
         }
         
-        if (bestMatch && !processedContactIds.has(bestMatch.id)) {
+        // Allow multiple rows to match same contact (for multiple orders per customer)
+        if (bestMatch) {
           processedContactIds.add(bestMatch.id);
           matched.push({
             rowIndex,
@@ -376,7 +397,7 @@ export function useSmartMatchContacts() {
             matchedBy,
             matchScore,
           });
-        } else if (!bestMatch) {
+        } else {
           unmatched.push({
             rowIndex,
             rawData: row,
@@ -410,19 +431,34 @@ export function useMetaTemplates() {
   });
 }
 
-// Get connected Cloud API channels
+// Get connected Cloud API channels - via cloudapi_configs relation
 export function useCloudApiChannels() {
   return useQuery({
     queryKey: ['cloudapi-channels-list-dispatch'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('whatsapp_channels')
-        .select('id, name, phone, provider_id')
-        .eq('status', 'connected')
-        .eq('provider_id', 'cloudapi');
+      // Query channels that have active cloudapi_configs (the correct way to identify Cloud API channels)
+      const { data: configsWithChannels, error: configError } = await supabase
+        .from('cloudapi_configs')
+        .select(`
+          channel_id,
+          whatsapp_channels!cloudapi_configs_channel_id_fkey(id, name, phone, status, provider_id)
+        `)
+        .eq('is_active', true);
       
-      if (error) throw error;
-      return data || [];
+      if (configError) throw configError;
+      
+      // Extract connected channels from configs
+      const channels = (configsWithChannels || [])
+        .map(config => config.whatsapp_channels)
+        .filter(ch => ch && ch.status === 'connected')
+        .map(ch => ({
+          id: ch!.id,
+          name: ch!.name,
+          phone: ch!.phone,
+          provider_id: ch!.provider_id,
+        }));
+      
+      return channels;
     },
   });
 }
