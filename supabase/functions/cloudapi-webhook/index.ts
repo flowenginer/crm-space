@@ -513,9 +513,54 @@ async function processMessages(supabase: any, value: any) {
         content = message.button?.text || '[Botão]';
         console.log('[CloudAPI] Button message:', message.button);
         break;
+      case 'contacts':
+        // vCard contact shared by client
+        const vCardContact = message.contacts?.[0];
+        if (vCardContact) {
+          const contactNameVCard = vCardContact.name?.formatted_name || 
+                            vCardContact.name?.first_name || 
+                            'Contato';
+          const contactPhoneVCard = vCardContact.phones?.[0]?.phone || 
+                             vCardContact.phones?.[0]?.wa_id || '';
+          content = `📇 ${contactNameVCard}${contactPhoneVCard ? ` (${contactPhoneVCard})` : ''}`;
+          console.log('[CloudAPI] vCard contact received:', contactNameVCard, contactPhoneVCard);
+        } else {
+          content = '[Contato]';
+        }
+        break;
+      case 'location':
+        // Location shared by client
+        const loc = message.location;
+        if (loc) {
+          const locName = loc.name || '';
+          const locAddress = loc.address || '';
+          content = `📍 ${locName || 'Localização'}${locAddress ? ` - ${locAddress}` : ''} (${loc.latitude}, ${loc.longitude})`;
+          console.log('[CloudAPI] Location received:', loc);
+        } else {
+          content = '[Localização]';
+        }
+        break;
       default:
         content = `[${messageType}]`;
         console.log('[CloudAPI] Unknown message type:', messageType, JSON.stringify(message));
+    }
+
+    // Check for reply/quote context
+    let replyToMessageId = null;
+    if (message.context?.id) {
+      console.log('[CloudAPI] Looking for quoted message:', message.context.id);
+      const { data: quotedMsg } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('whatsapp_message_id', message.context.id)
+        .single();
+      
+      if (quotedMsg) {
+        replyToMessageId = quotedMsg.id;
+        console.log('[CloudAPI] Found quoted message, reply_to_message_id:', replyToMessageId);
+      } else {
+        console.log('[CloudAPI] Quoted message not found in database');
+      }
     }
 
     // Insert message (usando whatsapp_message_id que é a coluna correta)
@@ -528,6 +573,7 @@ async function processMessages(supabase: any, value: any) {
       media_url: mediaUrl,
       is_from_me: false,
       whatsapp_message_id: message.id,
+      reply_to_message_id: replyToMessageId,
     }).select('id').single();
 
     // Update conversation - incrementar unread_count usando SQL direto

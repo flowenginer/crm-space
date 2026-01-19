@@ -1005,20 +1005,24 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                         isMe={isMe}
                       />
                     )}
-                    {message.message_type === 'sticker' && message.media_url && (
-                      <img 
-                        src={message.media_url} 
-                        alt="Sticker" 
-                        className="max-h-32 w-auto object-contain"
-                        loading="lazy"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          target.parentElement?.insertAdjacentHTML('beforeend', 
-                            '<span class="text-sm text-muted-foreground">🎭 Sticker</span>'
-                          );
-                        }}
-                      />
+                    {message.message_type === 'sticker' && (
+                      message.media_url ? (
+                        <img 
+                          src={message.media_url} 
+                          alt="Sticker" 
+                          className="max-h-32 w-auto object-contain"
+                          loading="lazy"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            target.parentElement?.insertAdjacentHTML('beforeend', 
+                              '<span class="text-sm text-muted-foreground">🎭 Sticker</span>'
+                            );
+                          }}
+                        />
+                      ) : (
+                        <span className="text-sm text-muted-foreground">🎭 Sticker</span>
+                      )
                     )}
                   </div>
                 )}
