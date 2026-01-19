@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
   Upload, 
   FileSpreadsheet, 
@@ -19,6 +19,8 @@ import {
   AlertTriangle,
   ShieldCheck,
   ShieldAlert,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,6 +36,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Checkbox } from '@/components/ui/checkbox';
 
 import {
   parseBlingHtml,
@@ -65,6 +68,7 @@ export default function ExternalListDispatch() {
   const [orders, setOrders] = useState<ExternalListOrder[]>([]);
   const [matchedContacts, setMatchedContacts] = useState<MatchedContact[]>([]);
   const [unmatchedOrders, setUnmatchedOrders] = useState<UnmatchedOrder[]>([]);
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   
   // Configuration state
   const [templateId, setTemplateId] = useState('');
@@ -75,6 +79,18 @@ export default function ExternalListDispatch() {
     '1': 'firstName',
     '2': 'orderNumber',
   });
+  
+  // Auto-select high confidence contacts when matching completes
+  useEffect(() => {
+    if (matchedContacts.length > 0) {
+      const highConfidenceIds = new Set(
+        matchedContacts
+          .filter(c => c.matchScore >= 85)
+          .map(c => c.orderId)
+      );
+      setSelectedContactIds(highConfidenceIds);
+    }
+  }, [matchedContacts]);
   
   const { data: templates = [] } = useMetaTemplates();
   const { data: channels = [] } = useCloudApiChannels();
@@ -103,11 +119,38 @@ export default function ExternalListDispatch() {
     return matches.map((m: string) => m.replace(/[{}]/g, ''));
   }, [selectedTemplate]);
   
-  // Estimated time
-  const estimatedTime = useMemo(() => 
-    formatDuration(matchedContacts.length * intervalSeconds), 
-    [matchedContacts.length, intervalSeconds]
+  // Get selected contacts for dispatch
+  const selectedContacts = useMemo(() => 
+    matchedContacts.filter(c => selectedContactIds.has(c.orderId)),
+    [matchedContacts, selectedContactIds]
   );
+  
+  // Estimated time based on selected contacts
+  const estimatedTime = useMemo(() => 
+    formatDuration(selectedContacts.length * intervalSeconds), 
+    [selectedContacts.length, intervalSeconds]
+  );
+  
+  // Selection handlers
+  const toggleContactSelection = useCallback((orderId: string) => {
+    setSelectedContactIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  }, []);
+  
+  const toggleSelectAll = useCallback(() => {
+    if (selectedContactIds.size === matchedContacts.length) {
+      setSelectedContactIds(new Set());
+    } else {
+      setSelectedContactIds(new Set(matchedContacts.map(c => c.orderId)));
+    }
+  }, [matchedContacts, selectedContactIds.size]);
   
   // Handle file upload
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,7 +201,7 @@ export default function ExternalListDispatch() {
     setStep('dispatch');
     
     await execute({
-      contacts: matchedContacts,
+      contacts: selectedContacts, // Only send selected contacts
       templateName: selectedTemplate.name,
       templateLanguage: selectedTemplate.language || 'pt_BR',
       channelId,
@@ -166,7 +209,7 @@ export default function ExternalListDispatch() {
       intervalSeconds,
       variableMapping,
     });
-  }, [selectedTemplate, channelId, selectedApiKey, matchedContacts, intervalSeconds, variableMapping, execute, channels, apiKeys]);
+  }, [selectedTemplate, channelId, selectedApiKey, selectedContacts, intervalSeconds, variableMapping, execute, channels, apiKeys]);
   
   // Reset everything
   const handleReset = useCallback(() => {
@@ -174,6 +217,7 @@ export default function ExternalListDispatch() {
     setOrders([]);
     setMatchedContacts([]);
     setUnmatchedOrders([]);
+    setSelectedContactIds(new Set());
     setTemplateId('');
     setChannelId('');
     setApiKeyId('');
@@ -284,40 +328,70 @@ export default function ExternalListDispatch() {
                 Contatos Encontrados ({matchedContacts.length})
               </CardTitle>
               <CardDescription>
-                Revise os matches e remova os incorretos clicando no ícone de lixeira
+                Selecione os contatos para envio e remova os incorretos
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[400px]">
+              {/* Selection controls */}
+              <div className="flex items-center justify-between mb-3 pb-3 border-b">
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    checked={selectedContactIds.size === matchedContacts.length && matchedContacts.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                    id="select-all"
+                  />
+                  <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
+                    Selecionar Todos
+                  </label>
+                </div>
+                <Badge variant="outline" className="text-xs">
+                  {selectedContactIds.size} de {matchedContacts.length} selecionados
+                </Badge>
+              </div>
+              
+              <ScrollArea className="h-[350px]">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[80px]">Pedido</TableHead>
-                      <TableHead>Cliente (Lista)</TableHead>
-                      <TableHead>Contato (CRM)</TableHead>
-                      <TableHead className="w-[90px]">Score</TableHead>
-                      <TableHead className="w-[50px]"></TableHead>
+                      <TableHead className="w-[40px]"></TableHead>
+                      <TableHead className="w-[70px]">Pedido</TableHead>
+                      <TableHead>Nome (Lista)</TableHead>
+                      <TableHead>Nome (CRM)</TableHead>
+                      <TableHead>Telefone</TableHead>
+                      <TableHead className="w-[80px]">Score</TableHead>
+                      <TableHead className="w-[40px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {matchedContacts.map((c) => {
                       const isLowConfidence = c.matchScore < 85;
                       const isVeryLow = c.matchScore < 75;
+                      const isSelected = selectedContactIds.has(c.orderId);
                       
                       return (
                         <TableRow 
                           key={c.orderId}
-                          className={
+                          className={`cursor-pointer ${
                             isVeryLow 
                               ? 'bg-red-500/10 hover:bg-red-500/20' 
                               : isLowConfidence 
                                 ? 'bg-yellow-500/10 hover:bg-yellow-500/20' 
-                                : ''
-                          }
+                                : isSelected 
+                                  ? 'bg-primary/5 hover:bg-primary/10' 
+                                  : ''
+                          }`}
+                          onClick={() => toggleContactSelection(c.orderId)}
                         >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox 
+                              checked={isSelected}
+                              onCheckedChange={() => toggleContactSelection(c.orderId)}
+                            />
+                          </TableCell>
                           <TableCell className="font-mono text-xs">{c.orderNumber}</TableCell>
-                          <TableCell className="text-sm">{c.customerName}</TableCell>
-                          <TableCell className="text-sm">{c.contactName}</TableCell>
+                          <TableCell className="text-sm font-medium">{c.customerName}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{c.contactName}</TableCell>
+                          <TableCell className="text-sm font-mono text-muted-foreground">{c.phone}</TableCell>
                           <TableCell>
                             <TooltipProvider>
                               <Tooltip>
@@ -348,19 +422,24 @@ export default function ExternalListDispatch() {
                               </Tooltip>
                             </TooltipProvider>
                           </TableCell>
-                          <TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
                               onClick={() => {
                                 setMatchedContacts(prev => prev.filter(mc => mc.orderId !== c.orderId));
+                                setSelectedContactIds(prev => {
+                                  const newSet = new Set(prev);
+                                  newSet.delete(c.orderId);
+                                  return newSet;
+                                });
                                 setUnmatchedOrders(prev => [...prev, {
                                   orderNumber: c.orderNumber,
                                   customerName: c.customerName,
                                   value: c.value,
                                 }]);
-                                toast.info(`${c.customerName} removido da lista`);
+                                toast.info(`${c.customerName} removido`);
                               }}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -423,15 +502,20 @@ export default function ExternalListDispatch() {
             </CardContent>
           </Card>
           
-          <div className="lg:col-span-2 flex justify-between">
+          <div className="lg:col-span-2 flex justify-between items-center">
             <Button variant="outline" onClick={handleReset}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Voltar
             </Button>
-            <Button onClick={() => setStep('configure')} disabled={matchedContacts.length === 0}>
-              Continuar
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-muted-foreground">
+                {selectedContactIds.size} contato(s) selecionado(s)
+              </span>
+              <Button onClick={() => setStep('configure')} disabled={selectedContactIds.size === 0}>
+                Continuar com {selectedContactIds.size}
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -566,7 +650,7 @@ export default function ExternalListDispatch() {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  {matchedContacts.length} contatos
+                  {selectedContacts.length} contatos selecionados
                 </span>
                 <span className="text-muted-foreground flex items-center gap-2">
                   <Clock className="h-4 w-4" />
