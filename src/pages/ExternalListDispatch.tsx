@@ -134,8 +134,19 @@ export default function ExternalListDispatch() {
   
   // Handle dispatch start
   const handleStartDispatch = useCallback(async () => {
-    if (!selectedTemplate || !channelId || !selectedApiKey) {
-      toast.error('Configure todos os campos antes de iniciar');
+    // Specific validation with clear error messages
+    if (!selectedTemplate) {
+      toast.error('Selecione um Template Meta');
+      return;
+    }
+    if (!channelId) {
+      toast.error('Selecione um Canal Cloud API');
+      console.warn('[ListDispatch] channelId missing. Available channels:', channels);
+      return;
+    }
+    if (!selectedApiKey) {
+      toast.error('Selecione uma Chave de API');
+      console.warn('[ListDispatch] apiKeyId missing. Available API keys:', apiKeys);
       return;
     }
     
@@ -150,7 +161,7 @@ export default function ExternalListDispatch() {
       intervalSeconds,
       variableMapping,
     });
-  }, [selectedTemplate, channelId, selectedApiKey, matchedContacts, intervalSeconds, variableMapping, execute]);
+  }, [selectedTemplate, channelId, selectedApiKey, matchedContacts, intervalSeconds, variableMapping, execute, channels, apiKeys]);
   
   // Reset everything
   const handleReset = useCallback(() => {
