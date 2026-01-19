@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Pause,
   Trash2,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +45,7 @@ import {
 } from '@/hooks/useMetaTemplates';
 import { MetaTemplateModal } from './MetaTemplateModal';
 import { MetaTemplatePreview } from './MetaTemplatePreview';
+import { BlingTemplatesWizard } from './BlingTemplatesWizard';
 
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
@@ -116,6 +118,7 @@ export function MetaTemplatesTab() {
   const purgeMutation = usePurgeDeletedTemplates();
   
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showBlingWizard, setShowBlingWizard] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<MetaMessageTemplate | null>(null);
   const [disableTemplate, setDisableTemplate] = useState<MetaMessageTemplate | null>(null);
   const [showPurgeDialog, setShowPurgeDialog] = useState(false);
@@ -166,6 +169,14 @@ export function MetaTemplatesTab() {
               Limpar Excluídos ({deletedTemplates.length})
             </Button>
           )}
+          <Button 
+            variant="outline"
+            className="border-yellow-500/50 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-700 dark:hover:bg-yellow-500/10"
+            onClick={() => setShowBlingWizard(true)}
+          >
+            <Zap className="h-4 w-4 mr-2" />
+            Templates Bling
+          </Button>
           <Button 
             variant="outline" 
             onClick={handleSync}
@@ -300,6 +311,11 @@ export function MetaTemplatesTab() {
       <MetaTemplateModal 
         open={showCreateModal} 
         onOpenChange={setShowCreateModal} 
+      />
+
+      <BlingTemplatesWizard
+        open={showBlingWizard}
+        onOpenChange={setShowBlingWizard}
       />
 
       <MetaTemplatePreview
