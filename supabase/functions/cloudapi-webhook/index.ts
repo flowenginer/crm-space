@@ -265,6 +265,18 @@ async function processMessages(supabase: any, value: any) {
     const messageType = message.type;
     const timestamp = new Date(parseInt(message.timestamp) * 1000);
     
+    // Handle REACTIONS separately - they update existing messages, not create new ones
+    if (messageType === 'reaction') {
+      console.log('[CloudAPI] 🎯 Processing reaction:', {
+        emoji: message.reaction?.emoji,
+        target_message_id: message.reaction?.message_id,
+        from,
+      });
+      
+      await processReaction(supabase, message, from, config.tenant_id);
+      continue; // Skip normal message processing for reactions
+    }
+    
     // Get contact name
     const contact = contacts.find((c: any) => c.wa_id === from);
     const contactName = contact?.profile?.name || from;
@@ -885,7 +897,7 @@ async function processCalls(supabase: any, value: any) {
         },
       });
     }
-
+    
     // Broadcast call state changes for active calls
     if (['accepted', 'rejected', 'terminated', 'completed', 'failed'].includes(status)) {
       console.log('[Calls] Broadcasting call state change:', status);
@@ -902,5 +914,85 @@ async function processCalls(supabase: any, value: any) {
         },
       });
     }
+  }
+}
+
+// Process reactions from Cloud API - update existing message reactions
+async function processReaction(supabase: any, message: any, from: string, tenantId: string) {
+  const reaction = message.reaction;
+  if (!reaction) {
+    console.log('[CloudAPI] No reaction data in message');
+    return;
+  }
+
+  const emoji = reaction.emoji || '';
+  const targetMessageId = reaction.message_id;
+
+  if (!targetMessageId) {
+    console.log('[CloudAPI] No target message_id for reaction');
+    return;
+  }
+
+  // Find the original message by whatsapp_message_id
+  const { data: targetMessage, error: findError } = await supabase
+    .from('messages')
+    .select('id, reactions, conversation_id, contact_id')
+    .eq('whatsapp_message_id', targetMessageId)
+    .eq('tenant_id', tenantId)
+    .single();
+
+  if (findError || !targetMessage) {
+    console.log('[CloudAPI] Target message not found for reaction:', targetMessageId, findError?.message);
+    return;
+  }
+
+  console.log('[CloudAPI] Found target message:', targetMessage.id, 'for reaction');
+
+  // Get current reactions or initialize empty array
+  let currentReactions: any[] = targetMessage.reactions || [];
+  
+  // Use contact_id as the user_id for reactions from contacts
+  const reactionUserId = targetMessage.contact_id;
+
+  if (!emoji) {
+    // Empty emoji = remove reaction from this user
+    console.log('[CloudAPI] Removing reaction from user:', reactionUserId);
+    currentReactions = currentReactions.filter(
+      (r: any) => !(r.from_contact === true && r.user_id === reactionUserId)
+    );
+  } else {
+    // Check if user already has a reaction
+    const existingIndex = currentReactions.findIndex(
+      (r: any) => r.from_contact === true && r.user_id === reactionUserId
+    );
+
+    const newReaction = {
+      emoji,
+      user_id: reactionUserId,
+      from_contact: true,
+      created_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      // Update existing reaction
+      currentReactions[existingIndex] = newReaction;
+      console.log('[CloudAPI] Updated existing reaction to:', emoji);
+    } else {
+      // Add new reaction
+      currentReactions.push(newReaction);
+      console.log('[CloudAPI] Added new reaction:', emoji);
+    }
+  }
+
+  // Update the message with new reactions array
+  const { error: updateError } = await supabase
+    .from('messages')
+    .update({ reactions: currentReactions })
+    .eq('id', targetMessage.id);
+
+  if (updateError) {
+    console.error('[CloudAPI] ❌ Error updating reactions:', updateError.message);
+  } else {
+    console.log('[CloudAPI] ✅ Reactions updated successfully, total:', currentReactions.length);
   }
 }
