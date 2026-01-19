@@ -575,18 +575,36 @@ async function processMessages(supabase: any, value: any) {
       }
     }
 
-    // Insert message (usando whatsapp_message_id que é a coluna correta)
-    const { data: insertedMessage, error: insertError } = await supabase.from('messages').insert({
-      conversation_id: conversationId,
-      contact_id: contactId,
-      tenant_id: config.tenant_id,
-      content,
-      message_type: messageType,
-      media_url: mediaUrl,
-      is_from_me: false,
-      whatsapp_message_id: message.id,
-      reply_to_message_id: replyToMessageId,
-    }).select('id').single();
+    // Check idempotency - prevent duplicate inserts from repeated webhooks
+    const { data: existingMsg } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('whatsapp_message_id', message.id)
+      .maybeSingle();
+    
+    let insertedMessage: { id: string } | null = null;
+    let insertError: any = null;
+    
+    if (existingMsg) {
+      console.log('[CloudAPI] ⚠️ Message already exists, skipping insert:', message.id);
+      insertedMessage = existingMsg;
+    } else {
+      // Insert message (usando whatsapp_message_id que é a coluna correta)
+      const { data, error } = await supabase.from('messages').insert({
+        conversation_id: conversationId,
+        contact_id: contactId,
+        tenant_id: config.tenant_id,
+        content,
+        message_type: messageType,
+        media_url: mediaUrl,
+        is_from_me: false,
+        whatsapp_message_id: message.id,
+        reply_to_message_id: replyToMessageId,
+      }).select('id').single();
+      
+      insertedMessage = data;
+      insertError = error;
+    }
 
     if (insertError) {
       console.error('[CloudAPI] ❌ Error inserting message:', insertError.message, {
@@ -595,10 +613,14 @@ async function processMessages(supabase: any, value: any) {
         content: content.substring(0, 50),
         whatsapp_message_id: message.id,
       });
-    } else if (insertedMessage) {
-      console.log('[CloudAPI] ✅ Message inserted successfully:', insertedMessage.id, 'type:', messageType);
+      // DO NOT update conversation preview if message insert failed
+      // This prevents "ghost previews" where preview shows but message doesn't exist
+      continue;
     }
+    
+    console.log('[CloudAPI] ✅ Message ready:', insertedMessage?.id, 'type:', messageType);
 
+    // Only update conversation if message was successfully inserted/found
     // Update conversation - incrementar unread_count usando SQL direto
     await supabase.rpc('increment_unread', { conv_id: conversationId });
 
