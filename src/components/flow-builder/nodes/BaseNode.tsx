@@ -31,7 +31,7 @@ const isSendTextWaitReply = (data: FlowNodeData) => {
   return data.nodeSubtype === 'send_text_wait_reply';
 };
 
-// Cores para as saídas dinâmicas
+// Cores para as saídas dinâmicas (classes para labels)
 const outputColors = [
   { bg: 'bg-green-500', border: 'border-green-300', text: 'text-green-500' },
   { bg: 'bg-blue-500', border: 'border-blue-300', text: 'text-blue-500' },
@@ -40,7 +40,7 @@ const outputColors = [
   { bg: 'bg-pink-500', border: 'border-pink-300', text: 'text-pink-500' },
 ];
 
-// Cores hex para style inline (Tailwind JIT não detecta classes dinâmicas)
+// Cores hex para style inline nos handles (Tailwind JIT não detecta classes dinâmicas)
 const outputColorHex = [
   { bg: '#22c55e', border: '#86efac' }, // green
   { bg: '#3b82f6', border: '#93c5fd' }, // blue
@@ -107,7 +107,7 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
       {/* Saídas para o bloco híbrido send_text_wait_reply */}
       {isSendWaitReply ? (
         <>
-          {/* Handles para cada resposta esperada - usando style inline */}
+          {/* Handles para cada resposta esperada - com zIndex alto e hitbox maior */}
           {expectedResponses.map((response, index) => {
             const colorHex = outputColorHex[index % outputColorHex.length];
             const totalOutputs = expectedResponses.length + 2;
@@ -119,18 +119,19 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
                 type="source"
                 position={Position.Bottom}
                 id={`response_${response.id}`}
-                className="!w-3 !h-3"
+                className="!w-4 !h-4"
                 style={{ 
                   left: `${leftPercent}%`,
                   backgroundColor: colorHex.bg,
                   borderWidth: '2px',
-                  borderColor: colorHex.border
+                  borderColor: colorHex.border,
+                  zIndex: 10
                 }}
               />
             );
           })}
           
-          {/* Labels para cada resposta esperada - separadas dos handles */}
+          {/* Labels para cada resposta esperada - pointer-events-none para não interferir */}
           {expectedResponses.map((response, index) => {
             const colorSet = outputColors[index % outputColors.length];
             const totalOutputs = expectedResponses.length + 2;
@@ -139,7 +140,7 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
             return (
               <div 
                 key={`label_${response.id}`}
-                className={cn('absolute -bottom-5 text-[9px] whitespace-nowrap', colorSet.text)}
+                className={cn('absolute -bottom-5 text-[9px] whitespace-nowrap pointer-events-none select-none', colorSet.text)}
                 style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}
               >
                 {response.label || `R${index + 1}`}
@@ -152,11 +153,17 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
             type="source"
             position={Position.Bottom}
             id="other"
-            className="!w-3 !h-3 !bg-gray-500 !border-2 !border-gray-300"
-            style={{ left: `${((expectedResponses.length + 1) / (expectedResponses.length + 3)) * 100}%` }}
+            className="!w-4 !h-4"
+            style={{ 
+              left: `${((expectedResponses.length + 1) / (expectedResponses.length + 3)) * 100}%`,
+              backgroundColor: '#6b7280',
+              borderWidth: '2px',
+              borderColor: '#9ca3af',
+              zIndex: 10
+            }}
           />
           <div 
-            className="absolute -bottom-5 text-[9px] text-gray-500 whitespace-nowrap"
+            className="absolute -bottom-5 text-[9px] text-gray-500 whitespace-nowrap pointer-events-none select-none"
             style={{ left: `${((expectedResponses.length + 1) / (expectedResponses.length + 3)) * 100}%`, transform: 'translateX(-50%)' }}
           >
             Outra
@@ -167,11 +174,17 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
             type="source"
             position={Position.Bottom}
             id="timeout"
-            className="!w-3 !h-3 !bg-orange-500 !border-2 !border-orange-300"
-            style={{ left: `${((expectedResponses.length + 2) / (expectedResponses.length + 3)) * 100}%` }}
+            className="!w-4 !h-4"
+            style={{ 
+              left: `${((expectedResponses.length + 2) / (expectedResponses.length + 3)) * 100}%`,
+              backgroundColor: '#f97316',
+              borderWidth: '2px',
+              borderColor: '#fdba74',
+              zIndex: 10
+            }}
           />
           <div 
-            className="absolute -bottom-5 text-[9px] text-orange-500 whitespace-nowrap"
+            className="absolute -bottom-5 text-[9px] text-orange-500 whitespace-nowrap pointer-events-none select-none"
             style={{ left: `${((expectedResponses.length + 2) / (expectedResponses.length + 3)) * 100}%`, transform: 'translateX(-50%)' }}
           >
             Timeout

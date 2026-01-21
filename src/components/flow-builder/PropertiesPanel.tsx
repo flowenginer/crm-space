@@ -861,7 +861,7 @@ function renderNodeConfig(
                     placeholder="Palavras que ativam esta saída (uma por linha)&#10;Ex:&#10;1&#10;sim&#10;quero"
                     rows={3}
                     className="text-sm"
-                    onKeyDown={(e) => e.stopPropagation()}
+                    onKeyDownCapture={(e) => e.stopPropagation()}
                   />
                 </div>
               </div>
