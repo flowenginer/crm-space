@@ -5,6 +5,7 @@ import * as LucideIcons from 'lucide-react';
 import { FlowNodeData, NodeType } from '@/types/flow';
 import { cn } from '@/lib/utils';
 import { useTags } from '@/hooks/useTags';
+
 interface BaseNodeProps {
   data: FlowNodeData;
   selected: boolean;
@@ -25,19 +26,42 @@ const isDelayWithTwoOutputs = (data: FlowNodeData) => {
   return data.nodeType === 'delay' && data.nodeSubtype === 'wait_reply';
 };
 
+// Verifica se é o novo bloco híbrido send_text_wait_reply
+const isSendTextWaitReply = (data: FlowNodeData) => {
+  return data.nodeSubtype === 'send_text_wait_reply';
+};
+
+// Cores para as saídas dinâmicas
+const outputColors = [
+  { bg: 'bg-green-500', border: 'border-green-300', text: 'text-green-500' },
+  { bg: 'bg-blue-500', border: 'border-blue-300', text: 'text-blue-500' },
+  { bg: 'bg-purple-500', border: 'border-purple-300', text: 'text-purple-500' },
+  { bg: 'bg-cyan-500', border: 'border-cyan-300', text: 'text-cyan-500' },
+  { bg: 'bg-pink-500', border: 'border-pink-300', text: 'text-pink-500' },
+];
+
 export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
   const { data: tags } = useTags();
   const IconComponent = iconMap[data.icon || 'Circle'] || LucideIcons.Circle;
   const color = data.color || nodeColors[data.nodeType];
   const hasTwoOutputs = data.nodeType === 'condition' || isDelayWithTwoOutputs(data);
   
+  // Para o bloco híbrido, obter respostas esperadas do config
+  const config = data.config as Record<string, unknown>;
+  const expectedResponses = (config?.expected_responses as Array<{ id: string; label: string; keywords: string[] }>) || [];
+  const isSendWaitReply = isSendTextWaitReply(data);
+  
+  // Calcular largura do nó baseado no número de saídas
+  const numOutputs = isSendWaitReply ? expectedResponses.length + 2 : 0; // +2 para "Outra" e "Timeout"
+  const nodeWidth = isSendWaitReply && numOutputs > 2 ? Math.max(180, numOutputs * 50) : 180;
+  
   return (
     <div
       className={cn(
-        'min-w-[180px] rounded-xl border-2 bg-card shadow-lg transition-all duration-200',
+        'rounded-xl border-2 bg-card shadow-lg transition-all duration-200',
         selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
       )}
-      style={{ borderColor: color }}
+      style={{ borderColor: color, minWidth: `${nodeWidth}px` }}
     >
       {/* Header */}
       <div 
@@ -71,8 +95,65 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
         />
       )}
       
-      {/* Saídas para condições e wait_reply */}
-      {data.nodeType === 'condition' ? (
+      {/* Saídas para o bloco híbrido send_text_wait_reply */}
+      {isSendWaitReply ? (
+        <>
+          {/* Saídas para cada resposta esperada */}
+          {expectedResponses.map((response, index) => {
+            const colorSet = outputColors[index % outputColors.length];
+            const totalOutputs = expectedResponses.length + 2; // +2 para "Outra" e "Timeout"
+            const leftPercent = ((index + 1) / (totalOutputs + 1)) * 100;
+            
+            return (
+              <div key={response.id}>
+                <Handle
+                  type="source"
+                  position={Position.Bottom}
+                  id={`response_${response.id}`}
+                  className={cn('!w-3 !h-3', `!${colorSet.bg}`, `!${colorSet.border}`)}
+                  style={{ left: `${leftPercent}%` }}
+                />
+                <div 
+                  className={cn('absolute -bottom-5 text-[9px] whitespace-nowrap', colorSet.text)}
+                  style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}
+                >
+                  {response.label || `R${index + 1}`}
+                </div>
+              </div>
+            );
+          })}
+          
+          {/* Saída "Outra resposta" */}
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="other"
+            className="!w-3 !h-3 !bg-gray-500 !border-2 !border-gray-300"
+            style={{ left: `${((expectedResponses.length + 1) / (expectedResponses.length + 3)) * 100}%` }}
+          />
+          <div 
+            className="absolute -bottom-5 text-[9px] text-gray-500 whitespace-nowrap"
+            style={{ left: `${((expectedResponses.length + 1) / (expectedResponses.length + 3)) * 100}%`, transform: 'translateX(-50%)' }}
+          >
+            Outra
+          </div>
+          
+          {/* Saída "Timeout" */}
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="timeout"
+            className="!w-3 !h-3 !bg-orange-500 !border-2 !border-orange-300"
+            style={{ left: `${((expectedResponses.length + 2) / (expectedResponses.length + 3)) * 100}%` }}
+          />
+          <div 
+            className="absolute -bottom-5 text-[9px] text-orange-500 whitespace-nowrap"
+            style={{ left: `${((expectedResponses.length + 2) / (expectedResponses.length + 3)) * 100}%`, transform: 'translateX(-50%)' }}
+          >
+            Timeout
+          </div>
+        </>
+      ) : data.nodeType === 'condition' ? (
         <>
           <Handle
             type="source"
@@ -141,6 +222,14 @@ function getNodeDescription(
     case 'send_text':
       const msg = (config?.message as string) || '';
       return msg.length > 30 ? msg.substring(0, 30) + '...' : msg || 'Configurar mensagem';
+    case 'send_text_wait_reply': {
+      const message = (config?.message as string) || '';
+      const expectedResponses = (config?.expected_responses as Array<{ label: string }>) || [];
+      if (expectedResponses.length > 0) {
+        return `${expectedResponses.length} respostas esperadas`;
+      }
+      return message.length > 25 ? message.substring(0, 25) + '...' : message || 'Configurar...';
+    }
     case 'wait_time':
       return `Aguardar ${config?.amount || 0} ${config?.unit || 'segundos'}`;
     case 'wait_reply':

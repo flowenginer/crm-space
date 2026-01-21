@@ -466,6 +466,111 @@ async function executeAction(
       break;
     }
 
+    // ========================================
+    // NOVO BLOCO HÍBRIDO: Enviar e Aguardar Resposta
+    // ========================================
+    case 'send_text_wait_reply': {
+      console.log('[execute-flow-node] 🎯 Executando bloco híbrido send_text_wait_reply');
+      
+      let channelId = execution.channel_id;
+      
+      // Fallback: se não tem canal, buscar um aleatório
+      if (!channelId) {
+        console.log('[execute-flow-node] Canal não definido, buscando aleatório...');
+        const { data: channels } = await supabase
+          .from('whatsapp_channels')
+          .select('id, name')
+          .eq('tenant_id', execution.tenant_id)
+          .eq('status', 'connected')
+          .eq('is_deleted', false);
+        
+        if (channels && channels.length > 0) {
+          const randomIndex = Math.floor(Math.random() * channels.length);
+          channelId = channels[randomIndex].id;
+          console.log('[execute-flow-node] Canal aleatório selecionado:', channels[randomIndex].name);
+          
+          await supabase
+            .from('flow_executions')
+            .update({ channel_id: channelId })
+            .eq('id', execution.id);
+        }
+      }
+      
+      if (!channelId) {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          'Nenhum canal WhatsApp disponível para enviar mensagem');
+        break;
+      }
+
+      // 1. Enviar a mensagem
+      let message = (config.message as string) || '';
+      message = replaceVariables(message, execution);
+
+      const sendResult = await sendWhatsAppMessage(
+        supabase,
+        channelId,
+        execution.contact?.phone || '',
+        message,
+        'text'
+      );
+
+      if (sendResult.success) {
+        // Salvar mensagem no histórico
+        console.log(`[execute-flow-node] 💾 Salvando mensagem do bloco híbrido no histórico`);
+        const { error: insertMsgError } = await supabase.from('messages').insert({
+          conversation_id: execution.conversation_id,
+          content: message,
+          is_from_me: true,
+          message_type: 'text',
+          whatsapp_message_id: sendResult.messageId,
+          status: 'sent',
+          tenant_id: execution.tenant_id
+        });
+        
+        if (insertMsgError) {
+          console.error('[execute-flow-node] ❌ Erro ao salvar mensagem:', insertMsgError);
+        } else {
+          console.log('[execute-flow-node] ✅ Mensagem salva no histórico');
+        }
+        
+        await logExecution(supabase, execution.id, node.id, 'info',
+          `Mensagem enviada: ${message.substring(0, 50)}...`);
+      } else {
+        await logExecution(supabase, execution.id, node.id, 'error',
+          `Erro ao enviar mensagem: ${sendResult.error}`);
+        break;
+      }
+
+      // 2. Salvar respostas esperadas nas variáveis e pausar o fluxo
+      const expectedResponses = (config.expected_responses as Array<{ id: string; label: string; keywords: string[] }>) || [];
+      const timeoutMinutes = (config.timeout_minutes as number) || 60;
+      const waitingUntil = new Date(Date.now() + timeoutMinutes * 60 * 1000);
+      
+      // Atualizar variáveis da execução com as respostas esperadas
+      const updatedVariables = {
+        ...(execution.variables || {}),
+        expected_responses: expectedResponses,
+        waiting_node_subtype: 'send_text_wait_reply'
+      };
+
+      await supabase
+        .from('flow_executions')
+        .update({
+          status: 'waiting_reply',
+          waiting_for: 'reply',
+          waiting_until: waitingUntil.toISOString(),
+          variables: updatedVariables
+        })
+        .eq('id', execution.id);
+
+      console.log(`[execute-flow-node] ⏸️ Fluxo pausado aguardando resposta com ${expectedResponses.length} respostas esperadas`);
+      await logExecution(supabase, execution.id, node.id, 'info',
+        `Aguardando resposta (${expectedResponses.length} opções, timeout: ${timeoutMinutes} min)`);
+      
+      // Retornar sem continuar para o próximo nó (será retomado pelo webhook)
+      return;
+    }
+
     case 'send_image':
     case 'send_video':
     case 'send_audio':
