@@ -5,7 +5,9 @@ import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns';
 export interface EvaluationOverview {
   totalEvaluations: number;
   avgScore: number;
-  closingRate: number;
+  closingRate: number;           // Real conversion based on lead_status
+  aiPredictedRate: number;       // AI prediction based on etapa_fechamento
+  aiAccuracy: number;            // % of correct AI predictions
   avgObjectionScore: number;
   avgCommunicationScore: number;
   avgConductionScore: number;
@@ -62,8 +64,11 @@ export interface EvaluationDetail {
   etapaMockup: number;
   etapaAprovacaoMockup: number;
   etapaOrcamentoFinal: number;
-  etapaFechamento: number;
+  etapaFechamento: number;      // AI prediction
   etapasScore: number;
+  
+  // Real conversion from lead status
+  realConversion: boolean;
   
   // Objections
   objecoes: Record<string, { apareceu: number; tratada: number; nota: number }>;
@@ -158,7 +163,7 @@ export function useEvaluationOverview(startDate?: Date, endDate?: Date, agentId?
     queryFn: async (): Promise<EvaluationOverview> => {
       const filters = agentId ? [{ column: 'assigned_to', value: agentId }] : undefined;
       const { data, error } = await queryEvaluationsView(
-        'overall_score, etapa_fechamento, objecoes_nota_media, objecoes_tratadas, objecoes_apareceram, comunicacao_clareza, comunicacao_cordialidade, comunicacao_proatividade, comunicacao_conhecimento_produto, conducao, criterio_tempo_resposta, criterio_personalizacao, criterio_senso_urgencia, criterio_recuperacao_final, criterio_qualificacao_lead, criterio_followup_estruturado',
+        'overall_score, etapa_fechamento, real_conversion, objecoes_nota_media, objecoes_tratadas, objecoes_apareceram, comunicacao_clareza, comunicacao_cordialidade, comunicacao_proatividade, comunicacao_conhecimento_produto, conducao, criterio_tempo_resposta, criterio_personalizacao, criterio_senso_urgencia, criterio_recuperacao_final, criterio_qualificacao_lead, criterio_followup_estruturado',
         start,
         end,
         filters
@@ -170,6 +175,8 @@ export function useEvaluationOverview(startDate?: Date, endDate?: Date, agentId?
           totalEvaluations: 0,
           avgScore: 0,
           closingRate: 0,
+          aiPredictedRate: 0,
+          aiAccuracy: 0,
           avgObjectionScore: 0,
           avgCommunicationScore: 0,
           avgConductionScore: 0,
@@ -189,7 +196,20 @@ export function useEvaluationOverview(startDate?: Date, endDate?: Date, agentId?
 
       const totalEvaluations = data.length;
       const avgScore = data.reduce((sum, e: any) => sum + (Number(e.overall_score) || 0), 0) / totalEvaluations;
-      const closingRate = (data.filter((e: any) => e.etapa_fechamento === 1).length / totalEvaluations) * 100;
+      
+      // Real conversion rate based on lead_status
+      const closingRate = (data.filter((e: any) => e.real_conversion === true).length / totalEvaluations) * 100;
+      
+      // AI predicted rate based on etapa_fechamento
+      const aiPredictedRate = (data.filter((e: any) => e.etapa_fechamento === 1).length / totalEvaluations) * 100;
+      
+      // AI accuracy: % of correct predictions
+      const correctPredictions = data.filter((e: any) => 
+        (e.etapa_fechamento === 1 && e.real_conversion === true) || 
+        (e.etapa_fechamento !== 1 && e.real_conversion !== true)
+      ).length;
+      const aiAccuracy = (correctPredictions / totalEvaluations) * 100;
+      
       const avgObjectionScore = data.reduce((sum, e: any) => sum + (Number(e.objecoes_nota_media) || 0), 0) / totalEvaluations;
       
       // Individual communication metrics
@@ -218,6 +238,8 @@ export function useEvaluationOverview(startDate?: Date, endDate?: Date, agentId?
         totalEvaluations,
         avgScore: Math.round(avgScore * 10) / 10,
         closingRate: Math.round(closingRate * 10) / 10,
+        aiPredictedRate: Math.round(aiPredictedRate * 10) / 10,
+        aiAccuracy: Math.round(aiAccuracy * 10) / 10,
         avgObjectionScore: Math.round(avgObjectionScore * 10) / 10,
         avgCommunicationScore: Math.round(avgCommunicationScore * 10) / 10,
         avgConductionScore: Math.round(avgConductionScore * 10) / 10,
@@ -246,7 +268,7 @@ export function useAgentRanking(startDate?: Date, endDate?: Date) {
     queryFn: async (): Promise<AgentRanking[]> => {
       // First get evaluations from the view with all metrics
       const { data: evaluationsData, error: evalError } = await queryEvaluationsView(
-        'assigned_to, overall_score, etapa_fechamento, conducao, objecoes_nota_media, comunicacao_clareza, comunicacao_cordialidade, comunicacao_proatividade, comunicacao_conhecimento_produto, criterio_tempo_resposta, criterio_personalizacao, criterio_senso_urgencia, criterio_recuperacao_final, criterio_qualificacao_lead, criterio_followup_estruturado',
+        'assigned_to, overall_score, etapa_fechamento, real_conversion, conducao, objecoes_nota_media, comunicacao_clareza, comunicacao_cordialidade, comunicacao_proatividade, comunicacao_conhecimento_produto, criterio_tempo_resposta, criterio_personalizacao, criterio_senso_urgencia, criterio_recuperacao_final, criterio_qualificacao_lead, criterio_followup_estruturado',
         start,
         end
       );
@@ -290,7 +312,8 @@ export function useAgentRanking(startDate?: Date, endDate?: Date) {
       agentMap.forEach(({ profile, evaluations }) => {
         const count = evaluations.length;
         const avgScore = evaluations.reduce((sum, e) => sum + (Number(e.overall_score) || 0), 0) / count;
-        const closingRate = (evaluations.filter(e => e.etapa_fechamento === 1).length / count) * 100;
+        // Real conversion rate based on lead_status
+        const closingRate = (evaluations.filter(e => e.real_conversion === true).length / count) * 100;
         const avgConduction = evaluations.reduce((sum, e) => sum + (e.conducao || 0), 0) / count;
         const avgObjectionScore = evaluations.reduce((sum, e) => sum + (Number(e.objecoes_nota_media) || 0), 0) / count;
         
@@ -387,6 +410,7 @@ export function useAgentEvaluations(agentId: string | null, startDate?: Date, en
         etapaOrcamentoFinal: e.etapa_orcamento_final || 0,
         etapaFechamento: e.etapa_fechamento || 0,
         etapasScore: e.etapas_score || 0,
+        realConversion: e.real_conversion === true,
         objecoes: (e.objecoes as Record<string, { apareceu: number; tratada: number; nota: number }>) || {},
         objecoesApareceram: e.objecoes_apareceram || 0,
         objecoesTratadas: e.objecoes_tratadas || 0,
@@ -459,6 +483,7 @@ export function useEvaluationDetail(evaluationId: string | null) {
         etapaOrcamentoFinal: (data as any).etapa_orcamento_final || 0,
         etapaFechamento: (data as any).etapa_fechamento || 0,
         etapasScore: (data as any).etapas_score || 0,
+        realConversion: (data as any).real_conversion === true,
         objecoes: ((data as any).objecoes as Record<string, { apareceu: number; tratada: number; nota: number }>) || {},
         objecoesApareceram: (data as any).objecoes_apareceram || 0,
         objecoesTratadas: (data as any).objecoes_tratadas || 0,

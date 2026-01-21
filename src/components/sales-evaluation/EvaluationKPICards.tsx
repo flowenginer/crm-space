@@ -1,5 +1,5 @@
 import { KPICard } from '@/components/dashboard/KPICard';
-import { Target, TrendingUp, MessageSquare, Users, Zap, Award, CheckCircle } from 'lucide-react';
+import { Target, TrendingUp, MessageSquare, Users, Zap, Award, CheckCircle, Brain } from 'lucide-react';
 import { EvaluationOverview } from '@/hooks/useSalesEvaluations';
 import { EvaluationTargets } from '@/hooks/useEvaluationTargets';
 import { PeriodComparison } from '@/hooks/usePeriodComparison';
@@ -11,6 +11,12 @@ interface EvaluationKPICardsProps {
   comparison?: PeriodComparison;
 }
 
+function getAiAccuracyColor(accuracy: number): 'green' | 'orange' | 'pink' {
+  if (accuracy >= 80) return 'green';
+  if (accuracy >= 60) return 'orange';
+  return 'pink';
+}
+
 export function EvaluationKPICards({ overview, isLoading, targets, comparison }: EvaluationKPICardsProps) {
   const getTrend = (key: keyof PeriodComparison) => {
     if (!comparison) return undefined;
@@ -19,8 +25,19 @@ export function EvaluationKPICards({ overview, isLoading, targets, comparison }:
     return { value: Math.abs(data.variation), isPositive: data.variation > 0 };
   };
 
+  const totalEvaluations = overview?.totalEvaluations || 0;
+  const realConversions = totalEvaluations > 0 
+    ? Math.round((overview?.closingRate || 0) * totalEvaluations / 100) 
+    : 0;
+  const aiPredictions = totalEvaluations > 0 
+    ? Math.round((overview?.aiPredictedRate || 0) * totalEvaluations / 100) 
+    : 0;
+  const correctPredictions = totalEvaluations > 0 
+    ? Math.round((overview?.aiAccuracy || 0) * totalEvaluations / 100) 
+    : 0;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
       <KPICard
         title="Total Avaliações"
         value={overview?.totalEvaluations || 0}
@@ -39,13 +56,21 @@ export function EvaluationKPICards({ overview, isLoading, targets, comparison }:
         trend={getTrend('avgScore')}
       />
       <KPICard
-        title="Taxa de Fechamento"
+        title="Taxa de Conversão"
         value={`${overview?.closingRate || 0}%`}
-        subtitle={targets ? `Meta: ${targets.targetTaxaFechamento}%` : undefined}
+        subtitle={targets ? `Meta: ${targets.targetTaxaFechamento}%` : `${realConversions} conversões`}
         icon={Target}
         color="green"
         isLoading={isLoading}
         trend={getTrend('closingRate')}
+      />
+      <KPICard
+        title="Assertividade IA"
+        value={`${overview?.aiAccuracy || 0}%`}
+        subtitle={`${correctPredictions}/${totalEvaluations} acertos`}
+        icon={Brain}
+        color={getAiAccuracyColor(overview?.aiAccuracy || 0)}
+        isLoading={isLoading}
       />
       <KPICard
         title="Efic. Objeções"

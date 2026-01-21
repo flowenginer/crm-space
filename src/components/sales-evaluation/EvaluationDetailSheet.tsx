@@ -176,9 +176,18 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
               {/* Funnel Stages */}
               <Card>
                 <CardHeader className="py-3 px-4">
-                  <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    <Target className="h-4 w-4" />
-                    Etapas do Funil ({stagesReached}/{FUNNEL_STAGES.length})
+                  <CardTitle className="text-sm font-medium flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <Target className="h-4 w-4" />
+                      Etapas do Funil ({stagesReached}/{FUNNEL_STAGES.length})
+                    </span>
+                    {/* Real Conversion Badge */}
+                    <Badge 
+                      variant={evaluation.realConversion ? "default" : "secondary"}
+                      className={evaluation.realConversion ? "bg-green-500 hover:bg-green-600" : ""}
+                    >
+                      {evaluation.realConversion ? "✓ Converteu" : "Não converteu"}
+                    </Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-4 pb-4">
@@ -207,6 +216,20 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
                   <div className="flex justify-between mt-2 text-[10px] text-muted-foreground">
                     <span>Catálogo</span>
                     <span>Fechamento</span>
+                  </div>
+                  
+                  {/* AI vs Real Comparison */}
+                  <div className="mt-3 pt-3 border-t flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Previsão da IA:</span>
+                    <span className={`font-medium ${
+                      evaluation.etapaFechamento === 1 
+                        ? (evaluation.realConversion ? 'text-green-600' : 'text-red-500')
+                        : (evaluation.realConversion ? 'text-red-500' : 'text-green-600')
+                    }`}>
+                      {evaluation.etapaFechamento === 1 ? 'Fecharia' : 'Não fecharia'}
+                      {' '}
+                      ({(evaluation.etapaFechamento === 1) === evaluation.realConversion ? '✓ Acertou' : '✗ Errou'})
+                    </span>
                   </div>
                 </CardContent>
               </Card>
