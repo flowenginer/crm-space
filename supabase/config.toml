@@ -133,3 +133,6 @@ verify_jwt = false
 
 [functions.api-send-message]
 verify_jwt = false
+
+[functions.find-objection-context]
+verify_jwt = false

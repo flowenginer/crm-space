@@ -15,12 +15,14 @@ import {
   CheckCircle2,
   XCircle,
   ArrowRight,
-  Eye
+  Eye,
+  Search
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { EvaluationDetail } from '@/hooks/useSalesEvaluations';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
+import { ObjectionContextDialog } from './ObjectionContextDialog';
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts';
 
 interface EvaluationDetailSheetProps {
@@ -55,6 +57,12 @@ const FUNNEL_STAGES = [
 
 export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: EvaluationDetailSheetProps) {
   const [conversationPreviewOpen, setConversationPreviewOpen] = useState(false);
+  const [selectedObjection, setSelectedObjection] = useState<{
+    name: string;
+    originalKey: string;
+    tratada: boolean;
+    nota: number;
+  } | null>(null);
 
   if (!evaluation) return null;
 
@@ -75,8 +83,9 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
   ];
 
   // Get objections as array
-  const objectionsList = Object.entries(evaluation.objecoes || {}).map(([name, data]) => ({
-    name: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+  const objectionsList = Object.entries(evaluation.objecoes || {}).map(([key, data]) => ({
+    name: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+    originalKey: key,
     ...data,
   }));
 
@@ -248,10 +257,19 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
                       </Badge>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-4 pb-4">
-                    <div className="space-y-2">
+                <CardContent className="px-4 pb-4">
+                    <div className="space-y-1">
                       {objectionsList.map((obj) => (
-                        <div key={obj.name} className="flex items-center justify-between text-sm">
+                        <div 
+                          key={obj.name} 
+                          className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted/50 p-2 rounded-md transition-colors group"
+                          onClick={() => setSelectedObjection({
+                            name: obj.name,
+                            originalKey: obj.originalKey,
+                            tratada: Boolean(obj.tratada),
+                            nota: obj.nota,
+                          })}
+                        >
                           <span className="flex items-center gap-2">
                             {obj.tratada ? (
                               <CheckCircle2 className="h-4 w-4 text-green-500" />
@@ -259,6 +277,7 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
                               <XCircle className="h-4 w-4 text-red-500" />
                             )}
                             {obj.name}
+                            <Search className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                           </span>
                           <Badge variant="outline" className={obj.nota > 0 ? getScoreColor(obj.nota) : ''}>
                             {obj.nota > 0 ? obj.nota.toFixed(1) : '-'}
@@ -266,6 +285,10 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
                         </div>
                       ))}
                     </div>
+                    <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+                      <Search className="h-3 w-3" />
+                      Clique em uma objeção para ver o contexto na conversa
+                    </p>
                   </CardContent>
                 </Card>
               )}
@@ -308,6 +331,13 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
         conversationId={evaluation.conversationId}
         isOpen={conversationPreviewOpen}
         onClose={() => setConversationPreviewOpen(false)}
+      />
+
+      <ObjectionContextDialog
+        open={!!selectedObjection}
+        onOpenChange={(open) => !open && setSelectedObjection(null)}
+        conversationId={evaluation.conversationId}
+        objection={selectedObjection}
       />
     </>
   );
