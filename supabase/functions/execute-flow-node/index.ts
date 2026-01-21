@@ -263,7 +263,13 @@ Deno.serve(async (req) => {
     // Executar baseado no tipo
     switch (flowNode.node_type) {
       case 'action':
-        await executeAction(supabase, execution as FlowExecution, flowNode);
+        const actionResult = await executeAction(supabase, execution as FlowExecution, flowNode);
+        if (actionResult.shouldStop) {
+          return new Response(
+            JSON.stringify({ success: true, waiting: true }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
         break;
 
       case 'condition':
@@ -389,7 +395,7 @@ async function executeAction(
   supabase: any,
   execution: FlowExecution,
   node: FlowNode
-) {
+): Promise<{ shouldStop: boolean }> {
   const config = node.config;
 
   switch (node.node_subtype) {
@@ -567,8 +573,8 @@ async function executeAction(
       await logExecution(supabase, execution.id, node.id, 'info',
         `Aguardando resposta (${expectedResponses.length} opções, timeout: ${timeoutMinutes} min)`);
       
-      // Retornar sem continuar para o próximo nó (será retomado pelo webhook)
-      return;
+      // Retornar sinalizando que o fluxo deve parar aqui (será retomado pelo webhook)
+      return { shouldStop: true };
     }
 
     case 'send_image':
@@ -921,6 +927,9 @@ async function executeAction(
       break;
     }
   }
+  
+  // Por padrão, não parar o fluxo (continua para o próximo nó)
+  return { shouldStop: false };
 }
 
 async function evaluateCondition(
