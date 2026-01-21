@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { X } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { X, Plus, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,12 @@ import { WebhookBodyFields, BodyField, bodyFieldsToObject, objectToBodyFields } 
 import { MetaTemplateSelector } from '@/components/meta-templates';
 import { FlowAudioUploader } from './FlowAudioUploader';
 
+// Interface para respostas esperadas
+interface ExpectedResponse {
+  id: string;
+  label: string;
+  keywords: string[];
+}
 interface PropertiesPanelProps {
   node: FlowNodeData | null;
   onUpdate: (nodeId: string, config: Record<string, unknown>) => void;
@@ -741,6 +747,154 @@ function renderNodeConfig(
           </div>
         </div>
       );
+      
+    case 'send_text_wait_reply': {
+      const expectedResponses = (config?.expected_responses as ExpectedResponse[]) || [];
+      
+      const addResponse = () => {
+        const newResponse: ExpectedResponse = {
+          id: crypto.randomUUID().slice(0, 8),
+          label: `Resposta ${expectedResponses.length + 1}`,
+          keywords: []
+        };
+        onUpdate(node.id, {
+          ...node.config,
+          expected_responses: [...expectedResponses, newResponse]
+        });
+      };
+      
+      const removeResponse = (id: string) => {
+        onUpdate(node.id, {
+          ...node.config,
+          expected_responses: expectedResponses.filter(r => r.id !== id)
+        });
+      };
+      
+      const updateResponse = (id: string, field: 'label' | 'keywords', value: string | string[]) => {
+        onUpdate(node.id, {
+          ...node.config,
+          expected_responses: expectedResponses.map(r => 
+            r.id === id ? { ...r, [field]: value } : r
+          )
+        });
+      };
+      
+      return (
+        <div className="space-y-4">
+          {/* Mensagem */}
+          <div className="space-y-2">
+            <Label>Mensagem</Label>
+            <Textarea
+              value={(config?.message as string) || ''}
+              onChange={(e) => updateConfig('message', e.target.value)}
+              placeholder="Digite a mensagem com as opções para o cliente..."
+              rows={4}
+            />
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p className="font-medium">Variáveis disponíveis:</p>
+              <p>{'{{nome}}'}, {'{{primeiro_nome}}'}, {'{{telefone}}'}</p>
+            </div>
+          </div>
+          
+          {/* Timeout */}
+          <div className="space-y-2">
+            <Label>Timeout (minutos)</Label>
+            <Input
+              type="number"
+              value={(config?.timeout_minutes as number) || 60}
+              onChange={(e) => updateConfig('timeout_minutes', parseInt(e.target.value))}
+            />
+          </div>
+          
+          {/* Respostas Esperadas */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Respostas Esperadas</Label>
+              <Button 
+                type="button" 
+                variant="outline" 
+                size="sm"
+                onClick={addResponse}
+              >
+                <Plus size={14} className="mr-1" />
+                Adicionar
+              </Button>
+            </div>
+            
+            {expectedResponses.length === 0 && (
+              <p className="text-xs text-muted-foreground italic">
+                Nenhuma resposta configurada. Adicione respostas para criar saídas no bloco.
+              </p>
+            )}
+            
+            {expectedResponses.map((response, index) => (
+              <div 
+                key={response.id} 
+                className="p-3 border border-border rounded-lg space-y-2 bg-muted/30"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Saída {index + 1}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeResponse(response.id)}
+                    className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+                
+                <div className="space-y-2">
+                  <Input
+                    value={response.label}
+                    onChange={(e) => updateResponse(response.id, 'label', e.target.value)}
+                    placeholder="Nome da saída (ex: Opção 1)"
+                    className="text-sm"
+                  />
+                  <Textarea
+                    value={response.keywords.join('\n')}
+                    onChange={(e) => updateResponse(response.id, 'keywords', e.target.value.split('\n').filter(Boolean))}
+                    placeholder="Palavras que ativam esta saída (uma por linha)&#10;Ex:&#10;1&#10;sim&#10;quero"
+                    rows={3}
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Explicação das saídas */}
+          <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+            <p className="text-xs font-medium text-foreground">Saídas do bloco:</p>
+            {expectedResponses.map((response, index) => (
+              <div key={response.id} className="flex items-center gap-2 text-xs">
+                <span 
+                  className="w-2 h-2 rounded-full"
+                  style={{ 
+                    backgroundColor: ['#22c55e', '#3b82f6', '#a855f7', '#06b6d4', '#ec4899'][index % 5] 
+                  }}
+                />
+                <span className="text-muted-foreground">
+                  {response.label} - {response.keywords.length > 0 ? response.keywords.slice(0, 3).join(', ') : 'Nenhuma palavra'}
+                  {response.keywords.length > 3 && '...'}
+                </span>
+              </div>
+            ))}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-full bg-gray-500" />
+              <span className="text-muted-foreground">Outra - Quando responde algo diferente</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-full bg-orange-500" />
+              <span className="text-muted-foreground">Timeout - Quando não responde a tempo</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
       
     case 'wait_until':
       return (

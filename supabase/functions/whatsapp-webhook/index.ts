@@ -3367,11 +3367,51 @@ serve(async (req) => {
         console.log(`[Webhook] 🔄 Found waiting execution ${waitingExecution.id}, resuming with response: "${normalizedMessage.content}"`);
         flowResumed = true;
         
+        const variables = waitingExecution.variables as Record<string, any> || {};
+        const expectedResponses = (variables.expected_responses as Array<{ id: string; label: string; keywords: string[] }>) || [];
+        const waitingNodeSubtype = variables.waiting_node_subtype as string;
+        
+        // Normalizar a resposta do cliente para comparação
+        const clientResponse = normalizedMessage.content.toLowerCase().trim();
+        
         // Atualizar variáveis com a última resposta
-        const updatedVariables = {
-          ...(waitingExecution.variables as Record<string, any> || {}),
+        const updatedVariables: Record<string, any> = {
+          ...variables,
           ultima_resposta: normalizedMessage.content
         };
+        
+        // Limpar variáveis temporárias
+        delete updatedVariables.expected_responses;
+        delete updatedVariables.waiting_node_subtype;
+        
+        // Determinar qual saída usar
+        let sourceHandle = 'replied'; // Padrão para wait_reply simples
+        
+        // Se é o bloco híbrido send_text_wait_reply, verificar qual resposta esperada foi dada
+        if (waitingNodeSubtype === 'send_text_wait_reply' && expectedResponses.length > 0) {
+          console.log(`[Webhook] 🎯 Bloco híbrido detectado com ${expectedResponses.length} respostas esperadas`);
+          
+          // Procurar por uma resposta que corresponda
+          let matchedResponse: { id: string; label: string } | null = null;
+          
+          for (const response of expectedResponses) {
+            const keywords = (response.keywords || []).map(k => k.toLowerCase().trim());
+            if (keywords.some(keyword => clientResponse === keyword || clientResponse.includes(keyword))) {
+              matchedResponse = response;
+              console.log(`[Webhook] ✅ Resposta "${clientResponse}" correspondeu a "${response.label}" (keywords: ${keywords.join(', ')})`);
+              break;
+            }
+          }
+          
+          if (matchedResponse) {
+            sourceHandle = `response_${matchedResponse.id}`;
+            updatedVariables.matched_response_id = matchedResponse.id;
+            updatedVariables.matched_response_label = matchedResponse.label;
+          } else {
+            sourceHandle = 'other';
+            console.log(`[Webhook] ℹ️ Resposta "${clientResponse}" não correspondeu a nenhuma esperada, usando saída "other"`);
+          }
+        }
         
         // Atualizar execução para 'running'
         const { error: updateError } = await supabase
@@ -3387,14 +3427,14 @@ serve(async (req) => {
         if (updateError) {
           console.error(`[Webhook] Error updating flow execution:`, updateError);
         } else {
-          console.log(`[Webhook] ✅ Updated flow execution variables with ultima_resposta`);
+          console.log(`[Webhook] ✅ Updated flow execution, looking for connection with handle "${sourceHandle}"`);
           
-          // Buscar próximo nó (via handle 'replied' ou 'default')
+          // Buscar próximo nó pela saída correta
           const { data: nextConnection, error: connError } = await supabase
             .from('flow_connections')
             .select('target_node_id')
             .eq('source_node_id', waitingExecution.current_node_id)
-            .in('source_handle', ['replied', 'default', 'success'])
+            .eq('source_handle', sourceHandle)
             .limit(1)
             .maybeSingle();
           
@@ -3412,7 +3452,29 @@ serve(async (req) => {
             
             console.log(`[Webhook] ✅ Flow execution resumed, continuing to node ${nextConnection.target_node_id}`);
           } else {
-            console.log(`[Webhook] ⚠️ No next node found for waiting execution, flow may have ended`);
+            // Tentar buscar conexão com handles alternativos (fallback)
+            console.log(`[Webhook] ⚠️ No connection found for handle "${sourceHandle}", trying fallback handles...`);
+            
+            const { data: fallbackConnection } = await supabase
+              .from('flow_connections')
+              .select('target_node_id, source_handle')
+              .eq('source_node_id', waitingExecution.current_node_id)
+              .in('source_handle', ['replied', 'default', 'success'])
+              .limit(1)
+              .maybeSingle();
+            
+            if (fallbackConnection) {
+              console.log(`[Webhook] 🔄 Using fallback connection with handle "${fallbackConnection.source_handle}"`);
+              
+              await supabase.functions.invoke('execute-flow-node', {
+                body: {
+                  execution_id: waitingExecution.id,
+                  node_id: fallbackConnection.target_node_id
+                }
+              });
+            } else {
+              console.log(`[Webhook] ⚠️ No next node found for waiting execution, flow may have ended`);
+            }
           }
         }
       } else {
