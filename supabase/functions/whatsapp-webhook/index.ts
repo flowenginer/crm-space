@@ -3345,6 +3345,29 @@ serve(async (req) => {
       })
       .eq("id", channel.id);
 
+    // =====================================================
+    // TRIGGER KEYWORD AUTOMATIONS (mensagens RECEBIDAS)
+    // Dispara automações baseadas em palavras-chave do cliente
+    // =====================================================
+    try {
+      console.log(`[Webhook] 🤖 Checking keyword automations for received message from ${normalizedMessage.from}...`);
+      
+      await supabase.functions.invoke('process-flow-triggers', {
+        body: {
+          trigger_type: 'keyword',
+          tenant_id: channel.tenant_id,
+          contact_id: contact.id,
+          channel_id: channel.id,
+          conversation_id: conversation.id,
+          message_content: normalizedMessage.content,
+        }
+      });
+      
+      console.log(`[Webhook] ✅ Keyword trigger check completed for received message`);
+    } catch (triggerError) {
+      console.error(`[Webhook] Error invoking keyword triggers:`, triggerError);
+    }
+
     console.log(`[Webhook] Message saved successfully for conversation ${conversation.id}`);
 
     return new Response(JSON.stringify({ success: true }), {
