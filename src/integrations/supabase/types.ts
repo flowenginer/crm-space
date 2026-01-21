@@ -10391,6 +10391,7 @@ export type Database = {
           comunicacao_cordialidade: number | null
           comunicacao_proatividade: number | null
           conducao: number | null
+          contact_id: string | null
           conversation_created_at: string | null
           conversation_id: string | null
           conversation_last_message_at: string | null
@@ -10408,14 +10409,31 @@ export type Database = {
           etapas_score: number | null
           feedback: string | null
           id: string | null
+          lead_status: string | null
           objecoes: Json | null
           objecoes_apareceram: number | null
           objecoes_nota_media: number | null
           objecoes_tratadas: number | null
           overall_score: number | null
+          raw_analysis: Json | null
+          real_conversion: boolean | null
           tenant_id: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sales_evaluations_assigned_to_fkey"
             columns: ["assigned_to"]

@@ -131,7 +131,7 @@ export function EvaluationRankingTable({ agentId, dateRange, onSelectEvaluation 
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    {evaluation.etapaFechamento === 1 ? (
+                    {evaluation.realConversion ? (
                       <Badge className="bg-green-500 hover:bg-green-600">Sim</Badge>
                     ) : (
                       <Badge variant="secondary">Não</Badge>
