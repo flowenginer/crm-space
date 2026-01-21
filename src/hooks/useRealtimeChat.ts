@@ -19,31 +19,90 @@ function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number) {
 
 export function useRealtimeMessages(conversationId: string | null) {
   const queryClient = useQueryClient();
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    
     if (!conversationId) return;
 
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+    // CORREÇÃO DEFINITIVA: Update OTIMISTA do cache + refetch para garantir
+    const addMessageToCache = (newMessage: any) => {
+      if (!isMountedRef.current) return;
+      
+      console.log('💾 [RealtimeMessages] Adding message to cache optimistically:', {
+        id: newMessage.id,
+        content: newMessage.content?.substring(0, 50),
+        isFromMe: newMessage.is_from_me
+      });
 
-    // CORREÇÃO: Refetch IMEDIATO para INSERTs - sem debounce para mensagens novas
-    const refetchMessagesImmediately = () => {
-      console.log('🔄 [RealtimeMessages] Forcing immediate refetch for conversation:', conversationId);
-      queryClient.refetchQueries({ 
-        queryKey: ['messages-paginated', conversationId],
-        type: 'active'
-      });
-      queryClient.refetchQueries({ 
-        queryKey: ['messages', conversationId],
-        type: 'active'
-      });
-      queryClient.refetchQueries({ 
-        queryKey: ['messages-preview', conversationId],
-        type: 'active'
-      });
+      // Update otimista: adicionar mensagem diretamente no cache
+      queryClient.setQueryData(
+        ['messages-paginated', conversationId],
+        (oldData: any) => {
+          if (!oldData?.pages?.length) return oldData;
+          
+          // Verificar se mensagem já existe (evitar duplicatas)
+          const messageExists = oldData.pages.some((page: any) =>
+            page.messages?.some((m: any) => m.id === newMessage.id)
+          );
+          
+          if (messageExists) {
+            console.log('⚠️ [RealtimeMessages] Message already in cache, skipping:', newMessage.id);
+            return oldData;
+          }
+          
+          // Adicionar na primeira página (mensagens mais recentes)
+          const newPages = [...oldData.pages];
+          const formattedMessage = {
+            id: newMessage.id,
+            conversation_id: newMessage.conversation_id,
+            sender_id: newMessage.sender_id,
+            contact_id: newMessage.contact_id,
+            is_from_me: newMessage.is_from_me,
+            content: newMessage.content,
+            message_type: newMessage.message_type || 'text',
+            media_url: newMessage.media_url,
+            media_mime_type: newMessage.media_mime_type,
+            status: newMessage.status,
+            whatsapp_message_id: newMessage.whatsapp_message_id,
+            created_at: newMessage.created_at,
+            reply_to_message_id: newMessage.reply_to_message_id,
+            reactions: newMessage.reactions || null,
+            is_deleted: newMessage.is_deleted || false,
+            deleted_at: newMessage.deleted_at,
+            reply_to: null,
+          };
+          
+          // Primeira página = mensagens mais recentes (já revertidas para ordem cronológica)
+          // Adicionar no FINAL da primeira página
+          if (newPages[0]) {
+            newPages[0] = {
+              ...newPages[0],
+              messages: [...(newPages[0].messages || []), formattedMessage]
+            };
+          }
+          
+          console.log('✅ [RealtimeMessages] Message added to cache successfully');
+          return { ...oldData, pages: newPages };
+        }
+      );
+
+      // Refetch suave após 500ms para garantir consistência (reactions, reply_to, etc)
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          queryClient.invalidateQueries({ 
+            queryKey: ['messages-paginated', conversationId],
+            refetchType: 'active'
+          });
+        }
+      }, 500);
     };
 
     // Debounce apenas para UPDATEs (status changes, etc)
     const invalidateMessagesDebounced = debounce(() => {
+      if (!isMountedRef.current) return;
       queryClient.invalidateQueries({ 
         queryKey: ['messages-paginated', conversationId],
         refetchType: 'active'
@@ -52,28 +111,30 @@ export function useRealtimeMessages(conversationId: string | null) {
         queryKey: ['messages', conversationId],
         refetchType: 'active'
       });
-      queryClient.invalidateQueries({ 
-        queryKey: ['messages-preview', conversationId],
-        refetchType: 'active'
-      });
     }, 200);
 
-    // CORREÇÃO: Sincronizar auth ANTES de criar o canal Realtime
-    // Isso garante que eventos passem pelo RLS corretamente
     const setupAndSubscribe = async () => {
+      // Cleanup canal anterior se existir
+      if (channelRef.current) {
+        console.log('🔌 [RealtimeMessages] Cleaning up previous channel');
+        await supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session?.access_token) {
-        console.error('❌ [RealtimeMessages] NO SESSION - cannot subscribe to realtime. Messages will NOT update in real-time!');
+        console.error('❌ [RealtimeMessages] NO SESSION - cannot subscribe to realtime');
         return;
       }
       
-      console.log('📡 [RealtimeMessages] Syncing auth token before channel setup for conversation:', conversationId);
+      if (!isMountedRef.current) return;
+      
+      console.log('📡 [RealtimeMessages] Setting up channel for conversation:', conversationId);
       supabase.realtime.setAuth(session.access_token);
 
-      // Criar canal APÓS auth sincronizado
-      channel = supabase
-        .channel(`messages:${conversationId}`)
+      const channel = supabase
+        .channel(`messages-live:${conversationId}:${Date.now()}`) // Unique channel name
         .on(
           'postgres_changes',
           {
@@ -90,8 +151,8 @@ export function useRealtimeMessages(conversationId: string | null) {
               isFromMe: (payload.new as any)?.is_from_me,
               timestamp: new Date().toISOString()
             });
-            // IMEDIATO - sem debounce para novas mensagens
-            refetchMessagesImmediately();
+            // UPDATE OTIMISTA - adicionar direto no cache
+            addMessageToCache(payload.new);
           }
         )
         .on(
@@ -117,19 +178,23 @@ export function useRealtimeMessages(conversationId: string | null) {
           if (status === 'SUBSCRIBED') {
             console.log('✅ [RealtimeMessages] Successfully subscribed to messages channel');
           } else if (status === 'CHANNEL_ERROR') {
-            console.error('❌ [RealtimeMessages] Channel error - RLS may be blocking events:', err);
+            console.error('❌ [RealtimeMessages] Channel error:', err);
           } else if (status === 'TIMED_OUT') {
             console.warn('⚠️ [RealtimeMessages] Channel subscription timed out');
           }
         });
+
+      channelRef.current = channel;
     };
 
     setupAndSubscribe();
 
     return () => {
-      if (channel) {
+      isMountedRef.current = false;
+      if (channelRef.current) {
         console.log('🔌 [RealtimeMessages] Removing channel for conversation:', conversationId);
-        supabase.removeChannel(channel);
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
     };
   }, [conversationId, queryClient]);

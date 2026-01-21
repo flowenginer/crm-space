@@ -1670,14 +1670,14 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     return conversationsData.pages.flatMap(page => page.conversations);
   }, [conversationsData]);
 
-  // Fetch messages with pagination
+  // Fetch messages with pagination + fallback polling for realtime reliability
   const {
     data: messagesData,
     isLoading: messagesLoading,
     fetchNextPage: fetchOlderMessages,
     hasNextPage: hasMoreMessages,
     isFetchingNextPage: isFetchingMoreMessages,
-  } = usePaginatedMessages(selectedConversationId);
+  } = usePaginatedMessages(selectedConversationId, { enablePolling: true });
   
   // Get all messages in chronological order
   const messages = useMemo(() => {
