@@ -10298,6 +10298,63 @@ export type Database = {
           },
         ]
       }
+      sales_evaluations_with_conversation: {
+        Row: {
+          analyzed_at: string | null
+          assigned_to: string | null
+          comunicacao_clareza: number | null
+          comunicacao_conhecimento_produto: number | null
+          comunicacao_cordialidade: number | null
+          comunicacao_proatividade: number | null
+          conducao: number | null
+          conversation_created_at: string | null
+          conversation_id: string | null
+          conversation_last_message_at: string | null
+          criterio_followup_estruturado: number | null
+          criterio_personalizacao: number | null
+          criterio_qualificacao_lead: number | null
+          criterio_recuperacao_final: number | null
+          criterio_senso_urgencia: number | null
+          criterio_tempo_resposta: number | null
+          etapa_aprovacao_mockup: number | null
+          etapa_catalogo_referencia: number | null
+          etapa_fechamento: number | null
+          etapa_mockup: number | null
+          etapa_orcamento_final: number | null
+          etapas_score: number | null
+          feedback: string | null
+          id: string | null
+          objecoes: Json | null
+          objecoes_apareceram: number | null
+          objecoes_nota_media: number | null
+          objecoes_tratadas: number | null
+          overall_score: number | null
+          tenant_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_evaluations_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_evaluations_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: true
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_evaluations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       accept_invitation: {
