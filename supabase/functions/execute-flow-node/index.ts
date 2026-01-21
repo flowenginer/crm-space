@@ -491,7 +491,7 @@ async function executeAction(
       }
 
       const mediaType = node.node_subtype.replace('send_', '') as 'image' | 'video' | 'audio' | 'document';
-      const mediaUrl = (config.media_url as string) || (config.url as string) || '';
+      const mediaUrl = (config.media_url as string) || (config.url as string) || (config.audio_url as string) || (config.video_url as string) || (config.document_url as string) || (config.image_url as string) || '';
       let caption = (config.caption as string) || '';
       caption = replaceVariables(caption, execution);
 
