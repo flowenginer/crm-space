@@ -153,23 +153,44 @@ serve(async (req) => {
     }
 
     // Find or create conversation
+    // CORREÇÃO: Buscar ANY conversa existente (independente do status) e reabri-la se necessário
+    // Isso garante que mensagens do N8N vão para a conversa correta que o vendedor está vendo
     let conversationId: string;
     const { data: existingConversation } = await supabase
       .from('conversations')
-      .select('id')
+      .select('id, status, assigned_to, department_id')
       .eq('contact_id', contactId)
       .eq('channel_id', channelId)
       .eq('tenant_id', tenantId)
-      .in('status', ['open', 'pending'])
-      .order('created_at', { ascending: false })
+      .order('last_message_at', { ascending: false })
       .limit(1)
       .single();
 
     if (existingConversation) {
       conversationId = existingConversation.id;
-      console.log('[API Send] Found existing conversation:', conversationId);
+      console.log('[API Send] Found existing conversation:', conversationId, 'status:', existingConversation.status);
+      
+      // Se a conversa não está aberta, reabri-la (preservando assigned_to e department_id)
+      if (existingConversation.status !== 'open') {
+        console.log('[API Send] Reopening conversation from status:', existingConversation.status);
+        const { error: reopenError } = await supabase
+          .from('conversations')
+          .update({ 
+            status: 'open',
+            reopened_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', conversationId);
+        
+        if (reopenError) {
+          console.error('[API Send] Error reopening conversation:', reopenError);
+        } else {
+          console.log('[API Send] Conversation reopened successfully, assigned_to preserved:', existingConversation.assigned_to);
+        }
+      }
     } else {
-      // Create new conversation
+      // Criar nova conversa apenas se não existir NENHUMA
+      console.log('[API Send] No existing conversation found, creating new one');
       const { data: newConversation, error: convError } = await supabase
         .from('conversations')
         .insert({
