@@ -3346,26 +3346,107 @@ serve(async (req) => {
       .eq("id", channel.id);
 
     // =====================================================
-    // TRIGGER KEYWORD AUTOMATIONS (mensagens RECEBIDAS)
-    // Dispara automações baseadas em palavras-chave do cliente
+    // RESUME WAITING FLOWS (verificar se há fluxo aguardando resposta)
     // =====================================================
+    let flowResumed = false;
     try {
-      console.log(`[Webhook] 🤖 Checking keyword automations for received message from ${normalizedMessage.from}...`);
+      console.log(`[Webhook] 🔄 Checking for waiting flow executions for contact ${contact.id}...`);
       
-      await supabase.functions.invoke('process-flow-triggers', {
-        body: {
-          trigger_type: 'keyword',
-          tenant_id: channel.tenant_id,
-          contact_id: contact.id,
-          channel_id: channel.id,
-          conversation_id: conversation.id,
-          message_content: normalizedMessage.content,
+      const { data: waitingExecution, error: waitingError } = await supabase
+        .from('flow_executions')
+        .select('id, current_node_id, flow_id, variables, conversation_id, tenant_id')
+        .eq('contact_id', contact.id)
+        .eq('status', 'waiting_reply')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (waitingError) {
+        console.error(`[Webhook] Error checking waiting flows:`, waitingError);
+      } else if (waitingExecution) {
+        console.log(`[Webhook] 🔄 Found waiting execution ${waitingExecution.id}, resuming with response: "${normalizedMessage.content}"`);
+        flowResumed = true;
+        
+        // Atualizar variáveis com a última resposta
+        const updatedVariables = {
+          ...(waitingExecution.variables as Record<string, any> || {}),
+          ultima_resposta: normalizedMessage.content
+        };
+        
+        // Atualizar execução para 'running'
+        const { error: updateError } = await supabase
+          .from('flow_executions')
+          .update({
+            status: 'running',
+            waiting_for: null,
+            waiting_until: null,
+            variables: updatedVariables
+          })
+          .eq('id', waitingExecution.id);
+        
+        if (updateError) {
+          console.error(`[Webhook] Error updating flow execution:`, updateError);
+        } else {
+          console.log(`[Webhook] ✅ Updated flow execution variables with ultima_resposta`);
+          
+          // Buscar próximo nó (via handle 'replied' ou 'default')
+          const { data: nextConnection, error: connError } = await supabase
+            .from('flow_connections')
+            .select('target_node_id')
+            .eq('source_node_id', waitingExecution.current_node_id)
+            .in('source_handle', ['replied', 'default', 'success'])
+            .limit(1)
+            .maybeSingle();
+          
+          if (connError) {
+            console.error(`[Webhook] Error fetching next connection:`, connError);
+          } else if (nextConnection) {
+            console.log(`[Webhook] 🚀 Invoking execute-flow-node for next node ${nextConnection.target_node_id}`);
+            
+            await supabase.functions.invoke('execute-flow-node', {
+              body: {
+                execution_id: waitingExecution.id,
+                node_id: nextConnection.target_node_id
+              }
+            });
+            
+            console.log(`[Webhook] ✅ Flow execution resumed, continuing to node ${nextConnection.target_node_id}`);
+          } else {
+            console.log(`[Webhook] ⚠️ No next node found for waiting execution, flow may have ended`);
+          }
         }
-      });
-      
-      console.log(`[Webhook] ✅ Keyword trigger check completed for received message`);
-    } catch (triggerError) {
-      console.error(`[Webhook] Error invoking keyword triggers:`, triggerError);
+      } else {
+        console.log(`[Webhook] ℹ️ No waiting flow execution found for contact ${contact.id}`);
+      }
+    } catch (resumeError) {
+      console.error(`[Webhook] Error resuming waiting flow:`, resumeError);
+    }
+
+    // =====================================================
+    // TRIGGER KEYWORD AUTOMATIONS (mensagens RECEBIDAS)
+    // Só dispara se não retomou um fluxo em espera
+    // =====================================================
+    if (!flowResumed) {
+      try {
+        console.log(`[Webhook] 🤖 Checking keyword automations for received message from ${normalizedMessage.from}...`);
+        
+        await supabase.functions.invoke('process-flow-triggers', {
+          body: {
+            trigger_type: 'keyword',
+            tenant_id: channel.tenant_id,
+            contact_id: contact.id,
+            channel_id: channel.id,
+            conversation_id: conversation.id,
+            message_content: normalizedMessage.content,
+          }
+        });
+        
+        console.log(`[Webhook] ✅ Keyword trigger check completed for received message`);
+      } catch (triggerError) {
+        console.error(`[Webhook] Error invoking keyword triggers:`, triggerError);
+      }
+    } else {
+      console.log(`[Webhook] ℹ️ Skipping keyword triggers because flow was resumed`);
     }
 
     console.log(`[Webhook] Message saved successfully for conversation ${conversation.id}`);
