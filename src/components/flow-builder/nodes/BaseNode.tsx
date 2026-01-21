@@ -40,6 +40,15 @@ const outputColors = [
   { bg: 'bg-pink-500', border: 'border-pink-300', text: 'text-pink-500' },
 ];
 
+// Cores hex para style inline (Tailwind JIT não detecta classes dinâmicas)
+const outputColorHex = [
+  { bg: '#22c55e', border: '#86efac' }, // green
+  { bg: '#3b82f6', border: '#93c5fd' }, // blue
+  { bg: '#a855f7', border: '#d8b4fe' }, // purple
+  { bg: '#06b6d4', border: '#67e8f9' }, // cyan
+  { bg: '#ec4899', border: '#f9a8d4' }, // pink
+];
+
 export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
   const { data: tags } = useTags();
   const IconComponent = iconMap[data.icon || 'Circle'] || LucideIcons.Circle;
@@ -98,9 +107,9 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
       {/* Saídas para o bloco híbrido send_text_wait_reply */}
       {isSendWaitReply ? (
         <>
-          {/* Handles para cada resposta esperada - sem wrapper div */}
+          {/* Handles para cada resposta esperada - usando style inline */}
           {expectedResponses.map((response, index) => {
-            const colorSet = outputColors[index % outputColors.length];
+            const colorHex = outputColorHex[index % outputColorHex.length];
             const totalOutputs = expectedResponses.length + 2;
             const leftPercent = ((index + 1) / (totalOutputs + 1)) * 100;
             
@@ -110,8 +119,13 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
                 type="source"
                 position={Position.Bottom}
                 id={`response_${response.id}`}
-                className={cn('!w-3 !h-3', `!${colorSet.bg}`, `!${colorSet.border}`)}
-                style={{ left: `${leftPercent}%` }}
+                className="!w-3 !h-3"
+                style={{ 
+                  left: `${leftPercent}%`,
+                  backgroundColor: colorHex.bg,
+                  borderWidth: '2px',
+                  borderColor: colorHex.border
+                }}
               />
             );
           })}
