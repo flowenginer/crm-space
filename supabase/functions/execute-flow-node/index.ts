@@ -438,7 +438,8 @@ async function executeAction(
 
       if (textResult.success) {
         // Salvar mensagem no histórico
-        await supabase.from('messages').insert({
+        console.log(`[execute-flow-node] 💾 Salvando mensagem no histórico - conversation_id: ${execution.conversation_id}, tenant_id: ${execution.tenant_id}`);
+        const { error: insertMsgError } = await supabase.from('messages').insert({
           conversation_id: execution.conversation_id,
           content: message,
           is_from_me: true,
@@ -447,6 +448,15 @@ async function executeAction(
           status: 'sent',
           tenant_id: execution.tenant_id
         });
+        
+        if (insertMsgError) {
+          console.error('[execute-flow-node] ❌ Erro ao salvar mensagem no histórico:', insertMsgError);
+          await logExecution(supabase, execution.id, node.id, 'warning',
+            `Mensagem enviada mas erro ao salvar histórico: ${insertMsgError.message}`);
+        } else {
+          console.log('[execute-flow-node] ✅ Mensagem salva no histórico com sucesso');
+        }
+        
         await logExecution(supabase, execution.id, node.id, 'info',
           `Mensagem enviada: ${message.substring(0, 50)}...`);
       } else {
