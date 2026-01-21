@@ -23,13 +23,14 @@ export function useRealtimeMessages(conversationId: string | null) {
   useEffect(() => {
     if (!conversationId) return;
 
-    // OTIMIZAÇÃO: Debounce aumentado de 300ms para 500ms
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    // CORREÇÃO: Debounce reduzido de 500ms para 200ms para feedback mais rápido
     const invalidateMessages = debounce(() => {
-      // OTIMIZAÇÃO: Apenas invalidar mensagens da conversa atual
-      // Contagens são invalidadas pelo useRealtimeConversations
+      // Apenas invalidar mensagens da conversa atual
       queryClient.invalidateQueries({ 
         queryKey: ['messages-paginated', conversationId],
-        refetchType: 'active' // Só refetch se query estiver ativa
+        refetchType: 'active'
       });
       queryClient.invalidateQueries({ 
         queryKey: ['messages', conversationId],
@@ -40,39 +41,56 @@ export function useRealtimeMessages(conversationId: string | null) {
         queryKey: ['messages-preview', conversationId],
         refetchType: 'active'
       });
-    }, 500);
+    }, 200);
 
-    // Subscribe to new messages in the current conversation
-    const channel = supabase
-      .channel(`messages:${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        () => {
-          invalidateMessages();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        () => {
-          invalidateMessages();
-        }
-      )
-      .subscribe();
+    // CORREÇÃO: Sincronizar auth ANTES de criar o canal Realtime
+    // Isso garante que eventos passem pelo RLS corretamente
+    const setupAndSubscribe = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        console.log('📡 [RealtimeMessages] Syncing auth token before channel setup');
+        supabase.realtime.setAuth(session.access_token);
+      }
+
+      // Criar canal APÓS auth sincronizado
+      channel = supabase
+        .channel(`messages:${conversationId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${conversationId}`,
+          },
+          () => {
+            console.log('📨 [RealtimeMessages] New message received for conversation:', conversationId);
+            invalidateMessages();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${conversationId}`,
+          },
+          () => {
+            invalidateMessages();
+          }
+        )
+        .subscribe((status) => {
+          console.log('📡 [RealtimeMessages] Channel status:', status, 'for conversation:', conversationId);
+        });
+    };
+
+    setupAndSubscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [conversationId, queryClient]);
 }
