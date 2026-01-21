@@ -1,44 +1,69 @@
 import { KPICard } from '@/components/dashboard/KPICard';
-import { Target, TrendingUp, MessageSquare, Users, Zap, Award } from 'lucide-react';
+import { Target, TrendingUp, MessageSquare, Users, Zap, Award, CheckCircle } from 'lucide-react';
 import { EvaluationOverview } from '@/hooks/useSalesEvaluations';
+import { EvaluationTargets } from '@/hooks/useEvaluationTargets';
+import { PeriodComparison } from '@/hooks/usePeriodComparison';
 
 interface EvaluationKPICardsProps {
   overview: EvaluationOverview | undefined;
   isLoading: boolean;
+  targets?: EvaluationTargets;
+  comparison?: PeriodComparison;
 }
 
-export function EvaluationKPICards({ overview, isLoading }: EvaluationKPICardsProps) {
+export function EvaluationKPICards({ overview, isLoading, targets, comparison }: EvaluationKPICardsProps) {
+  const getTrend = (key: keyof PeriodComparison) => {
+    if (!comparison) return undefined;
+    const data = comparison[key];
+    if (data.variation === 0) return undefined;
+    return { value: Math.abs(data.variation), isPositive: data.variation > 0 };
+  };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
       <KPICard
         title="Total Avaliações"
         value={overview?.totalEvaluations || 0}
         icon={MessageSquare}
         color="blue"
         isLoading={isLoading}
+        trend={getTrend('totalEvaluations')}
       />
       <KPICard
         title="Score Médio"
         value={overview?.avgScore.toFixed(1) || '0.0'}
-        subtitle="de 10"
+        subtitle={targets ? `Meta: ${targets.targetOverallScore}` : 'de 10'}
         icon={Award}
         color="purple"
         isLoading={isLoading}
+        trend={getTrend('avgScore')}
       />
       <KPICard
         title="Taxa de Fechamento"
         value={`${overview?.closingRate || 0}%`}
+        subtitle={targets ? `Meta: ${targets.targetTaxaFechamento}%` : undefined}
         icon={Target}
         color="green"
         isLoading={isLoading}
+        trend={getTrend('closingRate')}
+      />
+      <KPICard
+        title="Efic. Objeções"
+        value={`${overview?.objectionEfficiency || 0}%`}
+        subtitle={targets ? `Meta: ${targets.targetEficienciaObjecoes}%` : undefined}
+        icon={CheckCircle}
+        color="cyan"
+        isLoading={isLoading}
+        trend={getTrend('objectionEfficiency')}
       />
       <KPICard
         title="Nota Objeções"
         value={overview?.avgObjectionScore.toFixed(1) || '0.0'}
-        subtitle="média"
+        subtitle={targets ? `Meta: ${targets.targetNotaObjecoes}` : 'média'}
         icon={Zap}
         color="orange"
         isLoading={isLoading}
+        trend={getTrend('avgObjectionScore')}
       />
       <KPICard
         title="Comunicação"
@@ -47,14 +72,16 @@ export function EvaluationKPICards({ overview, isLoading }: EvaluationKPICardsPr
         icon={Users}
         color="cyan"
         isLoading={isLoading}
+        trend={getTrend('avgCommunicationScore')}
       />
       <KPICard
         title="Condução"
         value={overview?.avgConductionScore.toFixed(1) || '0.0'}
-        subtitle="média"
+        subtitle={targets ? `Meta: ${targets.targetConducao}` : 'média'}
         icon={TrendingUp}
         color="pink"
         isLoading={isLoading}
+        trend={getTrend('avgConductionScore')}
       />
     </div>
   );
