@@ -62,6 +62,9 @@ export interface EvaluationDetail {
   // Conduction (0-10)
   conducao: number;
   
+  // Conversation date
+  conversationDate?: string;
+  
   // Agent info
   agent?: {
     fullName: string;
@@ -98,6 +101,28 @@ function getClassification(score: number): 'excellent' | 'good' | 'regular' | 'w
   return 'critical';
 }
 
+// Helper to query the view with conversation date filter
+async function queryEvaluationsView(
+  select: string,
+  startDate: Date,
+  endDate: Date,
+  additionalFilters?: { column: string; value: string }[]
+) {
+  let query = supabase
+    .from('sales_evaluations_with_conversation' as any)
+    .select(select)
+    .gte('conversation_last_message_at', startDate.toISOString())
+    .lte('conversation_last_message_at', endDate.toISOString());
+
+  if (additionalFilters) {
+    additionalFilters.forEach(filter => {
+      query = query.eq(filter.column, filter.value);
+    });
+  }
+
+  return query;
+}
+
 export function useEvaluationOverview(startDate?: Date, endDate?: Date) {
   const start = startDate || startOfMonth(new Date());
   const end = endDate || endOfMonth(new Date());
@@ -105,11 +130,11 @@ export function useEvaluationOverview(startDate?: Date, endDate?: Date) {
   return useQuery({
     queryKey: ['sales-evaluations-overview', format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')],
     queryFn: async (): Promise<EvaluationOverview> => {
-      const { data, error } = await supabase
-        .from('sales_evaluations')
-        .select('overall_score, etapa_fechamento, objecoes_nota_media, comunicacao_clareza, comunicacao_cordialidade, comunicacao_proatividade, comunicacao_conhecimento_produto, conducao')
-        .gte('analyzed_at', start.toISOString())
-        .lte('analyzed_at', end.toISOString());
+      const { data, error } = await queryEvaluationsView(
+        'overall_score, etapa_fechamento, objecoes_nota_media, comunicacao_clareza, comunicacao_cordialidade, comunicacao_proatividade, comunicacao_conhecimento_produto, conducao',
+        start,
+        end
+      );
 
       if (error) throw error;
       if (!data || data.length === 0) {
@@ -124,17 +149,17 @@ export function useEvaluationOverview(startDate?: Date, endDate?: Date) {
       }
 
       const totalEvaluations = data.length;
-      const avgScore = data.reduce((sum, e) => sum + (Number(e.overall_score) || 0), 0) / totalEvaluations;
-      const closingRate = (data.filter(e => e.etapa_fechamento === 1).length / totalEvaluations) * 100;
-      const avgObjectionScore = data.reduce((sum, e) => sum + (Number(e.objecoes_nota_media) || 0), 0) / totalEvaluations;
+      const avgScore = data.reduce((sum, e: any) => sum + (Number(e.overall_score) || 0), 0) / totalEvaluations;
+      const closingRate = (data.filter((e: any) => e.etapa_fechamento === 1).length / totalEvaluations) * 100;
+      const avgObjectionScore = data.reduce((sum, e: any) => sum + (Number(e.objecoes_nota_media) || 0), 0) / totalEvaluations;
       
-      const avgCommunicationScore = data.reduce((sum, e) => {
+      const avgCommunicationScore = data.reduce((sum, e: any) => {
         const comm = ((e.comunicacao_clareza || 0) + (e.comunicacao_cordialidade || 0) + 
                       (e.comunicacao_proatividade || 0) + (e.comunicacao_conhecimento_produto || 0)) / 4;
         return sum + comm;
       }, 0) / totalEvaluations;
       
-      const avgConductionScore = data.reduce((sum, e) => sum + (e.conducao || 0), 0) / totalEvaluations;
+      const avgConductionScore = data.reduce((sum, e: any) => sum + (e.conducao || 0), 0) / totalEvaluations;
 
       return {
         totalEvaluations,
@@ -155,37 +180,41 @@ export function useAgentRanking(startDate?: Date, endDate?: Date) {
   return useQuery({
     queryKey: ['sales-evaluations-ranking', format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')],
     queryFn: async (): Promise<AgentRanking[]> => {
-      const { data, error } = await supabase
-        .from('sales_evaluations')
-        .select(`
-          assigned_to,
-          overall_score,
-          etapa_fechamento,
-          conducao,
-          objecoes_nota_media,
-          profiles!sales_evaluations_assigned_to_fkey (
-            id,
-            full_name,
-            avatar_url
-          )
-        `)
-        .gte('analyzed_at', start.toISOString())
-        .lte('analyzed_at', end.toISOString());
+      // First get evaluations from the view
+      const { data: evaluationsData, error: evalError } = await queryEvaluationsView(
+        'assigned_to, overall_score, etapa_fechamento, conducao, objecoes_nota_media',
+        start,
+        end
+      );
 
-      if (error) throw error;
-      if (!data) return [];
+      if (evalError) throw evalError;
+      if (!evaluationsData || evaluationsData.length === 0) return [];
 
-      // Group by agent
+      // Get unique agent IDs
+      const agentIds = [...new Set(evaluationsData.map((e: any) => e.assigned_to))];
+
+      // Fetch agent profiles
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', agentIds);
+
+      if (profilesError) throw profilesError;
+
+      // Create a map of profiles
+      const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+
+      // Group evaluations by agent
       const agentMap = new Map<string, {
         profile: { id: string; full_name: string; avatar_url: string | null };
-        evaluations: typeof data;
+        evaluations: any[];
       }>();
 
-      data.forEach(evaluation => {
-        const profile = evaluation.profiles;
+      evaluationsData.forEach((evaluation: any) => {
+        const agentId = evaluation.assigned_to;
+        const profile = profilesMap.get(agentId);
         if (!profile) return;
         
-        const agentId = profile.id;
         if (!agentMap.has(agentId)) {
           agentMap.set(agentId, { profile, evaluations: [] });
         }
@@ -229,29 +258,35 @@ export function useAgentEvaluations(agentId: string | null, startDate?: Date, en
       if (!agentId) return [];
 
       const { data, error } = await supabase
-        .from('sales_evaluations')
-        .select(`
-          *,
-          profiles!sales_evaluations_assigned_to_fkey (
-            full_name,
-            avatar_url
-          ),
-          conversations!sales_evaluations_conversation_id_fkey (
-            contacts (
-              full_name,
-              phone
-            )
-          )
-        `)
+        .from('sales_evaluations_with_conversation' as any)
+        .select('*')
         .eq('assigned_to', agentId)
-        .gte('analyzed_at', start.toISOString())
-        .lte('analyzed_at', end.toISOString())
-        .order('analyzed_at', { ascending: false });
+        .gte('conversation_last_message_at', start.toISOString())
+        .lte('conversation_last_message_at', end.toISOString())
+        .order('conversation_last_message_at', { ascending: false });
 
       if (error) throw error;
       if (!data) return [];
 
-      return data.map(e => ({
+      // Fetch agent profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('id', agentId)
+        .single();
+
+      // Fetch conversation contacts
+      const conversationIds = data.map((e: any) => e.conversation_id);
+      const { data: conversations } = await supabase
+        .from('conversations')
+        .select('id, contacts(full_name, phone)')
+        .in('id', conversationIds);
+
+      const contactsMap = new Map(
+        conversations?.map(c => [c.id, c.contacts]) || []
+      );
+
+      return data.map((e: any) => ({
         id: e.id,
         conversationId: e.conversation_id,
         assignedTo: e.assigned_to,
@@ -279,13 +314,14 @@ export function useAgentEvaluations(agentId: string | null, startDate?: Date, en
         criterioQualificacaoLead: e.criterio_qualificacao_lead || 0,
         criterioFollowupEstruturado: e.criterio_followup_estruturado || 0,
         conducao: e.conducao || 0,
-        agent: e.profiles ? {
-          fullName: e.profiles.full_name,
-          avatarUrl: e.profiles.avatar_url,
+        conversationDate: e.conversation_last_message_at,
+        agent: profile ? {
+          fullName: profile.full_name,
+          avatarUrl: profile.avatar_url,
         } : undefined,
-        contact: e.conversations?.contacts ? {
-          fullName: e.conversations.contacts.full_name,
-          phone: e.conversations.contacts.phone,
+        contact: contactsMap.get(e.conversation_id) ? {
+          fullName: (contactsMap.get(e.conversation_id) as any).full_name,
+          phone: (contactsMap.get(e.conversation_id) as any).phone,
         } : undefined,
       }));
     },
@@ -300,61 +336,64 @@ export function useEvaluationDetail(evaluationId: string | null) {
       if (!evaluationId) return null;
 
       const { data, error } = await supabase
-        .from('sales_evaluations')
-        .select(`
-          *,
-          profiles!sales_evaluations_assigned_to_fkey (
-            full_name,
-            avatar_url
-          ),
-          conversations!sales_evaluations_conversation_id_fkey (
-            contacts (
-              full_name,
-              phone
-            )
-          )
-        `)
+        .from('sales_evaluations_with_conversation' as any)
+        .select('*')
         .eq('id', evaluationId)
         .single();
 
       if (error) throw error;
       if (!data) return null;
 
+      // Fetch agent profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('id', (data as any).assigned_to)
+        .single();
+
+      // Fetch contact info
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('contacts(full_name, phone)')
+        .eq('id', (data as any).conversation_id)
+        .single();
+
       return {
-        id: data.id,
-        conversationId: data.conversation_id,
-        assignedTo: data.assigned_to,
-        analyzedAt: data.analyzed_at,
-        overallScore: Number(data.overall_score) || 0,
-        feedback: data.feedback || '',
-        etapaCatalogoReferencia: data.etapa_catalogo_referencia || 0,
-        etapaMockup: data.etapa_mockup || 0,
-        etapaAprovacaoMockup: data.etapa_aprovacao_mockup || 0,
-        etapaOrcamentoFinal: data.etapa_orcamento_final || 0,
-        etapaFechamento: data.etapa_fechamento || 0,
-        etapasScore: data.etapas_score || 0,
-        objecoes: (data.objecoes as Record<string, { apareceu: number; tratada: number; nota: number }>) || {},
-        objecoesApareceram: data.objecoes_apareceram || 0,
-        objecoesTratadas: data.objecoes_tratadas || 0,
-        objecoesNotaMedia: Number(data.objecoes_nota_media) || 0,
-        comunicacaoClareza: data.comunicacao_clareza || 0,
-        comunicacaoCordialidade: data.comunicacao_cordialidade || 0,
-        comunicacaoProatividade: data.comunicacao_proatividade || 0,
-        comunicacaoConhecimentoProduto: data.comunicacao_conhecimento_produto || 0,
-        criterioTempoResposta: data.criterio_tempo_resposta || 0,
-        criterioPersonalizacao: data.criterio_personalizacao || 0,
-        criterioSensoUrgencia: data.criterio_senso_urgencia || 0,
-        criterioRecuperacaoFinal: data.criterio_recuperacao_final || 0,
-        criterioQualificacaoLead: data.criterio_qualificacao_lead || 0,
-        criterioFollowupEstruturado: data.criterio_followup_estruturado || 0,
-        conducao: data.conducao || 0,
-        agent: data.profiles ? {
-          fullName: data.profiles.full_name,
-          avatarUrl: data.profiles.avatar_url,
+        id: (data as any).id,
+        conversationId: (data as any).conversation_id,
+        assignedTo: (data as any).assigned_to,
+        analyzedAt: (data as any).analyzed_at,
+        overallScore: Number((data as any).overall_score) || 0,
+        feedback: (data as any).feedback || '',
+        etapaCatalogoReferencia: (data as any).etapa_catalogo_referencia || 0,
+        etapaMockup: (data as any).etapa_mockup || 0,
+        etapaAprovacaoMockup: (data as any).etapa_aprovacao_mockup || 0,
+        etapaOrcamentoFinal: (data as any).etapa_orcamento_final || 0,
+        etapaFechamento: (data as any).etapa_fechamento || 0,
+        etapasScore: (data as any).etapas_score || 0,
+        objecoes: ((data as any).objecoes as Record<string, { apareceu: number; tratada: number; nota: number }>) || {},
+        objecoesApareceram: (data as any).objecoes_apareceram || 0,
+        objecoesTratadas: (data as any).objecoes_tratadas || 0,
+        objecoesNotaMedia: Number((data as any).objecoes_nota_media) || 0,
+        comunicacaoClareza: (data as any).comunicacao_clareza || 0,
+        comunicacaoCordialidade: (data as any).comunicacao_cordialidade || 0,
+        comunicacaoProatividade: (data as any).comunicacao_proatividade || 0,
+        comunicacaoConhecimentoProduto: (data as any).comunicacao_conhecimento_produto || 0,
+        criterioTempoResposta: (data as any).criterio_tempo_resposta || 0,
+        criterioPersonalizacao: (data as any).criterio_personalizacao || 0,
+        criterioSensoUrgencia: (data as any).criterio_senso_urgencia || 0,
+        criterioRecuperacaoFinal: (data as any).criterio_recuperacao_final || 0,
+        criterioQualificacaoLead: (data as any).criterio_qualificacao_lead || 0,
+        criterioFollowupEstruturado: (data as any).criterio_followup_estruturado || 0,
+        conducao: (data as any).conducao || 0,
+        conversationDate: (data as any).conversation_last_message_at,
+        agent: profile ? {
+          fullName: profile.full_name,
+          avatarUrl: profile.avatar_url,
         } : undefined,
-        contact: data.conversations?.contacts ? {
-          fullName: data.conversations.contacts.full_name,
-          phone: data.conversations.contacts.phone,
+        contact: (conversation as any)?.contacts ? {
+          fullName: (conversation as any).contacts.full_name,
+          phone: (conversation as any).contacts.phone,
         } : undefined,
       };
     },
@@ -369,18 +408,14 @@ export function useObjectionsAnalysis(startDate?: Date, endDate?: Date) {
   return useQuery({
     queryKey: ['objections-analysis', format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')],
     queryFn: async (): Promise<ObjectionAnalysis[]> => {
-      const { data, error } = await supabase
-        .from('sales_evaluations')
-        .select('objecoes')
-        .gte('analyzed_at', start.toISOString())
-        .lte('analyzed_at', end.toISOString());
+      const { data, error } = await queryEvaluationsView('objecoes', start, end);
 
       if (error) throw error;
       if (!data) return [];
 
       const objectionStats = new Map<string, { count: number; handled: number; totalScore: number }>();
 
-      data.forEach(evaluation => {
+      data.forEach((evaluation: any) => {
         const objecoes = evaluation.objecoes as Record<string, { apareceu: number; tratada: number; nota: number }> | null;
         if (!objecoes) return;
 
@@ -418,11 +453,11 @@ export function useScoreEvolution(agentId?: string | null, months: number = 6) {
       const start = subMonths(end, months);
 
       let query = supabase
-        .from('sales_evaluations')
-        .select('analyzed_at, overall_score')
-        .gte('analyzed_at', start.toISOString())
-        .lte('analyzed_at', end.toISOString())
-        .order('analyzed_at', { ascending: true });
+        .from('sales_evaluations_with_conversation' as any)
+        .select('conversation_last_message_at, overall_score')
+        .gte('conversation_last_message_at', start.toISOString())
+        .lte('conversation_last_message_at', end.toISOString())
+        .order('conversation_last_message_at', { ascending: true });
 
       if (agentId) {
         query = query.eq('assigned_to', agentId);
@@ -435,8 +470,8 @@ export function useScoreEvolution(agentId?: string | null, months: number = 6) {
       // Group by week
       const weeklyData = new Map<string, { scores: number[]; count: number }>();
       
-      data.forEach(e => {
-        const date = new Date(e.analyzed_at);
+      data.forEach((e: any) => {
+        const date = new Date(e.conversation_last_message_at);
         const weekStart = new Date(date);
         weekStart.setDate(date.getDate() - date.getDay());
         const weekKey = format(weekStart, 'yyyy-MM-dd');
@@ -463,11 +498,7 @@ export function useScoreDistribution(startDate?: Date, endDate?: Date) {
   return useQuery({
     queryKey: ['score-distribution', format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')],
     queryFn: async (): Promise<ScoreDistribution> => {
-      const { data, error } = await supabase
-        .from('sales_evaluations')
-        .select('overall_score')
-        .gte('analyzed_at', start.toISOString())
-        .lte('analyzed_at', end.toISOString());
+      const { data, error } = await queryEvaluationsView('overall_score', start, end);
 
       if (error) throw error;
       
@@ -481,7 +512,7 @@ export function useScoreDistribution(startDate?: Date, endDate?: Date) {
 
       if (!data || data.length === 0) return distribution;
 
-      data.forEach(e => {
+      data.forEach((e: any) => {
         const score = Number(e.overall_score) || 0;
         if (score >= 8.5) distribution.excellent++;
         else if (score >= 7) distribution.good++;
@@ -502,11 +533,11 @@ export function useFunnelAnalysis(startDate?: Date, endDate?: Date) {
   return useQuery({
     queryKey: ['funnel-analysis', format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('sales_evaluations')
-        .select('etapa_catalogo_referencia, etapa_mockup, etapa_aprovacao_mockup, etapa_orcamento_final, etapa_fechamento')
-        .gte('analyzed_at', start.toISOString())
-        .lte('analyzed_at', end.toISOString());
+      const { data, error } = await queryEvaluationsView(
+        'etapa_catalogo_referencia, etapa_mockup, etapa_aprovacao_mockup, etapa_orcamento_final, etapa_fechamento',
+        start,
+        end
+      );
 
       if (error) throw error;
       if (!data || data.length === 0) return [];
@@ -514,11 +545,11 @@ export function useFunnelAnalysis(startDate?: Date, endDate?: Date) {
       const total = data.length;
       
       const stages = [
-        { name: 'Catálogo/Referência', value: data.filter(e => e.etapa_catalogo_referencia === 1).length },
-        { name: 'Mockup', value: data.filter(e => e.etapa_mockup === 1).length },
-        { name: 'Aprovação Mockup', value: data.filter(e => e.etapa_aprovacao_mockup === 1).length },
-        { name: 'Orçamento Final', value: data.filter(e => e.etapa_orcamento_final === 1).length },
-        { name: 'Fechamento', value: data.filter(e => e.etapa_fechamento === 1).length },
+        { name: 'Catálogo/Referência', value: data.filter((e: any) => e.etapa_catalogo_referencia === 1).length },
+        { name: 'Mockup', value: data.filter((e: any) => e.etapa_mockup === 1).length },
+        { name: 'Aprovação Mockup', value: data.filter((e: any) => e.etapa_aprovacao_mockup === 1).length },
+        { name: 'Orçamento Final', value: data.filter((e: any) => e.etapa_orcamento_final === 1).length },
+        { name: 'Fechamento', value: data.filter((e: any) => e.etapa_fechamento === 1).length },
       ];
 
       return stages.map(stage => ({
