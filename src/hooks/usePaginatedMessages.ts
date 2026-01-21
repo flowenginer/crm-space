@@ -24,9 +24,7 @@ const MESSAGE_FIELDS = `
   deleted_at
 `;
 
-export function usePaginatedMessages(conversationId: string | null) {
-  const queryClient = useQueryClient();
-
+export function usePaginatedMessages(conversationId: string | null, options?: { enablePolling?: boolean }) {
   return useInfiniteQuery({
     queryKey: ['messages-paginated', conversationId],
     queryFn: async ({ pageParam }) => {
@@ -104,7 +102,10 @@ export function usePaginatedMessages(conversationId: string | null) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled: !!conversationId,
-    staleTime: 2000, // 2 seconds - reduzido para feedback mais rápido em tempo real
+    staleTime: 1000, // 1 second - super rápido para realtime
+    // FALLBACK: Polling a cada 4 segundos quando conversa está aberta (safety net)
+    refetchInterval: options?.enablePolling ? 4000 : false,
+    refetchIntervalInBackground: false, // Não fazer polling quando tab não está em foco
   });
 }
 
