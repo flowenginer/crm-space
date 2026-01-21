@@ -98,27 +98,37 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
       {/* Saídas para o bloco híbrido send_text_wait_reply */}
       {isSendWaitReply ? (
         <>
-          {/* Saídas para cada resposta esperada */}
+          {/* Handles para cada resposta esperada - sem wrapper div */}
           {expectedResponses.map((response, index) => {
             const colorSet = outputColors[index % outputColors.length];
-            const totalOutputs = expectedResponses.length + 2; // +2 para "Outra" e "Timeout"
+            const totalOutputs = expectedResponses.length + 2;
             const leftPercent = ((index + 1) / (totalOutputs + 1)) * 100;
             
             return (
-              <div key={response.id}>
-                <Handle
-                  type="source"
-                  position={Position.Bottom}
-                  id={`response_${response.id}`}
-                  className={cn('!w-3 !h-3', `!${colorSet.bg}`, `!${colorSet.border}`)}
-                  style={{ left: `${leftPercent}%` }}
-                />
-                <div 
-                  className={cn('absolute -bottom-5 text-[9px] whitespace-nowrap', colorSet.text)}
-                  style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}
-                >
-                  {response.label || `R${index + 1}`}
-                </div>
+              <Handle
+                key={`handle_${response.id}`}
+                type="source"
+                position={Position.Bottom}
+                id={`response_${response.id}`}
+                className={cn('!w-3 !h-3', `!${colorSet.bg}`, `!${colorSet.border}`)}
+                style={{ left: `${leftPercent}%` }}
+              />
+            );
+          })}
+          
+          {/* Labels para cada resposta esperada - separadas dos handles */}
+          {expectedResponses.map((response, index) => {
+            const colorSet = outputColors[index % outputColors.length];
+            const totalOutputs = expectedResponses.length + 2;
+            const leftPercent = ((index + 1) / (totalOutputs + 1)) * 100;
+            
+            return (
+              <div 
+                key={`label_${response.id}`}
+                className={cn('absolute -bottom-5 text-[9px] whitespace-nowrap', colorSet.text)}
+                style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}
+              >
+                {response.label || `R${index + 1}`}
               </div>
             );
           })}

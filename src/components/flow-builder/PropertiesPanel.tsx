@@ -784,11 +784,12 @@ function renderNodeConfig(
           {/* Mensagem */}
           <div className="space-y-2">
             <Label>Mensagem</Label>
-            <Textarea
+          <Textarea
               value={(config?.message as string) || ''}
               onChange={(e) => updateConfig('message', e.target.value)}
               placeholder="Digite a mensagem com as opções para o cliente..."
               rows={4}
+              onKeyDown={(e) => e.stopPropagation()}
             />
             <div className="text-xs text-muted-foreground space-y-1">
               <p className="font-medium">Variáveis disponíveis:</p>
