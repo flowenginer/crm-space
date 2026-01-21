@@ -246,6 +246,21 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Buscar o tenant_id correto da conversa (para RLS funcionar no CRM)
+    let messageTenantId = execution.tenant_id;
+    if (execution.conversation_id) {
+      const { data: conversationData } = await supabase
+        .from('conversations')
+        .select('tenant_id')
+        .eq('id', execution.conversation_id)
+        .single();
+      
+      if (conversationData?.tenant_id) {
+        messageTenantId = conversationData.tenant_id;
+        console.log(`[execute-flow-node] 🔑 Usando tenant_id da conversa: ${messageTenantId}`);
+      }
+    }
+
     // Atualizar nó atual
     await supabase
       .from('flow_executions')
@@ -263,7 +278,7 @@ Deno.serve(async (req) => {
     // Executar baseado no tipo
     switch (flowNode.node_type) {
       case 'action':
-        const actionResult = await executeAction(supabase, execution as FlowExecution, flowNode);
+        const actionResult = await executeAction(supabase, execution as FlowExecution, flowNode, messageTenantId);
         if (actionResult.shouldStop) {
           return new Response(
             JSON.stringify({ success: true, waiting: true }),
@@ -394,7 +409,8 @@ async function finishExecution(
 async function executeAction(
   supabase: any,
   execution: FlowExecution,
-  node: FlowNode
+  node: FlowNode,
+  messageTenantId: string
 ): Promise<{ shouldStop: boolean }> {
   const config = node.config;
 
@@ -443,8 +459,8 @@ async function executeAction(
       );
 
       if (textResult.success) {
-        // Salvar mensagem no histórico
-        console.log(`[execute-flow-node] 💾 Salvando mensagem no histórico - conversation_id: ${execution.conversation_id}, tenant_id: ${execution.tenant_id}`);
+        // Salvar mensagem no histórico com tenant_id correto da conversa
+        console.log(`[execute-flow-node] 💾 Salvando mensagem no histórico - conversation_id: ${execution.conversation_id}, tenant_id: ${messageTenantId}`);
         const { error: insertMsgError } = await supabase.from('messages').insert({
           conversation_id: execution.conversation_id,
           content: message,
@@ -452,7 +468,7 @@ async function executeAction(
           message_type: 'text',
           whatsapp_message_id: textResult.messageId,
           status: 'sent',
-          tenant_id: execution.tenant_id
+          tenant_id: messageTenantId
         });
         
         if (insertMsgError) {
@@ -521,8 +537,8 @@ async function executeAction(
       );
 
       if (sendResult.success) {
-        // Salvar mensagem no histórico
-        console.log(`[execute-flow-node] 💾 Salvando mensagem do bloco híbrido no histórico`);
+        // Salvar mensagem no histórico com tenant_id correto da conversa
+        console.log(`[execute-flow-node] 💾 Salvando mensagem do bloco híbrido no histórico - tenant_id: ${messageTenantId}`);
         const { error: insertMsgError } = await supabase.from('messages').insert({
           conversation_id: execution.conversation_id,
           content: message,
@@ -530,7 +546,7 @@ async function executeAction(
           message_type: 'text',
           whatsapp_message_id: sendResult.messageId,
           status: 'sent',
-          tenant_id: execution.tenant_id
+          tenant_id: messageTenantId
         });
         
         if (insertMsgError) {
@@ -627,6 +643,7 @@ async function executeAction(
       );
 
       if (mediaResult.success) {
+        // Salvar mídia no histórico com tenant_id correto da conversa
         await supabase.from('messages').insert({
           conversation_id: execution.conversation_id,
           content: caption || `[${mediaType}]`,
@@ -635,7 +652,7 @@ async function executeAction(
           media_url: mediaUrl,
           whatsapp_message_id: mediaResult.messageId,
           status: 'sent',
-          tenant_id: execution.tenant_id
+          tenant_id: messageTenantId
         });
         await logExecution(supabase, execution.id, node.id, 'info',
           `${mediaType} enviado com sucesso`);
