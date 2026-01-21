@@ -104,7 +104,7 @@ export function usePaginatedMessages(conversationId: string | null) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled: !!conversationId,
-    staleTime: 10000, // 10 seconds
+    staleTime: 2000, // 2 seconds - reduzido para feedback mais rápido em tempo real
   });
 }
 

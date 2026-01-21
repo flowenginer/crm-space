@@ -25,9 +25,25 @@ export function useRealtimeMessages(conversationId: string | null) {
 
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    // CORREÇÃO: Debounce reduzido de 500ms para 200ms para feedback mais rápido
-    const invalidateMessages = debounce(() => {
-      // Apenas invalidar mensagens da conversa atual
+    // CORREÇÃO: Refetch IMEDIATO para INSERTs - sem debounce para mensagens novas
+    const refetchMessagesImmediately = () => {
+      console.log('🔄 [RealtimeMessages] Forcing immediate refetch for conversation:', conversationId);
+      queryClient.refetchQueries({ 
+        queryKey: ['messages-paginated', conversationId],
+        type: 'active'
+      });
+      queryClient.refetchQueries({ 
+        queryKey: ['messages', conversationId],
+        type: 'active'
+      });
+      queryClient.refetchQueries({ 
+        queryKey: ['messages-preview', conversationId],
+        type: 'active'
+      });
+    };
+
+    // Debounce apenas para UPDATEs (status changes, etc)
+    const invalidateMessagesDebounced = debounce(() => {
       queryClient.invalidateQueries({ 
         queryKey: ['messages-paginated', conversationId],
         refetchType: 'active'
@@ -36,7 +52,6 @@ export function useRealtimeMessages(conversationId: string | null) {
         queryKey: ['messages', conversationId],
         refetchType: 'active'
       });
-      // Invalidar também o preview de mensagens (visualizador lateral)
       queryClient.invalidateQueries({ 
         queryKey: ['messages-preview', conversationId],
         refetchType: 'active'
@@ -47,10 +62,14 @@ export function useRealtimeMessages(conversationId: string | null) {
     // Isso garante que eventos passem pelo RLS corretamente
     const setupAndSubscribe = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        console.log('📡 [RealtimeMessages] Syncing auth token before channel setup');
-        supabase.realtime.setAuth(session.access_token);
+      
+      if (!session?.access_token) {
+        console.error('❌ [RealtimeMessages] NO SESSION - cannot subscribe to realtime. Messages will NOT update in real-time!');
+        return;
       }
+      
+      console.log('📡 [RealtimeMessages] Syncing auth token before channel setup for conversation:', conversationId);
+      supabase.realtime.setAuth(session.access_token);
 
       // Criar canal APÓS auth sincronizado
       channel = supabase
@@ -63,9 +82,16 @@ export function useRealtimeMessages(conversationId: string | null) {
             table: 'messages',
             filter: `conversation_id=eq.${conversationId}`,
           },
-          () => {
-            console.log('📨 [RealtimeMessages] New message received for conversation:', conversationId);
-            invalidateMessages();
+          (payload) => {
+            console.log('📨 [RealtimeMessages] INSERT event received:', {
+              conversationId,
+              messageId: (payload.new as any)?.id,
+              content: (payload.new as any)?.content?.substring(0, 50),
+              isFromMe: (payload.new as any)?.is_from_me,
+              timestamp: new Date().toISOString()
+            });
+            // IMEDIATO - sem debounce para novas mensagens
+            refetchMessagesImmediately();
           }
         )
         .on(
@@ -76,12 +102,25 @@ export function useRealtimeMessages(conversationId: string | null) {
             table: 'messages',
             filter: `conversation_id=eq.${conversationId}`,
           },
-          () => {
-            invalidateMessages();
+          (payload) => {
+            console.log('📝 [RealtimeMessages] UPDATE event received:', {
+              conversationId,
+              messageId: (payload.new as any)?.id,
+              status: (payload.new as any)?.status
+            });
+            invalidateMessagesDebounced();
           }
         )
-        .subscribe((status) => {
+        .subscribe((status, err) => {
           console.log('📡 [RealtimeMessages] Channel status:', status, 'for conversation:', conversationId);
+          
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ [RealtimeMessages] Successfully subscribed to messages channel');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('❌ [RealtimeMessages] Channel error - RLS may be blocking events:', err);
+          } else if (status === 'TIMED_OUT') {
+            console.warn('⚠️ [RealtimeMessages] Channel subscription timed out');
+          }
         });
     };
 
@@ -89,6 +128,7 @@ export function useRealtimeMessages(conversationId: string | null) {
 
     return () => {
       if (channel) {
+        console.log('🔌 [RealtimeMessages] Removing channel for conversation:', conversationId);
         supabase.removeChannel(channel);
       }
     };
