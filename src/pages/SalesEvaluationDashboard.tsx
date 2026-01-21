@@ -6,11 +6,13 @@ import { CalendarIcon, BarChart3, Settings } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { useEvaluationOverview, useAgentRanking, useObjectionsAnalysis, useScoreEvolution, useFunnelAnalysis } from '@/hooks/useSalesEvaluations';
+import { useEvaluationOverview, useAgentRanking, useObjectionsAnalysis, useScoreEvolution, useFunnelAnalysis, EvaluationDetail } from '@/hooks/useSalesEvaluations';
 import { useEvaluationTargets } from '@/hooks/useEvaluationTargets';
 import { usePeriodComparison } from '@/hooks/usePeriodComparison';
 import { EvaluationKPICards } from '@/components/sales-evaluation/EvaluationKPICards';
 import { AgentRankingTable } from '@/components/sales-evaluation/AgentRankingTable';
+import { EvaluationRankingTable } from '@/components/sales-evaluation/EvaluationRankingTable';
+import { EvaluationDetailSheet } from '@/components/sales-evaluation/EvaluationDetailSheet';
 import { SalesFunnelChart } from '@/components/sales-evaluation/SalesFunnelChart';
 import { ObjectionsBarChart } from '@/components/sales-evaluation/ObjectionsBarChart';
 import { CommunicationRadar } from '@/components/sales-evaluation/CommunicationRadar';
@@ -29,6 +31,7 @@ export default function SalesEvaluationDashboard() {
   const [filterAgentId, setFilterAgentId] = useState<string | null>(null);
   const [rankingMetric, setRankingMetric] = useState<RankingMetric>('avgScore');
   const [targetsModalOpen, setTargetsModalOpen] = useState(false);
+  const [selectedEvaluation, setSelectedEvaluation] = useState<EvaluationDetail | null>(null);
 
   const { data: overview, isLoading: overviewLoading } = useEvaluationOverview(dateRange.from, dateRange.to, filterAgentId);
   const { data: ranking, isLoading: rankingLoading } = useAgentRanking(dateRange.from, dateRange.to);
@@ -158,13 +161,28 @@ export default function SalesEvaluationDashboard() {
         <CriteriaRadar metrics={criteriaMetrics} isLoading={overviewLoading} title="Critérios Adicionais" />
       </div>
 
-      <AgentRankingTable 
-        agents={sortedRanking} 
-        isLoading={rankingLoading} 
-        onSelectAgent={(agentId) => setSelectedAgentId(agentId)}
-      />
+      {/* Conditional rendering: Agent ranking vs Evaluation ranking */}
+      {filterAgentId ? (
+        <EvaluationRankingTable
+          agentId={filterAgentId}
+          dateRange={dateRange}
+          onSelectEvaluation={setSelectedEvaluation}
+        />
+      ) : (
+        <AgentRankingTable 
+          agents={sortedRanking} 
+          isLoading={rankingLoading} 
+          onSelectAgent={(agentId) => setSelectedAgentId(agentId)}
+        />
+      )}
 
       <TargetsConfigModal open={targetsModalOpen} onOpenChange={setTargetsModalOpen} />
+      
+      <EvaluationDetailSheet
+        evaluation={selectedEvaluation}
+        open={!!selectedEvaluation}
+        onOpenChange={(open) => !open && setSelectedEvaluation(null)}
+      />
     </div>
   );
 }
