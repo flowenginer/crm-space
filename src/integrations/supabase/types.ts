@@ -8537,6 +8537,90 @@ export type Database = {
           },
         ]
       }
+      sales_evaluation_targets: {
+        Row: {
+          created_at: string | null
+          id: string
+          target_comunicacao_clareza: number | null
+          target_comunicacao_conhecimento: number | null
+          target_comunicacao_cordialidade: number | null
+          target_comunicacao_proatividade: number | null
+          target_conducao: number | null
+          target_eficiencia_objecoes: number | null
+          target_followup_estruturado: number | null
+          target_nota_objecoes: number | null
+          target_overall_score: number | null
+          target_personalizacao: number | null
+          target_qualificacao_lead: number | null
+          target_recuperacao_final: number | null
+          target_senso_urgencia: number | null
+          target_taxa_fechamento: number | null
+          target_tempo_resposta: number | null
+          tenant_id: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          target_comunicacao_clareza?: number | null
+          target_comunicacao_conhecimento?: number | null
+          target_comunicacao_cordialidade?: number | null
+          target_comunicacao_proatividade?: number | null
+          target_conducao?: number | null
+          target_eficiencia_objecoes?: number | null
+          target_followup_estruturado?: number | null
+          target_nota_objecoes?: number | null
+          target_overall_score?: number | null
+          target_personalizacao?: number | null
+          target_qualificacao_lead?: number | null
+          target_recuperacao_final?: number | null
+          target_senso_urgencia?: number | null
+          target_taxa_fechamento?: number | null
+          target_tempo_resposta?: number | null
+          tenant_id: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          target_comunicacao_clareza?: number | null
+          target_comunicacao_conhecimento?: number | null
+          target_comunicacao_cordialidade?: number | null
+          target_comunicacao_proatividade?: number | null
+          target_conducao?: number | null
+          target_eficiencia_objecoes?: number | null
+          target_followup_estruturado?: number | null
+          target_nota_objecoes?: number | null
+          target_overall_score?: number | null
+          target_personalizacao?: number | null
+          target_qualificacao_lead?: number | null
+          target_recuperacao_final?: number | null
+          target_senso_urgencia?: number | null
+          target_taxa_fechamento?: number | null
+          target_tempo_resposta?: number | null
+          tenant_id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_evaluation_targets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_evaluation_targets_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_evaluations: {
         Row: {
           analyzed_at: string

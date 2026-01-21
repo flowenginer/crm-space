@@ -9,6 +9,20 @@ export interface EvaluationOverview {
   avgObjectionScore: number;
   avgCommunicationScore: number;
   avgConductionScore: number;
+  // Individual communication metrics
+  avgClareza: number;
+  avgCordialidade: number;
+  avgProatividade: number;
+  avgConhecimento: number;
+  // Criteria metrics
+  avgTempoResposta: number;
+  avgPersonalizacao: number;
+  avgSensoUrgencia: number;
+  avgRecuperacao: number;
+  avgQualificacao: number;
+  avgFollowup: number;
+  // Objection efficiency
+  objectionEfficiency: number;
 }
 
 export interface AgentRanking {
@@ -20,6 +34,18 @@ export interface AgentRanking {
   closingRate: number;
   avgConduction: number;
   avgObjectionScore: number;
+  // Communication
+  avgClareza: number;
+  avgCordialidade: number;
+  avgProatividade: number;
+  avgConhecimento: number;
+  // Criteria
+  avgTempoResposta: number;
+  avgPersonalizacao: number;
+  avgSensoUrgencia: number;
+  avgRecuperacao: number;
+  avgQualificacao: number;
+  avgFollowup: number;
   classification: 'excellent' | 'good' | 'regular' | 'weak' | 'critical';
 }
 
@@ -123,17 +149,19 @@ async function queryEvaluationsView(
   return query;
 }
 
-export function useEvaluationOverview(startDate?: Date, endDate?: Date) {
+export function useEvaluationOverview(startDate?: Date, endDate?: Date, agentId?: string | null) {
   const start = startDate || startOfMonth(new Date());
   const end = endDate || endOfMonth(new Date());
 
   return useQuery({
-    queryKey: ['sales-evaluations-overview', format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')],
+    queryKey: ['sales-evaluations-overview', format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'), agentId],
     queryFn: async (): Promise<EvaluationOverview> => {
+      const filters = agentId ? [{ column: 'assigned_to', value: agentId }] : undefined;
       const { data, error } = await queryEvaluationsView(
-        'overall_score, etapa_fechamento, objecoes_nota_media, comunicacao_clareza, comunicacao_cordialidade, comunicacao_proatividade, comunicacao_conhecimento_produto, conducao',
+        'overall_score, etapa_fechamento, objecoes_nota_media, objecoes_tratadas, objecoes_apareceram, comunicacao_clareza, comunicacao_cordialidade, comunicacao_proatividade, comunicacao_conhecimento_produto, conducao, criterio_tempo_resposta, criterio_personalizacao, criterio_senso_urgencia, criterio_recuperacao_final, criterio_qualificacao_lead, criterio_followup_estruturado',
         start,
-        end
+        end,
+        filters
       );
 
       if (error) throw error;
@@ -145,6 +173,17 @@ export function useEvaluationOverview(startDate?: Date, endDate?: Date) {
           avgObjectionScore: 0,
           avgCommunicationScore: 0,
           avgConductionScore: 0,
+          avgClareza: 0,
+          avgCordialidade: 0,
+          avgProatividade: 0,
+          avgConhecimento: 0,
+          avgTempoResposta: 0,
+          avgPersonalizacao: 0,
+          avgSensoUrgencia: 0,
+          avgRecuperacao: 0,
+          avgQualificacao: 0,
+          avgFollowup: 0,
+          objectionEfficiency: 0,
         };
       }
 
@@ -153,13 +192,27 @@ export function useEvaluationOverview(startDate?: Date, endDate?: Date) {
       const closingRate = (data.filter((e: any) => e.etapa_fechamento === 1).length / totalEvaluations) * 100;
       const avgObjectionScore = data.reduce((sum, e: any) => sum + (Number(e.objecoes_nota_media) || 0), 0) / totalEvaluations;
       
-      const avgCommunicationScore = data.reduce((sum, e: any) => {
-        const comm = ((e.comunicacao_clareza || 0) + (e.comunicacao_cordialidade || 0) + 
-                      (e.comunicacao_proatividade || 0) + (e.comunicacao_conhecimento_produto || 0)) / 4;
-        return sum + comm;
-      }, 0) / totalEvaluations;
+      // Individual communication metrics
+      const avgClareza = data.reduce((sum, e: any) => sum + (e.comunicacao_clareza || 0), 0) / totalEvaluations;
+      const avgCordialidade = data.reduce((sum, e: any) => sum + (e.comunicacao_cordialidade || 0), 0) / totalEvaluations;
+      const avgProatividade = data.reduce((sum, e: any) => sum + (e.comunicacao_proatividade || 0), 0) / totalEvaluations;
+      const avgConhecimento = data.reduce((sum, e: any) => sum + (e.comunicacao_conhecimento_produto || 0), 0) / totalEvaluations;
       
+      const avgCommunicationScore = (avgClareza + avgCordialidade + avgProatividade + avgConhecimento) / 4;
       const avgConductionScore = data.reduce((sum, e: any) => sum + (e.conducao || 0), 0) / totalEvaluations;
+
+      // Criteria metrics
+      const avgTempoResposta = data.reduce((sum, e: any) => sum + (e.criterio_tempo_resposta || 0), 0) / totalEvaluations;
+      const avgPersonalizacao = data.reduce((sum, e: any) => sum + (e.criterio_personalizacao || 0), 0) / totalEvaluations;
+      const avgSensoUrgencia = data.reduce((sum, e: any) => sum + (e.criterio_senso_urgencia || 0), 0) / totalEvaluations;
+      const avgRecuperacao = data.reduce((sum, e: any) => sum + (e.criterio_recuperacao_final || 0), 0) / totalEvaluations;
+      const avgQualificacao = data.reduce((sum, e: any) => sum + (e.criterio_qualificacao_lead || 0), 0) / totalEvaluations;
+      const avgFollowup = data.reduce((sum, e: any) => sum + (e.criterio_followup_estruturado || 0), 0) / totalEvaluations;
+
+      // Objection efficiency
+      const totalAppeared = data.reduce((sum, e: any) => sum + (e.objecoes_apareceram || 0), 0);
+      const totalHandled = data.reduce((sum, e: any) => sum + (e.objecoes_tratadas || 0), 0);
+      const objectionEfficiency = totalAppeared > 0 ? (totalHandled / totalAppeared) * 100 : 0;
 
       return {
         totalEvaluations,
@@ -168,6 +221,17 @@ export function useEvaluationOverview(startDate?: Date, endDate?: Date) {
         avgObjectionScore: Math.round(avgObjectionScore * 10) / 10,
         avgCommunicationScore: Math.round(avgCommunicationScore * 10) / 10,
         avgConductionScore: Math.round(avgConductionScore * 10) / 10,
+        avgClareza: Math.round(avgClareza * 10) / 10,
+        avgCordialidade: Math.round(avgCordialidade * 10) / 10,
+        avgProatividade: Math.round(avgProatividade * 10) / 10,
+        avgConhecimento: Math.round(avgConhecimento * 10) / 10,
+        avgTempoResposta: Math.round(avgTempoResposta * 10) / 10,
+        avgPersonalizacao: Math.round(avgPersonalizacao * 10) / 10,
+        avgSensoUrgencia: Math.round(avgSensoUrgencia * 10) / 10,
+        avgRecuperacao: Math.round(avgRecuperacao * 10) / 10,
+        avgQualificacao: Math.round(avgQualificacao * 10) / 10,
+        avgFollowup: Math.round(avgFollowup * 10) / 10,
+        objectionEfficiency: Math.round(objectionEfficiency * 10) / 10,
       };
     },
   });
@@ -180,9 +244,9 @@ export function useAgentRanking(startDate?: Date, endDate?: Date) {
   return useQuery({
     queryKey: ['sales-evaluations-ranking', format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')],
     queryFn: async (): Promise<AgentRanking[]> => {
-      // First get evaluations from the view
+      // First get evaluations from the view with all metrics
       const { data: evaluationsData, error: evalError } = await queryEvaluationsView(
-        'assigned_to, overall_score, etapa_fechamento, conducao, objecoes_nota_media',
+        'assigned_to, overall_score, etapa_fechamento, conducao, objecoes_nota_media, comunicacao_clareza, comunicacao_cordialidade, comunicacao_proatividade, comunicacao_conhecimento_produto, criterio_tempo_resposta, criterio_personalizacao, criterio_senso_urgencia, criterio_recuperacao_final, criterio_qualificacao_lead, criterio_followup_estruturado',
         start,
         end
       );
@@ -229,6 +293,20 @@ export function useAgentRanking(startDate?: Date, endDate?: Date) {
         const closingRate = (evaluations.filter(e => e.etapa_fechamento === 1).length / count) * 100;
         const avgConduction = evaluations.reduce((sum, e) => sum + (e.conducao || 0), 0) / count;
         const avgObjectionScore = evaluations.reduce((sum, e) => sum + (Number(e.objecoes_nota_media) || 0), 0) / count;
+        
+        // Communication metrics
+        const avgClareza = evaluations.reduce((sum, e) => sum + (e.comunicacao_clareza || 0), 0) / count;
+        const avgCordialidade = evaluations.reduce((sum, e) => sum + (e.comunicacao_cordialidade || 0), 0) / count;
+        const avgProatividade = evaluations.reduce((sum, e) => sum + (e.comunicacao_proatividade || 0), 0) / count;
+        const avgConhecimento = evaluations.reduce((sum, e) => sum + (e.comunicacao_conhecimento_produto || 0), 0) / count;
+
+        // Criteria metrics
+        const avgTempoResposta = evaluations.reduce((sum, e) => sum + (e.criterio_tempo_resposta || 0), 0) / count;
+        const avgPersonalizacao = evaluations.reduce((sum, e) => sum + (e.criterio_personalizacao || 0), 0) / count;
+        const avgSensoUrgencia = evaluations.reduce((sum, e) => sum + (e.criterio_senso_urgencia || 0), 0) / count;
+        const avgRecuperacao = evaluations.reduce((sum, e) => sum + (e.criterio_recuperacao_final || 0), 0) / count;
+        const avgQualificacao = evaluations.reduce((sum, e) => sum + (e.criterio_qualificacao_lead || 0), 0) / count;
+        const avgFollowup = evaluations.reduce((sum, e) => sum + (e.criterio_followup_estruturado || 0), 0) / count;
 
         rankings.push({
           id: profile.id,
@@ -239,6 +317,16 @@ export function useAgentRanking(startDate?: Date, endDate?: Date) {
           closingRate: Math.round(closingRate * 10) / 10,
           avgConduction: Math.round(avgConduction * 10) / 10,
           avgObjectionScore: Math.round(avgObjectionScore * 10) / 10,
+          avgClareza: Math.round(avgClareza * 10) / 10,
+          avgCordialidade: Math.round(avgCordialidade * 10) / 10,
+          avgProatividade: Math.round(avgProatividade * 10) / 10,
+          avgConhecimento: Math.round(avgConhecimento * 10) / 10,
+          avgTempoResposta: Math.round(avgTempoResposta * 10) / 10,
+          avgPersonalizacao: Math.round(avgPersonalizacao * 10) / 10,
+          avgSensoUrgencia: Math.round(avgSensoUrgencia * 10) / 10,
+          avgRecuperacao: Math.round(avgRecuperacao * 10) / 10,
+          avgQualificacao: Math.round(avgQualificacao * 10) / 10,
+          avgFollowup: Math.round(avgFollowup * 10) / 10,
           classification: getClassification(avgScore),
         });
       });
