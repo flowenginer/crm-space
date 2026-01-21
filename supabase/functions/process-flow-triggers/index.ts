@@ -92,7 +92,11 @@ Deno.serve(async (req) => {
           return false;
         }
       }
-      // Verificar tipo de trigger
+      // Verificar tipo de trigger - agrupar keyword e message_key como equivalentes
+      const keywordTypes = ['keyword', 'message_key'];
+      if (keywordTypes.includes(trigger_type)) {
+        return keywordTypes.includes(flow.trigger_subtype);
+      }
       return flow.trigger_subtype === trigger_type;
     });
 
