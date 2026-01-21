@@ -154,6 +154,47 @@ serve(async (req) => {
 
     await Promise.all(operations.map(op => op()));
 
+    // IMPORTANTE: Após atualizar status, chamar execute-flow-node para continuar o fluxo
+    const executePromises: Promise<any>[] = [];
+
+    // Continuar delays de tempo
+    for (const exec of timeDelays) {
+      if (exec.current_node_id && delayUpdateIds.includes(exec.id)) {
+        const connections = connectionsMap.get(exec.current_node_id) || [];
+        if (connections.length > 0) {
+          const nextNodeId = connections[0].target_node_id;
+          console.log(`[process-flow-delays] ▶️ Continuando execução ${exec.id} para nó ${nextNodeId}`);
+          executePromises.push(
+            supabase.functions.invoke('execute-flow-node', {
+              body: { execution_id: exec.id, node_id: nextNodeId }
+            })
+          );
+        }
+      }
+    }
+
+    // Continuar timeouts que têm caminho
+    for (const exec of replyTimeouts) {
+      if (exec.current_node_id && timeoutUpdateRunning.includes(exec.id)) {
+        const connections = connectionsMap.get(exec.current_node_id) || [];
+        const timeoutConnection = connections.find(c => c.source_handle === 'timeout');
+        if (timeoutConnection) {
+          console.log(`[process-flow-delays] ⏰ Timeout - continuando execução ${exec.id} para nó ${timeoutConnection.target_node_id}`);
+          executePromises.push(
+            supabase.functions.invoke('execute-flow-node', {
+              body: { execution_id: exec.id, node_id: timeoutConnection.target_node_id }
+            })
+          );
+        }
+      }
+    }
+
+    // Executar todas as continuações em paralelo
+    if (executePromises.length > 0) {
+      console.log(`[process-flow-delays] 🚀 Disparando ${executePromises.length} continuações de fluxo`);
+      await Promise.allSettled(executePromises);
+    }
+
     console.log(`[process-flow-delays] Processed ${processedCount} executions`);
 
     return new Response(JSON.stringify({ success: true, processed: processedCount }), {
