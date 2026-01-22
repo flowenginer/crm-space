@@ -957,6 +957,7 @@ function renderNodeConfig(
       );
       
     case 'time_condition': {
+      // Configurações de faixas de horário
       const timeRanges = (config?.time_ranges as Array<{ id: string; label: string; start: string; end: string }>) || [];
       
       const addTimeRange = () => {
