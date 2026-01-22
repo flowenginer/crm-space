@@ -517,7 +517,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         isDark ? "border-border/50" : "border-white/10"
       )}>
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center shadow-lg overflow-hidden bg-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl shadow-lg overflow-hidden bg-white">
             <CompanyLogo size="md" className="h-11 w-11" />
           </div>
           {!isCollapsed && (
