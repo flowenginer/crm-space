@@ -77,16 +77,13 @@ export function LoginForm() {
     <div className="w-full max-w-md space-y-8 animate-scale-in">
       {/* Logo */}
       <div className="flex flex-col items-center space-y-4">
-        <div className="flex h-20 w-20 items-center justify-center rounded-2xl shadow-2xl bg-white">
+        <div className="flex h-20 w-20 items-center justify-center shadow-2xl bg-white">
           <CompanyLogo size="xl" className="h-16 w-16" />
         </div>
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Space Sports
+            CRM SPACE
           </h1>
-          <p className="mt-2 text-muted-foreground">
-            CRM para uniformes personalizados
-          </p>
         </div>
       </div>
 
