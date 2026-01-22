@@ -27,16 +27,34 @@ import { toast } from 'sonner';
 import { useLeadStatuses, useCreateLeadStatus, useUpdateLeadStatus, useDeleteLeadStatus } from '@/hooks/useLeadKanban';
 
 const DEFAULT_COLORS = [
+  // Blues & Cyans
   '#3B82F6', // blue
-  '#10B981', // green
-  '#F59E0B', // amber
-  '#EF4444', // red
-  '#8B5CF6', // violet
-  '#EC4899', // pink
+  '#2563EB', // blue darker
+  '#0EA5E9', // sky
   '#06B6D4', // cyan
-  '#F97316', // orange
+  '#14B8A6', // teal
+  // Greens
+  '#10B981', // emerald
+  '#22C55E', // green
   '#84CC16', // lime
+  '#A3E635', // lime light
+  // Yellows & Oranges
+  '#F59E0B', // amber
+  '#FBBF24', // yellow
+  '#F97316', // orange
+  '#FB923C', // orange light
+  // Reds & Pinks
+  '#EF4444', // red
+  '#F43F5E', // rose
+  '#EC4899', // pink
+  '#D946EF', // fuchsia
+  // Purples
+  '#8B5CF6', // violet
+  '#A855F7', // purple
   '#6366F1', // indigo
+  // Neutrals
+  '#64748B', // slate
+  '#78716C', // stone
 ];
 
 export function LeadStatusSettings() {
@@ -141,14 +159,14 @@ export function LeadStatusSettings() {
                       className="flex-1 h-8"
                       autoFocus
                     />
-                    <div className="flex gap-1">
-                      {DEFAULT_COLORS.slice(0, 5).map((c) => (
+                    <div className="flex flex-wrap gap-1 max-w-[200px]">
+                      {DEFAULT_COLORS.map((c) => (
                         <button
                           key={c}
                           onClick={() => setEditColor(c)}
                           className={cn(
-                            'w-6 h-6 rounded-full border-2 transition-all',
-                            editColor === c ? 'border-primary scale-110' : 'border-transparent'
+                            'w-5 h-5 rounded-full border-2 transition-all',
+                            editColor === c ? 'border-primary scale-110' : 'border-transparent hover:scale-105'
                           )}
                           style={{ backgroundColor: c }}
                         />
