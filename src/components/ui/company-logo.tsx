@@ -24,14 +24,18 @@ export function CompanyLogo({
   const sizeClass = sizeMap[size];
 
   return (
-    <img
-      src={spaceSportsLogo}
-      alt="Space Sports"
+    <div
       className={cn(
         sizeClass,
-        'object-contain rounded-3xl',
+        'rounded-xl overflow-hidden flex-shrink-0',
         className
       )}
-    />
+    >
+      <img
+        src={spaceSportsLogo}
+        alt="Space Sports"
+        className="w-full h-full object-cover"
+      />
+    </div>
   );
 }
