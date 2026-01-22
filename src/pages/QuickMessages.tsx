@@ -49,8 +49,10 @@ import {
   ContentBlock,
 } from '@/hooks/useTemplates';
 import { AudioRecorder } from '@/components/quick-messages/AudioRecorder';
+import { CompactAudioRecorder } from '@/components/quick-messages/CompactAudioRecorder';
 import { FileUploader } from '@/components/quick-messages/FileUploader';
 import { EmojiPickerButton } from '@/components/quick-messages/EmojiPickerButton';
+import { useUserQuickTemplates, useAddQuickTemplate } from '@/hooks/useQuickTemplates';
 
 import { useApprovedMetaTemplates, MetaMessageTemplate, getTemplateBody } from '@/hooks/useMetaTemplates';
 import { MetaTemplateUseModal } from '@/components/meta-templates';
@@ -87,9 +89,11 @@ export default function QuickMessages() {
   // Supabase hooks
   const { data: templates = [], isLoading } = useTemplates();
   const { data: metaTemplates = [], isLoading: metaLoading } = useApprovedMetaTemplates();
+  const { data: quickTemplates = [] } = useUserQuickTemplates();
   const createTemplate = useCreateTemplate();
   const updateTemplate = useUpdateTemplate();
   const deleteTemplate = useDeleteTemplate();
+  const addQuickTemplate = useAddQuickTemplate();
 
   // Modal states
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -107,9 +111,21 @@ export default function QuickMessages() {
   const [templateMediaName, setTemplateMediaName] = useState<string | null>(null);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
   
+  // Audio attachment for messages
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioName, setAudioName] = useState<string | null>(null);
+  
+  // Quick shortcut position (1-5, null = no shortcut)
+  const [quickShortcutPosition, setQuickShortcutPosition] = useState<number | null>(null);
+  
   // Multiple content blocks state
   const [contentBlocks, setContentBlocks] = useState<ContentBlock[]>([{ type: 'text', content: '' }]);
   const [activeBlockIndex, setActiveBlockIndex] = useState(0);
+
+  // Get used quick template positions
+  const usedPositions = useMemo(() => {
+    return new Set(quickTemplates.map(qt => qt.position));
+  }, [quickTemplates]);
 
   // Calculate category counts dynamically
   const categoryCounts = useMemo(() => {
@@ -152,6 +168,9 @@ export default function QuickMessages() {
     setTemplateMediaUrl(null);
     setTemplateMediaType(null);
     setTemplateMediaName(null);
+    setAudioUrl(null);
+    setAudioName(null);
+    setQuickShortcutPosition(null);
     setShowTemplateModal(true);
   };
 
@@ -166,6 +185,23 @@ export default function QuickMessages() {
     setTemplateMediaUrl(template.media_url || null);
     setTemplateMediaType(template.media_type || null);
     setTemplateMediaName(template.media_name || null);
+    
+    // Check if there's audio attached (media_type === 'audio' but category is 'messages')
+    if (template.category === 'messages' && template.media_type === 'audio') {
+      setAudioUrl(template.media_url);
+      setAudioName(template.media_name);
+      // Clear the main media fields since this is an audio attachment
+      setTemplateMediaUrl(null);
+      setTemplateMediaType(null);
+      setTemplateMediaName(null);
+    } else {
+      setAudioUrl(null);
+      setAudioName(null);
+    }
+    
+    // Check if template has a quick shortcut position
+    const existingQuickTemplate = quickTemplates.find(qt => qt.template_id === templateId);
+    setQuickShortcutPosition(existingQuickTemplate?.position || null);
     
     // Load content blocks or convert from legacy content
     if (template.content_blocks && Array.isArray(template.content_blocks) && template.content_blocks.length > 0) {
@@ -244,7 +280,14 @@ export default function QuickMessages() {
     const variablesMatch = allContent.match(/\{\{(\w+)\}\}/g) || [];
     const variables = [...new Set(variablesMatch.map((v) => v.replace(/\{\{|\}\}/g, '')))];
 
+    // Determine media fields - for messages category, use audio if present, else use regular media
+    const finalMediaUrl = templateCategory === 'messages' && audioUrl ? audioUrl : templateMediaUrl;
+    const finalMediaType = templateCategory === 'messages' && audioUrl ? 'audio' : templateMediaType;
+    const finalMediaName = templateCategory === 'messages' && audioUrl ? audioName : templateMediaName;
+
     try {
+      let savedTemplateId = selectedTemplateId;
+      
       if (isEditing && selectedTemplateId) {
         await updateTemplate.mutateAsync({
           id: selectedTemplateId,
@@ -252,25 +295,40 @@ export default function QuickMessages() {
           content: firstContent,
           category: templateCategory,
           variables,
-          media_url: templateMediaUrl,
-          media_type: templateMediaType,
-          media_name: templateMediaName,
+          media_url: finalMediaUrl,
+          media_type: finalMediaType,
+          media_name: finalMediaName,
           content_blocks: contentBlocks.filter(b => b.content?.trim() || b.media_url),
         });
         toast({ title: 'Template atualizado!' });
       } else {
-        await createTemplate.mutateAsync({
+        const newTemplate = await createTemplate.mutateAsync({
           title: templateTitle,
           content: firstContent,
           category: templateCategory,
           variables,
-          media_url: templateMediaUrl,
-          media_type: templateMediaType,
-          media_name: templateMediaName,
+          media_url: finalMediaUrl,
+          media_type: finalMediaType,
+          media_name: finalMediaName,
           content_blocks: contentBlocks.filter(b => b.content?.trim() || b.media_url),
         });
+        savedTemplateId = newTemplate.id;
         toast({ title: 'Template criado!' });
       }
+      
+      // Handle quick shortcut if selected
+      if (quickShortcutPosition && savedTemplateId) {
+        try {
+          await addQuickTemplate.mutateAsync({ 
+            templateId: savedTemplateId, 
+            position: quickShortcutPosition 
+          });
+          toast({ title: `Atalho rápido ${quickShortcutPosition} configurado!` });
+        } catch (error) {
+          console.error('Error adding quick shortcut:', error);
+        }
+      }
+      
       setShowTemplateModal(false);
     } catch (error) {
       toast({ title: 'Erro ao salvar template', variant: 'destructive' });
@@ -287,6 +345,16 @@ export default function QuickMessages() {
     setTemplateMediaUrl(null);
     setTemplateMediaType(null);
     setTemplateMediaName(null);
+  };
+
+  const handleAudioUploaded = (url: string, type: string, name: string) => {
+    setAudioUrl(url);
+    setAudioName(name);
+  };
+
+  const handleAudioRemoved = () => {
+    setAudioUrl(null);
+    setAudioName(null);
   };
 
   // Block management functions
@@ -809,10 +877,22 @@ export default function QuickMessages() {
                     </Button>
                   </div>
 
+                  {/* Compact Audio Recorder */}
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Anexar áudio (opcional)
+                    </label>
+                    <CompactAudioRecorder
+                      onAudioUploaded={handleAudioUploaded}
+                      existingUrl={audioUrl}
+                      onRemove={handleAudioRemoved}
+                    />
+                  </div>
+
                   {/* Compact File Uploader */}
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
-                      Anexo (opcional)
+                      Anexar arquivo (opcional)
                     </label>
                     <FileUploader
                       category="documents"
@@ -823,6 +903,44 @@ export default function QuickMessages() {
                       onRemove={handleMediaRemoved}
                       compact
                     />
+                  </div>
+
+                  {/* Quick Shortcut Selector */}
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Atalho rápido (opcional)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[1, 2, 3, 4, 5].map((position) => {
+                        const isUsed = usedPositions.has(position) && 
+                          !quickTemplates.find(qt => qt.template_id === selectedTemplateId && qt.position === position);
+                        const isSelected = quickShortcutPosition === position;
+                        
+                        return (
+                          <button
+                            key={position}
+                            type="button"
+                            onClick={() => setQuickShortcutPosition(isSelected ? null : position)}
+                            disabled={isUsed}
+                            className={`
+                              w-10 h-10 rounded-lg text-sm font-bold transition-all
+                              ${isSelected 
+                                ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2' 
+                                : isUsed
+                                  ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
+                                  : 'bg-muted hover:bg-muted/80 text-foreground'
+                              }
+                            `}
+                            title={isUsed ? 'Posição já ocupada por outro template' : `Atalho ${position}`}
+                          >
+                            {position}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Selecione uma posição para acessar rapidamente este template
+                    </p>
                   </div>
 
                   {/* Quick Insert Variables */}
