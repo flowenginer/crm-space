@@ -66,7 +66,20 @@ import { supabase } from '@/integrations/supabase/client';
 import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
 
 // Vibrant gradient colors for new statuses (lilac → pink)
-const DEFAULT_COLORS = generateGradientColors(14);
+const DEFAULT_COLORS = [
+  // Blues & Cyans
+  '#3B82F6', '#2563EB', '#0EA5E9', '#06B6D4', '#14B8A6',
+  // Greens
+  '#10B981', '#22C55E', '#84CC16', '#A3E635',
+  // Yellows & Oranges
+  '#F59E0B', '#FBBF24', '#F97316', '#FB923C',
+  // Reds & Pinks
+  '#EF4444', '#F43F5E', '#EC4899', '#D946EF',
+  // Purples
+  '#8B5CF6', '#A855F7', '#6366F1',
+  // Neutrals
+  '#64748B', '#78716C',
+];
 
 interface LeadKanbanProps {
   searchQuery?: string;
