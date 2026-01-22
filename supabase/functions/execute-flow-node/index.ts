@@ -288,6 +288,32 @@ Deno.serve(async (req) => {
         break;
 
       case 'condition':
+        // Verificar se é condição de horário (múltiplas saídas)
+        if (flowNode.node_subtype === 'time_condition') {
+          const timeResult = evaluateTimeCondition(flowNode);
+          console.log(`[execute-flow-node] Condição de horário - saída: ${timeResult}`);
+          
+          const { data: timeConnection } = await supabase
+            .from('flow_connections')
+            .select('target_node_id')
+            .eq('source_node_id', node_id)
+            .eq('source_handle', timeResult)
+            .single();
+
+          if (timeConnection) {
+            await supabase.functions.invoke('execute-flow-node', {
+              body: { execution_id, node_id: timeConnection.target_node_id }
+            });
+          } else {
+            await finishExecution(supabase, execution_id, node_id);
+          }
+          return new Response(
+            JSON.stringify({ success: true }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // Condições padrão (yes/no)
         const result = await evaluateCondition(supabase, execution as FlowExecution, flowNode);
         const handleId = result ? 'yes' : 'no';
 
@@ -1004,6 +1030,40 @@ async function evaluateCondition(
     default:
       return false;
   }
+}
+
+// Avalia condição de horário e retorna o handle ID da saída correspondente
+function evaluateTimeCondition(node: FlowNode): string {
+  const config = node.config;
+  const timeRanges = (config.time_ranges as Array<{ id: string; label: string; start: string; end: string }>) || [];
+  
+  // Obter hora atual (no timezone do servidor - geralmente UTC)
+  const now = new Date();
+  const currentHours = now.getHours();
+  const currentMinutes = now.getMinutes();
+  const currentTimeMinutes = currentHours * 60 + currentMinutes;
+  
+  console.log(`[evaluateTimeCondition] Hora atual: ${currentHours.toString().padStart(2, '0')}:${currentMinutes.toString().padStart(2, '0')} (${currentTimeMinutes} minutos)`);
+  
+  // Verificar cada faixa de horário
+  for (const range of timeRanges) {
+    const [startHours, startMinutes] = range.start.split(':').map(Number);
+    const [endHours, endMinutes] = range.end.split(':').map(Number);
+    
+    const startTimeMinutes = startHours * 60 + startMinutes;
+    const endTimeMinutes = endHours * 60 + endMinutes;
+    
+    console.log(`[evaluateTimeCondition] Verificando faixa "${range.label}": ${range.start}-${range.end} (${startTimeMinutes}-${endTimeMinutes})`);
+    
+    // Verificar se a hora atual está dentro da faixa
+    if (currentTimeMinutes >= startTimeMinutes && currentTimeMinutes <= endTimeMinutes) {
+      console.log(`[evaluateTimeCondition] ✅ Corresponde à faixa: ${range.label}`);
+      return `time_${range.id}`;
+    }
+  }
+  
+  console.log('[evaluateTimeCondition] ❌ Nenhuma faixa corresponde, usando "other"');
+  return 'other';
 }
 
 async function executeDelay(

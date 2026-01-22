@@ -31,6 +31,11 @@ const isSendTextWaitReply = (data: FlowNodeData) => {
   return data.nodeSubtype === 'send_text_wait_reply';
 };
 
+// Verifica se é a condição de horário (múltiplas saídas)
+const isTimeCondition = (data: FlowNodeData) => {
+  return data.nodeSubtype === 'time_condition';
+};
+
 // Cores para as saídas dinâmicas (classes para labels)
 const outputColors = [
   { bg: 'bg-green-500', border: 'border-green-300', text: 'text-green-500' },
@@ -60,9 +65,13 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
   const expectedResponses = (config?.expected_responses as Array<{ id: string; label: string; keywords: string[] }>) || [];
   const isSendWaitReply = isSendTextWaitReply(data);
   
+  // Para condição de horário, obter faixas de horário do config
+  const timeRanges = (config?.time_ranges as Array<{ id: string; label: string; start: string; end: string }>) || [];
+  const isTimeConditionNode = isTimeCondition(data);
+  
   // Calcular largura do nó baseado no número de saídas
-  const numOutputs = isSendWaitReply ? expectedResponses.length + 2 : 0; // +2 para "Outra" e "Timeout"
-  const nodeWidth = isSendWaitReply && numOutputs > 2 ? Math.max(180, numOutputs * 50) : 180;
+  const numOutputs = isSendWaitReply ? expectedResponses.length + 2 : (isTimeConditionNode ? timeRanges.length + 1 : 0); // +1 para "Outro" na condição de horário
+  const nodeWidth = (isSendWaitReply && numOutputs > 2) || (isTimeConditionNode && numOutputs > 1) ? Math.max(180, numOutputs * 60) : 180;
   
   return (
     <div
@@ -190,6 +199,70 @@ export const BaseNode = memo(({ data, selected }: BaseNodeProps) => {
             Timeout
           </div>
         </>
+      ) : isTimeConditionNode ? (
+        <>
+          {/* Handles para cada faixa de horário */}
+          {timeRanges.map((range, index) => {
+            const colorHex = outputColorHex[index % outputColorHex.length];
+            const totalOutputs = timeRanges.length + 1; // +1 para "Outro"
+            const leftPercent = ((index + 1) / (totalOutputs + 1)) * 100;
+            
+            return (
+              <Handle
+                key={`handle_${range.id}`}
+                type="source"
+                position={Position.Bottom}
+                id={`time_${range.id}`}
+                className="!w-4 !h-4"
+                style={{ 
+                  left: `${leftPercent}%`,
+                  backgroundColor: colorHex.bg,
+                  borderWidth: '2px',
+                  borderColor: colorHex.border,
+                  zIndex: 10
+                }}
+              />
+            );
+          })}
+          
+          {/* Labels para cada faixa de horário */}
+          {timeRanges.map((range, index) => {
+            const colorSet = outputColors[index % outputColors.length];
+            const totalOutputs = timeRanges.length + 1;
+            const leftPercent = ((index + 1) / (totalOutputs + 1)) * 100;
+            
+            return (
+              <div 
+                key={`label_${range.id}`}
+                className={cn('absolute -bottom-5 text-[9px] whitespace-nowrap pointer-events-none select-none', colorSet.text)}
+                style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}
+              >
+                {range.label || `${range.start}-${range.end}`}
+              </div>
+            );
+          })}
+          
+          {/* Saída "Outro" - para quando não corresponder a nenhum horário */}
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="other"
+            className="!w-4 !h-4"
+            style={{ 
+              left: `${((timeRanges.length + 1) / (timeRanges.length + 2)) * 100}%`,
+              backgroundColor: '#6b7280',
+              borderWidth: '2px',
+              borderColor: '#9ca3af',
+              zIndex: 10
+            }}
+          />
+          <div 
+            className="absolute -bottom-5 text-[9px] text-gray-500 whitespace-nowrap pointer-events-none select-none"
+            style={{ left: `${((timeRanges.length + 1) / (timeRanges.length + 2)) * 100}%`, transform: 'translateX(-50%)' }}
+          >
+            Outro
+          </div>
+        </>
       ) : data.nodeType === 'condition' ? (
         <>
           <Handle
@@ -311,6 +384,13 @@ function getNodeDescription(
       return 'Adiciona nota interna';
     case 'close_conversation':
       return 'Fecha a conversa';
+    case 'time_condition': {
+      const timeRanges = (config?.time_ranges as Array<{ label: string }>) || [];
+      if (timeRanges.length > 0) {
+        return `${timeRanges.length} faixas de horário`;
+      }
+      return 'Configurar horários...';
+    }
     default:
       return data.nodeSubtype;
   }

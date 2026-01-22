@@ -956,6 +956,142 @@ function renderNodeConfig(
         </div>
       );
       
+    case 'time_condition': {
+      const timeRanges = (config?.time_ranges as Array<{ id: string; label: string; start: string; end: string }>) || [];
+      
+      const addTimeRange = () => {
+        const newRange = {
+          id: crypto.randomUUID().slice(0, 8),
+          label: `Horário ${timeRanges.length + 1}`,
+          start: '00:00',
+          end: '11:59'
+        };
+        onUpdate(node.id, {
+          ...node.config,
+          time_ranges: [...timeRanges, newRange]
+        });
+      };
+      
+      const removeTimeRange = (id: string) => {
+        onUpdate(node.id, {
+          ...node.config,
+          time_ranges: timeRanges.filter(r => r.id !== id)
+        });
+      };
+      
+      const updateTimeRange = (id: string, field: 'label' | 'start' | 'end', value: string) => {
+        onUpdate(node.id, {
+          ...node.config,
+          time_ranges: timeRanges.map(r => 
+            r.id === id ? { ...r, [field]: value } : r
+          )
+        });
+      };
+      
+      return (
+        <div className="space-y-4">
+          {/* Faixas de Horário */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Faixas de Horário</Label>
+              <Button 
+                type="button" 
+                variant="outline" 
+                size="sm"
+                onClick={addTimeRange}
+              >
+                <Plus size={14} className="mr-1" />
+                Adicionar
+              </Button>
+            </div>
+            
+            {timeRanges.length === 0 && (
+              <p className="text-xs text-muted-foreground italic">
+                Nenhuma faixa configurada. Adicione faixas para criar saídas baseadas em horários.
+              </p>
+            )}
+            
+            {timeRanges.map((range, index) => (
+              <div 
+                key={range.id} 
+                className="p-3 border border-border rounded-lg space-y-2 bg-muted/30"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Saída {index + 1}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeTimeRange(range.id)}
+                    className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+                
+                <div className="space-y-2">
+                  <Input
+                    value={range.label}
+                    onChange={(e) => updateTimeRange(range.id, 'label', e.target.value)}
+                    placeholder="Nome da saída (ex: Bom dia)"
+                    className="text-sm"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Início</Label>
+                      <Input
+                        type="time"
+                        value={range.start}
+                        onChange={(e) => updateTimeRange(range.id, 'start', e.target.value)}
+                        className="text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Fim</Label>
+                      <Input
+                        type="time"
+                        value={range.end}
+                        onChange={(e) => updateTimeRange(range.id, 'end', e.target.value)}
+                        className="text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Explicação das saídas */}
+          <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+            <p className="text-xs font-medium text-foreground">Saídas do bloco:</p>
+            {timeRanges.map((range, index) => (
+              <div key={range.id} className="flex items-center gap-2 text-xs">
+                <span 
+                  className="w-2 h-2 rounded-full"
+                  style={{ 
+                    backgroundColor: ['#22c55e', '#3b82f6', '#a855f7', '#06b6d4', '#ec4899'][index % 5] 
+                  }}
+                />
+                <span className="text-muted-foreground">
+                  {range.label} - {range.start} até {range.end}
+                </span>
+              </div>
+            ))}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-full bg-gray-500" />
+              <span className="text-muted-foreground">Outro - Quando não corresponder a nenhum horário</span>
+            </div>
+          </div>
+          
+          <p className="text-xs text-muted-foreground">
+            O fluxo segue pela saída correspondente ao horário atual. Use para enviar mensagens personalizadas como "Bom dia", "Boa tarde" e "Boa noite".
+          </p>
+        </div>
+      );
+    }
+      
     default:
       return (
         <p className="text-muted-foreground text-sm">
