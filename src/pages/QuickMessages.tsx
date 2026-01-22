@@ -118,6 +118,9 @@ export default function QuickMessages() {
   // Quick shortcut position (1-5, null = no shortcut)
   const [quickShortcutPosition, setQuickShortcutPosition] = useState<number | null>(null);
   
+  // Audio first option - send audio before text
+  const [audioFirst, setAudioFirst] = useState(false);
+  
   // Multiple content blocks state
   const [contentBlocks, setContentBlocks] = useState<ContentBlock[]>([{ type: 'text', content: '' }]);
   const [activeBlockIndex, setActiveBlockIndex] = useState(0);
@@ -171,6 +174,7 @@ export default function QuickMessages() {
     setAudioUrl(null);
     setAudioName(null);
     setQuickShortcutPosition(null);
+    setAudioFirst(false);
     setShowTemplateModal(true);
   };
 
@@ -202,6 +206,9 @@ export default function QuickMessages() {
     // Check if template has a quick shortcut position
     const existingQuickTemplate = quickTemplates.find(qt => qt.template_id === templateId);
     setQuickShortcutPosition(existingQuickTemplate?.position || null);
+    
+    // Load audio_first preference
+    setAudioFirst(template.audio_first ?? false);
     
     // Load content blocks or convert from legacy content
     if (template.content_blocks && Array.isArray(template.content_blocks) && template.content_blocks.length > 0) {
@@ -301,6 +308,7 @@ export default function QuickMessages() {
           media_type: finalMediaType,
           media_name: finalMediaName,
           content_blocks: contentBlocks.filter(b => b.content?.trim() || b.media_url),
+          audio_first: audioFirst,
         });
         toast({ title: 'Template atualizado!' });
       } else {
@@ -313,6 +321,7 @@ export default function QuickMessages() {
           media_type: finalMediaType,
           media_name: finalMediaName,
           content_blocks: contentBlocks.filter(b => b.content?.trim() || b.media_url),
+          audio_first: audioFirst,
         });
         savedTemplateId = newTemplate.id;
         toast({ title: 'Template criado!' });
@@ -890,6 +899,44 @@ export default function QuickMessages() {
                       onRemove={handleAudioRemoved}
                     />
                   </div>
+
+                  {/* Audio Order Selector - only show when both audio and text exist */}
+                  {audioUrl && contentBlocks.some(b => b.content?.trim()) && (
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Ordem de envio
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAudioFirst(false)}
+                          className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                            !audioFirst 
+                              ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2' 
+                              : 'bg-muted hover:bg-muted/80 text-foreground'
+                          }`}
+                        >
+                          <MessageSquare size={16} />
+                          Texto primeiro
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAudioFirst(true)}
+                          className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                            audioFirst 
+                              ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2' 
+                              : 'bg-muted hover:bg-muted/80 text-foreground'
+                          }`}
+                        >
+                          <Mic size={16} />
+                          Áudio primeiro
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        Escolha qual conteúdo será enviado primeiro
+                      </p>
+                    </div>
+                  )}
 
                   {/* Compact File Uploader */}
                   <div>
