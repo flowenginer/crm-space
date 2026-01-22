@@ -32,6 +32,8 @@ import { AvailabilityToggle } from './AvailabilityToggle';
 import { useCurrentUserIsSuperAdmin } from '@/hooks/useSuperAdminTenants';
 import { LogoutConfirmDialog } from './LogoutConfirmDialog';
 import { useTenantEnabledModules } from '@/hooks/useTenantEnabledModules';
+import { CompanyLogo } from '@/components/ui/company-logo';
+import { useCompanySettings } from '@/hooks/useCompanySettings';
 // moduleKeys está deprecated - usar item.module_key diretamente
 
 interface SidebarProps {
@@ -62,6 +64,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { data: callbacksCount } = usePendingCallbacksCount();
   const { data: isSuperAdmin = false } = useCurrentUserIsSuperAdmin();
   const { data: tenantEnabledModules, isLoading: modulesLoading } = useTenantEnabledModules();
+  const { data: companySettings } = useCompanySettings();
   
   // Carregar menu do banco de dados
   const { data: menuHierarchy = [], isLoading: menuLoading } = useMenuHierarchy();
@@ -515,13 +518,16 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       )}>
         <div className="flex items-center gap-3">
           <div className={cn(
-            "flex h-11 w-11 items-center justify-center rounded-xl shadow-lg",
+            "flex h-11 w-11 items-center justify-center rounded-xl shadow-lg overflow-hidden",
             isDark ? "bg-primary" : "bg-white"
           )}>
-            <Shirt className={cn(
-              "h-6 w-6",
-              isDark ? "text-primary-foreground" : "text-purple-600"
-            )} />
+            <CompanyLogo
+              logoUrl={companySettings?.logo_url}
+              companyName={companySettings?.company_name}
+              size="md"
+              className="h-11 w-11"
+              iconClassName={isDark ? "text-primary-foreground" : "text-purple-600"}
+            />
           </div>
           {!isCollapsed && (
             <div className="flex flex-col">
@@ -529,7 +535,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                 "font-bold text-lg tracking-tight",
                 isDark ? "text-foreground" : "text-white"
               )}>
-                Space Sports
+                {companySettings?.company_name || 'Space Sports'}
               </span>
               <span className={cn(
                 "text-xs",

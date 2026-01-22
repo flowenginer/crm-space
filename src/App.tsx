@@ -85,10 +85,19 @@ import {
   PlatformSettings,
 } from "@/pages/platform-admin";
 
+// Hook para favicon dinâmico - chamado dentro do contexto de QueryClient
+import { useDynamicFavicon } from '@/hooks/useDynamicFavicon';
+
+function DynamicFaviconHandler() {
+  useDynamicFavicon();
+  return null;
+}
+
 const App = () => (
   <ErrorBoundary>
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
+        <DynamicFaviconHandler />
         <GamificationProvider>
           <TooltipProvider>
             <Toaster />
