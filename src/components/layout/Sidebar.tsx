@@ -526,7 +526,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                 "font-bold text-lg tracking-tight",
                 isDark ? "text-foreground" : "text-white"
               )}>
-                CRM SPACE
+                Space Sports
               </span>
             </div>
           )}

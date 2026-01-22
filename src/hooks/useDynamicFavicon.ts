@@ -22,6 +22,6 @@ export function useDynamicFavicon() {
 
   useEffect(() => {
     // Define o título padrão
-    document.title = 'CRM SPACE';
+    document.title = 'Space Sports';
   }, []);
 }
