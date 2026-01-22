@@ -5532,10 +5532,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             await new Promise(resolve => setTimeout(resolve, 500));
                           }
                           
-                          // Then send media
+                          // Then send media (no text content for audio-only)
                           sendMessage.mutate({
                             conversation_id: selectedConversationId,
-                            content: mediaName || '',
+                            content: '',
                             is_from_me: true,
                             message_type: messageType,
                             media_url: fullMediaUrl,
