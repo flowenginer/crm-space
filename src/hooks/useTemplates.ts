@@ -25,6 +25,7 @@ export interface MessageTemplate {
   media_type: string | null;
   media_name: string | null;
   content_blocks: ContentBlock[] | null;
+  audio_first: boolean | null;
   folder?: { id: string; name: string } | null;
 }
 
@@ -56,10 +57,11 @@ export function useTemplates(category?: string) {
 
       if (error) throw error;
       
-      // Transform the data to properly type content_blocks
+      // Transform the data to properly type content_blocks and ensure audio_first
       return (data || []).map(item => ({
         ...item,
         content_blocks: item.content_blocks as unknown as ContentBlock[] | null,
+        audio_first: (item as unknown as { audio_first?: boolean }).audio_first ?? false,
       })) as MessageTemplate[];
     },
   });
@@ -94,6 +96,7 @@ export function useCreateTemplate() {
       media_type?: string | null;
       media_name?: string | null;
       content_blocks?: ContentBlock[] | null;
+      audio_first?: boolean | null;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -109,6 +112,7 @@ export function useCreateTemplate() {
           media_type: template.media_type || null,
           media_name: template.media_name || null,
           content_blocks: template.content_blocks as unknown as Json || null,
+          audio_first: template.audio_first || false,
           created_by: user?.id,
         })
         .select()

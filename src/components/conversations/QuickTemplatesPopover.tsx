@@ -70,7 +70,8 @@ interface QuickTemplatesPopoverProps {
     mediaUrl?: string | null,
     mediaType?: string | null,
     mediaName?: string | null,
-    contentBlocks?: ContentBlock[] | null
+    contentBlocks?: ContentBlock[] | null,
+    audioFirst?: boolean | null
   ) => void;
   onCopyToInput?: (content: string) => void;
   onStartFlow?: (flowId: string) => void;
@@ -203,7 +204,7 @@ export function QuickTemplatesPopover({
       else if (template.category === 'document' || template.category === 'documents') type = 'document';
     }
 
-    onSelectTemplate(processedContent, type, template.media_url, template.media_type, template.media_name, processedBlocks);
+    onSelectTemplate(processedContent, type, template.media_url, template.media_type, template.media_name, processedBlocks, template.audio_first);
     incrementUsage.mutate(template.id);
     setOpen(false);
     setSearchQuery('');
@@ -257,7 +258,7 @@ export function QuickTemplatesPopover({
       else type = 'document';
     }
     
-    onSelectTemplate(processedContent, type, qt.template.media_url, qt.template.media_type, qt.template.media_name, processedBlocks);
+    onSelectTemplate(processedContent, type, qt.template.media_url, qt.template.media_type, qt.template.media_name, processedBlocks, qt.template.audio_first);
     incrementUsage.mutate(qt.template_id);
     setOpen(false);
   }, [replaceVariables, onSelectTemplate, incrementUsage]);

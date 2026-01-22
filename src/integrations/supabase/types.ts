@@ -4889,6 +4889,7 @@ export type Database = {
       }
       message_templates: {
         Row: {
+          audio_first: boolean | null
           category: string | null
           content: string
           content_blocks: Json | null
@@ -4910,6 +4911,7 @@ export type Database = {
           variables: Json | null
         }
         Insert: {
+          audio_first?: boolean | null
           category?: string | null
           content: string
           content_blocks?: Json | null
@@ -4931,6 +4933,7 @@ export type Database = {
           variables?: Json | null
         }
         Update: {
+          audio_first?: boolean | null
           category?: string | null
           content?: string
           content_blocks?: Json | null

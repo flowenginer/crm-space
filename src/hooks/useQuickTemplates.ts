@@ -17,6 +17,7 @@ export interface UserQuickTemplate {
     media_type: string | null;
     media_name: string | null;
     content_blocks: any[] | null;
+    audio_first: boolean | null;
   };
 }
 
@@ -44,7 +45,8 @@ export function useUserQuickTemplates() {
             media_url,
             media_type,
             media_name,
-            content_blocks
+            content_blocks,
+            audio_first
           )
         `)
         .eq('user_id', currentUser.id)

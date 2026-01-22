@@ -5412,7 +5412,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   <QuickTemplatesPopover
                     contactName={selectedConversation?.contact?.full_name}
                     contactPhone={selectedConversation?.contact?.phone}
-                    onSelectTemplate={async (content, type, mediaUrl, mediaType, mediaName, contentBlocks) => {
+                    onSelectTemplate={async (content, type, mediaUrl, mediaType, mediaName, contentBlocks, audioFirst) => {
                       const channelId = selectedConversation?.channel_id;
                       const contactPhone = selectedConversation?.contact?.phone;
                       
@@ -5507,34 +5507,33 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                         // Template without content_blocks but with media
                         const fullMediaUrl = getFullMediaUrl(mediaUrl);
                         const messageType = getMessageType(mediaType);
+                        const hasText = content && content.trim();
                         
-                        try {
-                          // Send text first if exists
-                          if (content && content.trim()) {
-                            let textContent = content;
-                            const sigName = authProfile?.signature_name || authProfile?.full_name;
-                            const sigEnabled = authProfile?.signature_enabled !== false;
-                            if (sigEnabled && sigName) {
-                              textContent = `*${sigName}*:\n${content}`;
-                            }
-                            
-                            sendMessage.mutate({
-                              conversation_id: selectedConversationId,
-                              content: textContent,
-                              is_from_me: true,
-                              message_type: 'text',
-                            });
-                            
-                            if (channelId && contactPhone) {
-                              await sendWhatsAppMessage(channelId, contactPhone, textContent, 'text');
-                            }
-                            
-                            await new Promise(resolve => setTimeout(resolve, 500));
+                        // Helper functions for sending
+                        const sendTextMessage = async () => {
+                          if (!hasText) return;
+                          let textContent = content;
+                          const sigName = authProfile?.signature_name || authProfile?.full_name;
+                          const sigEnabled = authProfile?.signature_enabled !== false;
+                          if (sigEnabled && sigName) {
+                            textContent = `*${sigName}*:\n${content}`;
                           }
                           
-                          // Then send media (no text content for audio-only)
                           sendMessage.mutate({
-                            conversation_id: selectedConversationId,
+                            conversation_id: selectedConversationId!,
+                            content: textContent,
+                            is_from_me: true,
+                            message_type: 'text',
+                          });
+                          
+                          if (channelId && contactPhone) {
+                            await sendWhatsAppMessage(channelId, contactPhone, textContent, 'text');
+                          }
+                        };
+                        
+                        const sendMediaMessage = async () => {
+                          sendMessage.mutate({
+                            conversation_id: selectedConversationId!,
                             content: '',
                             is_from_me: true,
                             message_type: messageType,
@@ -5544,6 +5543,25 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                           
                           if (channelId && contactPhone) {
                             await sendWhatsAppMessage(channelId, contactPhone, '', messageType, fullMediaUrl, undefined, mediaName || undefined);
+                          }
+                        };
+                        
+                        try {
+                          // Respect audioFirst preference
+                          if (audioFirst) {
+                            // Send audio/media first, then text
+                            await sendMediaMessage();
+                            if (hasText) {
+                              await new Promise(resolve => setTimeout(resolve, 500));
+                              await sendTextMessage();
+                            }
+                          } else {
+                            // Send text first (default), then audio/media
+                            if (hasText) {
+                              await sendTextMessage();
+                              await new Promise(resolve => setTimeout(resolve, 500));
+                            }
+                            await sendMediaMessage();
                           }
                           
                           // Toast removed - user preference for cleaner chat experience
