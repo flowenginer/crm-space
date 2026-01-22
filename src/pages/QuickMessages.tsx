@@ -262,15 +262,17 @@ export default function QuickMessages() {
       return;
     }
     
-    // For messages, check if at least one block has content
+    // For messages, check if at least one block has content OR audio is attached
     const textBlocks = contentBlocks.filter(b => b.type === 'text' && b.content?.trim());
-    if (!needsMedia && textBlocks.length === 0) {
-      toast({ title: 'Preencha pelo menos uma mensagem', variant: 'destructive' });
+    const hasAudioAttachment = !!audioUrl;
+    
+    if (!needsMedia && textBlocks.length === 0 && !hasAudioAttachment) {
+      toast({ title: 'Preencha uma mensagem ou grave um áudio', variant: 'destructive' });
       return;
     }
 
-    // Get first block content for legacy field + search
-    const firstContent = textBlocks[0]?.content || templateTitle;
+    // Get first block content for legacy field + search (use title as fallback for audio-only)
+    const firstContent = textBlocks[0]?.content || (hasAudioAttachment ? `🎤 ${templateTitle}` : templateTitle);
     
     // Extract variables from all blocks
     const allContent = contentBlocks
