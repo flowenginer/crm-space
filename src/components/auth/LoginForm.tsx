@@ -18,7 +18,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { registerSession } from '@/hooks/useUserSessions';
 import { CompanyLogo } from '@/components/ui/company-logo';
-import { usePublicCompanySettings } from '@/hooks/usePublicCompanySettings';
 
 const loginSchema = z.object({
   email: z.string().trim().email('Email inválido').max(255, 'Email muito longo'),
@@ -32,7 +31,6 @@ export function LoginForm() {
   const { signIn } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { data: companySettings } = usePublicCompanySettings();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -79,27 +77,12 @@ export function LoginForm() {
     <div className="w-full max-w-md space-y-8 animate-scale-in">
       {/* Logo */}
       <div className="flex flex-col items-center space-y-4">
-        {companySettings?.logo_url ? (
-          <div className="flex h-20 w-20 items-center justify-center rounded-2xl shadow-2xl bg-white">
-            <CompanyLogo
-              logoUrl={companySettings.logo_url}
-              companyName={companySettings.company_name}
-              size="xl"
-              className="h-16 w-16 object-contain"
-            />
-          </div>
-        ) : (
-          <div className="flex h-20 w-20 items-center justify-center rounded-2xl icon-gradient shadow-2xl">
-            <CompanyLogo
-              companyName={companySettings?.company_name}
-              size="xl"
-              iconClassName="text-white"
-            />
-          </div>
-        )}
+        <div className="flex h-20 w-20 items-center justify-center rounded-2xl shadow-2xl bg-white">
+          <CompanyLogo size="xl" className="h-16 w-16" />
+        </div>
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            {companySettings?.company_name || 'Space Sports'}
+            Space Sports
           </h1>
           <p className="mt-2 text-muted-foreground">
             CRM para uniformes personalizados
