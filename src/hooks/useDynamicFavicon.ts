@@ -1,32 +1,27 @@
 import { useEffect } from 'react';
-import { useCompanySettings } from './useCompanySettings';
+import spaceSportsLogo from '@/assets/space-sports-logo.png';
 
 /**
- * Hook para atualizar o favicon dinamicamente com a logo da empresa
+ * Hook para definir o favicon e título estáticos da Space Sports
+ * Usado globalmente em todos os tenants
  */
 export function useDynamicFavicon() {
-  const { data: settings } = useCompanySettings();
+  useEffect(() => {
+    // Define o favicon como a logo da Space Sports
+    let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+    
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    
+    link.href = spaceSportsLogo;
+    link.type = 'image/png';
+  }, []);
 
   useEffect(() => {
-    if (settings?.logo_url) {
-      // Atualiza o favicon
-      let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
-      
-      if (!link) {
-        link = document.createElement('link');
-        link.rel = 'icon';
-        document.head.appendChild(link);
-      }
-      
-      link.href = settings.logo_url;
-      link.type = 'image/png';
-    }
-  }, [settings?.logo_url]);
-
-  useEffect(() => {
-    if (settings?.company_name) {
-      // Atualiza o título da aba
-      document.title = `CRM ${settings.company_name}`;
-    }
-  }, [settings?.company_name]);
+    // Define o título padrão
+    document.title = 'CRM Space Sports';
+  }, []);
 }

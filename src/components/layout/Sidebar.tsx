@@ -521,13 +521,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             "flex h-11 w-11 items-center justify-center rounded-xl shadow-lg overflow-hidden",
             isDark ? "bg-primary" : "bg-white"
           )}>
-            <CompanyLogo
-              logoUrl={companySettings?.logo_url}
-              companyName={companySettings?.company_name}
-              size="md"
-              className="h-11 w-11"
-              iconClassName={isDark ? "text-primary-foreground" : "text-purple-600"}
-            />
+            <CompanyLogo size="md" className="h-11 w-11" />
           </div>
           {!isCollapsed && (
             <div className="flex flex-col">
