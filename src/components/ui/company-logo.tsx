@@ -29,7 +29,7 @@ export function CompanyLogo({
       alt="Space Sports"
       className={cn(
         sizeClass,
-        'object-contain rounded-2xl shadow-sm',
+        'object-contain rounded-3xl',
         className
       )}
     />
