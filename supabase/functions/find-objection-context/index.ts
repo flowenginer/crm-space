@@ -66,6 +66,7 @@ interface Message {
   is_from_me: boolean;
   created_at: string;
   message_type: string;
+  transcription?: string;
 }
 
 interface ObjectionContext {
@@ -123,10 +124,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Buscar mensagens da conversa
+    // Buscar mensagens da conversa (incluindo transcrição de áudios)
     const { data: messages, error: messagesError } = await supabase
       .from('messages')
-      .select('id, content, is_from_me, created_at, message_type')
+      .select('id, content, is_from_me, created_at, message_type, transcription')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true });
 
@@ -165,9 +166,23 @@ Deno.serve(async (req) => {
     }
 
     const contexts: ObjectionContext[] = [];
-    const textMessages = messages.filter((m: Message) => 
-      m.message_type === 'text' || m.message_type === 'chat' || !m.message_type
-    );
+    
+    // Filtrar mensagens de texto E áudios transcritos
+    const textMessages = messages.filter((m: Message) => {
+      // Mensagens de texto normais
+      if (m.message_type === 'text' || m.message_type === 'chat' || !m.message_type) {
+        return !!m.content;
+      }
+      // Incluir áudios que têm transcrição
+      if (m.message_type === 'audio' && m.transcription) {
+        return true;
+      }
+      return false;
+    }).map((m: Message) => ({
+      ...m,
+      // Usar transcrição do áudio se disponível
+      content: m.message_type === 'audio' && m.transcription ? m.transcription : m.content
+    }));
 
     // Percorrer mensagens do cliente buscando palavras-chave
     for (let i = 0; i < textMessages.length; i++) {
