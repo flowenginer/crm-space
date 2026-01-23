@@ -49,7 +49,7 @@ type Step = 'initial' | 'loading' | 'configure' | 'saving' | 'success';
 
 // WhatsApp Embedded Signup Configuration ID from Meta Developers
 // This should be created in the Meta Developers Console under WhatsApp > Embedded Signup
-const EMBEDDED_SIGNUP_CONFIG_ID = '651498887519322'; // Replace with actual config ID
+const EMBEDDED_SIGNUP_CONFIG_ID = '773983495723904';
 
 export function CloudAPIConnect({ open, onClose, onSuccess }: CloudAPIConnectProps) {
   const [step, setStep] = useState<Step>('initial');

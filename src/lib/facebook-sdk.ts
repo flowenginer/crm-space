@@ -41,7 +41,7 @@ interface WhatsAppSignupResult {
 
 // Facebook SDK configuration
 const FB_SDK_VERSION = 'v21.0';
-const META_APP_ID = '1540198137306576';
+const META_APP_ID = '1544198137306574';
 
 // Initialize Facebook SDK
 export function initFacebookSDK(): Promise<void> {

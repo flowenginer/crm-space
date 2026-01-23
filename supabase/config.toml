@@ -136,3 +136,6 @@ verify_jwt = false
 
 [functions.find-objection-context]
 verify_jwt = false
+
+[functions.cloudapi-register-phone]
+verify_jwt = true
