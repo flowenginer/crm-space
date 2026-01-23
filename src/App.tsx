@@ -73,6 +73,7 @@ import MetaOAuthCallback from "@/pages/MetaOAuthCallback";
 import Redirect from "@/pages/Redirect";
 import RedirectLanding from "@/pages/RedirectLanding";
 import CallManagement from "@/pages/CallManagement";
+import WhatsAppCallback from "@/pages/WhatsAppCallback";
 
 
 // Platform Admin Pages
@@ -114,6 +115,7 @@ const App = () => (
             <Route path="/onboarding" element={<TenantOnboarding />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/meta-oauth-callback" element={<MetaOAuthCallback />} />
+            <Route path="/whatsapp-callback" element={<WhatsAppCallback />} />
 
             {/* Protected routes with MainLayout */}
             <Route element={<MainLayout />}>
