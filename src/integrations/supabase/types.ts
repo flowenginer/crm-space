@@ -9291,6 +9291,47 @@ export type Database = {
           },
         ]
       }
+      template_pricing: {
+        Row: {
+          category: string
+          created_at: string
+          currency: string
+          effective_from: string
+          id: string
+          price_per_message: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          currency?: string
+          effective_from?: string
+          id?: string
+          price_per_message?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          currency?: string
+          effective_from?: string
+          id?: string
+          price_per_message?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_pricing_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_admins: {
         Row: {
           created_at: string | null
