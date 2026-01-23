@@ -118,32 +118,33 @@ export function launchWhatsAppSignup(configId: string): Promise<WhatsAppSignupRe
     // Store state in sessionStorage for validation
     sessionStorage.setItem('fb_oauth_state', state);
 
-    // Build the OAuth URL with all required parameters
-    const redirectUri = `${window.location.origin}/whatsapp-callback`;
-
-    const params = new URLSearchParams({
-      client_id: META_APP_ID,
-      config_id: configId,
-      response_type: 'code',
-      override_default_response_type: 'true',
-      redirect_uri: redirectUri,
-      state: state,
+    // Use the official Meta Business Embedded Signup URL
+    const extras = JSON.stringify({
+      sessionInfoVersion: '3',
+      version: 'v3',
     });
 
-    const oauthUrl = `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`;
+    const params = new URLSearchParams({
+      app_id: META_APP_ID,
+      config_id: configId,
+      extras: extras,
+    });
 
-    console.log('[FB SDK] Opening OAuth URL:', oauthUrl);
+    // Use the official Meta onboarding URL
+    const oauthUrl = `https://business.facebook.com/messaging/whatsapp/onboard/?${params.toString()}`;
+
+    console.log('[FB SDK] Opening Embedded Signup URL:', oauthUrl);
 
     // Calculate popup dimensions and position
-    const width = 600;
-    const height = 700;
+    const width = 800;
+    const height = 800;
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
 
     // Open popup
     const popup = window.open(
       oauthUrl,
-      'facebook_oauth',
+      'whatsapp_signup',
       `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
     );
 
@@ -152,18 +153,35 @@ export function launchWhatsAppSignup(configId: string): Promise<WhatsAppSignupRe
       return;
     }
 
-    // Listen for messages from the popup/redirect
+    // Listen for messages from the popup (Meta sends postMessage events)
     const messageListener = (event: MessageEvent) => {
-      // Accept messages from our own origin (redirect page)
-      if (event.origin !== window.location.origin) {
+      // Accept messages from Facebook/Meta domains
+      if (!event.origin.includes('facebook.com') && event.origin !== window.location.origin) {
         return;
       }
 
       try {
-        const data = event.data;
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
 
-        console.log('[FB SDK] Received message from popup:', data);
+        console.log('[FB SDK] Received message:', data);
 
+        // Handle WhatsApp Embedded Signup response
+        if (data.type === 'WA_EMBEDDED_SIGNUP') {
+          console.log('[FB SDK] WhatsApp signup data received:', data.data);
+
+          window.removeEventListener('message', messageListener);
+          clearInterval(pollTimer);
+
+          if (data.data?.phone_number_id && data.data?.waba_id) {
+            resolve({
+              code: data.data.code || 'embedded_signup',
+              wabaId: data.data.waba_id,
+              phoneNumberId: data.data.phone_number_id,
+            });
+          }
+        }
+
+        // Handle OAuth result from our callback page
         if (data.type === 'WHATSAPP_OAUTH_RESULT') {
           window.removeEventListener('message', messageListener);
           clearInterval(pollTimer);
@@ -181,7 +199,7 @@ export function launchWhatsAppSignup(configId: string): Promise<WhatsAppSignupRe
           }
         }
       } catch (e) {
-        console.error('[FB SDK] Error processing message:', e);
+        // Ignore non-JSON messages
       }
     };
 
@@ -201,7 +219,7 @@ export function launchWhatsAppSignup(configId: string): Promise<WhatsAppSignupRe
             const data = JSON.parse(result);
             if (data.type === 'WHATSAPP_OAUTH_SUCCESS') {
               resolve({
-                code: data.code || '',
+                code: data.code || 'embedded_signup',
                 wabaId: data.wabaId,
                 phoneNumberId: data.phoneNumberId,
               });
