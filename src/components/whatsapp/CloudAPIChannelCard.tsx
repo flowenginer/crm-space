@@ -1,15 +1,17 @@
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { 
-  MessageCircle, 
-  MoreVertical, 
-  RefreshCw, 
-  Settings, 
+import {
+  MessageCircle,
+  MoreVertical,
+  RefreshCw,
+  Settings,
   Trash2,
   Shield,
   Check,
   AlertCircle,
   BarChart3,
   ExternalLink,
+  Phone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,6 +29,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { WhatsAppChannel } from '@/hooks/useChannels';
+import { PhoneRegistrationModal } from './PhoneRegistrationModal';
 
 export interface CloudAPIChannelCardProps {
   channel: WhatsAppChannel;
@@ -43,6 +46,7 @@ export function CloudAPIChannelCard({
   onDelete,
   onReconfigure,
 }: CloudAPIChannelCardProps) {
+  const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const isActive = channel.status === 'connected';
 
   // Extract tier from metadata if available
@@ -94,6 +98,10 @@ export function CloudAPIChannelCard({
                 Sincronizar
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem onClick={() => setShowRegistrationModal(true)}>
+              <Phone size={16} className="mr-2" />
+              Registrar/Verificar Numero
+            </DropdownMenuItem>
             {onReconfigure && (
               <DropdownMenuItem onClick={() => onReconfigure(channel)}>
                 <Settings size={16} className="mr-2" />
@@ -210,6 +218,14 @@ export function CloudAPIChannelCard({
           </Button>
         )}
       </div>
+
+      {/* Phone Registration Modal */}
+      <PhoneRegistrationModal
+        open={showRegistrationModal}
+        onClose={() => setShowRegistrationModal(false)}
+        phoneNumberId={channel.instance_id || ''}
+        channelName={channel.name}
+      />
     </div>
   );
 }
