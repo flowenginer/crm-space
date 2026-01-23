@@ -7,6 +7,7 @@ export interface TemplateStatsFilters {
   endDate: Date;
   departmentId?: string;
   userId?: string;
+  onlyOutsideWindow?: boolean; // Novo filtro: apenas fora da janela 24h
 }
 
 export interface UserTemplateStat {
@@ -20,6 +21,9 @@ export interface UserTemplateStat {
   authenticationCount: number;
   totalCount: number;
   estimatedCost: number;
+  outsideWindowCount: number; // Templates fora da janela (cobrados)
+  insideWindowCount: number; // Templates dentro da janela (grátis)
+  chargedCost: number; // Custo apenas dos que geram cobrança
 }
 
 export interface DepartmentTemplateStat {
@@ -32,6 +36,8 @@ export interface DepartmentTemplateStat {
 export interface DailyTemplateStat {
   date: string;
   count: number;
+  outsideWindowCount: number;
+  insideWindowCount: number;
 }
 
 export interface TemplateStatsSummary {
@@ -42,6 +48,10 @@ export interface TemplateStatsSummary {
   marketingCount: number;
   utilityCount: number;
   authenticationCount: number;
+  outsideWindowCount: number; // Templates fora da janela (cobrados)
+  insideWindowCount: number; // Templates dentro da janela (grátis)
+  chargedCost: number; // Custo real (apenas fora da janela)
+  outsideWindowPercentage: number; // % fora da janela
 }
 
 // Default prices per category (BRL)
@@ -51,20 +61,34 @@ const DEFAULT_PRICES: Record<string, number> = {
   AUTHENTICATION: 0.18,
 };
 
-export function useTemplateStats(filters: TemplateStatsFilters) {
-  const { startDate, endDate, departmentId, userId } = filters;
+// Função auxiliar para verificar se template está fora da janela de 24h
+function isOutsideWindow(templateSentAt: Date, lastClientMsgAt: Date | null): boolean {
+  // Se não há mensagem do cliente antes, está fora da janela (cold outreach)
+  if (!lastClientMsgAt) return true;
+  
+  // Calcular diferença em horas
+  const diffMs = templateSentAt.getTime() - lastClientMsgAt.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  
+  // Se passou mais de 24h, está fora da janela
+  return diffHours > 24;
+}
 
-  // Fetch stats by user
+export function useTemplateStats(filters: TemplateStatsFilters) {
+  const { startDate, endDate, departmentId, userId, onlyOutsideWindow } = filters;
+
+  // Fetch stats by user with window calculation
   const userStatsQuery = useQuery({
-    queryKey: ['template-stats-by-user', startDate.toISOString(), endDate.toISOString(), departmentId, userId],
+    queryKey: ['template-stats-by-user', startDate.toISOString(), endDate.toISOString(), departmentId, userId, onlyOutsideWindow],
     queryFn: async () => {
-      // Get template messages with conversation and profile info
-      const { data: messages, error } = await supabase
+      // Get template messages with conversation info
+      const { data: templateMessages, error } = await supabase
         .from('messages')
         .select(`
           id,
           content,
           created_at,
+          conversation_id,
           conversation:conversations!inner(
             id,
             assigned_to,
@@ -78,8 +102,42 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
 
       if (error) throw error;
 
+      // Get conversation IDs to find last client messages before each template
+      const conversationIds = [...new Set(templateMessages?.map(m => m.conversation_id).filter(Boolean))];
+      
+      // For each conversation, get all client messages to determine window status
+      const { data: clientMessages } = conversationIds.length > 0 
+        ? await supabase
+            .from('messages')
+            .select('conversation_id, created_at')
+            .in('conversation_id', conversationIds)
+            .eq('is_from_me', false)
+            .eq('is_deleted', false)
+            .order('created_at', { ascending: false })
+        : { data: [] };
+
+      // Create a map of conversation_id -> array of client message timestamps
+      const clientMsgMap = new Map<string, Date[]>();
+      clientMessages?.forEach(msg => {
+        if (!clientMsgMap.has(msg.conversation_id)) {
+          clientMsgMap.set(msg.conversation_id, []);
+        }
+        clientMsgMap.get(msg.conversation_id)!.push(new Date(msg.created_at));
+      });
+
+      // Function to find last client message before template sent time
+      const findLastClientMsgBefore = (conversationId: string, templateSentAt: Date): Date | null => {
+        const clientMsgs = clientMsgMap.get(conversationId) || [];
+        for (const msgDate of clientMsgs) {
+          if (msgDate < templateSentAt) {
+            return msgDate;
+          }
+        }
+        return null;
+      };
+
       // Get profiles for assigned users
-      const userIds = [...new Set(messages?.map(m => (m.conversation as any)?.assigned_to).filter(Boolean))];
+      const userIds = [...new Set(templateMessages?.map(m => (m.conversation as any)?.assigned_to).filter(Boolean))];
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, full_name, role, department_id')
@@ -87,7 +145,7 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
 
       // Get departments
       const deptIds = [...new Set([
-        ...messages?.map(m => (m.conversation as any)?.department_id).filter(Boolean) || [],
+        ...templateMessages?.map(m => (m.conversation as any)?.department_id).filter(Boolean) || [],
         ...profiles?.map(p => p.department_id).filter(Boolean) || []
       ])];
       const { data: departments } = await supabase
@@ -103,7 +161,7 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
 
       const priceMap: Record<string, number> = { ...DEFAULT_PRICES };
       pricing?.forEach(p => {
-        if (!priceMap[p.category] || true) { // Use latest price
+        if (!priceMap[p.category] || true) {
           priceMap[p.category] = Number(p.price_per_message);
         }
       });
@@ -111,20 +169,25 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
       // Aggregate by user
       const userMap = new Map<string, UserTemplateStat>();
 
-      messages?.forEach(msg => {
+      templateMessages?.forEach(msg => {
         const conv = msg.conversation as any;
         const assignedTo = conv?.assigned_to || 'unassigned';
         const convDeptId = conv?.department_id;
+        const templateSentAt = new Date(msg.created_at);
+
+        // Calculate window status
+        const lastClientMsg = findLastClientMsgBefore(msg.conversation_id, templateSentAt);
+        const isOutside = isOutsideWindow(templateSentAt, lastClientMsg);
 
         // Apply filters
         if (departmentId && convDeptId !== departmentId) return;
         if (userId && assignedTo !== userId) return;
+        if (onlyOutsideWindow && !isOutside) return;
 
         const profile = profiles?.find(p => p.id === assignedTo);
         const dept = departments?.find(d => d.id === (profile?.department_id || convDeptId));
 
-        // Detect category from content (heuristic - templates usually have category info)
-        // For now, we'll assume MARKETING unless we can determine otherwise
+        // Detect category from content
         let category = 'MARKETING';
         const content = msg.content?.toLowerCase() || '';
         if (content.includes('verificação') || content.includes('código') || content.includes('otp')) {
@@ -145,21 +208,34 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
             authenticationCount: 0,
             totalCount: 0,
             estimatedCost: 0,
+            outsideWindowCount: 0,
+            insideWindowCount: 0,
+            chargedCost: 0,
           });
         }
 
         const stat = userMap.get(assignedTo)!;
         stat.totalCount++;
         
+        const price = category === 'MARKETING' ? priceMap.MARKETING 
+          : category === 'UTILITY' ? priceMap.UTILITY 
+          : priceMap.AUTHENTICATION;
+        
+        stat.estimatedCost += price;
+
+        if (isOutside) {
+          stat.outsideWindowCount++;
+          stat.chargedCost += price;
+        } else {
+          stat.insideWindowCount++;
+        }
+        
         if (category === 'MARKETING') {
           stat.marketingCount++;
-          stat.estimatedCost += priceMap.MARKETING;
         } else if (category === 'UTILITY') {
           stat.utilityCount++;
-          stat.estimatedCost += priceMap.UTILITY;
         } else if (category === 'AUTHENTICATION') {
           stat.authenticationCount++;
-          stat.estimatedCost += priceMap.AUTHENTICATION;
         }
       });
 
@@ -186,14 +262,12 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
 
       if (error) throw error;
 
-      // Get departments
       const deptIds = [...new Set(messages?.map(m => (m.conversation as any)?.department_id).filter(Boolean))];
       const { data: departments } = await supabase
         .from('departments')
         .select('id, name')
         .in('id', deptIds.length > 0 ? deptIds : ['00000000-0000-0000-0000-000000000000']);
 
-      // Aggregate by department
       const deptMap = new Map<string, number>();
       let total = 0;
 
@@ -218,13 +292,13 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
     },
   });
 
-  // Fetch daily timeline
+  // Fetch daily timeline with window info
   const timelineQuery = useQuery({
-    queryKey: ['template-stats-timeline', startDate.toISOString(), endDate.toISOString()],
+    queryKey: ['template-stats-timeline', startDate.toISOString(), endDate.toISOString(), onlyOutsideWindow],
     queryFn: async () => {
-      const { data: messages, error } = await supabase
+      const { data: templateMessages, error } = await supabase
         .from('messages')
-        .select('created_at')
+        .select('id, created_at, conversation_id')
         .eq('message_type', 'template')
         .eq('is_deleted', false)
         .gte('created_at', startOfDay(startDate).toISOString())
@@ -232,17 +306,69 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
 
       if (error) throw error;
 
-      // Aggregate by day
-      const dayMap = new Map<string, number>();
+      // Get client messages for window calculation
+      const conversationIds = [...new Set(templateMessages?.map(m => m.conversation_id).filter(Boolean))];
+      
+      const { data: clientMessages } = conversationIds.length > 0 
+        ? await supabase
+            .from('messages')
+            .select('conversation_id, created_at')
+            .in('conversation_id', conversationIds)
+            .eq('is_from_me', false)
+            .eq('is_deleted', false)
+            .order('created_at', { ascending: false })
+        : { data: [] };
 
-      messages?.forEach(msg => {
-        const day = format(new Date(msg.created_at), 'yyyy-MM-dd');
-        dayMap.set(day, (dayMap.get(day) || 0) + 1);
+      const clientMsgMap = new Map<string, Date[]>();
+      clientMessages?.forEach(msg => {
+        if (!clientMsgMap.has(msg.conversation_id)) {
+          clientMsgMap.set(msg.conversation_id, []);
+        }
+        clientMsgMap.get(msg.conversation_id)!.push(new Date(msg.created_at));
+      });
+
+      const findLastClientMsgBefore = (conversationId: string, templateSentAt: Date): Date | null => {
+        const clientMsgs = clientMsgMap.get(conversationId) || [];
+        for (const msgDate of clientMsgs) {
+          if (msgDate < templateSentAt) {
+            return msgDate;
+          }
+        }
+        return null;
+      };
+
+      // Aggregate by day with window info
+      const dayMap = new Map<string, { total: number; outside: number; inside: number }>();
+
+      templateMessages?.forEach(msg => {
+        const templateSentAt = new Date(msg.created_at);
+        const lastClientMsg = findLastClientMsgBefore(msg.conversation_id, templateSentAt);
+        const isOutside = isOutsideWindow(templateSentAt, lastClientMsg);
+
+        // Apply filter
+        if (onlyOutsideWindow && !isOutside) return;
+
+        const day = format(templateSentAt, 'yyyy-MM-dd');
+        if (!dayMap.has(day)) {
+          dayMap.set(day, { total: 0, outside: 0, inside: 0 });
+        }
+        const stats = dayMap.get(day)!;
+        stats.total++;
+        if (isOutside) {
+          stats.outside++;
+        } else {
+          stats.inside++;
+        }
       });
 
       const result: DailyTemplateStat[] = [];
-      dayMap.forEach((count, date) => {
-        result.push({ date, count });
+      dayMap.forEach((stats, date) => {
+        result.push({ 
+          date, 
+          count: stats.total,
+          outsideWindowCount: stats.outside,
+          insideWindowCount: stats.inside,
+        });
       });
 
       return result.sort((a, b) => a.date.localeCompare(b.date));
@@ -251,7 +377,7 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
 
   // Summary stats
   const summaryQuery = useQuery({
-    queryKey: ['template-stats-summary', startDate.toISOString(), endDate.toISOString()],
+    queryKey: ['template-stats-summary', startDate.toISOString(), endDate.toISOString(), onlyOutsideWindow],
     queryFn: async () => {
       const userStats = userStatsQuery.data || [];
       
@@ -263,6 +389,10 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
         marketingCount: 0,
         utilityCount: 0,
         authenticationCount: 0,
+        outsideWindowCount: 0,
+        insideWindowCount: 0,
+        chargedCost: 0,
+        outsideWindowPercentage: 0,
       };
 
       userStats.forEach(stat => {
@@ -271,7 +401,15 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
         summary.marketingCount += stat.marketingCount;
         summary.utilityCount += stat.utilityCount;
         summary.authenticationCount += stat.authenticationCount;
+        summary.outsideWindowCount += stat.outsideWindowCount;
+        summary.insideWindowCount += stat.insideWindowCount;
+        summary.chargedCost += stat.chargedCost;
       });
+
+      // Calculate percentage
+      if (summary.totalSent > 0) {
+        summary.outsideWindowPercentage = (summary.outsideWindowCount / summary.totalSent) * 100;
+      }
 
       // Determine top category
       const categories = [
@@ -304,6 +442,10 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
       marketingCount: 0,
       utilityCount: 0,
       authenticationCount: 0,
+      outsideWindowCount: 0,
+      insideWindowCount: 0,
+      chargedCost: 0,
+      outsideWindowPercentage: 0,
     },
     isLoading: userStatsQuery.isLoading || departmentStatsQuery.isLoading || timelineQuery.isLoading,
     refetch: () => {
