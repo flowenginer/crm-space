@@ -108,7 +108,13 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Buscar áudios pendentes APENAS de conversas com lead_status elegível
+    // Calcular data limite (45 dias atrás)
+    const fortyFiveDaysAgo = new Date();
+    fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
+    
+    console.log(`Filtro temporal: apenas áudios a partir de ${fortyFiveDaysAgo.toISOString()}`);
+
+    // Buscar áudios pendentes APENAS de conversas com lead_status elegível e dos últimos 45 dias
     const { data: pendingAudios, error: fetchError } = await supabase
       .from('messages')
       .select(`
@@ -123,6 +129,7 @@ Deno.serve(async (req) => {
       .eq('transcription_status', 'pending')
       .not('media_url', 'is', null)
       .in('conversations.lead_status', ELIGIBLE_LEAD_STATUSES)
+      .gte('created_at', fortyFiveDaysAgo.toISOString())
       .order('created_at', { ascending: true })
       .limit(20);
 
