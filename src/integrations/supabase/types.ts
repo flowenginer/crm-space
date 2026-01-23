@@ -5003,6 +5003,8 @@ export type Database = {
           sender_id: string | null
           status: string | null
           tenant_id: string
+          transcription: string | null
+          transcription_status: string | null
           whatsapp_message_id: string | null
         }
         Insert: {
@@ -5022,6 +5024,8 @@ export type Database = {
           sender_id?: string | null
           status?: string | null
           tenant_id?: string
+          transcription?: string | null
+          transcription_status?: string | null
           whatsapp_message_id?: string | null
         }
         Update: {
@@ -5041,6 +5045,8 @@ export type Database = {
           sender_id?: string | null
           status?: string | null
           tenant_id?: string
+          transcription?: string | null
+          transcription_status?: string | null
           whatsapp_message_id?: string | null
         }
         Relationships: [
