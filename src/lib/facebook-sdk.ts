@@ -110,80 +110,124 @@ export function initFacebookSDK(): Promise<void> {
 // Launch WhatsApp Embedded Signup flow
 export function launchWhatsAppSignup(configId: string): Promise<WhatsAppSignupResult> {
   return new Promise((resolve, reject) => {
-    if (!window.FB) {
-      reject(new Error('Facebook SDK not initialized'));
+    console.log('[FB SDK] Launching WhatsApp signup with config_id:', configId);
+
+    // Generate a random state for security
+    const state = Math.random().toString(36).substring(2, 15);
+
+    // Store state in sessionStorage for validation
+    sessionStorage.setItem('fb_oauth_state', state);
+
+    // Build the OAuth URL with all required parameters
+    const redirectUri = `${window.location.origin}/whatsapp-callback`;
+
+    const params = new URLSearchParams({
+      client_id: META_APP_ID,
+      config_id: configId,
+      response_type: 'code',
+      override_default_response_type: 'true',
+      redirect_uri: redirectUri,
+      state: state,
+    });
+
+    const oauthUrl = `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`;
+
+    console.log('[FB SDK] Opening OAuth URL:', oauthUrl);
+
+    // Calculate popup dimensions and position
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    // Open popup
+    const popup = window.open(
+      oauthUrl,
+      'facebook_oauth',
+      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
+    );
+
+    if (!popup) {
+      reject(new Error('Não foi possível abrir o popup. Verifique se o bloqueador de popups está desativado.'));
       return;
     }
 
-    console.log('[FB SDK] Launching WhatsApp signup with config_id:', configId);
-
-    let sessionData: { wabaId?: string; phoneNumberId?: string } = {};
-
-    // Listen for session info from the WhatsApp Embedded Signup flow
-    const sessionInfoListener = (event: MessageEvent) => {
-      // Only accept messages from Facebook
-      if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') {
+    // Listen for messages from the popup/redirect
+    const messageListener = (event: MessageEvent) => {
+      // Accept messages from our own origin (redirect page)
+      if (event.origin !== window.location.origin) {
         return;
       }
 
       try {
-        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        
-        console.log('[FB SDK] Received message:', data);
+        const data = event.data;
 
-        // WhatsApp Embedded Signup sends session info with type 'WA_EMBEDDED_SIGNUP'
-        if (data.type === 'WA_EMBEDDED_SIGNUP') {
-          console.log('[FB SDK] WhatsApp session info received:', data.data);
-          
-          // Extract WABA ID and Phone Number ID from the response
-          if (data.data) {
-            sessionData = {
-              wabaId: data.data.waba_id,
-              phoneNumberId: data.data.phone_number_id,
-            };
+        console.log('[FB SDK] Received message from popup:', data);
+
+        if (data.type === 'WHATSAPP_OAUTH_RESULT') {
+          window.removeEventListener('message', messageListener);
+          clearInterval(pollTimer);
+
+          if (data.error) {
+            reject(new Error(data.error));
+          } else if (data.code) {
+            resolve({
+              code: data.code,
+              wabaId: data.wabaId,
+              phoneNumberId: data.phoneNumberId,
+            });
+          } else {
+            reject(new Error('Nenhum código de autorização recebido'));
           }
         }
       } catch (e) {
-        // Ignore non-JSON messages
+        console.error('[FB SDK] Error processing message:', e);
       }
     };
 
-    window.addEventListener('message', sessionInfoListener);
+    window.addEventListener('message', messageListener);
 
-    // Call FB.login with WhatsApp Embedded Signup configuration
-    window.FB.login(
-      function(response: FBLoginResponse) {
-        window.removeEventListener('message', sessionInfoListener);
+    // Poll to check if popup was closed without completing
+    const pollTimer = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(pollTimer);
+        window.removeEventListener('message', messageListener);
 
-        console.log('[FB SDK] Login response:', {
-          status: response.status,
-          hasAuthResponse: !!response.authResponse,
-          hasCode: !!response.authResponse?.code,
-        });
-
-        if (response.authResponse?.code) {
-          resolve({
-            code: response.authResponse.code,
-            wabaId: sessionData.wabaId,
-            phoneNumberId: sessionData.phoneNumberId,
-          });
-        } else if (response.status === 'not_authorized') {
-          reject(new Error('Usuário não autorizou o acesso'));
-        } else {
-          reject(new Error('Login cancelado ou falhou'));
+        // Check if we got the result via localStorage (fallback)
+        const result = localStorage.getItem('whatsapp_oauth_result');
+        if (result) {
+          localStorage.removeItem('whatsapp_oauth_result');
+          try {
+            const data = JSON.parse(result);
+            if (data.type === 'WHATSAPP_OAUTH_SUCCESS') {
+              resolve({
+                code: data.code || '',
+                wabaId: data.wabaId,
+                phoneNumberId: data.phoneNumberId,
+              });
+              return;
+            } else if (data.type === 'WHATSAPP_OAUTH_ERROR') {
+              reject(new Error(data.error || 'Erro na autenticação'));
+              return;
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
         }
-      },
-      {
-        config_id: configId,
-        response_type: 'code',
-        override_default_response_type: true,
-        extras: {
-          setup: {},
-          featureType: 'only_waba_sharing',
-          sessionInfoVersion: 2,
-        },
-      } as FBLoginOptions
-    );
+
+        reject(new Error('Login cancelado ou janela fechada'));
+      }
+    }, 500);
+
+    // Timeout after 5 minutes
+    setTimeout(() => {
+      clearInterval(pollTimer);
+      window.removeEventListener('message', messageListener);
+      if (!popup.closed) {
+        popup.close();
+      }
+      reject(new Error('Tempo limite excedido. Tente novamente.'));
+    }, 300000);
   });
 }
 
