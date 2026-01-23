@@ -71,7 +71,7 @@ export interface EvaluationDetail {
   realConversion: boolean;
   
   // Objections
-  objecoes: Record<string, { apareceu: number; tratada: number; nota: number }>;
+  objecoes: Record<string, { apareceu: number; tratada: number; nota: number; trecho?: string }>;
   objecoesApareceram: number;
   objecoesTratadas: number;
   objecoesNotaMedia: number;
