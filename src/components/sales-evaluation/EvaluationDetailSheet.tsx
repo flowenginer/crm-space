@@ -62,6 +62,7 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
     originalKey: string;
     tratada: boolean;
     nota: number;
+    trecho?: string;
   } | null>(null);
 
   if (!evaluation) return null;
@@ -86,6 +87,7 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
   const objectionsList = Object.entries(evaluation.objecoes || {}).map(([key, data]) => ({
     name: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
     originalKey: key,
+    trecho: data.trecho,
     ...data,
   }));
 
@@ -268,6 +270,7 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
                             originalKey: obj.originalKey,
                             tratada: Boolean(obj.tratada),
                             nota: obj.nota,
+                            trecho: obj.trecho,
                           })}
                         >
                           <span className="flex items-center gap-2">
@@ -336,7 +339,6 @@ export function EvaluationDetailSheet({ evaluation, open, onOpenChange }: Evalua
       <ObjectionContextDialog
         open={!!selectedObjection}
         onOpenChange={(open) => !open && setSelectedObjection(null)}
-        conversationId={evaluation.conversationId}
         objection={selectedObjection}
       />
     </>
