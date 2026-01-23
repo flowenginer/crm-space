@@ -9,6 +9,17 @@ const corsHeaders = {
 // Space Sports tenant ID - única tenant que será processada
 const SPACE_SPORTS_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
+// Status de lead elegíveis para transcrição (07 - Pedido Fechado em diante)
+const ELIGIBLE_LEAD_STATUSES = [
+  '07 - Pedido Fechado',
+  '08 - Em andamento',
+  '09 - Cobrança',
+  '10 - Aguardando envio',
+  '11 - Pedido Enviado',
+  '12 - Entregue',
+  '13 - Recompra'
+];
+
 // Configuração do OpenAI Whisper
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
@@ -97,16 +108,23 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Buscar áudios pendentes APENAS do tenant Space Sports
+    // Buscar áudios pendentes APENAS de conversas com lead_status elegível
     const { data: pendingAudios, error: fetchError } = await supabase
       .from('messages')
-      .select('id, media_url, conversation_id, created_at')
-      .eq('tenant_id', SPACE_SPORTS_TENANT_ID) // FILTRO CRÍTICO
+      .select(`
+        id, 
+        media_url, 
+        conversation_id, 
+        created_at,
+        conversations!inner(lead_status)
+      `)
+      .eq('tenant_id', SPACE_SPORTS_TENANT_ID)
       .eq('message_type', 'audio')
       .eq('transcription_status', 'pending')
       .not('media_url', 'is', null)
+      .in('conversations.lead_status', ELIGIBLE_LEAD_STATUSES)
       .order('created_at', { ascending: true })
-      .limit(20); // Processar 20 por vez
+      .limit(20);
 
     if (fetchError) {
       console.error('Erro ao buscar áudios pendentes:', fetchError);
