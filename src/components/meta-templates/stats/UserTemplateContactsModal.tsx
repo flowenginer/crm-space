@@ -52,17 +52,18 @@ export function UserTemplateContactsModal({
 }: UserTemplateContactsModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Query to fetch contacts that received templates from this user
+  // Query to fetch contacts that received templates from this user (AFTER assignment)
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ['user-template-contacts', userId, startDate.toISOString(), endDate.toISOString()],
     queryFn: async (): Promise<TemplateContact[]> => {
-      // First get the messages
+      // First get all template messages from conversations assigned to this user
       const { data: messages, error } = await supabase
         .from('messages')
         .select(`
           id,
           content,
           created_at,
+          conversation_id,
           conversation:conversations!inner(
             id,
             assigned_to,
@@ -81,32 +82,75 @@ export function UserTemplateContactsModal({
         return [];
       }
 
-      // Now calculate window status for each message
+      if (!messages || messages.length === 0) return [];
+
+      // Get conversation IDs to fetch assignment history
+      const conversationIds = [...new Set(messages.map(m => m.conversation_id).filter(Boolean))];
+      
+      // Fetch assignment history for these conversations
+      const { data: assignmentHistory } = await supabase
+        .from('lead_assignment_history')
+        .select('conversation_id, assigned_to, assigned_at')
+        .in('conversation_id', conversationIds)
+        .eq('assigned_to', userId)
+        .order('assigned_at', { ascending: true });
+
+      // Create map: conversation_id -> first assignment date to this user
+      const assignmentMap = new Map<string, Date>();
+      assignmentHistory?.forEach(h => {
+        if (!assignmentMap.has(h.conversation_id)) {
+          assignmentMap.set(h.conversation_id, new Date(h.assigned_at));
+        }
+      });
+
+      // Get client messages for window calculation
+      const { data: clientMessages } = await supabase
+        .from('messages')
+        .select('conversation_id, created_at')
+        .in('conversation_id', conversationIds)
+        .eq('is_from_me', false)
+        .order('created_at', { ascending: false });
+
+      // Map: conversation_id -> array of client message dates
+      const clientMsgMap = new Map<string, Date[]>();
+      clientMessages?.forEach(msg => {
+        if (!clientMsgMap.has(msg.conversation_id)) {
+          clientMsgMap.set(msg.conversation_id, []);
+        }
+        clientMsgMap.get(msg.conversation_id)!.push(new Date(msg.created_at));
+      });
+
+      // Find last client message before a given time
+      const findLastClientMsgBefore = (conversationId: string, beforeTime: Date): Date | null => {
+        const msgs = clientMsgMap.get(conversationId) || [];
+        for (const msgDate of msgs) {
+          if (msgDate < beforeTime) return msgDate;
+        }
+        return null;
+      };
+
+      // Filter and build result - only templates sent AFTER user was assigned
       const result: TemplateContact[] = [];
       
-      for (const msg of messages || []) {
+      for (const msg of messages) {
         const conversation = msg.conversation as any;
         const contact = conversation?.contact;
         
         if (!contact) continue;
 
-        // Get last client message before this template
-        const { data: lastClientMsg } = await supabase
-          .from('messages')
-          .select('created_at')
-          .eq('conversation_id', conversation.id)
-          .eq('is_from_me', false)
-          .lt('created_at', msg.created_at)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+        const templateSentAt = new Date(msg.created_at);
+        const assignedAt = assignmentMap.get(msg.conversation_id);
+
+        // ✅ CRITICAL: Only include if template was sent AFTER the user was assigned
+        if (!assignedAt || templateSentAt < assignedAt) {
+          continue; // Skip templates sent before assignment (by IA/system)
+        }
 
         // Calculate if outside 24h window
+        const lastClientMsg = findLastClientMsgBefore(msg.conversation_id, templateSentAt);
         let isOutsideWindow = true;
-        if (lastClientMsg?.created_at) {
-          const templateTime = new Date(msg.created_at).getTime();
-          const clientMsgTime = new Date(lastClientMsg.created_at).getTime();
-          const hoursDiff = (templateTime - clientMsgTime) / (1000 * 60 * 60);
+        if (lastClientMsg) {
+          const hoursDiff = (templateSentAt.getTime() - lastClientMsg.getTime()) / (1000 * 60 * 60);
           isOutsideWindow = hoursDiff > 24;
         }
 
@@ -115,7 +159,7 @@ export function UserTemplateContactsModal({
           contactName: contact.full_name || 'Desconhecido',
           contactPhone: contact.phone || '',
           templateContent: msg.content || '',
-          sentAt: new Date(msg.created_at),
+          sentAt: templateSentAt,
           isOutsideWindow,
           category: 'utility',
         });
