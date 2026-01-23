@@ -4,19 +4,16 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { 
   Loader2, 
-  Copy, 
-  Check, 
   Phone, 
+  Check,
   AlertCircle, 
   CheckCircle2,
   Shield,
   Zap,
   Facebook,
   ExternalLink,
-  Trash2,
   Unlink,
 } from 'lucide-react';
 import { 
@@ -27,6 +24,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CloudAPIConnect } from '@/components/whatsapp/CloudAPIConnect';
+import { WebhookHealthIndicator } from './WebhookHealthIndicator';
+import { WebhookSetupGuide } from './WebhookSetupGuide';
 
 interface CloudAPIConfigFormProps {
   onSuccess?: () => void;
@@ -38,7 +37,6 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
   const updateConfig = useUpdateCloudAPIConfig();
   
   const [showConnect, setShowConnect] = useState(false);
-  const [copied, setCopied] = useState<'url' | 'token' | null>(null);
   
   // Buscar dados do canal associado
   const { data: channelData } = useQuery({
@@ -136,13 +134,6 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
   });
 
   const webhookUrl = 'https://lkxrmjqrzhaivviuuamp.supabase.co/functions/v1/cloudapi-webhook';
-
-  const handleCopy = async (type: 'url' | 'token', value: string) => {
-    await navigator.clipboard.writeText(value);
-    setCopied(type);
-    toast.success('Copiado!');
-    setTimeout(() => setCopied(null), 2000);
-  };
 
   const handleToggleCalling = async (enabled: boolean) => {
     if (!existingConfig) return;
@@ -291,57 +282,15 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
         </div>
       </div>
 
-      {/* Webhook */}
+      {/* Webhook Status & Guide */}
       <div className="space-y-4 border-t pt-4">
-        <h3 className="text-sm font-medium">Configuração do Webhook</h3>
+        <WebhookHealthIndicator />
         
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">URL do Webhook</Label>
-          <div className="flex gap-2">
-            <Input value={webhookUrl} readOnly className="font-mono text-xs" />
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => handleCopy('url', webhookUrl)}
-            >
-              {copied === 'url' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Verify Token</Label>
-          <div className="flex gap-2">
-            <Input 
-              value={existingConfig.verify_token} 
-              readOnly 
-              className="font-mono text-xs" 
-            />
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => handleCopy('token', existingConfig.verify_token)}
-            >
-              {copied === 'token' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
-
-        {existingConfig.webhook_configured ? (
-          <Alert className="border-green-500/30 bg-green-500/5">
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
-            <AlertDescription className="text-green-700 dark:text-green-400">
-              Webhook configurado automaticamente
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Configure o webhook manualmente no painel do Meta Developers usando os dados acima.
-            </AlertDescription>
-          </Alert>
-        )}
+        <WebhookSetupGuide 
+          webhookUrl={webhookUrl}
+          verifyToken={existingConfig.verify_token}
+          isConfigured={existingConfig.webhook_configured}
+        />
       </div>
 
       {/* Calling API */}
