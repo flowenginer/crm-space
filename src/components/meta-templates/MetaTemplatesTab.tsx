@@ -13,9 +13,12 @@ import {
   Pause,
   Trash2,
   Zap,
+  BarChart3,
+  List,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -46,6 +49,7 @@ import {
 import { MetaTemplateModal } from './MetaTemplateModal';
 import { MetaTemplatePreview } from './MetaTemplatePreview';
 import { BlingTemplatesWizard } from './BlingTemplatesWizard';
+import { TemplateStatsTab } from './TemplateStatsTab';
 
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
@@ -111,6 +115,7 @@ function CategoryBadge({ category }: { category: string }) {
 }
 
 export function MetaTemplatesTab() {
+  const [activeTab, setActiveTab] = useState('list');
   const { data: templates = [], isLoading } = useMetaTemplates();
   const syncMutation = useSyncMetaTemplates();
   const disableMutation = useDisableMetaTemplate();
@@ -150,48 +155,68 @@ export function MetaTemplatesTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">Templates da API Oficial</h2>
-          <p className="text-sm text-muted-foreground">
-            Gerencie seus templates aprovados pela Meta para envio de mensagens via API Cloud
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {hasDeletedTemplates && (
-            <Button 
-              variant="outline"
-              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-              onClick={() => setShowPurgeDialog(true)}
-              disabled={purgeMutation.isPending}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Limpar Excluídos ({deletedTemplates.length})
-            </Button>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div>
+              <h2 className="text-xl font-semibold">Templates da API Oficial</h2>
+              <p className="text-sm text-muted-foreground">
+                Gerencie seus templates aprovados pela Meta para envio de mensagens via API Cloud
+              </p>
+            </div>
+            <TabsList>
+              <TabsTrigger value="list" className="gap-2">
+                <List className="h-4 w-4" />
+                Lista
+              </TabsTrigger>
+              <TabsTrigger value="stats" className="gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Estatísticas
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          {activeTab === 'list' && (
+            <div className="flex items-center gap-2">
+              {hasDeletedTemplates && (
+                <Button 
+                  variant="outline"
+                  className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                  onClick={() => setShowPurgeDialog(true)}
+                  disabled={purgeMutation.isPending}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Limpar Excluídos ({deletedTemplates.length})
+                </Button>
+              )}
+              <Button 
+                variant="outline"
+                className="border-yellow-500/50 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-700 dark:hover:bg-yellow-500/10"
+                onClick={() => setShowBlingWizard(true)}
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                Templates Bling
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleSync}
+                disabled={syncMutation.isPending}
+              >
+                <RefreshCw className={cn('h-4 w-4 mr-2', syncMutation.isPending && 'animate-spin')} />
+                Sincronizar
+              </Button>
+              <Button onClick={() => setShowCreateModal(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Template
+              </Button>
+            </div>
           )}
-          <Button 
-            variant="outline"
-            className="border-yellow-500/50 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-700 dark:hover:bg-yellow-500/10"
-            onClick={() => setShowBlingWizard(true)}
-          >
-            <Zap className="h-4 w-4 mr-2" />
-            Templates Bling
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={handleSync}
-            disabled={syncMutation.isPending}
-          >
-            <RefreshCw className={cn('h-4 w-4 mr-2', syncMutation.isPending && 'animate-spin')} />
-            Sincronizar
-          </Button>
-          <Button onClick={() => setShowCreateModal(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Template
-          </Button>
         </div>
-      </div>
 
+        <TabsContent value="stats" className="mt-6">
+          <TemplateStatsTab />
+        </TabsContent>
+
+        <TabsContent value="list" className="mt-6">
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -307,6 +332,8 @@ export function MetaTemplatesTab() {
           </Table>
         </div>
       )}
+        </TabsContent>
+      </Tabs>
 
       <MetaTemplateModal 
         open={showCreateModal} 

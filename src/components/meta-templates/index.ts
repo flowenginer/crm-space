@@ -3,3 +3,4 @@ export { MetaTemplatePreview } from './MetaTemplatePreview';
 export { MetaTemplateModal } from './MetaTemplateModal';
 export { MetaTemplatesTab } from './MetaTemplatesTab';
 export { MetaTemplateUseModal } from './MetaTemplateUseModal';
+export { TemplateStatsTab } from './TemplateStatsTab';
