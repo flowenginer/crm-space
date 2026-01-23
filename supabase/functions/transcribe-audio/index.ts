@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
       .eq('transcription_status', 'pending')
       .not('media_url', 'is', null)
       .order('created_at', { ascending: true })
-      .limit(5); // Processar 5 por vez para evitar timeout
+      .limit(20); // Processar 20 por vez para acelerar transcrição em massa
 
     if (fetchError) {
       console.error('Erro ao buscar áudios pendentes:', fetchError);
