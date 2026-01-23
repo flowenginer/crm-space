@@ -24,6 +24,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useTemplates, useIncrementTemplateUsage, type MessageTemplate, type ContentBlock } from '@/hooks/useTemplates';
+import { useUserContext } from '@/hooks/useUserContext';
 import { useChatbotFlows } from '@/hooks/useChatbotFlows';
 import { useUserQuickTemplates, useAddQuickTemplate } from '@/hooks/useQuickTemplates';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -93,6 +94,11 @@ export function QuickTemplatesPopover({
   const [searchQuery, setSearchQuery] = useState('');
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const isMobile = useIsMobile();
+  
+  // Get user context for role-based filtering
+  const { profile } = useUserContext();
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'supervisor';
+  const canUseMetaTemplates = isAdmin || profile?.role === 'sac';
 
   // Fetch templates
   const { data: templates = [], isLoading: templatesLoading } = useTemplates();
@@ -239,6 +245,16 @@ export function QuickTemplatesPopover({
     setSearchQuery(e.target.value);
   }, []);
 
+  // Filter categories based on permissions - Meta only for admin/supervisor/sac
+  const visibleCategories = useMemo(() => {
+    return CATEGORIES.filter(cat => {
+      if (cat.id === 'meta') {
+        return canUseMetaTemplates;
+      }
+      return true;
+    });
+  }, [canUseMetaTemplates]);
+
   const currentCategory = CATEGORIES.find(c => c.id === activeCategory);
 
   // Handle quick template click
@@ -267,7 +283,7 @@ export function QuickTemplatesPopover({
     <div className="flex flex-col h-full">
       {/* Category Tabs - All visible, no overflow */}
       <div className="flex gap-1 p-2 border-b border-border">
-        {CATEGORIES.map((cat) => {
+        {visibleCategories.map((cat) => {
           const Icon = cat.icon;
           const isActive = activeCategory === cat.id;
           return (

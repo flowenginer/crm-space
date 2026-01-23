@@ -152,7 +152,12 @@ export function TemplateStatsTab() {
       <TemplatesTimelineChart data={timeline} isLoading={isLoading} />
 
       {/* Cost Table */}
-      <TemplatesCostTable data={userStats} isLoading={isLoading} />
+      <TemplatesCostTable 
+        data={userStats} 
+        isLoading={isLoading} 
+        startDate={filters.startDate}
+        endDate={filters.endDate}
+      />
     </div>
   );
 }
