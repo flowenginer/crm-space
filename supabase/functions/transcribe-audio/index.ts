@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import OpenAI from 'openai';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,9 +9,9 @@ const corsHeaders = {
 // Space Sports tenant ID - única tenant que será processada
 const SPACE_SPORTS_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
-// Configuração do Google Gemini
-const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY');
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_API_KEY}`;
+// Configuração do OpenAI Whisper
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 
 interface AudioMessage {
   id: string;
@@ -19,7 +20,7 @@ interface AudioMessage {
   created_at: string;
 }
 
-async function downloadAudio(mediaUrl: string): Promise<string | null> {
+async function downloadAudio(mediaUrl: string): Promise<ArrayBuffer | null> {
   try {
     console.log(`Baixando áudio de: ${mediaUrl}`);
     
@@ -30,80 +31,43 @@ async function downloadAudio(mediaUrl: string): Promise<string | null> {
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
     
-    // Converter para base64
-    let binary = '';
-    for (let i = 0; i < uint8Array.length; i++) {
-      binary += String.fromCharCode(uint8Array[i]);
-    }
-    const base64 = btoa(binary);
-    
-    console.log(`Áudio baixado: ${base64.length} caracteres em base64`);
-    return base64;
+    console.log(`Áudio baixado: ${arrayBuffer.byteLength} bytes`);
+    return arrayBuffer;
   } catch (error) {
     console.error('Erro ao baixar áudio:', error);
     return null;
   }
 }
 
-async function transcribeWithGemini(audioBase64: string): Promise<string | null> {
+async function transcribeWithWhisper(audioBuffer: ArrayBuffer): Promise<string | null> {
   try {
-    if (!GOOGLE_API_KEY) {
-      console.error('GOOGLE_API_KEY não configurada');
+    if (!openai) {
+      console.error('OpenAI client não inicializado - OPENAI_API_KEY não configurada');
       return null;
     }
 
-    console.log('Enviando áudio para Gemini...');
+    console.log('Enviando áudio para Whisper...');
     
-    const payload = {
-      contents: [{
-        parts: [
-          { 
-            text: "Transcreva este áudio em português brasileiro. Retorne APENAS o texto falado, sem formatação, sem timestamps, sem identificação de falantes. Se não conseguir entender o áudio ou estiver vazio, retorne '[áudio inaudível]'." 
-          },
-          { 
-            inline_data: { 
-              mime_type: "audio/ogg", 
-              data: audioBase64 
-            } 
-          }
-        ]
-      }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 2048,
-      }
-    };
-
-    const response = await fetch(GEMINI_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+    // Criar File a partir do ArrayBuffer
+    const file = new File([audioBuffer], "audio.ogg", { type: "audio/ogg" });
+    
+    const transcription = await openai.audio.transcriptions.create({
+      file: file,
+      model: "whisper-1",
+      language: "pt",
+      response_format: "text",
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Erro do Gemini: ${response.status} - ${errorText}`);
-      return null;
-    }
-
-    const data = await response.json();
-    
-    // Extrair texto da resposta
-    const transcription = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     
     if (transcription) {
       console.log(`Transcrição obtida: ${transcription.substring(0, 100)}...`);
       return transcription.trim();
     }
 
-    console.log('Nenhuma transcrição retornada pelo Gemini');
+    console.log('Nenhuma transcrição retornada pelo Whisper');
     return null;
   } catch (error) {
-    console.error('Erro ao transcrever com Gemini:', error);
+    console.error('Erro ao transcrever com Whisper:', error);
     return null;
   }
 }
@@ -115,14 +79,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('=== Iniciando processamento de transcrição de áudios ===');
+    console.log('=== Iniciando processamento de transcrição de áudios (Whisper) ===');
     console.log(`Tenant alvo: ${SPACE_SPORTS_TENANT_ID}`);
 
     // Verificar se a API key está configurada
-    if (!GOOGLE_API_KEY) {
-      console.error('GOOGLE_API_KEY não está configurada');
+    if (!OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY não está configurada');
       return new Response(
-        JSON.stringify({ error: 'GOOGLE_API_KEY não configurada' }),
+        JSON.stringify({ error: 'OPENAI_API_KEY não configurada' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -142,7 +106,7 @@ Deno.serve(async (req) => {
       .eq('transcription_status', 'pending')
       .not('media_url', 'is', null)
       .order('created_at', { ascending: true })
-      .limit(20); // Processar 20 por vez para acelerar transcrição em massa
+      .limit(20); // Processar 20 por vez
 
     if (fetchError) {
       console.error('Erro ao buscar áudios pendentes:', fetchError);
@@ -182,9 +146,9 @@ Deno.serve(async (req) => {
       results.processed++;
 
       // Baixar o áudio
-      const audioBase64 = await downloadAudio(audio.media_url);
+      const audioBuffer = await downloadAudio(audio.media_url);
       
-      if (!audioBase64) {
+      if (!audioBuffer) {
         console.error(`Falha ao baixar áudio ${audio.id}`);
         await supabase
           .from('messages')
@@ -199,8 +163,8 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Transcrever com Gemini
-      const transcription = await transcribeWithGemini(audioBase64);
+      // Transcrever com Whisper
+      const transcription = await transcribeWithWhisper(audioBuffer);
 
       if (transcription) {
         await supabase
@@ -229,7 +193,7 @@ Deno.serve(async (req) => {
       }
 
       // Pequena pausa entre requisições para evitar rate limiting
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
 
     console.log('\n=== Resumo do processamento ===');
