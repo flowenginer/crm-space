@@ -77,7 +77,7 @@ function isOutsideWindow(templateSentAt: Date, lastClientMsgAt: Date | null): bo
 export function useTemplateStats(filters: TemplateStatsFilters) {
   const { startDate, endDate, departmentId, userId, onlyOutsideWindow } = filters;
 
-  // Fetch stats by user with window calculation
+  // Fetch stats by user with window calculation - ONLY templates sent AFTER assignment
   const userStatsQuery = useQuery({
     queryKey: ['template-stats-by-user', startDate.toISOString(), endDate.toISOString(), departmentId, userId, onlyOutsideWindow],
     queryFn: async () => {
@@ -102,9 +102,27 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
 
       if (error) throw error;
 
-      // Get conversation IDs to find last client messages before each template
+      // Get conversation IDs
       const conversationIds = [...new Set(templateMessages?.map(m => m.conversation_id).filter(Boolean))];
       
+      // Fetch assignment history for all conversations
+      const { data: assignmentHistory } = conversationIds.length > 0
+        ? await supabase
+            .from('lead_assignment_history')
+            .select('conversation_id, assigned_to, assigned_at')
+            .in('conversation_id', conversationIds)
+            .order('assigned_at', { ascending: true })
+        : { data: [] };
+
+      // Create map: {conversation_id}_{user_id} -> first assignment date
+      const assignmentMap = new Map<string, Date>();
+      assignmentHistory?.forEach(h => {
+        const key = `${h.conversation_id}_${h.assigned_to}`;
+        if (!assignmentMap.has(key)) {
+          assignmentMap.set(key, new Date(h.assigned_at));
+        }
+      });
+
       // For each conversation, get all client messages to determine window status
       const { data: clientMessages } = conversationIds.length > 0 
         ? await supabase
@@ -166,7 +184,7 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
         }
       });
 
-      // Aggregate by user
+      // Aggregate by user - ONLY templates sent AFTER assignment
       const userMap = new Map<string, UserTemplateStat>();
 
       templateMessages?.forEach(msg => {
@@ -174,6 +192,15 @@ export function useTemplateStats(filters: TemplateStatsFilters) {
         const assignedTo = conv?.assigned_to || 'unassigned';
         const convDeptId = conv?.department_id;
         const templateSentAt = new Date(msg.created_at);
+
+        // ✅ CRITICAL: Check if template was sent AFTER user was assigned
+        const assignmentKey = `${msg.conversation_id}_${assignedTo}`;
+        const assignedAt = assignmentMap.get(assignmentKey);
+        
+        // Skip if no assignment history OR template sent before assignment (automated/IA)
+        if (assignedTo !== 'unassigned' && (!assignedAt || templateSentAt < assignedAt)) {
+          return; // Skip this template - it was sent by system before assignment
+        }
 
         // Calculate window status
         const lastClientMsg = findLastClientMsgBefore(msg.conversation_id, templateSentAt);
