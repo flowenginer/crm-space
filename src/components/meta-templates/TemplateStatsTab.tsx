@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
 import { subDays } from 'date-fns';
-import { Calendar, Filter, RefreshCw } from 'lucide-react';
+import { Calendar, Filter, RefreshCw, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -33,6 +35,7 @@ export function TemplateStatsTab() {
   const [dateRange, setDateRange] = useState<DateRangeOption>('30d');
   const [departmentId, setDepartmentId] = useState<string>('all');
   const [userId, setUserId] = useState<string>('all');
+  const [onlyOutsideWindow, setOnlyOutsideWindow] = useState<boolean>(false);
 
   const { data: departments = [] } = useDepartments();
   const { data: agents = [] } = useAgents();
@@ -42,7 +45,8 @@ export function TemplateStatsTab() {
     endDate: new Date(),
     departmentId: departmentId !== 'all' ? departmentId : undefined,
     userId: userId !== 'all' ? userId : undefined,
-  }), [dateRange, departmentId, userId]);
+    onlyOutsideWindow,
+  }), [dateRange, departmentId, userId, onlyOutsideWindow]);
 
   const { 
     userStats, 
@@ -116,6 +120,23 @@ export function TemplateStatsTab() {
             ))}
           </SelectContent>
         </Select>
+
+        {/* Window Filter */}
+        <div className="flex items-center gap-2 ml-2 px-3 py-2 rounded-lg bg-muted/50 border border-border/50">
+          <Checkbox 
+            id="outsideWindow" 
+            checked={onlyOutsideWindow}
+            onCheckedChange={(checked) => setOnlyOutsideWindow(checked === true)}
+          />
+          <Label 
+            htmlFor="outsideWindow" 
+            className="text-sm cursor-pointer flex items-center gap-1.5"
+          >
+            <Clock className="h-3.5 w-3.5 text-orange-500" />
+            <span>Apenas fora da janela 24h</span>
+            <span className="text-xs text-muted-foreground">(cobrados)</span>
+          </Label>
+        </div>
       </div>
 
       {/* Stats Cards */}
