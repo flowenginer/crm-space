@@ -56,6 +56,34 @@ interface BlingProduct {
   ncm?: string;
   cest?: string;
   origem?: number;
+  // Campos extras para mapeamento completo
+  gtin?: string;
+  gtinEmbalagem?: string;
+  unidade?: string;
+  unidadeCompra?: string;
+  pesoLiquido?: number;
+  pesoBruto?: number;
+  largura?: number;
+  altura?: number;
+  profundidade?: number;
+  volumes?: number;
+  itensPorCaixa?: number;
+  categoria?: { id: number; descricao?: string };
+  marca?: string;
+  condicao?: number; // 0=Não especificado, 1=Novo, 2=Usado
+  freteGratis?: boolean;
+  linkExterno?: string;
+  observacoes?: string;
+  estoque?: {
+    minimo?: number;
+    maximo?: number;
+    crossdocking?: number;
+    localizacao?: string;
+  };
+  variacao?: {
+    nome?: string;
+    produtoPai?: { id: number };
+  };
 }
 
 interface BlingOrder {
@@ -205,9 +233,12 @@ Deno.serve(async (req) => {
             previewData.push(...contactResults.preview);
           }
         } else if (entityType === "products") {
-          const productResults = await syncProducts(supabase, tenant_id, accessToken, direction);
+          const productResults = await syncProducts(supabase, tenant_id, accessToken, direction, preview_only, import_mode, selected_ids);
           results.products = productResults.counts;
           errors.push(...productResults.errors);
+          if (preview_only && productResults.preview) {
+            previewData.push(...productResults.preview);
+          }
         } else if (entityType === "orders") {
           const orderResults = await syncOrders(supabase, tenant_id, accessToken, direction);
           results.orders = orderResults.counts;
@@ -884,15 +915,26 @@ async function syncContacts(
 }
 
 // Sync Products
-async function syncProducts(supabase: any, tenantId: string, accessToken: string, direction: string) {
+async function syncProducts(
+  supabase: any, 
+  tenantId: string, 
+  accessToken: string, 
+  direction: string,
+  previewOnly: boolean = false,
+  importMode: string = "all",
+  selectedIds?: string[]
+) {
   const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
   const errors: Array<{ entity: string; message: string; details?: string }> = [];
+  const preview: any[] = [];
 
   try {
     // Import from Bling to Local
     if (direction === "bling_to_local" || direction === "bidirectional") {
-      console.log(`[bling-sync] Importing products from Bling...`);
+      console.log(`[bling-sync] ${previewOnly ? 'Loading preview of' : 'Importing'} products from Bling...`);
 
+      // Collect all products from Bling first
+      const allBlingProducts: BlingProduct[] = [];
       let page = 1;
       let hasMore = true;
 
@@ -905,92 +947,161 @@ async function syncProducts(supabase: any, tenantId: string, accessToken: string
           break;
         }
 
-        for (const blingProduct of blingProducts) {
-          try {
-            const { data: existingMapping } = await supabase
-              .from("bling_id_mappings")
-              .select("local_id")
-              .eq("tenant_id", tenantId)
-              .eq("entity_type", "product")
-              .eq("bling_id", String(blingProduct.id))
-              .maybeSingle();
-
-            const productData = {
-              name: blingProduct.nome,
-              sku: blingProduct.codigo || null,
-              base_price: blingProduct.preco || 0,
-              cost_price: blingProduct.precoCusto || null,
-              short_description: blingProduct.descricaoCurta || null,
-              main_image_url: blingProduct.imagemURL || null,
-              ncm: blingProduct.ncm || null,
-              cest: blingProduct.cest || null,
-              origem: blingProduct.origem || null,
-              is_active: blingProduct.situacao === "A",
-              tenant_id: tenantId,
-            };
-
-            if (existingMapping?.local_id) {
-              await supabase
-                .from("products")
-                .update(productData)
-                .eq("id", existingMapping.local_id);
-              counts.updated++;
-            } else {
-              // Check by SKU
-              const { data: existingProduct } = await supabase
-                .from("products")
-                .select("id")
-                .eq("tenant_id", tenantId)
-                .eq("sku", blingProduct.codigo)
-                .maybeSingle();
-
-              if (existingProduct) {
-                await supabase
-                  .from("products")
-                  .update(productData)
-                  .eq("id", existingProduct.id);
-
-                await supabase
-                  .from("bling_id_mappings")
-                  .insert({
-                    tenant_id: tenantId,
-                    entity_type: "product",
-                    local_id: existingProduct.id,
-                    bling_id: String(blingProduct.id),
-                    sync_direction: "bling_to_local",
-                  });
-                counts.updated++;
-              } else {
-                const { data: newProduct, error: insertError } = await supabase
-                  .from("products")
-                  .insert(productData)
-                  .select("id")
-                  .single();
-
-                if (insertError) throw new Error(insertError.message);
-
-                await supabase
-                  .from("bling_id_mappings")
-                  .insert({
-                    tenant_id: tenantId,
-                    entity_type: "product",
-                    local_id: newProduct.id,
-                    bling_id: String(blingProduct.id),
-                    sync_direction: "bling_to_local",
-                  });
-                counts.created++;
-              }
-            }
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : "Unknown error";
-            errors.push({ entity: "product", message: msg, details: blingProduct.nome });
-            counts.errors++;
-          }
-        }
-
+        allBlingProducts.push(...blingProducts);
         page++;
         if (blingProducts.length < 100) hasMore = false;
       }
+
+      console.log(`[bling-sync] Found ${allBlingProducts.length} products in Bling`);
+
+      // Get all existing mappings in batch for performance
+      const { data: existingMappings } = await supabase
+        .from("bling_id_mappings")
+        .select("local_id, bling_id")
+        .eq("tenant_id", tenantId)
+        .eq("entity_type", "product");
+
+      const mappingsByBlingId = new Map((existingMappings || []).map((m: any) => [m.bling_id, m.local_id]));
+
+      // Get all SKUs for duplicate check
+      const { data: existingProducts } = await supabase
+        .from("products")
+        .select("id, sku")
+        .eq("tenant_id", tenantId);
+
+      const productsBySku = new Map((existingProducts || []).filter((p: any) => p.sku).map((p: any) => [p.sku, p.id]));
+
+      // Filter products based on mode and selection
+      let productsToProcess = allBlingProducts;
+      
+      // If selected_ids provided, filter to only those
+      if (selectedIds && selectedIds.length > 0) {
+        productsToProcess = allBlingProducts.filter(p => selectedIds.includes(String(p.id)));
+        console.log(`[bling-sync] Filtered to ${productsToProcess.length} selected products`);
+      }
+
+      // Preview mode - return product list with status
+      if (previewOnly) {
+        for (const blingProduct of productsToProcess) {
+          const existsLocally = mappingsByBlingId.has(String(blingProduct.id)) || 
+                               (blingProduct.codigo && productsBySku.has(blingProduct.codigo));
+          
+          // Apply import mode filter for preview
+          if (importMode === "new_only" && existsLocally) continue;
+          if (importMode === "update_existing" && !existsLocally) continue;
+
+          preview.push({
+            id: String(blingProduct.id),
+            bling_id: String(blingProduct.id),
+            nome: blingProduct.nome,
+            codigo: blingProduct.codigo,
+            preco: blingProduct.preco,
+            exists_locally: existsLocally,
+            isNew: !existsLocally,
+          });
+        }
+        console.log(`[bling-sync] Preview: ${preview.length} products ready for import`);
+        return { counts, errors, preview };
+      }
+
+      // Actual import
+      for (const blingProduct of productsToProcess) {
+        try {
+          const existingLocalId = mappingsByBlingId.get(String(blingProduct.id));
+          const existingBySku = blingProduct.codigo ? productsBySku.get(blingProduct.codigo) : null;
+          const existsLocally = existingLocalId || existingBySku;
+
+          // Apply import mode filter
+          if (importMode === "new_only" && existsLocally) {
+            counts.skipped++;
+            continue;
+          }
+          if (importMode === "update_existing" && !existsLocally) {
+            counts.skipped++;
+            continue;
+          }
+
+          // Build complete product data with all fields mapped
+          const productData: any = {
+            name: blingProduct.nome,
+            sku: blingProduct.codigo || null,
+            base_price: blingProduct.preco || 0,
+            cost_price: blingProduct.precoCusto || null,
+            short_description: blingProduct.descricaoCurta || null,
+            main_image_url: blingProduct.imagemURL || null,
+            ncm: blingProduct.ncm || null,
+            cest: blingProduct.cest || null,
+            origem: blingProduct.origem || null,
+            is_active: blingProduct.situacao === "A",
+            tenant_id: tenantId,
+            // Extended fields
+            gtin: blingProduct.gtin || null,
+            gtin_tributavel: blingProduct.gtinEmbalagem || null,
+            unidade_comercial: blingProduct.unidade || 'UN',
+            unidade_tributavel: blingProduct.unidadeCompra || blingProduct.unidade || 'UN',
+            peso_liquido: blingProduct.pesoLiquido || null,
+            peso_bruto: blingProduct.pesoBruto || null,
+            // Dimensions - Bling returns in cm
+            width_cm: blingProduct.largura || null,
+            height_cm: blingProduct.altura || null,
+            length_cm: blingProduct.profundidade || null,
+          };
+
+          if (existingLocalId) {
+            // Update existing via mapping
+            await supabase
+              .from("products")
+              .update(productData)
+              .eq("id", existingLocalId);
+            counts.updated++;
+          } else if (existingBySku) {
+            // Update existing via SKU match
+            await supabase
+              .from("products")
+              .update(productData)
+              .eq("id", existingBySku);
+
+            // Create mapping
+            await supabase
+              .from("bling_id_mappings")
+              .insert({
+                tenant_id: tenantId,
+                entity_type: "product",
+                local_id: existingBySku,
+                bling_id: String(blingProduct.id),
+                sync_direction: "bling_to_local",
+              });
+            counts.updated++;
+          } else {
+            // Create new product
+            const { data: newProduct, error: insertError } = await supabase
+              .from("products")
+              .insert(productData)
+              .select("id")
+              .single();
+
+            if (insertError) throw new Error(insertError.message);
+
+            // Create mapping
+            await supabase
+              .from("bling_id_mappings")
+              .insert({
+                tenant_id: tenantId,
+                entity_type: "product",
+                local_id: newProduct.id,
+                bling_id: String(blingProduct.id),
+                sync_direction: "bling_to_local",
+              });
+            counts.created++;
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          errors.push({ entity: "product", message: msg, details: blingProduct.nome });
+          counts.errors++;
+        }
+      }
+      
+      console.log(`[bling-sync] Products processed: ${counts.created} created, ${counts.updated} updated, ${counts.skipped} skipped, ${counts.errors} errors`);
     }
 
     // Export from Local to Bling
@@ -1015,7 +1126,7 @@ async function syncProducts(supabase: any, tenantId: string, accessToken: string
 
       for (const product of productsToExport) {
         try {
-          const blingData = {
+          const blingData: any = {
             nome: product.name,
             codigo: product.sku || undefined,
             preco: product.base_price,
@@ -1026,6 +1137,16 @@ async function syncProducts(supabase: any, tenantId: string, accessToken: string
             ncm: product.ncm || undefined,
             cest: product.cest || undefined,
             origem: product.origem || 0,
+            // Extended fields for export
+            gtin: product.gtin || undefined,
+            gtinEmbalagem: product.gtin_tributavel || undefined,
+            unidade: product.unidade_comercial || 'UN',
+            unidadeCompra: product.unidade_tributavel || undefined,
+            pesoLiquido: product.peso_liquido || undefined,
+            pesoBruto: product.peso_bruto || undefined,
+            largura: product.width_cm || undefined,
+            altura: product.height_cm || undefined,
+            profundidade: product.length_cm || undefined,
           };
 
           const response = await blingApi("/produtos", accessToken, "POST", blingData);
@@ -1055,7 +1176,7 @@ async function syncProducts(supabase: any, tenantId: string, accessToken: string
     errors.push({ entity: "products", message: msg });
   }
 
-  return { counts, errors };
+  return { counts, errors, preview };
 }
 
 // Sync Orders
