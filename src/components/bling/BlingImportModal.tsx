@@ -484,9 +484,9 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
 
     return (
       <>
-        <div className="space-y-4 py-4">
+        <div className="flex flex-col flex-1 gap-4 py-4 min-h-0">
           {/* Summary badges */}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 shrink-0">
             <Badge variant="outline" className="text-sm">
               Total: {summary.total}
             </Badge>
@@ -502,7 +502,7 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
           </div>
 
           {/* Search and quick actions */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -520,8 +520,8 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
             </Button>
           </div>
 
-          {/* Items list with checkboxes */}
-          <ScrollArea className="h-[300px] border rounded-lg">
+          {/* Items list with checkboxes - fills remaining space */}
+          <ScrollArea className="flex-1 min-h-0 border rounded-lg">
             <div className="p-2 space-y-1">
               {filteredItems.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
@@ -675,7 +675,7 @@ export function BlingImportModal({ open, onOpenChange, entityType }: BlingImport
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="w-[90vw] max-w-[90vw] h-[85vh] max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
