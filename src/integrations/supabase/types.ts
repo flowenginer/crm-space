@@ -9194,6 +9194,126 @@ export type Database = {
           },
         ]
       }
+      support_technicians: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          specialties: string[] | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          specialties?: string[] | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          specialties?: string[] | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_technicians_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_tickets: {
+        Row: {
+          affected_module: string | null
+          assigned_to: string | null
+          browser_info: string | null
+          category: string
+          closed_at: string | null
+          created_at: string | null
+          description: string
+          first_response_at: string | null
+          id: string
+          priority: string | null
+          requester_id: string
+          requester_role: string | null
+          resolved_at: string | null
+          screenshot_url: string | null
+          status: string | null
+          tenant_id: string | null
+          ticket_number: number | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          affected_module?: string | null
+          assigned_to?: string | null
+          browser_info?: string | null
+          category: string
+          closed_at?: string | null
+          created_at?: string | null
+          description: string
+          first_response_at?: string | null
+          id?: string
+          priority?: string | null
+          requester_id: string
+          requester_role?: string | null
+          resolved_at?: string | null
+          screenshot_url?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          ticket_number?: number | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          affected_module?: string | null
+          assigned_to?: string | null
+          browser_info?: string | null
+          category?: string
+          closed_at?: string | null
+          created_at?: string | null
+          description?: string
+          first_response_at?: string | null
+          id?: string
+          priority?: string | null
+          requester_id?: string
+          requester_role?: string | null
+          resolved_at?: string | null
+          screenshot_url?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          ticket_number?: number | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_tickets_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_tickets_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_tickets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tags: {
         Row: {
           color: string | null
@@ -9590,6 +9710,48 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      ticket_comments: {
+        Row: {
+          author_id: string
+          content: string
+          created_at: string | null
+          id: string
+          is_internal: boolean | null
+          ticket_id: string
+        }
+        Insert: {
+          author_id: string
+          content: string
+          created_at?: string | null
+          id?: string
+          is_internal?: boolean | null
+          ticket_id: string
+        }
+        Update: {
+          author_id?: string
+          content?: string
+          created_at?: string | null
+          id?: string
+          is_internal?: boolean | null
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_comments_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_departments: {
         Row: {
@@ -11361,6 +11523,21 @@ export type Database = {
           status_order: number
         }[]
       }
+      get_support_dashboard_metrics: {
+        Args: { p_date_from?: string; p_date_to?: string }
+        Returns: Json
+      }
+      get_technician_ranking: {
+        Args: { p_date_from?: string; p_date_to?: string }
+        Returns: {
+          avg_first_response_hours: number
+          avg_resolution_hours: number
+          technician_id: string
+          technician_name: string
+          tickets_assigned: number
+          tickets_resolved: number
+        }[]
+      }
       get_tenant_admin: {
         Args: { p_tenant_id: string }
         Returns: {
@@ -11388,6 +11565,23 @@ export type Database = {
           tenant_id: string
           tenant_name: string
           total_menus: number
+        }[]
+      }
+      get_tickets_by_tenant: {
+        Args: never
+        Returns: {
+          open_tickets: number
+          tenant_id: string
+          tenant_name: string
+          total_tickets: number
+        }[]
+      }
+      get_tickets_evolution: {
+        Args: { p_months?: number }
+        Returns: {
+          created: number
+          month: string
+          resolved: number
         }[]
       }
       get_timeline_data_batch: {
@@ -11498,6 +11692,10 @@ export type Database = {
       is_module_enabled: { Args: { p_module_key: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id?: string }; Returns: boolean }
       is_super_admin_without_tenant: { Args: never; Returns: boolean }
+      is_support_technician: {
+        Args: { check_user_id: string }
+        Returns: boolean
+      }
       is_tenant_owner: { Args: { _user_id?: string }; Returns: boolean }
       mask_cpf_cnpj: { Args: { p_cpf_cnpj: string }; Returns: string }
       merge_duplicate_contacts: {
