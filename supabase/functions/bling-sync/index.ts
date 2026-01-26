@@ -1030,6 +1030,10 @@ async function syncProducts(
       const productsBySku = new Map<string, string>((existingProducts || []).filter((p: any) => p.sku).map((p: any) => [p.sku, p.id]));
       const variationsBySku = new Map<string, string>((existingVariations || []).filter((v: any) => v.sku).map((v: any) => [v.sku, v.id]));
 
+       // Defensive: mappings can exist pointing to non-existent local rows (e.g., past failed imports)
+       // Build a quick lookup to validate mapping -> product existence.
+       const existingProductIds = new Set<string>((existingProducts || []).map((p: any) => p.id));
+
       // Filter based on selection if provided
       let parentsToProcess = parentProducts;
       let variationsToProcess = variations;
@@ -1108,7 +1112,25 @@ async function syncProducts(
 
       for (const blingProduct of parentsToProcess) {
         try {
-          const existingLocalId = productMappingsByBlingId.get(String(blingProduct.id));
+          // Validate mapping: if mapping points to a product ID that does not exist anymore,
+          // treat it as missing and remove the broken mapping so we can re-import correctly.
+          const mappedLocalId = productMappingsByBlingId.get(String(blingProduct.id));
+          const mappingIsValid = mappedLocalId ? existingProductIds.has(mappedLocalId) : false;
+          const existingLocalId = mappingIsValid ? mappedLocalId : null;
+
+          if (mappedLocalId && !mappingIsValid) {
+            console.log(
+              `[bling-sync] Broken mapping for bling_id=${blingProduct.id} -> local_id=${mappedLocalId}. Removing mapping to allow re-import.`
+            );
+            await supabase
+              .from("bling_id_mappings")
+              .delete()
+              .eq("tenant_id", tenantId)
+              .eq("entity_type", "product")
+              .eq("bling_id", String(blingProduct.id));
+            productMappingsByBlingId.delete(String(blingProduct.id));
+          }
+
           const existingBySku = blingProduct.codigo ? productsBySku.get(blingProduct.codigo) : null;
           const existsLocally = existingLocalId || existingBySku;
 
@@ -1154,18 +1176,36 @@ async function syncProducts(
           };
 
           if (existingLocalId) {
-            await supabase.from("products").update(productData).eq("id", existingLocalId);
+            const { error: updateError } = await supabase
+              .from("products")
+              .update(productData)
+              .eq("id", existingLocalId);
+            if (updateError) throw new Error(updateError.message);
             blingToLocalProductId.set(blingProduct.id, existingLocalId as string);
             counts.updated++;
           } else if (existingBySku) {
-            await supabase.from("products").update(productData).eq("id", existingBySku);
-            await supabase.from("bling_id_mappings").insert({
+            const { error: updateError } = await supabase
+              .from("products")
+              .update(productData)
+              .eq("id", existingBySku);
+            if (updateError) throw new Error(updateError.message);
+
+            // Ensure mapping points to a real product ID
+            await supabase
+              .from("bling_id_mappings")
+              .delete()
+              .eq("tenant_id", tenantId)
+              .eq("entity_type", "product")
+              .eq("bling_id", String(blingProduct.id));
+
+            const { error: mapInsertError } = await supabase.from("bling_id_mappings").insert({
               tenant_id: tenantId,
               entity_type: "product",
               local_id: existingBySku,
               bling_id: String(blingProduct.id),
               sync_direction: "bling_to_local",
             });
+            if (mapInsertError) throw new Error(mapInsertError.message);
             blingToLocalProductId.set(blingProduct.id, existingBySku as string);
             counts.updated++;
           } else {
@@ -1177,13 +1217,22 @@ async function syncProducts(
 
             if (insertError) throw new Error(insertError.message);
 
-            await supabase.from("bling_id_mappings").insert({
+            // Remove any existing mapping for safety, then create the correct one.
+            await supabase
+              .from("bling_id_mappings")
+              .delete()
+              .eq("tenant_id", tenantId)
+              .eq("entity_type", "product")
+              .eq("bling_id", String(blingProduct.id));
+
+            const { error: mapInsertError } = await supabase.from("bling_id_mappings").insert({
               tenant_id: tenantId,
               entity_type: "product",
               local_id: newProduct.id,
               bling_id: String(blingProduct.id),
               sync_direction: "bling_to_local",
             });
+            if (mapInsertError) throw new Error(mapInsertError.message);
             blingToLocalProductId.set(blingProduct.id, newProduct.id);
             counts.created++;
           }
