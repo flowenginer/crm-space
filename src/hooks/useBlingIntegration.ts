@@ -325,8 +325,23 @@ export function useTriggerBlingSync() {
       return data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['bling-sync-logs'] });
-      queryClient.invalidateQueries({ queryKey: ['bling-config'] });
+      // Invalidate ALL relevant queries using predicate to match partial keys
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          return key === 'products' || 
+                 key === 'product' ||
+                 key === 'contacts' || 
+                 key === 'contact' ||
+                 key === 'orders' || 
+                 key === 'order' ||
+                 key === 'financial-transactions' ||
+                 key === 'financial-accounts' ||
+                 key === 'financial-categories' ||
+                 key === 'bling-sync-logs' ||
+                 key === 'bling-config';
+        }
+      });
       
       const summary = data?.summary;
       if (summary) {
@@ -644,15 +659,24 @@ export function useBlingImport() {
       }
     },
     onSuccess: (data) => {
-      // Invalidate relevant queries based on what was imported
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['financial-transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['financial-accounts'] });
-      queryClient.invalidateQueries({ queryKey: ['financial-categories'] });
-      queryClient.invalidateQueries({ queryKey: ['bling-sync-logs'] });
-      queryClient.invalidateQueries({ queryKey: ['bling-config'] });
+      // Invalidate ALL relevant queries - use predicate to match partial keys
+      // This ensures queries with tenantId and filters are also invalidated
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          return key === 'products' || 
+                 key === 'product' ||
+                 key === 'contacts' || 
+                 key === 'contact' ||
+                 key === 'orders' || 
+                 key === 'order' ||
+                 key === 'financial-transactions' ||
+                 key === 'financial-accounts' ||
+                 key === 'financial-categories' ||
+                 key === 'bling-sync-logs' ||
+                 key === 'bling-config';
+        }
+      });
 
       const parts = [];
       if (data.created > 0) parts.push(`${data.created} criados`);
