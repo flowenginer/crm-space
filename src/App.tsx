@@ -75,6 +75,12 @@ import RedirectLanding from "@/pages/RedirectLanding";
 import CallManagement from "@/pages/CallManagement";
 import WhatsAppCallback from "@/pages/WhatsAppCallback";
 
+// Support pages
+import SupportPage from "@/pages/SupportPage";
+import TicketDetailPage from "@/pages/TicketDetailPage";
+import SupportDashboard from "@/pages/SupportDashboard";
+import TechniciansManagement from "@/pages/TechniciansManagement";
+
 
 // Platform Admin Pages
 import {
@@ -358,6 +364,28 @@ const App = () => (
                 <ProtectedRoute permission="channels.view">
                   <Redirect />
                 </ProtectedRoute>
+              } />
+              
+              {/* Support routes */}
+              <Route path="/suporte" element={
+                <ProtectedRoute permission="support.view">
+                  <SupportPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/suporte/:ticketId" element={
+                <ProtectedRoute permission="support.view">
+                  <TicketDetailPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/suporte" element={
+                <ProtectedRoute permission="support.manage">
+                  <SupportDashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/suporte/tecnicos" element={
+                <SuperAdminGuard>
+                  <TechniciansManagement />
+                </SuperAdminGuard>
               } />
             </Route>
 
