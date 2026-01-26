@@ -940,7 +940,7 @@ async function syncContacts(
   return { counts, errors, preview };
 }
 
-// Sync Products
+// Sync Products - handles both parent products and variations
 async function syncProducts(
   supabase: any, 
   tenantId: string, 
@@ -978,68 +978,145 @@ async function syncProducts(
         if (blingProducts.length < 100) hasMore = false;
       }
 
-      console.log(`[bling-sync] Found ${allBlingProducts.length} products in Bling`);
+      console.log(`[bling-sync] Found ${allBlingProducts.length} total items in Bling`);
+
+      // CRITICAL: Separate parent products from variations
+      // A variation has variacao.produtoPai defined
+      const parentProducts: BlingProduct[] = [];
+      const variations: BlingProduct[] = [];
+      const parentBlingIds = new Set<number>();
+
+      for (const product of allBlingProducts) {
+        if (product.variacao?.produtoPai?.id) {
+          // This is a variation - it has a parent
+          variations.push(product);
+          parentBlingIds.add(product.variacao.produtoPai.id);
+        } else {
+          // This is a parent product (or standalone product without variations)
+          parentProducts.push(product);
+        }
+      }
+
+      console.log(`[bling-sync] Separated: ${parentProducts.length} parent products, ${variations.length} variations`);
+      console.log(`[bling-sync] Parent IDs with variations: ${[...parentBlingIds].join(', ')}`);
 
       // Get all existing mappings in batch for performance
-      const { data: existingMappings } = await supabase
+      const { data: existingProductMappings } = await supabase
         .from("bling_id_mappings")
         .select("local_id, bling_id")
         .eq("tenant_id", tenantId)
         .eq("entity_type", "product");
 
-      const mappingsByBlingId = new Map((existingMappings || []).map((m: any) => [m.bling_id, m.local_id]));
+      const { data: existingVariationMappings } = await supabase
+        .from("bling_id_mappings")
+        .select("local_id, bling_id")
+        .eq("tenant_id", tenantId)
+        .eq("entity_type", "variation");
 
-      // Get all SKUs for duplicate check
+      const productMappingsByBlingId = new Map<string, string>((existingProductMappings || []).map((m: any) => [m.bling_id, m.local_id]));
+      const variationMappingsByBlingId = new Map<string, string>((existingVariationMappings || []).map((m: any) => [m.bling_id, m.local_id]));
+
+      // Get all existing products and variations for duplicate check
       const { data: existingProducts } = await supabase
         .from("products")
-        .select("id, sku")
+        .select("id, sku, name")
         .eq("tenant_id", tenantId);
 
-      const productsBySku = new Map((existingProducts || []).filter((p: any) => p.sku).map((p: any) => [p.sku, p.id]));
+      const { data: existingVariations } = await supabase
+        .from("product_variations")
+        .select("id, sku, product_id")
+        .eq("tenant_id", tenantId);
 
-      // Filter products based on mode and selection
-      let productsToProcess = allBlingProducts;
+      const productsBySku = new Map<string, string>((existingProducts || []).filter((p: any) => p.sku).map((p: any) => [p.sku, p.id]));
+      const variationsBySku = new Map<string, string>((existingVariations || []).filter((v: any) => v.sku).map((v: any) => [v.sku, v.id]));
+
+      // Filter based on selection if provided
+      let parentsToProcess = parentProducts;
+      let variationsToProcess = variations;
       
-      // If selected_ids provided, filter to only those
       if (selectedIds && selectedIds.length > 0) {
-        productsToProcess = allBlingProducts.filter(p => selectedIds.includes(String(p.id)));
-        console.log(`[bling-sync] Filtered to ${productsToProcess.length} selected products`);
+        // Selected IDs can include both parent and variation Bling IDs
+        const selectedSet = new Set(selectedIds);
+        parentsToProcess = parentProducts.filter(p => selectedSet.has(String(p.id)));
+        
+        // For variations, also include if the parent was selected
+        variationsToProcess = variations.filter(v => 
+          selectedSet.has(String(v.id)) || 
+          selectedSet.has(String(v.variacao?.produtoPai?.id))
+        );
+        
+        console.log(`[bling-sync] Filtered to ${parentsToProcess.length} selected parents, ${variationsToProcess.length} variations`);
       }
 
-      // Preview mode - return product list with status
+      // Preview mode - return product list with hierarchical status
       if (previewOnly) {
-        for (const blingProduct of productsToProcess) {
-          const existsLocally = mappingsByBlingId.has(String(blingProduct.id)) || 
-                               (blingProduct.codigo && productsBySku.has(blingProduct.codigo));
+        // Group variations by parent for preview
+        const variationsByParent = new Map<number, BlingProduct[]>();
+        for (const variation of variationsToProcess) {
+          const parentId = variation.variacao?.produtoPai?.id;
+          if (parentId) {
+            if (!variationsByParent.has(parentId)) {
+              variationsByParent.set(parentId, []);
+            }
+            variationsByParent.get(parentId)!.push(variation);
+          }
+        }
+
+        for (const parent of parentsToProcess) {
+          const existsLocally = productMappingsByBlingId.has(String(parent.id)) || 
+                               (parent.codigo && productsBySku.has(parent.codigo));
           
-          // Apply import mode filter for preview
           if (importMode === "new_only" && existsLocally) continue;
           if (importMode === "update_existing" && !existsLocally) continue;
 
+          const childVariations = variationsByParent.get(parent.id) || [];
+          
           preview.push({
-            id: String(blingProduct.id),
-            bling_id: String(blingProduct.id),
-            nome: blingProduct.nome,
-            codigo: blingProduct.codigo,
-            preco: blingProduct.preco,
+            id: String(parent.id),
+            bling_id: String(parent.id),
+            nome: parent.nome,
+            codigo: parent.codigo,
+            preco: parent.preco,
             exists_locally: existsLocally,
             isNew: !existsLocally,
+            isParent: true,
+            hasVariations: childVariations.length > 0,
+            variationCount: childVariations.length,
+            variations: childVariations.map(v => ({
+              id: String(v.id),
+              nome: v.variacao?.nome || v.nome,
+              codigo: v.codigo,
+              preco: v.preco,
+            })),
           });
         }
-        console.log(`[bling-sync] Preview: ${preview.length} products ready for import`);
+        
+        console.log(`[bling-sync] Preview: ${preview.length} parent products ready for import`);
         return { counts, errors, preview };
       }
 
-      // Actual import
-      for (const blingProduct of productsToProcess) {
+      // === STEP 1: Import Parent Products ===
+      console.log(`[bling-sync] Step 1: Importing ${parentsToProcess.length} parent products...`);
+      
+      // Map to track Bling parent ID -> local product ID (for linking variations later)
+      const blingToLocalProductId = new Map<number, string>();
+      
+      // Also load existing mappings into this map
+      for (const [blingId, localId] of productMappingsByBlingId.entries()) {
+        blingToLocalProductId.set(Number(blingId), localId as string);
+      }
+
+      for (const blingProduct of parentsToProcess) {
         try {
-          const existingLocalId = mappingsByBlingId.get(String(blingProduct.id));
+          const existingLocalId = productMappingsByBlingId.get(String(blingProduct.id));
           const existingBySku = blingProduct.codigo ? productsBySku.get(blingProduct.codigo) : null;
           const existsLocally = existingLocalId || existingBySku;
 
-          // Apply import mode filter
           if (importMode === "new_only" && existsLocally) {
             counts.skipped++;
+            // Still track for variation linking
+            if (existingLocalId) blingToLocalProductId.set(blingProduct.id, existingLocalId as string);
+            if (existingBySku) blingToLocalProductId.set(blingProduct.id, existingBySku as string);
             continue;
           }
           if (importMode === "update_existing" && !existsLocally) {
@@ -1047,7 +1124,10 @@ async function syncProducts(
             continue;
           }
 
-          // Build complete product data with all fields mapped
+          // Check if this parent has variations
+          const hasVariations = parentBlingIds.has(blingProduct.id) || 
+                               variations.some(v => v.variacao?.produtoPai?.id === blingProduct.id);
+
           const productData: any = {
             name: blingProduct.nome,
             sku: blingProduct.codigo || null,
@@ -1060,6 +1140,7 @@ async function syncProducts(
             origem: blingProduct.origem || null,
             is_active: blingProduct.situacao === "A",
             tenant_id: tenantId,
+            has_variations: hasVariations,
             // Extended fields
             gtin: blingProduct.gtin || null,
             gtin_tributavel: blingProduct.gtinEmbalagem || null,
@@ -1067,39 +1148,27 @@ async function syncProducts(
             unidade_tributavel: blingProduct.unidadeCompra || blingProduct.unidade || 'UN',
             peso_liquido: blingProduct.pesoLiquido || null,
             peso_bruto: blingProduct.pesoBruto || null,
-            // Dimensions - Bling returns in cm
             width_cm: blingProduct.largura || null,
             height_cm: blingProduct.altura || null,
             length_cm: blingProduct.profundidade || null,
           };
 
           if (existingLocalId) {
-            // Update existing via mapping
-            await supabase
-              .from("products")
-              .update(productData)
-              .eq("id", existingLocalId);
+            await supabase.from("products").update(productData).eq("id", existingLocalId);
+            blingToLocalProductId.set(blingProduct.id, existingLocalId as string);
             counts.updated++;
           } else if (existingBySku) {
-            // Update existing via SKU match
-            await supabase
-              .from("products")
-              .update(productData)
-              .eq("id", existingBySku);
-
-            // Create mapping
-            await supabase
-              .from("bling_id_mappings")
-              .insert({
-                tenant_id: tenantId,
-                entity_type: "product",
-                local_id: existingBySku,
-                bling_id: String(blingProduct.id),
-                sync_direction: "bling_to_local",
-              });
+            await supabase.from("products").update(productData).eq("id", existingBySku);
+            await supabase.from("bling_id_mappings").insert({
+              tenant_id: tenantId,
+              entity_type: "product",
+              local_id: existingBySku,
+              bling_id: String(blingProduct.id),
+              sync_direction: "bling_to_local",
+            });
+            blingToLocalProductId.set(blingProduct.id, existingBySku as string);
             counts.updated++;
           } else {
-            // Create new product
             const { data: newProduct, error: insertError } = await supabase
               .from("products")
               .insert(productData)
@@ -1108,16 +1177,14 @@ async function syncProducts(
 
             if (insertError) throw new Error(insertError.message);
 
-            // Create mapping
-            await supabase
-              .from("bling_id_mappings")
-              .insert({
-                tenant_id: tenantId,
-                entity_type: "product",
-                local_id: newProduct.id,
-                bling_id: String(blingProduct.id),
-                sync_direction: "bling_to_local",
-              });
+            await supabase.from("bling_id_mappings").insert({
+              tenant_id: tenantId,
+              entity_type: "product",
+              local_id: newProduct.id,
+              bling_id: String(blingProduct.id),
+              sync_direction: "bling_to_local",
+            });
+            blingToLocalProductId.set(blingProduct.id, newProduct.id);
             counts.created++;
           }
         } catch (error) {
@@ -1126,8 +1193,134 @@ async function syncProducts(
           counts.errors++;
         }
       }
+
+      console.log(`[bling-sync] Parent products done: ${counts.created} created, ${counts.updated} updated`);
+
+      // === STEP 2: Import Variations ===
+      console.log(`[bling-sync] Step 2: Importing ${variationsToProcess.length} variations...`);
       
-      console.log(`[bling-sync] Products processed: ${counts.created} created, ${counts.updated} updated, ${counts.skipped} skipped, ${counts.errors} errors`);
+      let variationsCreated = 0;
+      let variationsUpdated = 0;
+      let variationsSkipped = 0;
+
+      for (const variation of variationsToProcess) {
+        try {
+          const parentBlingId = variation.variacao?.produtoPai?.id;
+          if (!parentBlingId) {
+            console.log(`[bling-sync] Skipping variation ${variation.id} - no parent ID`);
+            variationsSkipped++;
+            continue;
+          }
+
+          // Find local product ID for this parent
+          let localProductId = blingToLocalProductId.get(parentBlingId);
+          
+          // If parent wasn't just imported, check existing mappings
+          if (!localProductId) {
+            const parentMapping = productMappingsByBlingId.get(String(parentBlingId));
+            if (parentMapping) {
+              localProductId = parentMapping as string;
+              blingToLocalProductId.set(parentBlingId, parentMapping as string);
+            }
+          }
+
+          if (!localProductId) {
+            console.log(`[bling-sync] Skipping variation ${variation.id} - parent ${parentBlingId} not found locally`);
+            variationsSkipped++;
+            continue;
+          }
+
+          const existingVarLocalId = variationMappingsByBlingId.get(String(variation.id));
+          const existingVarBySku = variation.codigo ? variationsBySku.get(variation.codigo) : null;
+          const varExistsLocally = existingVarLocalId || existingVarBySku;
+
+          if (importMode === "new_only" && varExistsLocally) {
+            variationsSkipped++;
+            continue;
+          }
+          if (importMode === "update_existing" && !varExistsLocally) {
+            variationsSkipped++;
+            continue;
+          }
+
+          // Parse variation attributes from the name (e.g., "COR:VERDE;TAMANHO:M")
+          const attributes: Record<string, string> = {};
+          const variationName = variation.variacao?.nome || '';
+          
+          if (variationName) {
+            // Parse format like "COR:VERDE;TAMANHO:M" or "TAMANHO:G"
+            const parts = variationName.split(';');
+            for (const part of parts) {
+              const [key, value] = part.split(':').map(s => s?.trim());
+              if (key && value) {
+                attributes[key] = value;
+              }
+            }
+          }
+
+          const variationData: any = {
+            tenant_id: tenantId,
+            product_id: localProductId,
+            sku: variation.codigo || `VAR-${variation.id}`,
+            barcode: variation.gtin || null,
+            variation_name: variationName || variation.nome,
+            attributes: attributes,
+            price: variation.preco || null,
+            price_override: variation.preco ? true : false,
+            cost_price: variation.precoCusto || null,
+            weight_kg: variation.pesoLiquido ? variation.pesoLiquido / 1000 : 0,
+            height_cm: variation.altura || 0,
+            width_cm: variation.largura || 0,
+            length_cm: variation.profundidade || 0,
+            image_url: variation.imagemURL || null,
+            is_active: variation.situacao === "A",
+          };
+
+          if (existingVarLocalId) {
+            await supabase.from("product_variations").update(variationData).eq("id", existingVarLocalId);
+            variationsUpdated++;
+          } else if (existingVarBySku) {
+            await supabase.from("product_variations").update(variationData).eq("id", existingVarBySku);
+            await supabase.from("bling_id_mappings").insert({
+              tenant_id: tenantId,
+              entity_type: "variation",
+              local_id: existingVarBySku,
+              bling_id: String(variation.id),
+              sync_direction: "bling_to_local",
+            });
+            variationsUpdated++;
+          } else {
+            const { data: newVariation, error: varInsertError } = await supabase
+              .from("product_variations")
+              .insert(variationData)
+              .select("id")
+              .single();
+
+            if (varInsertError) throw new Error(varInsertError.message);
+
+            await supabase.from("bling_id_mappings").insert({
+              tenant_id: tenantId,
+              entity_type: "variation",
+              local_id: newVariation.id,
+              bling_id: String(variation.id),
+              sync_direction: "bling_to_local",
+            });
+            variationsCreated++;
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          errors.push({ entity: "variation", message: msg, details: variation.nome });
+          counts.errors++;
+        }
+      }
+
+      // Add variation counts to totals
+      counts.created += variationsCreated;
+      counts.updated += variationsUpdated;
+      counts.skipped += variationsSkipped;
+      
+      console.log(`[bling-sync] Variations done: ${variationsCreated} created, ${variationsUpdated} updated, ${variationsSkipped} skipped`);
+      console.log(`[bling-sync] Total: ${counts.created} created, ${counts.updated} updated, ${counts.skipped} skipped, ${counts.errors} errors`);
     }
 
     // Export from Local to Bling
