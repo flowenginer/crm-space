@@ -370,8 +370,25 @@ async function refreshToken(supabase: any, tenantId: string, config: any) {
   }
 }
 
-// Helper for Bling API calls
-async function blingApi(endpoint: string, accessToken: string, method = "GET", body?: any) {
+// Rate limiting: Bling API allows max 3 requests per second
+// We use a simple delay to avoid hitting the limit
+const BLING_RATE_LIMIT_DELAY = 350; // 350ms between requests = ~2.8 req/sec (safe margin)
+let lastBlingRequestTime = 0;
+
+async function waitForRateLimit() {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastBlingRequestTime;
+  if (timeSinceLastRequest < BLING_RATE_LIMIT_DELAY) {
+    const waitTime = BLING_RATE_LIMIT_DELAY - timeSinceLastRequest;
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  lastBlingRequestTime = Date.now();
+}
+
+// Helper for Bling API calls with rate limiting and retry
+async function blingApi(endpoint: string, accessToken: string, method = "GET", body?: any, retries = 3): Promise<any> {
+  await waitForRateLimit();
+  
   const response = await fetch(`${BLING_API_URL}${endpoint}`, {
     method,
     headers: {
@@ -381,6 +398,15 @@ async function blingApi(endpoint: string, accessToken: string, method = "GET", b
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+
+  // Handle rate limit (429) with exponential backoff
+  if (response.status === 429 && retries > 0) {
+    const retryAfter = parseInt(response.headers.get("Retry-After") || "2", 10);
+    const waitTime = Math.max(retryAfter * 1000, 2000) * (4 - retries); // Exponential backoff
+    console.log(`[bling-sync] Rate limited (429), waiting ${waitTime}ms before retry (${retries} retries left)`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+    return blingApi(endpoint, accessToken, method, body, retries - 1);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
