@@ -4394,6 +4394,83 @@ export type Database = {
           },
         ]
       }
+      lead_analysis: {
+        Row: {
+          analyzed_at: string | null
+          contact_id: string
+          conversation_id: string
+          created_at: string | null
+          ddd: string | null
+          estado: string | null
+          fechou_venda: boolean | null
+          id: string
+          modelos: Json | null
+          phone: string | null
+          quantidade_camisas: number | null
+          segment_id: string | null
+          segment_name: string | null
+        }
+        Insert: {
+          analyzed_at?: string | null
+          contact_id: string
+          conversation_id: string
+          created_at?: string | null
+          ddd?: string | null
+          estado?: string | null
+          fechou_venda?: boolean | null
+          id?: string
+          modelos?: Json | null
+          phone?: string | null
+          quantidade_camisas?: number | null
+          segment_id?: string | null
+          segment_name?: string | null
+        }
+        Update: {
+          analyzed_at?: string | null
+          contact_id?: string
+          conversation_id?: string
+          created_at?: string | null
+          ddd?: string | null
+          estado?: string | null
+          fechou_venda?: boolean | null
+          id?: string
+          modelos?: Json | null
+          phone?: string | null
+          quantidade_camisas?: number | null
+          segment_id?: string | null
+          segment_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_analysis_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_analysis_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_analysis_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_analysis_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "segments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_assignment_history: {
         Row: {
           assigned_at: string
