@@ -5487,7 +5487,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             
                             sendMessage.mutate({
                               conversation_id: selectedConversationId,
-                              content: mediaName || '',
+                              content: '',
                               is_from_me: true,
                               message_type: messageType,
                               media_url: fullMediaUrl,
