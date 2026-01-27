@@ -5003,7 +5003,7 @@ export type Database = {
           media_type?: string | null
           media_url?: string | null
           shortcut?: string | null
-          tenant_id?: string
+          tenant_id: string
           title: string
           updated_at?: string
           usage_count?: number | null
@@ -9503,7 +9503,7 @@ export type Database = {
           id?: string
           name: string
           parent_id?: string | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           color?: string | null
@@ -10003,7 +10003,7 @@ export type Database = {
           id?: string
           position: number
           template_id: string
-          tenant_id?: string
+          tenant_id: string
           user_id: string
         }
         Update: {
