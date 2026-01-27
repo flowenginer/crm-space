@@ -1,67 +1,105 @@
 
-# Plano: Corrigir RLS de message_templates para INSERT
+# Plano: Corrigir Salvamento de Templates no Tenant Escola Master
 
-## Problema
+## Diagnóstico Confirmado
 
-A politica `Tenant isolation for message_templates` esta configurada como **RESTRICTIVE** mas falta a clausula `WITH CHECK`, o que bloqueia todas as operacoes de INSERT e UPDATE.
+O erro acontece devido a uma combinação de três fatores:
 
-### Situacao Atual
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                     FLUXO DO PROBLEMA                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Frontend envia INSERT sem tenant_id                         │
+│           ▼                                                     │
+│  2. Banco aplica DEFAULT: '00000000...0001' (Space Sports)      │
+│           ▼                                                     │
+│  3. Trigger vê tenant_id != NULL → retorna sem alterar          │
+│           ▼                                                     │
+│  4. RLS WITH CHECK: tenant_id = get_user_tenant_id()            │
+│           ▼                                                     │
+│  5. FALHA: Space Sports != Escola Master                        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-| Politica | Tipo | QUAL (SELECT) | WITH CHECK (INSERT/UPDATE) |
-|----------|------|---------------|---------------------------|
-| Authenticated access | PERMISSIVE | `auth.uid() IS NOT NULL` | (nenhum) |
-| Tenant isolation | RESTRICTIVE | `tenant_id = get_user_tenant_id()` | (nenhum) - **CAUSA DO ERRO** |
+### Por que funciona no Space Sports?
 
-Quando uma politica RESTRICTIVE nao tem `WITH CHECK`, o PostgreSQL bloqueia automaticamente todas as escritas.
+O default aponta para Space Sports (`00000000-0000-0000-0000-000000000001`), então:
+- Usuario Space Sports insere template
+- Default aplica tenant_id = Space Sports  
+- RLS verifica: Space Sports = Space Sports → OK
+
+### Por que falha no Escola Master?
+
+- Usuario Escola Master insere template
+- Default aplica tenant_id = Space Sports (errado!)
+- RLS verifica: Space Sports != Escola Master → BLOQUEADO
 
 ---
 
 ## Solucao
 
-Recriar a politica de tenant isolation com `WITH CHECK` para permitir INSERT/UPDATE de templates dentro do tenant do usuario.
+Remover o default da coluna `tenant_id` para que o trigger possa atribuir o tenant correto automaticamente.
 
 ### SQL da Migracao
 
 ```sql
--- Remover politica atual (sem WITH CHECK)
-DROP POLICY IF EXISTS "Tenant isolation for message_templates" ON public.message_templates;
-
--- Recriar com WITH CHECK para permitir INSERT/UPDATE
-CREATE POLICY "Tenant isolation for message_templates"
-ON public.message_templates
-AS RESTRICTIVE
-FOR ALL
-TO authenticated
-USING (tenant_id = get_user_tenant_id())
-WITH CHECK (tenant_id = get_user_tenant_id());
+-- Remover o default que esta causando o problema
+ALTER TABLE public.message_templates 
+ALTER COLUMN tenant_id DROP DEFAULT;
 ```
 
 ---
 
-## Resultado Esperado
+## Fluxo Corrigido
 
-Apos a correcao:
-- SELECT: Usuarios podem ver apenas templates do seu tenant
-- INSERT: Usuarios podem criar templates (trigger `set_tenant_id_from_user` preenchera o tenant_id automaticamente)
-- UPDATE: Usuarios podem editar templates do seu tenant
-- DELETE: Usuarios podem deletar templates do seu tenant
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                     FLUXO CORRIGIDO                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Frontend envia INSERT sem tenant_id                         │
+│           ▼                                                     │
+│  2. tenant_id = NULL (sem default)                              │
+│           ▼                                                     │
+│  3. Trigger detecta NULL → busca tenant do usuario              │
+│           ▼                                                     │
+│  4. Trigger atribui: tenant_id = Escola Master                  │
+│           ▼                                                     │
+│  5. RLS WITH CHECK: Escola Master = Escola Master → OK          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Tabelas Afetadas pela Mesma Correção
+
+Alem de `message_templates`, as seguintes tabelas também têm o mesmo problema potencial e devem ter o default removido:
+
+| Tabela | Default Atual |
+|--------|---------------|
+| message_templates | 00000000...0001 |
+| template_folders | 00000000...0001 |
+| user_quick_templates | 00000000...0001 |
 
 ---
 
 ## Arquivos Modificados
 
-| Arquivo | Acao |
+| Arquivo | Ação |
 |---------|------|
-| Nova migracao SQL | Criar politica com WITH CHECK |
+| Nova migração SQL | Remover DEFAULT de tenant_id |
 
-Nenhum arquivo de codigo precisa ser alterado - o hook `useCreateTemplate` ja esta correto.
+Nenhuma alteração no código frontend é necessária - o trigger já cuida de atribuir o tenant correto quando o default não interfere.
 
 ---
 
-## Validacao
+## Validação
 
-Apos aprovar a migracao:
-1. Usuario "master" acessa Mensagens Rapidas
-2. Grava um audio ou digita uma mensagem
-3. Clica em Salvar
-4. Template deve ser criado com sucesso
+Após aprovar a migração:
+1. Usuario da Escola Master acessa Mensagens Rápidas
+2. Grava um áudio ou digita uma mensagem
+3. Clica em Criar Template
+4. Template é criado com sucesso no tenant correto
