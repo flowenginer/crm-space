@@ -98,10 +98,14 @@ export function useCreateCloudAPIConfig() {
         is_active: true,
       };
 
+      // Usar UPSERT para atualizar se já existe (resolve constraint duplicate key)
       const { data, error } = await supabase
         .from('cloudapi_configs')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .insert([insertData as any])
+        .upsert(insertData as any, { 
+          onConflict: 'tenant_id,phone_number_id',
+          ignoreDuplicates: false 
+        })
         .select()
         .single();
 
