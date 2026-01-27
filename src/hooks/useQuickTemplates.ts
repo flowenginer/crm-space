@@ -86,14 +86,14 @@ export function useAddQuickTemplate() {
 
         if (error) throw error;
       } else {
-        // Insert new
+        // Insert new - tenant_id will be set automatically by database trigger
         const { error } = await supabase
           .from('user_quick_templates')
           .insert({
             user_id: currentUser.id,
             template_id: templateId,
             position,
-          });
+          } as any);
 
         if (error) throw error;
       }
@@ -154,12 +154,13 @@ export function useSwapQuickTemplatePosition() {
           .eq('user_id', currentUser.id)
           .in('position', [fromPosition, toPosition]);
 
+        // Insert with swapped positions - tenant_id will be set automatically by database trigger
         await supabase
           .from('user_quick_templates')
           .insert([
             { user_id: currentUser.id, template_id: fromTemplate.template_id, position: toPosition },
             { user_id: currentUser.id, template_id: toTemplate.template_id, position: fromPosition },
-          ]);
+          ] as any);
       } else if (fromTemplate) {
         // Just move fromTemplate to toPosition
         await supabase

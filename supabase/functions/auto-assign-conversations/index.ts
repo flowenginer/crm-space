@@ -58,16 +58,55 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Extract JWT to get user's tenant_id
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Authorization header required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      console.error('[AutoAssign] Auth error:', authError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get user's tenant_id from profiles
+    const { data: userProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !userProfile?.tenant_id) {
+      console.error('[AutoAssign] Profile error:', profileError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Could not determine tenant' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const tenantId = userProfile.tenant_id;
+    console.log(`[AutoAssign] User ${user.id} from tenant ${tenantId}`);
+
     const { mode = 'preview', limit, action, startOffset = 0, processAll = false } = await req.json().catch(() => ({}));
     
     console.log(`[AutoAssign] ========== INÍCIO ==========`);
-    console.log(`[AutoAssign] Modo: ${mode}, Limite: ${limit || 'SEM LIMITE'}, Ação: ${action || 'assign'}, Offset inicial: ${startOffset}, ProcessAll: ${processAll}`);
+    console.log(`[AutoAssign] Modo: ${mode}, Limite: ${limit || 'SEM LIMITE'}, Ação: ${action || 'assign'}, Offset inicial: ${startOffset}, ProcessAll: ${processAll}, Tenant: ${tenantId}`);
 
-    // Se a ação for apenas listar usuários
+    // Se a ação for apenas listar usuários - FILTRAR POR TENANT
     if (action === 'list-users') {
       const { data: users, error: usersError } = await supabase
         .from('profiles')
         .select('id, full_name, department_id')
+        .eq('tenant_id', tenantId)
         .eq('is_active', true)
         .not('full_name', 'is', null);
 
@@ -78,7 +117,7 @@ Deno.serve(async (req) => {
 
       const validUsers = users?.filter(u => u.full_name && u.full_name.trim() !== '') || [];
       
-      console.log(`[AutoAssign] Encontrados ${validUsers.length} usuários ativos`);
+      console.log(`[AutoAssign] Encontrados ${validUsers.length} usuários ativos para tenant ${tenantId}`);
 
       return new Response(
         JSON.stringify({ 
@@ -93,10 +132,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Buscar todos os usuários ativos E disponíveis para criar o mapeamento dinâmico
+    // Buscar todos os usuários ativos E disponíveis para criar o mapeamento dinâmico - FILTRAR POR TENANT
     const { data: users, error: usersError } = await supabase
       .from('profiles')
       .select('id, full_name, department_id')
+      .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .eq('is_available', true)
       .not('full_name', 'is', null);
@@ -137,10 +177,11 @@ Deno.serve(async (req) => {
     console.log(`[AutoAssign] Mapa de usuários criado: ${Object.keys(userMap).length} entradas de ${users?.length || 0} usuários`);
     console.log(`[AutoAssign] Usuários disponíveis: ${users?.map(u => u.full_name).join(', ')}`);
 
-    // Contar total de conversas no banco (dependendo do modo processAll)
+    // Contar total de conversas no banco (dependendo do modo processAll) - FILTRAR POR TENANT
     let totalCountQuery = supabase
       .from('conversations')
       .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
       .eq('status', 'open');
     
     // Se não for processAll, filtra apenas conversas sem assigned_to
@@ -224,10 +265,11 @@ Deno.serve(async (req) => {
           break;
         }
 
-        // Buscar próximo batch de conversas
+        // Buscar próximo batch de conversas - FILTRAR POR TENANT
         let convQuery = supabase
           .from('conversations')
           .select('id, contact:contacts(id, full_name)')
+          .eq('tenant_id', tenantId)
           .eq('status', 'open')
           .order('last_message_at', { ascending: false })
           .range(offset, offset + BATCH_SIZE - 1);
@@ -405,10 +447,11 @@ Deno.serve(async (req) => {
           break;
         }
 
-        // Buscar próximo batch de conversas
+        // Buscar próximo batch de conversas - FILTRAR POR TENANT
         let convQuery = supabase
           .from('conversations')
           .select('id, contact:contacts(id, full_name)')
+          .eq('tenant_id', tenantId)
           .eq('status', 'open')
           .order('last_message_at', { ascending: false })
           .range(offset, offset + BATCH_SIZE - 1);

@@ -100,6 +100,7 @@ export function useCreateTemplate() {
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Insert template - tenant_id will be set automatically by database trigger
       const { data, error } = await supabase
         .from('message_templates')
         .insert({
@@ -114,7 +115,7 @@ export function useCreateTemplate() {
           content_blocks: template.content_blocks as unknown as Json || null,
           audio_first: template.audio_first || false,
           created_by: user?.id,
-        })
+        } as any)
         .select()
         .single();
 
@@ -198,9 +199,10 @@ export function useCreateTemplateFolder() {
 
   return useMutation({
     mutationFn: async (folder: { name: string; color?: string | null; parent_id?: string | null }) => {
+      // Insert folder - tenant_id will be set automatically by database trigger
       const { data, error } = await supabase
         .from('template_folders')
-        .insert(folder)
+        .insert(folder as any)
         .select()
         .single();
 
