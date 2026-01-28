@@ -6389,37 +6389,31 @@ export type Database = {
       }
       pedidos_status: {
         Row: {
-          atualizado_em: string | null
+          created_at: string | null
+          data_entrega: string | null
           id: number
-          linha_planilha: number | null
           nome_cliente: string | null
-          notificado: boolean | null
           numero_pedido: number
           status: string | null
-          status_anterior: string | null
-          telefone: string | null
+          updated_at: string | null
         }
         Insert: {
-          atualizado_em?: string | null
-          id?: number
-          linha_planilha?: number | null
+          created_at?: string | null
+          data_entrega?: string | null
+          id: number
           nome_cliente?: string | null
-          notificado?: boolean | null
           numero_pedido: number
           status?: string | null
-          status_anterior?: string | null
-          telefone?: string | null
+          updated_at?: string | null
         }
         Update: {
-          atualizado_em?: string | null
+          created_at?: string | null
+          data_entrega?: string | null
           id?: number
-          linha_planilha?: number | null
           nome_cliente?: string | null
-          notificado?: boolean | null
           numero_pedido?: number
           status?: string | null
-          status_anterior?: string | null
-          telefone?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
