@@ -5103,7 +5103,7 @@ export type Database = {
           reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string | null
-          tenant_id?: string
+          tenant_id: string
           transcription?: string | null
           transcription_status?: string | null
           whatsapp_message_id?: string | null
