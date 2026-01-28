@@ -2523,7 +2523,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           can_transfer_freely?: boolean | null
