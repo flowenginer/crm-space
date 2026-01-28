@@ -67,6 +67,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [pendingContactForConversation, setPendingContactForConversation] = useState<{ id?: string; phone: string; full_name?: string } | null>(null);
   const [localNegotiatedValue, setLocalNegotiatedValue] = useState<string>('');
+  const [localShirtQuantity, setLocalShirtQuantity] = useState<string>('');
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [showCreateContactModal, setShowCreateContactModal] = useState(false);
   const [newContactName, setNewContactName] = useState('');
@@ -123,7 +124,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
             id, full_name, phone, email, avatar_url, is_online, is_typing,
             street, number, complement, neighborhood, city, state, zip_code,
             cpf_cnpj, notes, birth_date, first_contact_at, last_interaction_at, created_at,
-            origin, origin_campaign, referral_data, lead_status, assigned_to, negotiated_value, segment_id,
+            origin, origin_campaign, referral_data, lead_status, assigned_to, negotiated_value, segment_id, shirt_quantity,
             segment:segments(id, name, color),
             owner_agent:profiles!contacts_assigned_to_fkey(
               id, full_name, avatar_url
@@ -354,6 +355,37 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
     },
     onError: () => {
       toast.error('Erro ao atualizar valor');
+    }
+  });
+
+  // Mutation: Update shirt quantity
+  const updateShirtQuantity = useMutation({
+    mutationFn: async (value: number) => {
+      const contact = Array.isArray(conversation?.contact) 
+        ? conversation?.contact[0] 
+        : conversation?.contact;
+      
+      if (!contact?.id) throw new Error('No contact');
+      
+      const { error } = await supabase
+        .from('contacts')
+        .update({ 
+          shirt_quantity: value,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', contact.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversation-direct'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
+      toast.success('Quantidade de camisas atualizada!');
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar quantidade');
     }
   });
 
@@ -1533,6 +1565,57 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
           {contact?.negotiated_value > 0 && !localNegotiatedValue && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1.5">
               Valor atual: R$ {contact.negotiated_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          )}
+        </div>
+
+        {/* Quantidade de Camisas */}
+        <div className="p-3 border-b border-border bg-indigo-50/50 dark:bg-indigo-900/10">
+          <label className="block text-xs font-semibold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span className="text-base">👕</span>
+            Qtd. Camisas
+          </label>
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              value={localShirtQuantity || ((contact as any)?.shirt_quantity ?? '')}
+              onChange={(e) => setLocalShirtQuantity(e.target.value)}
+              className="h-10 text-sm font-medium border-indigo-200 dark:border-indigo-800 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="0"
+              min={0}
+              step={1}
+              disabled={updateShirtQuantity.isPending}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const value = parseInt(localShirtQuantity) || 0;
+                  updateShirtQuantity.mutate(value, {
+                    onSuccess: () => setLocalShirtQuantity('')
+                  });
+                }
+              }}
+            />
+            <Button
+              size="icon"
+              variant="default"
+              className="h-10 w-10 bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"
+              disabled={updateShirtQuantity.isPending || !localShirtQuantity}
+              onClick={() => {
+                const value = parseInt(localShirtQuantity) || 0;
+                updateShirtQuantity.mutate(value, {
+                  onSuccess: () => setLocalShirtQuantity('')
+                });
+              }}
+            >
+              {updateShirtQuantity.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
+          {(contact as any)?.shirt_quantity > 0 && !localShirtQuantity && (
+            <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1.5">
+              Quantidade atual: {(contact as any).shirt_quantity} camisas
             </p>
           )}
         </div>

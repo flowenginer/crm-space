@@ -1737,6 +1737,7 @@ export type Database = {
           phone: string
           referral_data: Json | null
           segment_id: string | null
+          shirt_quantity: number | null
           state: string | null
           street: string | null
           tenant_id: string
@@ -1777,6 +1778,7 @@ export type Database = {
           phone: string
           referral_data?: Json | null
           segment_id?: string | null
+          shirt_quantity?: number | null
           state?: string | null
           street?: string | null
           tenant_id: string
@@ -1817,6 +1819,7 @@ export type Database = {
           phone?: string
           referral_data?: Json | null
           segment_id?: string | null
+          shirt_quantity?: number | null
           state?: string | null
           street?: string | null
           tenant_id?: string
@@ -11388,6 +11391,50 @@ export type Database = {
           conversation_id: string
           lead_status: string
           waiting_minutes: number
+        }[]
+      }
+      get_lead_intelligence: {
+        Args: {
+          p_campaign?: string
+          p_date_from: string
+          p_date_to: string
+          p_segment_id?: string
+          p_state?: string
+        }
+        Returns: {
+          avg_ticket: number
+          campaign: string
+          conversion_rate: number
+          converted_leads: number
+          segment_id: string
+          segment_name: string
+          state: string
+          total_leads: number
+          total_revenue: number
+          total_shirts: number
+        }[]
+      }
+      get_lead_intelligence_by_segment: {
+        Args: { p_date_from: string; p_date_to: string; p_state?: string }
+        Returns: {
+          avg_ticket: number
+          conversion_rate: number
+          converted_leads: number
+          segment_id: string
+          segment_name: string
+          total_leads: number
+          total_revenue: number
+        }[]
+      }
+      get_lead_intelligence_by_state: {
+        Args: { p_date_from: string; p_date_to: string }
+        Returns: {
+          avg_ticket: number
+          conversion_rate: number
+          converted_leads: number
+          state: string
+          total_leads: number
+          total_revenue: number
         }[]
       }
       get_lead_journey_metrics: {
