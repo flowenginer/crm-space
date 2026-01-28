@@ -19,15 +19,21 @@ import { OriginBreakdownChart } from '@/components/dashboard/OriginBreakdownChar
 import { StatusFunnelRealtime } from '@/components/dashboard/StatusFunnelRealtime';
 import { StatusDurationChart } from '@/components/dashboard/StatusDurationChart';
 import { AgentPerformanceTableAdvanced } from '@/components/dashboard/AgentPerformanceTableAdvanced';
+import { LeadIntelligenceDashboard } from '@/components/dashboard/LeadIntelligenceDashboard';
 
 import { AdvancedFilters } from '@/components/dashboard/AdvancedFilters';
 import { InteractionChart } from '@/components/dashboard/InteractionChart';
 import { DashboardGrid, DashboardCardConfig } from '@/components/dashboard/DashboardGrid';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { BarChart3, Brain } from 'lucide-react';
 
 export default function Dashboard() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const { isAdmin, isFullyLoaded } = usePermissions();
+  
+  // Dashboard tab state
+  const [activeTab, setActiveTab] = useState('jornada');
   
   // Redireciona não-admins para /conversations
   useEffect(() => {
@@ -139,18 +145,42 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* Filters */}
-      <div className="animate-fade-in">
-        <AdvancedFilters
-          filters={filters}
-          onFiltersChange={setFilters}
-          agents={agents}
-          departments={departments}
-        />
-      </div>
+      {/* Tabs para alternar entre Jornada e Inteligência */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="jornada" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Jornada do Lead
+          </TabsTrigger>
+          <TabsTrigger value="inteligencia" className="flex items-center gap-2">
+            <Brain className="h-4 w-4" />
+            Inteligência
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Draggable Dashboard Grid */}
-      <DashboardGrid cards={dashboardCards} />
+        <TabsContent value="jornada" className="mt-6 space-y-6">
+          {/* Filters */}
+          <div className="animate-fade-in">
+            <AdvancedFilters
+              filters={filters}
+              onFiltersChange={setFilters}
+              agents={agents}
+              departments={departments}
+            />
+          </div>
+
+          {/* Draggable Dashboard Grid */}
+          <DashboardGrid cards={dashboardCards} />
+        </TabsContent>
+
+        <TabsContent value="inteligencia" className="mt-6">
+          {/* Lead Intelligence Dashboard */}
+          <LeadIntelligenceDashboard 
+            dateFrom={filters.dateFrom} 
+            dateTo={filters.dateTo} 
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
