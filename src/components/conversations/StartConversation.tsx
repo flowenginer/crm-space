@@ -548,7 +548,8 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
               first_contact_at: new Date().toISOString(),
               assigned_to: currentUser?.id,
               department_id: userDepartmentId,
-            })
+              // tenant_id is auto-filled by trigger set_tenant_id_from_user
+            } as any)
             .select()
             .single();
 

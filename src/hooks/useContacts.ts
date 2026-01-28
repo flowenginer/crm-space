@@ -218,7 +218,8 @@ export function useCreateContact() {
           country: contact.country || 'Brasil',
           person_type: contact.person_type || 'individual',
           origin: contact.origin || 'manual',
-        })
+          // tenant_id is auto-filled by trigger set_tenant_id_from_user
+        } as any)
         .select()
         .single();
 

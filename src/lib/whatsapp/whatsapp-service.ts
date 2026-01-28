@@ -275,7 +275,8 @@ class WhatsAppService {
             phone: msg.from,
             full_name: msg.fromName || msg.from,
             origin: 'whatsapp',
-          }, {
+            // tenant_id is auto-filled by trigger set_tenant_id_from_user
+          } as any, {
             onConflict: 'phone',
             ignoreDuplicates: false
           })

@@ -187,7 +187,8 @@ export function useImportContacts() {
                 full_name: row.nome.trim(),
                 phone: normalizedPhone,
                 state: identifiedState || null,
-              })
+                // tenant_id is auto-filled by trigger set_tenant_id_from_user
+              } as any)
               .select('id, full_name, phone, assigned_to, lead_status, state')
               .single();
             
