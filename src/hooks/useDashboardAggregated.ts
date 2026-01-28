@@ -44,9 +44,11 @@ export interface StatusFunnelPoint {
 
 const ORIGIN_CONFIG: Record<string, { label: string; color: string }> = {
   meta_ads: { label: 'Meta Ads', color: '#1877F2' },
+  ctwa_ad: { label: 'Meta Ads', color: '#1877F2' }, // Click-To-WhatsApp Ad from Cloud API
   organic: { label: 'Orgânico', color: '#22C55E' },
   linktree: { label: 'Linktree', color: '#39E09B' },
   manual: { label: 'Manual', color: '#8B5CF6' },
+  whatsapp: { label: 'WhatsApp Direto', color: '#25D366' },
   other: { label: 'Outros', color: '#6B7280' },
 };
 
