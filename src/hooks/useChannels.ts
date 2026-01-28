@@ -107,7 +107,7 @@ export function useCreateChannel() {
           department_id: channel.department_id || null,
           type: channel.type || 'unofficial',
           status: 'disconnected',
-        })
+        } as any)
         .select(`
           *,
           provider:whatsapp_providers(id, name, code, base_url, api_key, api_secret)

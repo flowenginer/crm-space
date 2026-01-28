@@ -213,7 +213,7 @@ export default function ImportInstancesModal({
               instance_token: (instance as any).token || null,
               status: instance.isConnected ? 'connected' : 'disconnected',
               last_sync_at: new Date().toISOString(),
-            })
+            } as any)
             .select()
             .single();
 

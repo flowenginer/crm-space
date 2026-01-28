@@ -80,7 +80,7 @@ export function useCreateChannelWithInstance() {
           qr_expires_at: result.qrCode 
             ? new Date(Date.now() + 60000).toISOString() 
             : null,
-        })
+        } as any)
         .select(`
           *,
           provider:whatsapp_providers(id, name, code)
