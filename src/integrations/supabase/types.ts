@@ -10409,7 +10409,7 @@ export type Database = {
           qr_expires_at?: string | null
           session_data?: Json | null
           status?: string | null
-          tenant_id?: string
+          tenant_id: string
           type?: string | null
           updated_at?: string
           webhook_url?: string | null
