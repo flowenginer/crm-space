@@ -1779,7 +1779,7 @@ export type Database = {
           segment_id?: string | null
           state?: string | null
           street?: string | null
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string
           zip_code?: string | null
         }
