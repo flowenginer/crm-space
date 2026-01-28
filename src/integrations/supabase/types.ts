@@ -6400,7 +6400,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           data_entrega?: string | null
-          id: number
+          id?: never
           nome_cliente?: string | null
           numero_pedido: number
           status?: string | null
@@ -6409,7 +6409,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           data_entrega?: string | null
-          id?: number
+          id?: never
           nome_cliente?: string | null
           numero_pedido?: number
           status?: string | null
