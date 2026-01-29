@@ -1,59 +1,60 @@
 
-# Plano de Correção: RLS "Tenant isolation for conversations"
+# Plano de Correção: Permissão de Transferência e Erros de Build
 
-## Diagnóstico
+## Resumo dos Problemas
 
-O erro ocorre porque a tabela `conversations` possui um **DEFAULT hardcoded** na coluna `tenant_id`:
+### 1. Permissão de Transferência
+O atendente Rainy não consegue transferir a conversa mesmo sendo o responsável pelo lead. A causa é que a definição de permissões do role "vendedor" no tenant "Escola Master" está incompleta - falta a permissão `conversations.transfer`.
 
-```sql
-column_default: '00000000-0000-0000-0000-000000000001'::uuid
-```
+### 2. Envio de Áudio (Beatriz)
+Boa notícia: a Beatriz **está conseguindo enviar áudios com sucesso**. Os registros mostram múltiplos envios recentes funcionando corretamente (status: `sent` e `delivered`). Não há erros nos logs das Edge Functions.
 
-### Fluxo do problema:
-1. Usuário do tenant "Escola Master" (ID: `664dfcb4-...`) clica em "Escolher canal"
-2. O código faz INSERT sem especificar `tenant_id`
-3. PostgreSQL aplica o DEFAULT → `tenant_id = 00000000-0000-0000-0000-000000000001` (master tenant)
-4. Os triggers encontram `tenant_id` já preenchido e não alteram
-5. A política RESTRICTIVE verifica: `tenant_id = get_user_tenant_id()`
-   - Lado esquerdo: `00000000-0000-0000-0000-000000000001`
-   - Lado direito: `664dfcb4-5432-4c14-9838-7db14360cabf`
-   - Resultado: **FALSE → INSERT bloqueado**
-
-## Solução
-
-Remover o DEFAULT hardcoded da coluna `tenant_id` para permitir que o trigger `set_tenant_id_from_user` funcione corretamente.
-
-### Migração SQL
-
-```sql
--- Remover DEFAULT hardcoded da coluna tenant_id
-ALTER TABLE conversations 
-ALTER COLUMN tenant_id DROP DEFAULT;
-```
-
-## Verificação Adicional
-
-Confirmar que o padrão de multi-tenant está aplicado em outras tabelas críticas que podem ter o mesmo problema.
+### 3. Erros de Build TypeScript
+Após a remoção dos DEFAULT de `tenant_id`, o schema TypeScript gerado pelo Supabase ficou incorreto, causando erros de tipagem em 9 arquivos.
 
 ---
 
-## Seção Técnica
+## Soluções
 
-### Tabelas Potencialmente Afetadas
+### Correção 1: Adicionar permissões de transferência ao role vendedor
 
-Além de `conversations`, é possível que outras tabelas tenham o mesmo DEFAULT hardcoded. Após aprovar este plano, verificarei e corrigirei:
-- `contacts`
-- `messages`
-- `whatsapp_channels`
-- Outras tabelas com `tenant_id`
+Atualizarei as permissões do role `vendedor` no tenant "Escola Master" para incluir:
+- `conversations.transfer: true`
+- `conversations.close: true`
+- `conversations.create: true`
+- `conversations.respond: true`
 
-### Pré-requisitos
-- Nenhuma alteração de código é necessária
-- A política RLS e os triggers já estão corretos
-- Apenas o DEFAULT precisa ser removido
+Isso será feito via migração SQL:
 
-### Testes
-Após a migração:
-1. Fazer logout e login no tenant "Escola Master"
-2. Tentar criar uma nova conversa selecionando um canal
-3. Verificar que a conversa é criada com o `tenant_id` correto
+```sql
+UPDATE role_definitions
+SET permissions = jsonb_set(
+  permissions,
+  '{conversations}',
+  '{"view": true, "create": true, "close": true, "transfer": true, "respond": true, "requests": false, "view_all": false, "view_unassigned": false}'::jsonb
+)
+WHERE role_key = 'vendedor' 
+AND tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf';
+```
+
+### Correção 2: Corrigir erros de TypeScript
+
+Os arquivos com erros precisam ter seus campos `tenant_id` ajustados para serem opcionais nas operações de INSERT. Arquivos afetados:
+- `src/components/contacts/WhatsAppImportModal.tsx`
+- `src/components/conversations/ConversationSidebar.tsx`
+- `src/components/conversations/StartConversation.tsx`
+- `src/components/crm/LeadKanban.tsx`
+- `src/hooks/useCallLogs.ts`
+- `src/hooks/useDeals.ts`
+- `src/hooks/useTags.ts`
+- `src/lib/whatsapp/whatsapp-service.ts`
+- `src/pages/Contacts.tsx`
+
+A correção será feita atualizando o `src/integrations/supabase/types.ts` para refletir que `tenant_id` é opcional nos INSERTs.
+
+---
+
+## Próximos Passos
+1. Aplicar migração para corrigir permissões do vendedor
+2. Corrigir tipos TypeScript para eliminar erros de build
+3. Solicitar que o usuário Rainy faça logout/login para atualizar as permissões em cache
