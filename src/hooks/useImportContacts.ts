@@ -228,16 +228,36 @@ export function useImportContacts() {
       const conversationsToUpdate: { id: string; assigned_to: string }[] = [];
       const stateTagCache: Record<string, string> = {};
 
-      // Helper to find profile by name (fuzzy)
+      // Helper to find profile by name (fuzzy - more flexible matching)
       const findProfileByName = (name: string): ProfileCache | null => {
         const searchTerm = name.toLowerCase().trim();
+        
         // Exact match first
         if (profilesByName.has(searchTerm)) {
           return profilesByName.get(searchTerm)!;
         }
-        // Partial match
+        
+        // Try matching without accents and special chars
+        const normalizeStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const normalizedSearch = normalizeStr(searchTerm);
+        
         for (const [key, profile] of profilesByName.entries()) {
-          if (key.includes(searchTerm) || searchTerm.includes(key)) {
+          const normalizedKey = normalizeStr(key);
+          
+          // Check if names match after normalization
+          if (normalizedKey === normalizedSearch) {
+            return profile;
+          }
+          
+          // Partial match - if search term is contained or contains the key
+          if (normalizedKey.includes(normalizedSearch) || normalizedSearch.includes(normalizedKey)) {
+            return profile;
+          }
+          
+          // First name match
+          const searchFirstName = normalizedSearch.split(/\s+/)[0];
+          const keyFirstName = normalizedKey.split(/\s+/)[0];
+          if (searchFirstName === keyFirstName && searchFirstName.length >= 3) {
             return profile;
           }
         }
@@ -443,13 +463,24 @@ export function useImportContacts() {
         }
       }
 
-      // Also update conversations lead_status if needed
-      const statusUpdates = contactsToUpdate.filter(u => u.data.lead_status);
-      if (statusUpdates.length > 0) {
-        for (const update of statusUpdates) {
+      // FIXED: Also update conversations with both lead_status AND assigned_to
+      const conversationUpdates = contactsToUpdate.filter(u => u.data.lead_status || u.data.assigned_to);
+      if (conversationUpdates.length > 0) {
+        console.log(`[Import] Updating ${conversationUpdates.length} conversations with assignee/status`);
+        
+        for (const update of conversationUpdates) {
+          const convUpdateData: any = {};
+          
+          if (update.data.lead_status) {
+            convUpdateData.lead_status = update.data.lead_status;
+          }
+          if (update.data.assigned_to) {
+            convUpdateData.assigned_to = update.data.assigned_to;
+          }
+          
           await supabase
             .from('conversations')
-            .update({ lead_status: update.data.lead_status })
+            .update(convUpdateData)
             .eq('contact_id', update.id)
             .eq('status', 'open');
         }
