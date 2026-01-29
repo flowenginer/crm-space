@@ -1,117 +1,193 @@
 
-
-# Plano de Correção: Importação de Contatos e Erro phone_number
+# Plano de Correção Completa: Importação de Contatos
 
 ## Problemas Identificados
 
-### Problema 1: Erro "column whatsapp_channels.phone_number does not exist"
+### 1. Status de Lead Não Encontrados
 
-Os logs do Postgres mostram esse erro repetidamente. A causa é que várias partes do código usam `phone_number` quando a coluna correta é `phone`.
+**Planilha vs Banco:**
+| Planilha | Banco | Match? |
+|----------|-------|--------|
+| `ATENDIMENTO` | `Atendimento` | ✅ (case fix) |
+| `ABORDAGEM SEM RESPOSTA` | ❌ Não existe | ❌ |
+| `AGENDAMENTO` | `Agendado` | ❌ Nome diferente |
+| `FORA DE PERFIL` | `Fora de perfil` | ✅ (case fix) |
+| `SEM INTERESSE` | `Sem Interesse` | ✅ (case fix) |
+| `(1) Pré-contato` | `02 - Pré-venda` | ❌ Nome diferente |
+| `(5) Oferta` | `05 - Orçamento` | ❌ Nome diferente |
+| `(2) Abordagem` | ❌ Não existe | ❌ |
 
-**Arquivos afetados:**
-| Arquivo | Linha | Query Incorreta |
-|---------|-------|-----------------|
-| `supabase/functions/api-send-message/index.ts` | 492 | `.select('id, name, phone_number')` |
-| `supabase/functions/cloudapi-webhook/index.ts` | 680 | `.select('id, name, phone_number')` |
-| `supabase/functions/cloudapi-send-message/index.ts` | 424 | `.select('id, name, phone_number')` |
-| `src/components/settings/CloudAPICallingSettings.tsx` | 46 | `phone_number` em join |
-| `src/components/webhooks/RestApiDocs.tsx` | 345, 383 | Documentação com nome errado |
+**Causa:** O algoritmo de matching não consegue mapear nomes muito diferentes.
 
-### Problema 2: Atendente não está sendo atribuído
-
-Analisando o fluxo, identifiquei que quando você seleciona um "Vendedor Padrão" no dropdown, o código atribui corretamente ao `defaultAssigneeId`. Porém:
-
-1. **Checkbox não marcado**: A atribuição de vendedor só funciona se a opção "Atualizar vendedor atribuído" estiver marcada
-2. **Contatos existentes sem conversa**: Para contatos existentes, o `assigned_to` é atualizado no contact, mas se não houver conversa aberta, o assigned_to não aparece na tela de conversas
-
-### Problema 3: Importação travando em 60%
-
-O progresso 60% corresponde à **Fase 4: Batch Update de Contatos Existentes** (linha 451-487). O código faz updates **sequenciais** (um por um), o que é muito lento para listas grandes:
-
-```typescript
-// PROBLEMA: Update individual para cada contato
-for (const update of contactsToUpdate) {
-  await supabase.from('contacts').update(update.data).eq('id', update.id);
-}
-```
-
-Para 1629 contatos, isso pode significar 1629+ queries sequenciais, causando timeout ou lentidão extrema.
+**Solução:** Criar os status que não existem automaticamente durante a importação.
 
 ---
 
-## Solução Proposta
+### 2. Atendente "Beatriz" Não Atribuído
 
-### Correção 1: Trocar phone_number para phone nas Edge Functions
+O perfil `Beatriz` existe no banco (`id: e7a9fd22-e3ff-40b9-b01c-93549db399d0`).
 
-Corrigir todas as referências incorretas de `phone_number` para `phone`:
+**Causa provável:**
+- Na planilha a coluna é chamada `Agente`, mas o código procura `vendedor`
+- O mapeamento de colunas pode estar incorreto
 
-```typescript
-// ANTES (errado):
-.select('id, name, phone_number')
+**Solução:** 
+- Verificar o mapeamento de colunas no processamento da planilha
+- Garantir que `Agente` seja mapeado para `row.vendedor`
 
-// DEPOIS (correto):
-.select('id, name, phone')
+---
+
+### 3. Erro RLS ao Criar Tags
+
+```
+"Tenant isolation for tags" for table "tags"
 ```
 
-### Correção 2: Otimizar Updates em Batch
+**Causa:** A RLS policy não tem `WITH CHECK`, então inserts falham. A tabela `tags` tem `tenant_id` com default para master tenant, mas a RLS exige que seja igual ao tenant do usuário.
 
-Em vez de updates sequenciais, agrupar por dados iguais e fazer updates em lote:
+**Solução:** A função `findOrCreateTag` precisa definir `tenant_id` como `NULL` para deixar o trigger `set_tenant_id_from_user` preencher corretamente.
 
-```typescript
-// Agrupar contatos por dados de atualização
-const updateGroups = new Map<string, string[]>();
+---
 
-for (const update of contactsToUpdate) {
-  const key = JSON.stringify(update.data);
-  if (!updateGroups.has(key)) {
-    updateGroups.set(key, []);
-  }
-  updateGroups.get(key)!.push(update.id);
-}
+### 4. Criar Status/Tags Automaticamente
 
-// Fazer um update por grupo
-for (const [dataKey, ids] of updateGroups) {
-  const data = JSON.parse(dataKey);
-  await supabase
-    .from('contacts')
-    .update(data)
-    .in('id', ids);
-}
-```
-
-**Ganho esperado**: De ~1600 queries para ~10-50 queries (agrupando por mesmo assigned_to/lead_status).
-
-### Correção 3: Criar conversas para contatos sem conversa
-
-Quando um vendedor padrão é selecionado E um canal é selecionado, garantir que conversas sejam criadas para todos os contatos, não apenas os novos:
-
-```typescript
-// Após atribuir vendedor a contatos existentes, 
-// também criar/atualizar conversas se canal foi selecionado
-if (options.channelId && options.defaultAssigneeId) {
-  // Para cada contato atualizado, verificar se tem conversa no canal
-  // Se não tiver, criar; se tiver, atualizar assigned_to
-}
-```
+**Solução:** Implementar uma função `findOrCreateLeadStatus` similar à `findOrCreateTag`, que:
+1. Busca o status pelo nome (fuzzy matching)
+2. Se não encontrar, cria um novo status com o nome da planilha
 
 ---
 
 ## Arquivos a Modificar
 
-| Arquivo | Tipo | Alteração |
-|---------|------|-----------|
-| `supabase/functions/api-send-message/index.ts` | Modificar | Trocar `phone_number` → `phone` (linha 492) |
-| `supabase/functions/cloudapi-webhook/index.ts` | Modificar | Trocar `phone_number` → `phone` (linha 680) |
-| `supabase/functions/cloudapi-send-message/index.ts` | Modificar | Trocar `phone_number` → `phone` (linha 424) |
-| `src/components/settings/CloudAPICallingSettings.tsx` | Modificar | Trocar `phone_number` → `phone` (linha 46) |
-| `src/components/webhooks/RestApiDocs.tsx` | Modificar | Corrigir documentação |
-| `src/hooks/useImportContacts.ts` | Modificar | Otimizar batch updates + criar conversas para contatos existentes |
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/hooks/useTags.ts` | `findOrCreateTag`: definir `tenant_id` como `NULL` para evitar erro RLS |
+| `src/hooks/useImportContacts.ts` | Adicionar `findOrCreateLeadStatus` + melhorar matching de colunas |
+
+---
+
+## Alterações Técnicas
+
+### 1. Corrigir `findOrCreateTag` para RLS
+
+```typescript
+// src/hooks/useTags.ts
+export async function findOrCreateTag(name: string, preferredColor?: string) {
+  const existing = await findTagByName(name);
+  if (existing) return { ...existing, isNew: false };
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  const color = preferredColor || TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
+  
+  const { data, error } = await supabase
+    .from('tags')
+    .insert({ 
+      name: name.trim(), 
+      color, 
+      visibility: 'public',
+      created_by: user?.id,
+      tenant_id: null, // DEIXAR O TRIGGER PREENCHER!
+    } as any)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return { ...data, isNew: true };
+}
+```
+
+### 2. Adicionar `findOrCreateLeadStatus` 
+
+```typescript
+// src/hooks/useImportContacts.ts
+
+async function findOrCreateLeadStatus(
+  name: string, 
+  leadStatusesCache: Map<string, LeadStatusCache>
+): Promise<LeadStatusCache | null> {
+  // Primeiro tenta encontrar com matching fuzzy
+  const found = findLeadStatus(name);
+  if (found) return found;
+  
+  // Se não encontrou, criar novo status
+  const cleanName = name
+    .replace(/^\(\d+\)\s*/, '')
+    .replace(/^\d+\s*[-–]\s*/, '')
+    .trim();
+  
+  // Buscar próximo order_position
+  const { data: maxOrder } = await supabase
+    .from('lead_statuses')
+    .select('order_position')
+    .order('order_position', { ascending: false })
+    .limit(1)
+    .single();
+  
+  const nextOrder = (maxOrder?.order_position || 0) + 1;
+  
+  const { data, error } = await supabase
+    .from('lead_statuses')
+    .insert({
+      name: cleanName,
+      order_position: nextOrder,
+      color: '#8B5CF6',
+      is_active: true,
+      tenant_id: null, // Trigger preenche
+    } as any)
+    .select('id, name')
+    .single();
+  
+  if (error) {
+    console.error('Erro ao criar lead status:', error);
+    return null;
+  }
+  
+  // Adicionar ao cache
+  leadStatusesCache.set(cleanName.toLowerCase(), data);
+  return data;
+}
+```
+
+### 3. Melhorar Mapeamento de Colunas
+
+Garantir que colunas alternativas como `Agente` sejam mapeadas para `vendedor`:
+
+```typescript
+// No componente de importação (modal/form)
+// Mapear: Agente → vendedor
+const normalizedRow: ImportRow = {
+  nome: row.Nome || row.nome || '',
+  telefone: row.Contato || row.telefone || row.Telefone || '',
+  vendedor: row.Agente || row.vendedor || row.Vendedor || '',
+  etiquetas: row.Etiquetas || row.etiquetas || '',
+  statusLead: row['Status Lead'] || row.statusLead || row.StatusLead || '',
+};
+```
+
+---
+
+## Fluxo Corrigido
+
+```text
+1. Carregar planilha CSV
+   ↓
+2. Mapear colunas (Agente → vendedor, Status Lead → statusLead)
+   ↓
+3. Para cada linha:
+   ├── Buscar contato existente
+   ├── Encontrar vendedor por nome ("Beatriz" → e7a9fd22...)
+   ├── Encontrar ou CRIAR lead status
+   │   └── Se não existe "ABORDAGEM SEM RESPOSTA" → criar
+   ├── Encontrar ou CRIAR tags
+   │   └── Se não existe "(E2) Emprega Mais" → criar (com tenant_id = null)
+   └── Atribuir ao contato
+```
 
 ---
 
 ## Resultado Esperado
 
-1. **Erro phone_number eliminado**: Os erros contínuos nos logs desaparecerão
-2. **Atribuição funcional**: O vendedor será corretamente atribuído tanto em contacts quanto em conversations
-3. **Performance**: Importação de 1600+ contatos deve cair de 10+ minutos para menos de 1 minuto
-
+1. **Beatriz será atribuída** - coluna `Agente` mapeada corretamente
+2. **Status criados automaticamente** - "ABORDAGEM SEM RESPOSTA", "AGENDAMENTO", "(1) Pré-contato", etc.
+3. **Tags criadas sem erro RLS** - `tenant_id` gerenciado pelo trigger
+4. **Importação completa** - 0 erros "Status não encontrado"
