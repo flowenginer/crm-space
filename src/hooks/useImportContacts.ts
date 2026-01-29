@@ -264,10 +264,69 @@ export function useImportContacts() {
         return null;
       };
 
-      // Helper to find lead status by name
+      // Helper to find lead status by name (fuzzy matching with encoding fix)
       const findLeadStatus = (name: string): LeadStatusCache | null => {
-        const cleanTerm = name.replace(/^\d+\s*[-–]\s*/, '').trim().toLowerCase();
-        return leadStatusesCache.get(cleanTerm) || leadStatusesCache.get(name.toLowerCase()) || null;
+        // Fix common encoding issues (UTF-8 interpreted as Latin-1)
+        const fixEncoding = (s: string) => s
+          .replace(/Ã©/g, 'é').replace(/Ã¡/g, 'á').replace(/Ã£/g, 'ã')
+          .replace(/Ã³/g, 'ó').replace(/Ãº/g, 'ú').replace(/Ã§/g, 'ç')
+          .replace(/Ã/g, 'í').replace(/Ãª/g, 'ê').replace(/Ã´/g, 'ô');
+        
+        const fixedName = fixEncoding(name);
+        
+        // Clean numeric prefixes like "01 - ", "(1) ", etc
+        const cleanTerm = fixedName
+          .replace(/^\(\d+\)\s*/, '')  // Remove "(1) " prefix
+          .replace(/^\d+\s*[-–]\s*/, '') // Remove "01 - " prefix
+          .trim();
+        
+        // Normalize: lowercase, remove accents
+        const normalizeStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const normalizedSearch = normalizeStr(cleanTerm);
+        
+        // Try exact match first
+        if (leadStatusesCache.has(cleanTerm.toLowerCase())) {
+          return leadStatusesCache.get(cleanTerm.toLowerCase())!;
+        }
+        
+        // Fuzzy matching against all cached statuses
+        for (const [key, status] of leadStatusesCache.entries()) {
+          const normalizedKey = normalizeStr(key);
+          
+          // Exact normalized match
+          if (normalizedKey === normalizedSearch) {
+            return status;
+          }
+          
+          // Partial match (contains)
+          if (normalizedKey.includes(normalizedSearch) || normalizedSearch.includes(normalizedKey)) {
+            // Require minimum 4 chars to avoid false positives
+            if (normalizedSearch.length >= 4 || normalizedKey.length >= 4) {
+              return status;
+            }
+          }
+          
+          // Keywords matching for common status names
+          const keywords: Record<string, string[]> = {
+            'agendado': ['agendamento', 'agenda', 'agendad'],
+            'pre-venda': ['pre-contato', 'precontato', 'pre contato', 'prevenda'],
+            'abordagem': ['abordagem sem resposta', 'nao respondeu', 'não respondeu', 'sem resposta'],
+            'oferta': ['oferta', 'proposta'],
+            'qualificacao': ['qualificacao', 'qualificação'],
+          };
+          
+          for (const [statusKey, aliases] of Object.entries(keywords)) {
+            if (normalizedKey.includes(normalizeStr(statusKey))) {
+              for (const alias of aliases) {
+                if (normalizedSearch.includes(normalizeStr(alias)) || normalizeStr(alias).includes(normalizedSearch)) {
+                  return status;
+                }
+              }
+            }
+          }
+        }
+        
+        return null;
       };
 
       // Track processed contacts for this batch
