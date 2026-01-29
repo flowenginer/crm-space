@@ -165,7 +165,7 @@ export function WhatsAppImportModal({ open, onOpenChange, contact }: WhatsAppImp
             assigned_to: user?.id,
             is_unread: false,
             unread_count: 0,
-          })
+          } as any)
           .select('id')
           .single();
         

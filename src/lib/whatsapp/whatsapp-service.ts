@@ -324,7 +324,7 @@ class WhatsAppService {
             status: 'open',
             last_message_at: msg.timestamp.toISOString(),
             last_message_preview: msg.content.substring(0, 100),
-          })
+          } as any)
           .select('id')
           .single();
         conversation = newConversation;

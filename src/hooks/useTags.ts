@@ -141,7 +141,7 @@ export function useCreateTag() {
           visibility: tag.visibility || 'public',
           department_id: tag.visibility === 'department' ? tag.department_id : null,
           created_by: user?.id,
-        })
+        } as any)
         .select()
         .single();
 
