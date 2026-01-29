@@ -6,7 +6,7 @@ import { CalendarIcon, BarChart3, Settings } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { useEvaluationOverview, useAgentRanking, useObjectionsAnalysis, useScoreEvolution, useFunnelAnalysis, EvaluationDetail } from '@/hooks/useSalesEvaluations';
+import { useEvaluationOverview, useAgentRanking, useObjectionsAnalysis, useScoreEvolution, useFunnelAnalysis, EvaluationDetail, ObjectionAnalysis } from '@/hooks/useSalesEvaluations';
 import { useEvaluationTargets } from '@/hooks/useEvaluationTargets';
 import { usePeriodComparison } from '@/hooks/usePeriodComparison';
 import { EvaluationKPICards } from '@/components/sales-evaluation/EvaluationKPICards';
@@ -15,6 +15,7 @@ import { EvaluationRankingTable } from '@/components/sales-evaluation/Evaluation
 import { EvaluationDetailSheet } from '@/components/sales-evaluation/EvaluationDetailSheet';
 import { SalesFunnelChart } from '@/components/sales-evaluation/SalesFunnelChart';
 import { ObjectionsBarChart } from '@/components/sales-evaluation/ObjectionsBarChart';
+import { ObjectionDetailModal } from '@/components/sales-evaluation/ObjectionDetailModal';
 import { CommunicationRadar } from '@/components/sales-evaluation/CommunicationRadar';
 import { CriteriaRadar } from '@/components/sales-evaluation/CriteriaRadar';
 import { ScoreEvolutionChart } from '@/components/sales-evaluation/ScoreEvolutionChart';
@@ -32,6 +33,7 @@ export default function SalesEvaluationDashboard() {
   const [rankingMetric, setRankingMetric] = useState<RankingMetric>('avgScore');
   const [targetsModalOpen, setTargetsModalOpen] = useState(false);
   const [selectedEvaluation, setSelectedEvaluation] = useState<EvaluationDetail | null>(null);
+  const [selectedObjection, setSelectedObjection] = useState<ObjectionAnalysis | null>(null);
 
   const { data: overview, isLoading: overviewLoading } = useEvaluationOverview(dateRange.from, dateRange.to, filterAgentId);
   const { data: ranking, isLoading: rankingLoading } = useAgentRanking(dateRange.from, dateRange.to);
@@ -152,7 +154,11 @@ export default function SalesEvaluationDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <SalesFunnelChart data={funnel} isLoading={funnelLoading} />
-        <ObjectionsBarChart data={objections} isLoading={objectionsLoading} />
+        <ObjectionsBarChart 
+          data={objections} 
+          isLoading={objectionsLoading} 
+          onSelectObjection={setSelectedObjection}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -182,6 +188,12 @@ export default function SalesEvaluationDashboard() {
         evaluation={selectedEvaluation}
         open={!!selectedEvaluation}
         onOpenChange={(open) => !open && setSelectedEvaluation(null)}
+      />
+
+      <ObjectionDetailModal
+        objection={selectedObjection}
+        open={!!selectedObjection}
+        onOpenChange={(open) => !open && setSelectedObjection(null)}
       />
     </div>
   );
