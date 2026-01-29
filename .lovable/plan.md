@@ -1,60 +1,142 @@
 
-# Plano de Correção: Permissão de Transferência e Erros de Build
+# Plano: Fallback Local para LameJS
 
-## Resumo dos Problemas
+## Problema
+O áudio falha no computador da Beatriz porque o script lamejs carregado via CDN está sendo bloqueado (possivelmente por ad-blocker, firewall corporativo, ou cache corrompido). Quando o CDN falha, `window.lamejs` fica undefined e a conversão de áudio não funciona.
 
-### 1. Permissão de Transferência
-O atendente Rainy não consegue transferir a conversa mesmo sendo o responsável pelo lead. A causa é que a definição de permissões do role "vendedor" no tenant "Escola Master" está incompleta - falta a permissão `conversations.transfer`.
+## Solução
+Implementar um sistema de carregamento com fallback que:
+1. Primeiro tenta usar o lamejs global (CDN)
+2. Se falhar, carrega dinamicamente do bundle local (já instalado via npm)
 
-### 2. Envio de Áudio (Beatriz)
-Boa notícia: a Beatriz **está conseguindo enviar áudios com sucesso**. Os registros mostram múltiplos envios recentes funcionando corretamente (status: `sent` e `delivered`). Não há erros nos logs das Edge Functions.
+## Arquivos a Modificar
 
-### 3. Erros de Build TypeScript
-Após a remoção dos DEFAULT de `tenant_id`, o schema TypeScript gerado pelo Supabase ficou incorreto, causando erros de tipagem em 9 arquivos.
+### 1. Criar `src/lib/audio/lamejs-loader.ts` (novo arquivo)
+Módulo centralizador que gerencia o carregamento do lamejs com fallback:
 
----
+```typescript
+// Estratégia:
+// 1. Verificar se lamejs está disponível globalmente (CDN)
+// 2. Se não, carregar dinamicamente o módulo npm
+// 3. Cachear o resultado para chamadas subsequentes
 
-## Soluções
+let lamejsInstance: any = null;
+let loadingPromise: Promise<any> | null = null;
 
-### Correção 1: Adicionar permissões de transferência ao role vendedor
-
-Atualizarei as permissões do role `vendedor` no tenant "Escola Master" para incluir:
-- `conversations.transfer: true`
-- `conversations.close: true`
-- `conversations.create: true`
-- `conversations.respond: true`
-
-Isso será feito via migração SQL:
-
-```sql
-UPDATE role_definitions
-SET permissions = jsonb_set(
-  permissions,
-  '{conversations}',
-  '{"view": true, "create": true, "close": true, "transfer": true, "respond": true, "requests": false, "view_all": false, "view_unassigned": false}'::jsonb
-)
-WHERE role_key = 'vendedor' 
-AND tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf';
+export async function getLamejs(): Promise<any> {
+  // Se já carregou, retorna
+  if (lamejsInstance) return lamejsInstance;
+  
+  // Se está carregando, aguarda
+  if (loadingPromise) return loadingPromise;
+  
+  loadingPromise = (async () => {
+    // Tenta CDN primeiro
+    if ((window as any).lamejs?.Mp3Encoder) {
+      console.log('[LameJS] Using CDN version');
+      lamejsInstance = (window as any).lamejs;
+      return lamejsInstance;
+    }
+    
+    // Fallback para bundle local
+    console.log('[LameJS] CDN not available, loading from bundle...');
+    const lamejs = await import('lamejs');
+    lamejsInstance = lamejs.default || lamejs;
+    
+    // Disponibiliza globalmente também
+    (window as any).lamejs = lamejsInstance;
+    console.log('[LameJS] Loaded from bundle successfully');
+    
+    return lamejsInstance;
+  })();
+  
+  return loadingPromise;
+}
 ```
 
-### Correção 2: Corrigir erros de TypeScript
+### 2. Atualizar `src/lib/audio/mp3-encoder.ts`
+Substituir acesso direto ao `window.lamejs` pelo loader com fallback:
 
-Os arquivos com erros precisam ter seus campos `tenant_id` ajustados para serem opcionais nas operações de INSERT. Arquivos afetados:
-- `src/components/contacts/WhatsAppImportModal.tsx`
-- `src/components/conversations/ConversationSidebar.tsx`
-- `src/components/conversations/StartConversation.tsx`
-- `src/components/crm/LeadKanban.tsx`
-- `src/hooks/useCallLogs.ts`
-- `src/hooks/useDeals.ts`
-- `src/hooks/useTags.ts`
-- `src/lib/whatsapp/whatsapp-service.ts`
-- `src/pages/Contacts.tsx`
+```typescript
+import { getLamejs } from './lamejs-loader';
 
-A correção será feita atualizando o `src/integrations/supabase/types.ts` para refletir que `tenant_id` é opcional nos INSERTs.
+export async function encodeToMp3(audioBlob: Blob): Promise<Blob> {
+  console.log('[MP3Encoder] Starting conversion, input size:', audioBlob.size);
+  
+  // Usa loader com fallback ao invés de acesso direto
+  const lamejs = await getLamejs();
+  
+  if (!lamejs?.Mp3Encoder) {
+    throw new Error('lamejs not loaded - Mp3Encoder not available');
+  }
+  
+  // ... resto do código permanece igual
+}
+```
 
----
+### 3. Atualizar `src/lib/audio/mp3-recorder.ts`
+Mesmo ajuste para usar o loader com fallback:
 
-## Próximos Passos
-1. Aplicar migração para corrigir permissões do vendedor
-2. Corrigir tipos TypeScript para eliminar erros de build
-3. Solicitar que o usuário Rainy faça logout/login para atualizar as permissões em cache
+```typescript
+import { getLamejs } from './lamejs-loader';
+
+export class Mp3Recorder {
+  // ...
+  
+  async start(): Promise<void> {
+    this.mp3Data = [];
+    
+    // Usa loader com fallback
+    const lamejs = await getLamejs();
+    
+    console.log('[Mp3Recorder] Starting, lamejs:', lamejs);
+    
+    if (!lamejs?.Mp3Encoder) {
+      throw new Error('Mp3Encoder not available - lamejs failed to load');
+    }
+    
+    // ... resto do código permanece igual
+  }
+}
+```
+
+## Detalhes Técnicos
+
+### Por que isso resolve o problema?
+- O lamejs já está no `package.json` como dependência npm (`"lamejs": "^1.2.1"`)
+- O Vite já tem configuração para incluí-lo no bundle (`optimizeDeps.include: ['lamejs']`)
+- Se o CDN falhar, o código carrega do bundle local que já está empacotado com a aplicação
+- Não depende de conexão externa para funcionar
+
+### Fluxo de carregamento
+```text
++--------------------+
+|  getLamejs()       |
++--------------------+
+         |
+         v
++--------------------+
+| window.lamejs      |-----> [OK] Usa CDN
+| existe?            |
++--------------------+
+         | [NÃO]
+         v
++--------------------+
+| import('lamejs')   |-----> Carrega do bundle
++--------------------+
+         |
+         v
++--------------------+
+| Cacheia e retorna  |
++--------------------+
+```
+
+### Cache inteligente
+- O loader cacheia a instância após primeiro carregamento
+- Chamadas subsequentes retornam imediatamente
+- Se múltiplas chamadas simultâneas, compartilham a mesma Promise
+
+## Resultado Esperado
+- Beatriz conseguirá gravar e enviar áudios mesmo com o CDN bloqueado
+- Para outros usuários, continua usando CDN (mais rápido no primeiro acesso)
+- Zero impacto para quem já funciona normalmente
