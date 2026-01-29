@@ -489,7 +489,7 @@ serve(async (req) => {
 
       const { data: channelData } = await supabase
         .from('whatsapp_channels')
-        .select('id, name, phone_number')
+        .select('id, name, phone')
         .eq('id', channelId)
         .single();
 
@@ -534,7 +534,7 @@ serve(async (req) => {
               channel: {
                 id: channelId,
                 name: channelData?.name || null,
-                phone_number: channelData?.phone_number || null,
+                phone_number: channelData?.phone || null,
               },
               agent: agentData ? {
                 id: agentData.id,

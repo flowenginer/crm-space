@@ -342,7 +342,7 @@ Authorization: Bearer SUA_SERVICE_ROLE_KEY`} />
                 method="GET"
                 endpoint="/conversations?select=*,contacts(*),profiles(*),departments(*),whatsapp_channels(*)"
                 description="⭐ Listar conversas COM TODOS OS DADOS RELACIONADOS (contato, atendente, departamento, canal)"
-                curl={`curl -X GET "${SUPABASE_URL}/rest/v1/conversations?status=eq.open&select=*,contacts:contact_id(id,full_name,phone,email,lead_status,avatar_url,negotiated_value,origin,first_contact_at),assigned_agent:assigned_to(id,full_name,role,avatar_url),departments:department_id(id,name,color),whatsapp_channels:channel_id(id,name,phone_number)&order=last_message_at.desc" \\
+                curl={`curl -X GET "${SUPABASE_URL}/rest/v1/conversations?status=eq.open&select=*,contacts:contact_id(id,full_name,phone,email,lead_status,avatar_url,negotiated_value,origin,first_contact_at),assigned_agent:assigned_to(id,full_name,role,avatar_url),departments:department_id(id,name,color),whatsapp_channels:channel_id(id,name,phone)&order=last_message_at.desc" \\
   -H "apikey: SUA_SERVICE_ROLE_KEY" \\
   -H "Authorization: Bearer SUA_SERVICE_ROLE_KEY"`}
                 response={`[
@@ -381,7 +381,7 @@ Authorization: Bearer SUA_SERVICE_ROLE_KEY`} />
     "whatsapp_channels": {
       "id": "1b81ac1d-418d-4ce6-91ae-aa2e0ae40c9d",
       "name": "VENDAS 01",
-      "phone_number": "5521999999999"
+      "phone": "5521999999999"
     }
   }
 ]`}

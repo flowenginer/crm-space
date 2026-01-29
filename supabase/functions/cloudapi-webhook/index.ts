@@ -677,7 +677,7 @@ async function processMessages(supabase: any, value: any) {
       if (config.channel_id) {
         const { data: channel } = await supabase
           .from('whatsapp_channels')
-          .select('id, name, phone_number')
+          .select('id, name, phone')
           .eq('id', config.channel_id)
           .single();
         channelData = channel;
@@ -724,7 +724,7 @@ async function processMessages(supabase: any, value: any) {
               channel: {
                 id: config.channel_id,
                 name: channelData?.name || null,
-                phone_number: channelData?.phone_number || null,
+                phone_number: channelData?.phone || null,
               },
               agent: agentData ? {
                 id: agentData.id,

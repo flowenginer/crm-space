@@ -43,7 +43,7 @@ export function CloudAPICallingSettings() {
           is_active,
           whatsapp_channels!cloudapi_configs_channel_id_fkey (
             name,
-            phone_number
+            phone
           )
         `)
         .eq('tenant_id', profile.tenant_id)
