@@ -264,14 +264,18 @@ export function useImportContacts() {
         return null;
       };
 
+      // Normalize strings for comparison
+      const normalizeStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      
+      // Fix common encoding issues (UTF-8 interpreted as Latin-1)
+      const fixEncoding = (s: string) => s
+        .replace(/Ã©/g, 'é').replace(/Ã¡/g, 'á').replace(/Ã£/g, 'ã')
+        .replace(/Ã³/g, 'ó').replace(/Ãº/g, 'ú').replace(/Ã§/g, 'ç')
+        .replace(/Ã­/g, 'í').replace(/Ãª/g, 'ê').replace(/Ã´/g, 'ô')
+        .replace(/Ã/g, 'Á');
+
       // Helper to find lead status by name (fuzzy matching with encoding fix)
       const findLeadStatus = (name: string): LeadStatusCache | null => {
-        // Fix common encoding issues (UTF-8 interpreted as Latin-1)
-        const fixEncoding = (s: string) => s
-          .replace(/Ã©/g, 'é').replace(/Ã¡/g, 'á').replace(/Ã£/g, 'ã')
-          .replace(/Ã³/g, 'ó').replace(/Ãº/g, 'ú').replace(/Ã§/g, 'ç')
-          .replace(/Ã/g, 'í').replace(/Ãª/g, 'ê').replace(/Ã´/g, 'ô');
-        
         const fixedName = fixEncoding(name);
         
         // Clean numeric prefixes like "01 - ", "(1) ", etc
@@ -280,8 +284,6 @@ export function useImportContacts() {
           .replace(/^\d+\s*[-–]\s*/, '') // Remove "01 - " prefix
           .trim();
         
-        // Normalize: lowercase, remove accents
-        const normalizeStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
         const normalizedSearch = normalizeStr(cleanTerm);
         
         // Try exact match first
@@ -327,6 +329,63 @@ export function useImportContacts() {
         }
         
         return null;
+      };
+      
+      // Helper to find OR CREATE lead status
+      const findOrCreateLeadStatus = async (name: string): Promise<LeadStatusCache | null> => {
+        // First try to find existing
+        const found = findLeadStatus(name);
+        if (found) return found;
+        
+        // If not found, create new status
+        const fixedName = fixEncoding(name);
+        const cleanName = fixedName
+          .replace(/^\(\d+\)\s*/, '')
+          .replace(/^\d+\s*[-–]\s*/, '')
+          .trim();
+        
+        // Don't create empty status
+        if (!cleanName) return null;
+        
+        try {
+          // Get next order_position
+          const { data: maxOrder } = await supabase
+            .from('lead_statuses')
+            .select('order_position')
+            .order('order_position', { ascending: false })
+            .limit(1)
+            .single();
+          
+          const nextOrder = (maxOrder?.order_position || 0) + 1;
+          
+          // Create new status with tenant_id = null for trigger
+          const { data, error } = await supabase
+            .from('lead_statuses')
+            .insert({
+              name: cleanName,
+              order_position: nextOrder,
+              color: '#8B5CF6',
+              is_active: true,
+              tenant_id: null, // Let trigger assign
+            } as any)
+            .select('id, name')
+            .single();
+          
+          if (error) {
+            console.error('[Import] Error creating lead status:', cleanName, error);
+            return null;
+          }
+          
+          // Add to cache for future lookups
+          leadStatusesCache.set(cleanName.toLowerCase(), data);
+          leadStatusesCache.set(normalizeStr(cleanName), data);
+          
+          console.log(`[Import] Created new lead status: ${cleanName} (${data.id})`);
+          return data;
+        } catch (err) {
+          console.error('[Import] Failed to create lead status:', cleanName, err);
+          return null;
+        }
       };
 
       // Track processed contacts for this batch
@@ -425,16 +484,16 @@ export function useImportContacts() {
             const updateData: any = {};
             let shouldUpdate = false;
 
-            // Update lead status
+            // Update lead status - use findOrCreateLeadStatus (async)
             if (options.updateLeadStatus && row.statusLead && row.statusLead.trim()) {
-              const status = findLeadStatus(row.statusLead);
+              const status = await findOrCreateLeadStatus(row.statusLead);
               if (status) {
                 updateData.lead_status = status.name;
                 shouldUpdate = true;
               } else {
                 importResult.log.push({
                   type: 'warning',
-                  message: `Status de lead não encontrado: "${row.statusLead}"`,
+                  message: `Não foi possível processar status: "${row.statusLead}"`,
                   row: rowNum,
                 });
               }

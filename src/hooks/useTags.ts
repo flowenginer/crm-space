@@ -24,6 +24,8 @@ export async function findOrCreateTag(name: string, preferredColor?: string): Pr
   const { data: { user } } = await supabase.auth.getUser();
   const color = preferredColor || TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
   
+  // IMPORTANT: tenant_id must be null to let the database trigger assign it correctly
+  // This fixes RLS "Tenant isolation for tags" errors during import
   const { data, error } = await supabase
     .from('tags')
     .insert({ 
@@ -31,7 +33,8 @@ export async function findOrCreateTag(name: string, preferredColor?: string): Pr
       color, 
       visibility: 'public',
       created_by: user?.id,
-    })
+      tenant_id: null, // Let trigger set tenant_id from authenticated user
+    } as any)
     .select()
     .single();
   
