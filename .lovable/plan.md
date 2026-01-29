@@ -1,69 +1,162 @@
 
-# Plano: Atribuição em Massa da Planilha Emprega Mais
+# Plano: Corrigir Distribuição na Automação de Transferência para Departamento
 
-## Situação Atual
+## Problema Identificado
 
-Analisei a planilha com **1.629 contatos** e identifiquei os seguintes atendentes:
+Quando a automação "Transferir Departamento" é executada:
+1. O código apenas atualiza `conversations.department_id` e limpa `assigned_to = null`
+2. **NÃO chama** a função `distribute-lead` para atribuir o lead ao próximo agente
+3. Resultado: O contato fica no departamento correto, mas sem atendente atual nem responsável
 
-| Atendente na Planilha | Existe no CRM? | ID do Perfil |
-|----------------------|----------------|--------------|
-| Beatriz | SIM | `e7a9fd22-e3ff-40b9-b01c-93549db399d0` |
-| Nadia | SIM | `dfccab80-7c0c-4bf2-827d-f09574793b14` |
-| Rainy | SIM | `326e11b2-e643-48b6-8cda-661e642a126b` |
-| Wallan | NÃO | - |
+### Código Atual (Problemático)
+```typescript
+// supabase/functions/execute-flow-node/index.ts - Linha 734-745
+case 'transfer_department':
+  await supabase
+    .from('conversations')
+    .update({
+      department_id: config.department_id,
+      assigned_to: null  // ❌ Limpa o atendente e não redistribui
+    })
+    .eq('id', execution.conversation_id);
+```
 
-## Problema
+### Dados do Problema
+**948 contatos** têm atendente responsável definido mas suas conversas não têm atendente atual.
 
-O perfil **"Wallan"** não existe no sistema. Há aproximadamente ~170 contatos atribuídos a ele na planilha (linhas 1462-1630).
+---
 
 ## Solução Proposta
 
-### Passo 1: Criar o Perfil "Wallan"
+### 1. Modificar a Ação `transfer_department` para Chamar Distribuição
 
-Criar um novo usuário/perfil com o nome "Wallan" no sistema para que a importação funcione corretamente.
+Após atualizar o departamento da conversa, verificar se o departamento destino tem distribuição de leads configurada e, se sim, chamar a função `distribute-lead`.
 
-**Opções:**
-- **Opção A**: Você cria o usuário "Wallan" manualmente nas configurações de usuários
-- **Opção B**: Eu crio o perfil via código (preciso aprovar o plano para poder fazer alterações)
+**Arquivos a modificar:**
+- `supabase/functions/execute-flow-node/index.ts` (Edge Function - backend)
+- `src/lib/flow-engine/index.ts` (Frontend flow engine - para pré-visualização)
 
-### Passo 2: Reimportar a Planilha pelo Sistema
+### 2. Lógica da Correção
 
-Após criar o perfil Wallan, você pode reimportar a planilha usando o sistema de importação existente em:
-**CRM → Importar Contatos**
-
-Certifique-se de:
-1. Marcar a opção **"Atualizar vendedor atribuído"**
-2. Mapear a coluna **"Agente"** para o campo de vendedor
-3. Selecionar o canal WhatsApp correto
-
-### Alternativa: Atualização Direta via SQL
-
-Se preferir uma solução mais rápida, posso criar um script SQL que você pode executar diretamente no Supabase Cloud View (Run SQL):
-
-```sql
--- Atualizar contatos para Beatriz
-UPDATE contacts 
-SET assigned_to = 'e7a9fd22-e3ff-40b9-b01c-93549db399d0'
-WHERE phone IN ('5521974188411', '5521971543343', ...);
-
--- Atualizar contatos para Nadia
-UPDATE contacts 
-SET assigned_to = 'dfccab80-7c0c-4bf2-827d-f09574793b14'
-WHERE phone IN ('5521990261654', ...);
-
--- Atualizar contatos para Rainy
-UPDATE contacts 
-SET assigned_to = '326e11b2-e643-48b6-8cda-661e642a126b'
-WHERE phone IN ('5521969373682', ...);
+```typescript
+case 'transfer_department':
+  if (config.department_id && execution.conversation_id) {
+    // 1. Buscar contact_id da conversa
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('contact_id')
+      .eq('id', execution.conversation_id)
+      .single();
+    
+    // 2. Atualizar departamento da conversa (sem limpar assigned_to ainda)
+    await supabase
+      .from('conversations')
+      .update({
+        department_id: config.department_id,
+        assigned_to: null
+      })
+      .eq('id', execution.conversation_id);
+    
+    // 3. Atualizar departamento do contato
+    if (conv?.contact_id) {
+      await supabase
+        .from('contacts')
+        .update({
+          department_id: config.department_id
+        })
+        .eq('id', conv.contact_id);
+    }
+    
+    // 4. Chamar distribuição de leads se configurada para este departamento
+    if (conv?.contact_id) {
+      try {
+        const baseUrl = Deno.env.get('SUPABASE_URL') || '';
+        await fetch(`${baseUrl}/functions/v1/distribute-lead`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contact_id: conv.contact_id,
+            force_department_id: config.department_id
+          })
+        });
+      } catch (e) {
+        console.log('[execute-flow-node] Distribution call failed, lead will remain unassigned');
+      }
+    }
+    
+    await logExecution(supabase, execution.id, node.id, 'info', 'Transferido para departamento');
+  }
+  break;
 ```
 
-## Próximos Passos
+### 3. Modificar `distribute-lead` para Aceitar `force_department_id`
 
-1. **Você decide**: Quer que eu crie o perfil "Wallan" automaticamente ou você prefere criar manualmente?
-2. **Após criar Wallan**: Reimportar a planilha pelo sistema ou executar SQL direto
+A função `distribute-lead` precisa ser atualizada para aceitar um parâmetro opcional `force_department_id` que sobrescreve o departamento configurado nas settings.
 
-## Observações Técnicas
+**Arquivo:** `supabase/functions/distribute-lead/index.ts`
 
-- A planilha contém status de lead que podem não existir no sistema (como "ABORDAGEM SEM RESPOSTA", "AGENDAMENTO", "JA FEZ EMP +", "VISITA")
-- O sistema agora deve criar esses status automaticamente durante a importação (correção implementada anteriormente)
-- As etiquetas também serão criadas automaticamente se não existirem
+```typescript
+// Aceitar force_department_id no body
+const { contact_id, force_department_id } = await req.json();
+
+// Usar force_department_id se fornecido, senão usar da configuração
+const targetDepartmentId = force_department_id || settings?.lead_distribution_department_id;
+```
+
+---
+
+## Correção dos 948 Contatos Existentes
+
+Criar um script SQL para sincronizar os atendentes:
+
+```sql
+-- Script para atribuir atendente atual baseado no responsável do contato
+UPDATE conversations cv
+SET assigned_to = con.assigned_to
+FROM contacts con
+WHERE cv.contact_id = con.id
+  AND cv.status IN ('open', 'pending')
+  AND cv.assigned_to IS NULL
+  AND con.assigned_to IS NOT NULL;
+```
+
+Esse script atribui o "atendente atual" da conversa ao mesmo "atendente responsável" do contato para todas as 948 conversas órfãs.
+
+---
+
+## Resumo das Alterações
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `supabase/functions/execute-flow-node/index.ts` | Adicionar chamada à `distribute-lead` após `transfer_department` |
+| `src/lib/flow-engine/index.ts` | Espelhar a mesma lógica no frontend |
+| `supabase/functions/distribute-lead/index.ts` | Aceitar parâmetro `force_department_id` |
+| Script SQL (manual) | Sincronizar 948 conversas órfãs |
+
+---
+
+## Fluxo Corrigido
+
+```text
+Automação: "Transferir Departamento"
+   ↓
+1. Atualizar conversations.department_id
+   ↓
+2. Atualizar contacts.department_id
+   ↓
+3. Chamar distribute-lead com force_department_id
+   ↓
+4. distribute-lead atribui:
+   ├── contacts.assigned_to (Atendente Responsável)
+   └── conversations.assigned_to (Atendente Atual)
+   ↓
+5. Ambos os campos preenchidos ✓
+```
+
+---
+
+## Resultado Esperado
+
+- **Transferências via automação**: Atribuirão tanto atendente atual quanto responsável
+- **948 contatos existentes**: Serão corrigidos via script SQL
+- **Compatibilidade**: A função `distribute-lead` continua funcionando normalmente para chamadas sem `force_department_id`
