@@ -447,42 +447,78 @@ export function useImportContacts() {
         }
       }
 
-      // ===== PHASE 4: BATCH UPDATE EXISTING CONTACTS =====
+      // ===== PHASE 4: BATCH UPDATE EXISTING CONTACTS (OPTIMIZED) =====
       setProgress(60);
       
+      // Group contacts by update data for batch updates
+      const updateGroups = new Map<string, string[]>();
       for (const update of contactsToUpdate) {
-        const { error } = await supabase
-          .from('contacts')
-          .update(update.data)
-          .eq('id', update.id);
-        
-        if (error) {
-          importResult.errors++;
-        } else {
-          importResult.updated++;
+        const key = JSON.stringify(update.data);
+        if (!updateGroups.has(key)) {
+          updateGroups.set(key, []);
         }
+        updateGroups.get(key)!.push(update.id);
+      }
+      
+      console.log(`[Import] Optimized: ${contactsToUpdate.length} contacts grouped into ${updateGroups.size} batch updates`);
+      
+      // Perform batch updates by group
+      let groupIndex = 0;
+      for (const [dataKey, ids] of updateGroups) {
+        const data = JSON.parse(dataKey);
+        
+        // Split into chunks of 300 to avoid query limits
+        for (let i = 0; i < ids.length; i += 300) {
+          const chunk = ids.slice(i, i + 300);
+          const { error } = await supabase
+            .from('contacts')
+            .update(data)
+            .in('id', chunk);
+          
+          if (error) {
+            console.error(`[Import] Batch update error:`, error);
+            importResult.errors += chunk.length;
+          } else {
+            importResult.updated += chunk.length;
+          }
+        }
+        
+        groupIndex++;
+        setProgress(60 + Math.round((groupIndex / updateGroups.size) * 3));
       }
 
-      // FIXED: Also update conversations with both lead_status AND assigned_to
+      // OPTIMIZED: Batch update conversations with lead_status AND assigned_to
       const conversationUpdates = contactsToUpdate.filter(u => u.data.lead_status || u.data.assigned_to);
       if (conversationUpdates.length > 0) {
-        console.log(`[Import] Updating ${conversationUpdates.length} conversations with assignee/status`);
+        console.log(`[Import] Updating ${conversationUpdates.length} conversations with assignee/status (batch mode)`);
         
+        // Group conversation updates by data
+        const convUpdateGroups = new Map<string, string[]>();
         for (const update of conversationUpdates) {
-          const convUpdateData: any = {};
+          const convData: any = {};
+          if (update.data.lead_status) convData.lead_status = update.data.lead_status;
+          if (update.data.assigned_to) convData.assigned_to = update.data.assigned_to;
           
-          if (update.data.lead_status) {
-            convUpdateData.lead_status = update.data.lead_status;
+          const key = JSON.stringify(convData);
+          if (!convUpdateGroups.has(key)) {
+            convUpdateGroups.set(key, []);
           }
-          if (update.data.assigned_to) {
-            convUpdateData.assigned_to = update.data.assigned_to;
-          }
+          convUpdateGroups.get(key)!.push(update.id);
+        }
+        
+        // Batch update conversations by group
+        for (const [dataKey, contactIds] of convUpdateGroups) {
+          const data = JSON.parse(dataKey);
           
-          await supabase
-            .from('conversations')
-            .update(convUpdateData)
-            .eq('contact_id', update.id)
-            .eq('status', 'open');
+          // Split into chunks
+          for (let i = 0; i < contactIds.length; i += 300) {
+            const chunk = contactIds.slice(i, i + 300);
+            await supabase
+              .from('conversations')
+              .update(data)
+              .in('contact_id', chunk)
+              .eq('status', 'open');
+          }
         }
       }
 
