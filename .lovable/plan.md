@@ -1,193 +1,69 @@
 
-# Plano de Correção Completa: Importação de Contatos
+# Plano: Atribuição em Massa da Planilha Emprega Mais
 
-## Problemas Identificados
+## Situação Atual
 
-### 1. Status de Lead Não Encontrados
+Analisei a planilha com **1.629 contatos** e identifiquei os seguintes atendentes:
 
-**Planilha vs Banco:**
-| Planilha | Banco | Match? |
-|----------|-------|--------|
-| `ATENDIMENTO` | `Atendimento` | ✅ (case fix) |
-| `ABORDAGEM SEM RESPOSTA` | ❌ Não existe | ❌ |
-| `AGENDAMENTO` | `Agendado` | ❌ Nome diferente |
-| `FORA DE PERFIL` | `Fora de perfil` | ✅ (case fix) |
-| `SEM INTERESSE` | `Sem Interesse` | ✅ (case fix) |
-| `(1) Pré-contato` | `02 - Pré-venda` | ❌ Nome diferente |
-| `(5) Oferta` | `05 - Orçamento` | ❌ Nome diferente |
-| `(2) Abordagem` | ❌ Não existe | ❌ |
+| Atendente na Planilha | Existe no CRM? | ID do Perfil |
+|----------------------|----------------|--------------|
+| Beatriz | SIM | `e7a9fd22-e3ff-40b9-b01c-93549db399d0` |
+| Nadia | SIM | `dfccab80-7c0c-4bf2-827d-f09574793b14` |
+| Rainy | SIM | `326e11b2-e643-48b6-8cda-661e642a126b` |
+| Wallan | NÃO | - |
 
-**Causa:** O algoritmo de matching não consegue mapear nomes muito diferentes.
+## Problema
 
-**Solução:** Criar os status que não existem automaticamente durante a importação.
+O perfil **"Wallan"** não existe no sistema. Há aproximadamente ~170 contatos atribuídos a ele na planilha (linhas 1462-1630).
 
----
+## Solução Proposta
 
-### 2. Atendente "Beatriz" Não Atribuído
+### Passo 1: Criar o Perfil "Wallan"
 
-O perfil `Beatriz` existe no banco (`id: e7a9fd22-e3ff-40b9-b01c-93549db399d0`).
+Criar um novo usuário/perfil com o nome "Wallan" no sistema para que a importação funcione corretamente.
 
-**Causa provável:**
-- Na planilha a coluna é chamada `Agente`, mas o código procura `vendedor`
-- O mapeamento de colunas pode estar incorreto
+**Opções:**
+- **Opção A**: Você cria o usuário "Wallan" manualmente nas configurações de usuários
+- **Opção B**: Eu crio o perfil via código (preciso aprovar o plano para poder fazer alterações)
 
-**Solução:** 
-- Verificar o mapeamento de colunas no processamento da planilha
-- Garantir que `Agente` seja mapeado para `row.vendedor`
+### Passo 2: Reimportar a Planilha pelo Sistema
 
----
+Após criar o perfil Wallan, você pode reimportar a planilha usando o sistema de importação existente em:
+**CRM → Importar Contatos**
 
-### 3. Erro RLS ao Criar Tags
+Certifique-se de:
+1. Marcar a opção **"Atualizar vendedor atribuído"**
+2. Mapear a coluna **"Agente"** para o campo de vendedor
+3. Selecionar o canal WhatsApp correto
 
-```
-"Tenant isolation for tags" for table "tags"
-```
+### Alternativa: Atualização Direta via SQL
 
-**Causa:** A RLS policy não tem `WITH CHECK`, então inserts falham. A tabela `tags` tem `tenant_id` com default para master tenant, mas a RLS exige que seja igual ao tenant do usuário.
+Se preferir uma solução mais rápida, posso criar um script SQL que você pode executar diretamente no Supabase Cloud View (Run SQL):
 
-**Solução:** A função `findOrCreateTag` precisa definir `tenant_id` como `NULL` para deixar o trigger `set_tenant_id_from_user` preencher corretamente.
+```sql
+-- Atualizar contatos para Beatriz
+UPDATE contacts 
+SET assigned_to = 'e7a9fd22-e3ff-40b9-b01c-93549db399d0'
+WHERE phone IN ('5521974188411', '5521971543343', ...);
 
----
+-- Atualizar contatos para Nadia
+UPDATE contacts 
+SET assigned_to = 'dfccab80-7c0c-4bf2-827d-f09574793b14'
+WHERE phone IN ('5521990261654', ...);
 
-### 4. Criar Status/Tags Automaticamente
-
-**Solução:** Implementar uma função `findOrCreateLeadStatus` similar à `findOrCreateTag`, que:
-1. Busca o status pelo nome (fuzzy matching)
-2. Se não encontrar, cria um novo status com o nome da planilha
-
----
-
-## Arquivos a Modificar
-
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/hooks/useTags.ts` | `findOrCreateTag`: definir `tenant_id` como `NULL` para evitar erro RLS |
-| `src/hooks/useImportContacts.ts` | Adicionar `findOrCreateLeadStatus` + melhorar matching de colunas |
-
----
-
-## Alterações Técnicas
-
-### 1. Corrigir `findOrCreateTag` para RLS
-
-```typescript
-// src/hooks/useTags.ts
-export async function findOrCreateTag(name: string, preferredColor?: string) {
-  const existing = await findTagByName(name);
-  if (existing) return { ...existing, isNew: false };
-  
-  const { data: { user } } = await supabase.auth.getUser();
-  const color = preferredColor || TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
-  
-  const { data, error } = await supabase
-    .from('tags')
-    .insert({ 
-      name: name.trim(), 
-      color, 
-      visibility: 'public',
-      created_by: user?.id,
-      tenant_id: null, // DEIXAR O TRIGGER PREENCHER!
-    } as any)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return { ...data, isNew: true };
-}
+-- Atualizar contatos para Rainy
+UPDATE contacts 
+SET assigned_to = '326e11b2-e643-48b6-8cda-661e642a126b'
+WHERE phone IN ('5521969373682', ...);
 ```
 
-### 2. Adicionar `findOrCreateLeadStatus` 
+## Próximos Passos
 
-```typescript
-// src/hooks/useImportContacts.ts
+1. **Você decide**: Quer que eu crie o perfil "Wallan" automaticamente ou você prefere criar manualmente?
+2. **Após criar Wallan**: Reimportar a planilha pelo sistema ou executar SQL direto
 
-async function findOrCreateLeadStatus(
-  name: string, 
-  leadStatusesCache: Map<string, LeadStatusCache>
-): Promise<LeadStatusCache | null> {
-  // Primeiro tenta encontrar com matching fuzzy
-  const found = findLeadStatus(name);
-  if (found) return found;
-  
-  // Se não encontrou, criar novo status
-  const cleanName = name
-    .replace(/^\(\d+\)\s*/, '')
-    .replace(/^\d+\s*[-–]\s*/, '')
-    .trim();
-  
-  // Buscar próximo order_position
-  const { data: maxOrder } = await supabase
-    .from('lead_statuses')
-    .select('order_position')
-    .order('order_position', { ascending: false })
-    .limit(1)
-    .single();
-  
-  const nextOrder = (maxOrder?.order_position || 0) + 1;
-  
-  const { data, error } = await supabase
-    .from('lead_statuses')
-    .insert({
-      name: cleanName,
-      order_position: nextOrder,
-      color: '#8B5CF6',
-      is_active: true,
-      tenant_id: null, // Trigger preenche
-    } as any)
-    .select('id, name')
-    .single();
-  
-  if (error) {
-    console.error('Erro ao criar lead status:', error);
-    return null;
-  }
-  
-  // Adicionar ao cache
-  leadStatusesCache.set(cleanName.toLowerCase(), data);
-  return data;
-}
-```
+## Observações Técnicas
 
-### 3. Melhorar Mapeamento de Colunas
-
-Garantir que colunas alternativas como `Agente` sejam mapeadas para `vendedor`:
-
-```typescript
-// No componente de importação (modal/form)
-// Mapear: Agente → vendedor
-const normalizedRow: ImportRow = {
-  nome: row.Nome || row.nome || '',
-  telefone: row.Contato || row.telefone || row.Telefone || '',
-  vendedor: row.Agente || row.vendedor || row.Vendedor || '',
-  etiquetas: row.Etiquetas || row.etiquetas || '',
-  statusLead: row['Status Lead'] || row.statusLead || row.StatusLead || '',
-};
-```
-
----
-
-## Fluxo Corrigido
-
-```text
-1. Carregar planilha CSV
-   ↓
-2. Mapear colunas (Agente → vendedor, Status Lead → statusLead)
-   ↓
-3. Para cada linha:
-   ├── Buscar contato existente
-   ├── Encontrar vendedor por nome ("Beatriz" → e7a9fd22...)
-   ├── Encontrar ou CRIAR lead status
-   │   └── Se não existe "ABORDAGEM SEM RESPOSTA" → criar
-   ├── Encontrar ou CRIAR tags
-   │   └── Se não existe "(E2) Emprega Mais" → criar (com tenant_id = null)
-   └── Atribuir ao contato
-```
-
----
-
-## Resultado Esperado
-
-1. **Beatriz será atribuída** - coluna `Agente` mapeada corretamente
-2. **Status criados automaticamente** - "ABORDAGEM SEM RESPOSTA", "AGENDAMENTO", "(1) Pré-contato", etc.
-3. **Tags criadas sem erro RLS** - `tenant_id` gerenciado pelo trigger
-4. **Importação completa** - 0 erros "Status não encontrado"
+- A planilha contém status de lead que podem não existir no sistema (como "ABORDAGEM SEM RESPOSTA", "AGENDAMENTO", "JA FEZ EMP +", "VISITA")
+- O sistema agora deve criar esses status automaticamente durante a importação (correção implementada anteriormente)
+- As etiquetas também serão criadas automaticamente se não existirem
