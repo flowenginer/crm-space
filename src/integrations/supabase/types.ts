@@ -978,7 +978,7 @@ export type Database = {
           sentiment_label?: string | null
           sentiment_score?: number | null
           start_time?: string | null
-          tenant_id?: string
+          tenant_id: string
           transcription?: string | null
           transcription_language?: string | null
           updated_at?: string | null
@@ -2078,7 +2078,7 @@ export type Database = {
           reopened_at?: string | null
           sla_status?: string | null
           status?: string | null
-          tenant_id?: string
+          tenant_id: string
           total_active_time_seconds?: number | null
           transfer_note?: string | null
           transferred_at?: string | null
@@ -2421,7 +2421,7 @@ export type Database = {
           stage_entered_at?: string | null
           stage_id: string
           status?: string | null
-          tenant_id?: string
+          tenant_id: string
           title: string
           updated_at?: string
           value?: number | null
@@ -9445,7 +9445,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
-          tenant_id?: string
+          tenant_id: string
           usage_count?: number | null
           visibility?: string | null
         }
