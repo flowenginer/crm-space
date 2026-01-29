@@ -733,14 +733,45 @@ async function executeAction(
 
     case 'transfer_department':
       if (config.department_id && execution.conversation_id) {
+        const targetDepartmentId = config.department_id as string;
+        
+        // 1. Update conversation department (clear assigned_to for redistribution)
         await supabase
           .from('conversations')
           .update({
-            department_id: config.department_id as string,
+            department_id: targetDepartmentId,
             assigned_to: null
           })
           .eq('id', execution.conversation_id);
-        await logExecution(supabase, execution.id, node.id, 'info', 'Transferido para departamento');
+        
+        // 2. Update contact department
+        if (execution.contact_id) {
+          await supabase
+            .from('contacts')
+            .update({
+              department_id: targetDepartmentId
+            })
+            .eq('id', execution.contact_id);
+        }
+        
+        // 3. Call lead distribution to assign agent in new department
+        if (execution.contact_id) {
+          try {
+            console.log(`[execute-flow-node] Calling distribute-lead with force_department_id: ${targetDepartmentId}`);
+            await supabase.functions.invoke('distribute-lead', {
+              body: {
+                contact_id: execution.contact_id,
+                force_department_id: targetDepartmentId
+              }
+            });
+            console.log('[execute-flow-node] Lead distribution completed');
+          } catch (distError) {
+            console.error('[execute-flow-node] Lead distribution failed:', distError);
+            // Don't fail the whole action, log and continue
+          }
+        }
+        
+        await logExecution(supabase, execution.id, node.id, 'info', 'Transferido para departamento com redistribuição');
       }
       break;
 

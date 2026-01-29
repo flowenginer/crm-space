@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Parse request body
-    const { contact_id } = await req.json();
+    const { contact_id, force_department_id } = await req.json();
 
     if (!contact_id) {
       return new Response(
@@ -40,6 +40,11 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`[distribute-lead] force_department_id: ${force_department_id || 'none (using settings)'}`);
+    
+    // If force_department_id is provided, skip the "already assigned" check
+    // because this is an intentional re-distribution after department transfer
 
     console.log(`[distribute-lead] Starting distribution for contact: ${contact_id}`);
 
@@ -80,31 +85,34 @@ Deno.serve(async (req) => {
         .in('conversation_id', conversationIds)
         .gte('created_at', sixtySecondsAgo);
 
-      if (recentTransfers && recentTransfers.length > 0) {
-        console.log(`[distribute-lead] Skipping - recent manual transfer detected (${recentTransfers.length} transfers in last 60s)`);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Skipped - recent manual transfer detected',
-            reason: 'manual_transfer_protection'
-          }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      // Only apply protection checks if NOT a forced department distribution
+      if (!force_department_id) {
+        if (recentTransfers && recentTransfers.length > 0) {
+          console.log(`[distribute-lead] Skipping - recent manual transfer detected (${recentTransfers.length} transfers in last 60s)`);
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'Skipped - recent manual transfer detected',
+              reason: 'manual_transfer_protection'
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
 
-      // CHECK 2: If conversation already has an assigned agent, skip distribution
-      const assignedConversation = conversations.find(c => c.assigned_to);
-      if (assignedConversation) {
-        console.log(`[distribute-lead] Skipping - conversation already assigned to ${assignedConversation.assigned_to}`);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Skipped - conversation already assigned',
-            reason: 'already_assigned',
-            assigned_to: assignedConversation.assigned_to
-          }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        // CHECK 2: If conversation already has an assigned agent, skip distribution
+        const assignedConversation = conversations.find(c => c.assigned_to);
+        if (assignedConversation) {
+          console.log(`[distribute-lead] Skipping - conversation already assigned to ${assignedConversation.assigned_to}`);
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'Skipped - conversation already assigned',
+              reason: 'already_assigned',
+              assigned_to: assignedConversation.assigned_to
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
       }
     }
 
@@ -125,8 +133,8 @@ Deno.serve(async (req) => {
 
     console.log(`[distribute-lead] Using company_settings id=${settings.id}, tenant=${tenantId}, enabled=${settings.lead_distribution_enabled}`);
 
-    // Check if distribution is enabled
-    if (!settings.lead_distribution_enabled) {
+    // Check if distribution is enabled (skip check if force_department_id is provided)
+    if (!force_department_id && !settings.lead_distribution_enabled) {
       console.log(`[distribute-lead] Distribution is disabled for tenant ${tenantId}`);
       return new Response(
         JSON.stringify({ success: false, error: 'Lead distribution is disabled' }),
@@ -134,7 +142,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const departmentId = settings.lead_distribution_department_id;
+    // Use force_department_id if provided, otherwise use from settings
+    const departmentId = force_department_id || settings.lead_distribution_department_id;
     const distributionType = settings.lead_distribution_type || 'sequential';
     const includeOffline = settings.lead_distribution_include_offline || false;
     let currentPosition = settings.lead_distribution_position || 0;
@@ -147,6 +156,9 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log(`[distribute-lead] Using departmentId: ${departmentId} (forced: ${!!force_department_id})`);
+
 
     // 2. Get agents from the configured department
     const { data: departmentAgents, error: agentsError } = await supabase
