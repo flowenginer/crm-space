@@ -9,11 +9,12 @@ export default function Register() {
 
   useEffect(() => {
     if (session && profile) {
-      // New users always go to onboarding
+      // Redirect based on tenant status
       if (tenantId) {
         navigate('/', { replace: true });
       } else {
-        navigate('/onboarding', { replace: true });
+        // Users without tenant cannot access - redirect to no-access page
+        navigate('/no-access', { replace: true });
       }
     }
   }, [session, profile, tenantId, navigate]);

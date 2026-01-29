@@ -25,7 +25,8 @@ export default function Auth() {
       if (tenantId) {
         navigate('/', { replace: true });
       } else {
-        navigate('/onboarding', { replace: true });
+        // Users without tenant cannot access - redirect to no-access page
+        navigate('/no-access', { replace: true });
       }
     }
   }, [session, profile, tenantId, navigate]);
