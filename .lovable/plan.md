@@ -1,142 +1,145 @@
 
-# Plano: Fallback Local para LameJS
+# Plano: Reestruturar Dashboard para Exibir Trechos de Objeções
 
-## Problema
-O áudio falha no computador da Beatriz porque o script lamejs carregado via CDN está sendo bloqueado (possivelmente por ad-blocker, firewall corporativo, ou cache corrompido). Quando o CDN falha, `window.lamejs` fica undefined e a conversão de áudio não funciona.
+## Contexto
+Os trechos das objeções avaliadas já estão sendo armazenados no banco de dados no campo `objecoes.{tipo}.trecho` com o formato `Cliente: 'mensagem' | Vendedor: 'resposta'`. Atualmente **249 de 489 avaliações** (51%) possuem trechos. A visualização atual mostra apenas frequência e nota média das objeções no gráfico de barras.
 
-## Solução
-Implementar um sistema de carregamento com fallback que:
-1. Primeiro tenta usar o lamejs global (CDN)
-2. Se falhar, carrega dinamicamente do bundle local (já instalado via npm)
+## Objetivo
+Reestruturar a visualização do dashboard para permitir acesso e análise dos trechos de objeções de forma agregada, além do que já existe na sheet de detalhes individual.
 
-## Arquivos a Modificar
+---
 
-### 1. Criar `src/lib/audio/lamejs-loader.ts` (novo arquivo)
-Módulo centralizador que gerencia o carregamento do lamejs com fallback:
+## Arquitetura da Solução
 
+```text
++------------------+     +----------------------+     +-------------------------+
+|  ObjectionsBar   |     |  ObjectionDetail     |     |  ObjectionTrechos       |
+|    Chart         | --> |     Modal            | --> |   (lista de exemplos)   |
+| (clique na barra)|     | (stats + exemplos)   |     |   com chat preview      |
++------------------+     +----------------------+     +-------------------------+
+```
+
+---
+
+## Etapas de Implementação
+
+### Etapa 1: Atualizar Interface ObjectionAnalysis
+**Arquivo:** `src/hooks/useSalesEvaluations.ts`
+
+Adicionar campo `trechos` na interface para armazenar exemplos:
 ```typescript
-// Estratégia:
-// 1. Verificar se lamejs está disponível globalmente (CDN)
-// 2. Se não, carregar dinamicamente o módulo npm
-// 3. Cachear o resultado para chamadas subsequentes
-
-let lamejsInstance: any = null;
-let loadingPromise: Promise<any> | null = null;
-
-export async function getLamejs(): Promise<any> {
-  // Se já carregou, retorna
-  if (lamejsInstance) return lamejsInstance;
-  
-  // Se está carregando, aguarda
-  if (loadingPromise) return loadingPromise;
-  
-  loadingPromise = (async () => {
-    // Tenta CDN primeiro
-    if ((window as any).lamejs?.Mp3Encoder) {
-      console.log('[LameJS] Using CDN version');
-      lamejsInstance = (window as any).lamejs;
-      return lamejsInstance;
-    }
-    
-    // Fallback para bundle local
-    console.log('[LameJS] CDN not available, loading from bundle...');
-    const lamejs = await import('lamejs');
-    lamejsInstance = lamejs.default || lamejs;
-    
-    // Disponibiliza globalmente também
-    (window as any).lamejs = lamejsInstance;
-    console.log('[LameJS] Loaded from bundle successfully');
-    
-    return lamejsInstance;
-  })();
-  
-  return loadingPromise;
+export interface ObjectionAnalysis {
+  name: string;
+  frequency: number;
+  avgScore: number;
+  handledRate: number;
+  // Novos campos:
+  trechos: Array<{
+    trecho: string;
+    nota: number;
+    tratada: boolean;
+    evaluationId: string;
+    conversationDate?: string;
+  }>;
 }
 ```
 
-### 2. Atualizar `src/lib/audio/mp3-encoder.ts`
-Substituir acesso direto ao `window.lamejs` pelo loader com fallback:
+### Etapa 2: Atualizar Hook useObjectionsAnalysis
+**Arquivo:** `src/hooks/useSalesEvaluations.ts`
 
-```typescript
-import { getLamejs } from './lamejs-loader';
+Modificar a função para coletar os trechos junto com as estatísticas:
+- Buscar também `id` e `conversation_last_message_at`
+- Armazenar até 10 exemplos de trechos por tipo de objeção
+- Priorizar trechos com notas extremas (muito boas ou muito ruins)
 
-export async function encodeToMp3(audioBlob: Blob): Promise<Blob> {
-  console.log('[MP3Encoder] Starting conversion, input size:', audioBlob.size);
-  
-  // Usa loader com fallback ao invés de acesso direto
-  const lamejs = await getLamejs();
-  
-  if (!lamejs?.Mp3Encoder) {
-    throw new Error('lamejs not loaded - Mp3Encoder not available');
-  }
-  
-  // ... resto do código permanece igual
-}
-```
+### Etapa 3: Criar ObjectionDetailModal
+**Arquivo:** `src/components/sales-evaluation/ObjectionDetailModal.tsx`
 
-### 3. Atualizar `src/lib/audio/mp3-recorder.ts`
-Mesmo ajuste para usar o loader com fallback:
+Novo componente modal para exibir detalhes de uma objeção específica:
+- Header com nome da objeção e estatísticas (frequência, nota média, taxa de tratamento)
+- Gráfico de distribuição de notas
+- Lista de exemplos de trechos com visualização estilo chat
+- Indicador visual de tratada/não tratada e nota
+- Botão para ver a conversa completa de cada exemplo
 
-```typescript
-import { getLamejs } from './lamejs-loader';
+### Etapa 4: Atualizar ObjectionsBarChart
+**Arquivo:** `src/components/sales-evaluation/ObjectionsBarChart.tsx`
 
-export class Mp3Recorder {
-  // ...
-  
-  async start(): Promise<void> {
-    this.mp3Data = [];
-    
-    // Usa loader com fallback
-    const lamejs = await getLamejs();
-    
-    console.log('[Mp3Recorder] Starting, lamejs:', lamejs);
-    
-    if (!lamejs?.Mp3Encoder) {
-      throw new Error('Mp3Encoder not available - lamejs failed to load');
-    }
-    
-    // ... resto do código permanece igual
-  }
-}
-```
+Modificar para permitir interação:
+- Adicionar `onClick` nas barras do gráfico
+- Mostrar cursor de "pointer" no hover
+- Passar callback `onSelectObjection` como prop
+
+### Etapa 5: Atualizar SalesEvaluationDashboard
+**Arquivo:** `src/pages/SalesEvaluationDashboard.tsx`
+
+Integrar o novo modal:
+- Adicionar estado para objeção selecionada
+- Conectar callback do gráfico ao modal
+
+---
 
 ## Detalhes Técnicos
 
-### Por que isso resolve o problema?
-- O lamejs já está no `package.json` como dependência npm (`"lamejs": "^1.2.1"`)
-- O Vite já tem configuração para incluí-lo no bundle (`optimizeDeps.include: ['lamejs']`)
-- Se o CDN falhar, o código carrega do bundle local que já está empacotado com a aplicação
-- Não depende de conexão externa para funcionar
-
-### Fluxo de carregamento
+### Estrutura do ObjectionDetailModal
 ```text
-+--------------------+
-|  getLamejs()       |
-+--------------------+
-         |
-         v
-+--------------------+
-| window.lamejs      |-----> [OK] Usa CDN
-| existe?            |
-+--------------------+
-         | [NÃO]
-         v
-+--------------------+
-| import('lamejs')   |-----> Carrega do bundle
-+--------------------+
-         |
-         v
-+--------------------+
-| Cacheia e retorna  |
-+--------------------+
+┌────────────────────────────────────────────────┐
+│ 🛡️ Preço                            Nota: 5.2 │
+│ ───────────────────────────────────────────── │
+│ Frequência: 45x  |  Tratadas: 82%  |  ≥7: 38% │
+├────────────────────────────────────────────────┤
+│ 📊 Distribuição de Notas                       │
+│ [=========] Bom (≥7): 17                       │
+│ [======] Regular (5-7): 12                     │
+│ [====] Fraco (3-5): 10                         │
+│ [==] Crítico (<3): 6                           │
+├────────────────────────────────────────────────┤
+│ 💬 Exemplos de Trechos                         │
+│                                                │
+│ ┌──────────────────────────────────┐           │
+│ │ 👤 Cliente:                      │           │
+│ │ "Tá muito caro, não tenho grana" │           │
+│ └──────────────────────────────────┘           │
+│            ┌──────────────────────────────┐    │
+│            │ 🎧 Vendedor:                 │    │
+│            │ "Entendo! Temos condições    │    │
+│            │ especiais de parcelamento.." │    │
+│            └──────────────────────────────┘    │
+│ ✅ Tratada  |  Nota: 8.0  |  📅 28/01/2026    │
+│ ─────────────────────────────────────────────  │
+│ [Ver conversa completa]                        │
+├────────────────────────────────────────────────┤
+│                               [Fechar]         │
+└────────────────────────────────────────────────┘
 ```
 
-### Cache inteligente
-- O loader cacheia a instância após primeiro carregamento
-- Chamadas subsequentes retornam imediatamente
-- Se múltiplas chamadas simultâneas, compartilham a mesma Promise
+### Priorização dos Exemplos
+Para cada tipo de objeção, coletar até 10 exemplos priorizando:
+1. Exemplos com nota ≥8 (melhores práticas)
+2. Exemplos com nota ≤3 (oportunidades de treinamento)
+3. Exemplos mais recentes
 
-## Resultado Esperado
-- Beatriz conseguirá gravar e enviar áudios mesmo com o CDN bloqueado
-- Para outros usuários, continua usando CDN (mais rápido no primeiro acesso)
-- Zero impacto para quem já funciona normalmente
+### Performance
+- Limitar a 10 trechos por tipo de objeção para não sobrecarregar
+- Buscar trechos apenas quando o modal for aberto (lazy loading) - opcional
+- Usar memo para evitar recálculos desnecessários
+
+---
+
+## Arquivos Modificados
+
+| Arquivo | Ação |
+|---------|------|
+| `src/hooks/useSalesEvaluations.ts` | Atualizar interface e hook |
+| `src/components/sales-evaluation/ObjectionDetailModal.tsx` | Criar novo componente |
+| `src/components/sales-evaluation/ObjectionsBarChart.tsx` | Adicionar interatividade |
+| `src/pages/SalesEvaluationDashboard.tsx` | Integrar modal |
+
+---
+
+## Resultado Final
+- Dashboard permite clicar em qualquer objeção no gráfico
+- Modal exibe estatísticas detalhadas da objeção
+- Exemplos de trechos reais são exibidos com formato de chat
+- Permite identificar melhores práticas e oportunidades de treinamento
+- Acesso rápido à conversa completa de cada exemplo
