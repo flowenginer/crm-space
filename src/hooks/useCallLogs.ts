@@ -148,7 +148,7 @@ export function useCreateCallLog() {
           user_id: user.user.id,
           call_date: format(now, 'yyyy-MM-dd'),
           call_time: format(now, 'HH:mm:ss'),
-        })
+        } as any)
         .select(`
           *,
           result:call_results(*),

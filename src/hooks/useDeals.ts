@@ -147,7 +147,7 @@ export function useCreateDeal() {
           description: deal.description,
           expected_close_date: deal.expected_close_date,
           status: 'open',
-        })
+        } as any)
         .select()
         .single();
 

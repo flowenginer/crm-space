@@ -2612,7 +2612,7 @@ function AddTagModal({
           color: newTagColor,
           visibility: newTagVisibility,
           created_by: user?.id,
-        })
+        } as any)
         .select()
         .single();
       

@@ -214,7 +214,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
           lead_status: contact.lead_status || null,
           assigned_to: userId, // *** CRITICAL: Assign to current user ***
           department_id: userDepartmentId, // *** CRITICAL: Assign department ***
-        })
+        } as any)
         .select('id')
         .single();
 

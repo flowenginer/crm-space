@@ -618,7 +618,7 @@ export function StartConversation({ onConversationCreated }: StartConversationPr
           unread_count: 0,
           last_message_at: new Date().toISOString(),
           last_message_preview: 'Nova conversa iniciada',
-        })
+        } as any)
         .select()
         .single();
 
