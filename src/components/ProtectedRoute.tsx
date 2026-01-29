@@ -31,12 +31,9 @@ export function ProtectedRoute({
     );
   }
 
-  // Check if user needs to complete tenant onboarding
+  // Check if user has a tenant - redirect to no-access page if not
   if (requireTenant && profile && !tenantId) {
-    // Don't redirect if already on onboarding
-    if (location.pathname !== '/onboarding') {
-      return <Navigate to="/onboarding" replace />;
-    }
+    return <Navigate to="/no-access" replace />;
   }
 
   // Admin always has access

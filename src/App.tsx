@@ -16,7 +16,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 // Auth pages
 import Auth from "@/pages/Auth";
 import Register from "@/pages/Register";
-import TenantOnboarding from "@/pages/TenantOnboarding";
+import NoTenantAccess from "@/pages/NoTenantAccess";
 
 // Public pages
 import Checkout from "@/pages/Checkout";
@@ -118,7 +118,7 @@ const App = () => (
             {/* Auth routes */}
             <Route path="/auth" element={<Auth />} />
             <Route path="/auth/register" element={<Register />} />
-            <Route path="/onboarding" element={<TenantOnboarding />} />
+            <Route path="/no-access" element={<NoTenantAccess />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/meta-oauth-callback" element={<MetaOAuthCallback />} />
             <Route path="/whatsapp-callback" element={<WhatsAppCallback />} />
