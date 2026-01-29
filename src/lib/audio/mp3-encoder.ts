@@ -1,11 +1,14 @@
+import { getLamejs } from './lamejs-loader';
+
 /**
- * Encodes audio Blob to MP3 format using lamejs (loaded globally via CDN)
+ * Encodes audio Blob to MP3 format using lamejs
+ * Uses CDN version if available, falls back to local bundle
  */
 export async function encodeToMp3(audioBlob: Blob): Promise<Blob> {
   console.log('[MP3Encoder] Starting conversion, input size:', audioBlob.size);
   
-  // Access lamejs from global scope (loaded via script in index.html)
-  const lamejs = (window as any).lamejs;
+  // Use loader with fallback instead of direct global access
+  const lamejs = await getLamejs();
   
   if (!lamejs?.Mp3Encoder) {
     throw new Error('lamejs not loaded - Mp3Encoder not available');
