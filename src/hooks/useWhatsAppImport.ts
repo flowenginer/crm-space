@@ -336,6 +336,7 @@ export function useWhatsAppImport() {
           media_mime_type: msg.mediaFileName ? getMimeType(msg.mediaFileName) : null,
           status: 'delivered',
           created_at: createdAt,
+          tenant_id: null, // Auto-filled by trigger
           _key: `${createdAt}|${isFromMe}|${normalizeMediaContent(content)}`, // Para filtrar duplicatas (normalizado)
         };
       });

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle, XCircle, Info, Loader2, Link2, History } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle, XCircle, Info, Loader2, Link2, History, User, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -29,6 +29,8 @@ import { useImportContacts, ImportRow, ImportOptions, ImportLogEntry } from '@/h
 import { useImportHistory } from '@/hooks/useImportHistory';
 import { ImportHistoryTable } from './ImportHistoryTable';
 import { supabase } from '@/integrations/supabase/client';
+import { useChannels } from '@/hooks/useChannels';
+import { useAgentsForFilter } from '@/hooks/useDashboardAdvanced';
 
 interface ParsedData {
   headers: string[];
@@ -69,6 +71,8 @@ export function ContactImporter() {
     updateLeadStatus: true,
     updateAssignee: true,
     onlyAssignIfEmpty: true,
+    defaultAssigneeId: undefined,
+    channelId: undefined,
   });
   const [activeTab, setActiveTab] = useState<'file' | 'sheets'>('file');
   const [sheetsUrl, setSheetsUrl] = useState('');
@@ -80,6 +84,13 @@ export function ContactImporter() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isImporting, progress, result, processImport, reset } = useImportContacts();
   const { history, isLoading: isLoadingHistory, saveHistory } = useImportHistory();
+  
+  // Fetch channels and agents for dropdowns
+  const { data: channels = [] } = useChannels();
+  const { data: agents = [] } = useAgentsForFilter();
+  
+  // Filter only connected channels
+  const connectedChannels = channels.filter(c => c.status === 'connected' && !c.is_deleted);
 
   const autoMapColumns = useCallback((headers: string[]) => {
     const autoMapping: ColumnMapping = { ...defaultMapping };
@@ -514,6 +525,68 @@ export function ContactImporter() {
                 {/* Import Options */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-medium">Opções de Importação</h3>
+                  
+                  {/* New: Default Assignee and Channel selectors */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-lg bg-muted/50 border border-border">
+                    <div className="space-y-2">
+                      <Label className="text-xs flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5" />
+                        Vendedor Padrão
+                      </Label>
+                      <Select
+                        value={options.defaultAssigneeId || '__none__'}
+                        onValueChange={(v) => setOptions(prev => ({ 
+                          ...prev, 
+                          defaultAssigneeId: v === '__none__' ? undefined : v 
+                        }))}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Selecionar vendedor..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Nenhum (usar coluna mapeada)</SelectItem>
+                          {agents.map((agent) => (
+                            <SelectItem key={agent.id} value={agent.id}>
+                              {agent.full_name || 'Sem nome'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Atribuir este vendedor a todos os contatos importados
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs flex items-center gap-1.5">
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        Canal WhatsApp
+                      </Label>
+                      <Select
+                        value={options.channelId || '__none__'}
+                        onValueChange={(v) => setOptions(prev => ({ 
+                          ...prev, 
+                          channelId: v === '__none__' ? undefined : v 
+                        }))}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Selecionar canal..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Nenhum (não criar conversas)</SelectItem>
+                          {connectedChannels.map((channel) => (
+                            <SelectItem key={channel.id} value={channel.id}>
+                              {channel.name} ({channel.phone})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Criar/vincular conversas neste canal
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="flex items-center gap-2">
                       <Checkbox
@@ -607,9 +680,23 @@ export function ContactImporter() {
                   </div>
                 </div>
 
-                {result.tagsCreated > 0 && (
-                  <div className="p-3 rounded-lg bg-primary/10 text-sm">
-                    <span className="font-medium">{result.tagsCreated}</span> novas etiquetas criadas
+                {(result.tagsCreated > 0 || result.created > 0 || result.conversationsCreated > 0) && (
+                  <div className="flex flex-wrap gap-2">
+                    {result.created > 0 && (
+                      <div className="px-3 py-1.5 rounded-lg bg-green-500/10 text-sm">
+                        <span className="font-medium text-green-600">{result.created}</span> contatos criados
+                      </div>
+                    )}
+                    {result.tagsCreated > 0 && (
+                      <div className="px-3 py-1.5 rounded-lg bg-primary/10 text-sm">
+                        <span className="font-medium">{result.tagsCreated}</span> etiquetas criadas
+                      </div>
+                    )}
+                    {result.conversationsCreated > 0 && (
+                      <div className="px-3 py-1.5 rounded-lg bg-blue-500/10 text-sm">
+                        <span className="font-medium text-blue-600">{result.conversationsCreated}</span> conversas criadas
+                      </div>
+                    )}
                   </div>
                 )}
 

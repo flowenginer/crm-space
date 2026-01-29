@@ -347,6 +347,7 @@ class WhatsAppService {
         whatsapp_message_id: msg.originalId,
         status: 'delivered',
         created_at: msg.timestamp.toISOString(),
+        tenant_id: null, // Auto-filled by trigger
       });
 
       // 4. Atualizar conversa com TODOS os campos necessários

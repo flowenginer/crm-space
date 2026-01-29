@@ -203,6 +203,7 @@ export function useActivateRescue() {
                 media_url: mediaUrl,
                 status: 'pending',
                 whatsapp_message_id: null,
+                tenant_id: null, // Auto-filled by trigger
               })
               .select('id')
               .single();
