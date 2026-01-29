@@ -1,85 +1,117 @@
 
-# Plano de Correção: Erro de Importação de Contatos
 
-## Problema Identificado
+# Plano de Correção: Importação de Contatos e Erro phone_number
 
-A importação de 1629 contatos está falhando com 100% de erros porque:
+## Problemas Identificados
 
-**"duplicate key value violates unique constraint 'contacts_phone_tenant_unique'"**
+### Problema 1: Erro "column whatsapp_channels.phone_number does not exist"
 
-### Causas
+Os logs do Postgres mostram esse erro repetidamente. A causa é que várias partes do código usam `phone_number` quando a coluna correta é `phone`.
 
-1. **Limite de 1000 registros do Supabase**: A query que busca contatos existentes usa `.in('phone', Array.from(allPhoneVariations))`, mas:
-   - Para 1629 linhas, gera ~6000+ variações de telefone
-   - O Supabase retorna **no máximo 1000 registros** por padrão
-   - Resultado: Apenas ~1000 contatos existentes são encontrados
-   - Os outros contatos são considerados "novos" e tentam INSERT
+**Arquivos afetados:**
+| Arquivo | Linha | Query Incorreta |
+|---------|-------|-----------------|
+| `supabase/functions/api-send-message/index.ts` | 492 | `.select('id, name, phone_number')` |
+| `supabase/functions/cloudapi-webhook/index.ts` | 680 | `.select('id, name, phone_number')` |
+| `supabase/functions/cloudapi-send-message/index.ts` | 424 | `.select('id, name, phone_number')` |
+| `src/components/settings/CloudAPICallingSettings.tsx` | 46 | `phone_number` em join |
+| `src/components/webhooks/RestApiDocs.tsx` | 345, 383 | Documentação com nome errado |
 
-2. **Sem detecção de duplicatas internas**: Se a planilha tiver o mesmo telefone em múltiplas linhas, o código tenta inserir todos
+### Problema 2: Atendente não está sendo atribuído
+
+Analisando o fluxo, identifiquei que quando você seleciona um "Vendedor Padrão" no dropdown, o código atribui corretamente ao `defaultAssigneeId`. Porém:
+
+1. **Checkbox não marcado**: A atribuição de vendedor só funciona se a opção "Atualizar vendedor atribuído" estiver marcada
+2. **Contatos existentes sem conversa**: Para contatos existentes, o `assigned_to` é atualizado no contact, mas se não houver conversa aberta, o assigned_to não aparece na tela de conversas
+
+### Problema 3: Importação travando em 60%
+
+O progresso 60% corresponde à **Fase 4: Batch Update de Contatos Existentes** (linha 451-487). O código faz updates **sequenciais** (um por um), o que é muito lento para listas grandes:
+
+```typescript
+// PROBLEMA: Update individual para cada contato
+for (const update of contactsToUpdate) {
+  await supabase.from('contacts').update(update.data).eq('id', update.id);
+}
+```
+
+Para 1629 contatos, isso pode significar 1629+ queries sequenciais, causando timeout ou lentidão extrema.
 
 ---
 
-## Solução
+## Solução Proposta
 
-### 1. Dividir Query em Chunks
+### Correção 1: Trocar phone_number para phone nas Edge Functions
 
-Em vez de fazer uma única query IN com milhares de variações, dividir em chunks de ~300 telefones:
+Corrigir todas as referências incorretas de `phone_number` para `phone`:
 
 ```typescript
-// Dividir variações em chunks para evitar limite do Supabase
-const phoneChunks = chunkArray(Array.from(allPhoneVariations), 300);
+// ANTES (errado):
+.select('id, name, phone_number')
 
-for (const chunk of phoneChunks) {
-  const { data } = await supabase
+// DEPOIS (correto):
+.select('id, name, phone')
+```
+
+### Correção 2: Otimizar Updates em Batch
+
+Em vez de updates sequenciais, agrupar por dados iguais e fazer updates em lote:
+
+```typescript
+// Agrupar contatos por dados de atualização
+const updateGroups = new Map<string, string[]>();
+
+for (const update of contactsToUpdate) {
+  const key = JSON.stringify(update.data);
+  if (!updateGroups.has(key)) {
+    updateGroups.set(key, []);
+  }
+  updateGroups.get(key)!.push(update.id);
+}
+
+// Fazer um update por grupo
+for (const [dataKey, ids] of updateGroups) {
+  const data = JSON.parse(dataKey);
+  await supabase
     .from('contacts')
-    .select('id, full_name, phone, assigned_to, lead_status')
-    .in('phone', chunk);
-  
-  data?.forEach(c => contactsCache.set(c.phone, c));
+    .update(data)
+    .in('id', ids);
 }
 ```
 
-### 2. Detectar Duplicatas Internas
+**Ganho esperado**: De ~1600 queries para ~10-50 queries (agrupando por mesmo assigned_to/lead_status).
 
-Antes de adicionar ao `contactsToCreate`, verificar se o telefone já foi processado:
+### Correção 3: Criar conversas para contatos sem conversa
+
+Quando um vendedor padrão é selecionado E um canal é selecionado, garantir que conversas sejam criadas para todos os contatos, não apenas os novos:
 
 ```typescript
-// Verificar se já processamos este telefone neste lote
-if (processedContacts.has(normalizedPhone)) {
-  importResult.log.push({
-    type: 'warning',
-    message: `Telefone duplicado na planilha: ${row.telefone}`,
-    row: rowNum,
-  });
-  importResult.skipped++;
-  continue;
+// Após atribuir vendedor a contatos existentes, 
+// também criar/atualizar conversas se canal foi selecionado
+if (options.channelId && options.defaultAssigneeId) {
+  // Para cada contato atualizado, verificar se tem conversa no canal
+  // Se não tiver, criar; se tiver, atualizar assigned_to
 }
-```
-
-### 3. Usar UPSERT em vez de INSERT
-
-Mudar de `insert()` para `upsert()` com `onConflict` para que telefones duplicados sejam atualizados em vez de falhar:
-
-```typescript
-const { data: created, error } = await supabase
-  .from('contacts')
-  .upsert(batch, { onConflict: 'phone,tenant_id' })
-  .select('id, phone');
 ```
 
 ---
 
 ## Arquivos a Modificar
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/hooks/useImportContacts.ts` | Dividir query em chunks + detectar duplicatas + usar upsert |
+| Arquivo | Tipo | Alteração |
+|---------|------|-----------|
+| `supabase/functions/api-send-message/index.ts` | Modificar | Trocar `phone_number` → `phone` (linha 492) |
+| `supabase/functions/cloudapi-webhook/index.ts` | Modificar | Trocar `phone_number` → `phone` (linha 680) |
+| `supabase/functions/cloudapi-send-message/index.ts` | Modificar | Trocar `phone_number` → `phone` (linha 424) |
+| `src/components/settings/CloudAPICallingSettings.tsx` | Modificar | Trocar `phone_number` → `phone` (linha 46) |
+| `src/components/webhooks/RestApiDocs.tsx` | Modificar | Corrigir documentação |
+| `src/hooks/useImportContacts.ts` | Modificar | Otimizar batch updates + criar conversas para contatos existentes |
 
 ---
 
 ## Resultado Esperado
 
-- Contatos existentes serão corretamente identificados (não há mais limite de 1000)
-- Telefones duplicados na planilha serão detectados e logados
-- Em caso de duplicata residual, o upsert atualizará em vez de falhar
-- Importação passará de 0% de sucesso para ~100%
+1. **Erro phone_number eliminado**: Os erros contínuos nos logs desaparecerão
+2. **Atribuição funcional**: O vendedor será corretamente atribuído tanto em contacts quanto em conversations
+3. **Performance**: Importação de 1600+ contatos deve cair de 10+ minutos para menos de 1 minuto
+
