@@ -1,162 +1,172 @@
 
-# Plano: Corrigir Distribuição na Automação de Transferência para Departamento
+# Plano: Corrigir Políticas RLS para Usuários da Escola Master
 
 ## Problema Identificado
 
-Quando a automação "Transferir Departamento" é executada:
-1. O código apenas atualiza `conversations.department_id` e limpa `assigned_to = null`
-2. **NÃO chama** a função `distribute-lead` para atribuir o lead ao próximo agente
-3. Resultado: O contato fica no departamento correto, mas sem atendente atual nem responsável
+Os usuários do tenant **Escola Master** estão impossibilitados de executar ações básicas devido a **108 políticas RLS RESTRICTIVE** que estão faltando a cláusula `WITH CHECK`.
 
-### Código Atual (Problemático)
-```typescript
-// supabase/functions/execute-flow-node/index.ts - Linha 734-745
-case 'transfer_department':
-  await supabase
-    .from('conversations')
-    .update({
-      department_id: config.department_id,
-      assigned_to: null  // ❌ Limpa o atendente e não redistribui
-    })
-    .eq('id', execution.conversation_id);
+### Causa Raiz
+
+As políticas RLS RESTRICTIVE usam:
+```sql
+qual: (tenant_id = get_user_tenant_id())
+with_check: NULL  -- ❌ PROBLEMA
 ```
 
-### Dados do Problema
-**948 contatos** têm atendente responsável definido mas suas conversas não têm atendente atual.
+Quando `WITH CHECK` é NULL, o PostgreSQL usa o mesmo `qual` para verificar inserções. Como os INSERTs não enviam `tenant_id` (confiando no trigger para definir), a verificação `NULL = get_user_tenant_id()` sempre falha.
+
+### Exemplo Comparativo
+
+| Tabela | WITH CHECK | Resultado |
+|--------|------------|-----------|
+| `contacts` | `(tenant_id IS NULL) OR (tenant_id = get_user_tenant_id())` | ✅ Funciona |
+| `conversations` | `NULL` | ❌ Falha |
+| `internal_chat_messages` | `NULL` | ❌ Falha |
+| `tags` | `NULL` | ❌ Falha |
+
+### Ações Afetadas
+
+- Enviar mensagem no chat interno
+- Criar tags
+- Atribuir contatos a outros
+- Criar novos contatos (páginas de contatos)
+- Selecionar canal para conversar
+- Criar conversas
+- Atribuir leads
 
 ---
 
 ## Solução Proposta
 
-### 1. Modificar a Ação `transfer_department` para Chamar Distribuição
+### Correção via SQL
 
-Após atualizar o departamento da conversa, verificar se o departamento destino tem distribuição de leads configurada e, se sim, chamar a função `distribute-lead`.
-
-**Arquivos a modificar:**
-- `supabase/functions/execute-flow-node/index.ts` (Edge Function - backend)
-- `src/lib/flow-engine/index.ts` (Frontend flow engine - para pré-visualização)
-
-### 2. Lógica da Correção
-
-```typescript
-case 'transfer_department':
-  if (config.department_id && execution.conversation_id) {
-    // 1. Buscar contact_id da conversa
-    const { data: conv } = await supabase
-      .from('conversations')
-      .select('contact_id')
-      .eq('id', execution.conversation_id)
-      .single();
-    
-    // 2. Atualizar departamento da conversa (sem limpar assigned_to ainda)
-    await supabase
-      .from('conversations')
-      .update({
-        department_id: config.department_id,
-        assigned_to: null
-      })
-      .eq('id', execution.conversation_id);
-    
-    // 3. Atualizar departamento do contato
-    if (conv?.contact_id) {
-      await supabase
-        .from('contacts')
-        .update({
-          department_id: config.department_id
-        })
-        .eq('id', conv.contact_id);
-    }
-    
-    // 4. Chamar distribuição de leads se configurada para este departamento
-    if (conv?.contact_id) {
-      try {
-        const baseUrl = Deno.env.get('SUPABASE_URL') || '';
-        await fetch(`${baseUrl}/functions/v1/distribute-lead`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contact_id: conv.contact_id,
-            force_department_id: config.department_id
-          })
-        });
-      } catch (e) {
-        console.log('[execute-flow-node] Distribution call failed, lead will remain unassigned');
-      }
-    }
-    
-    await logExecution(supabase, execution.id, node.id, 'info', 'Transferido para departamento');
-  }
-  break;
-```
-
-### 3. Modificar `distribute-lead` para Aceitar `force_department_id`
-
-A função `distribute-lead` precisa ser atualizada para aceitar um parâmetro opcional `force_department_id` que sobrescreve o departamento configurado nas settings.
-
-**Arquivo:** `supabase/functions/distribute-lead/index.ts`
-
-```typescript
-// Aceitar force_department_id no body
-const { contact_id, force_department_id } = await req.json();
-
-// Usar force_department_id se fornecido, senão usar da configuração
-const targetDepartmentId = force_department_id || settings?.lead_distribution_department_id;
-```
-
----
-
-## Correção dos 948 Contatos Existentes
-
-Criar um script SQL para sincronizar os atendentes:
+Atualizar todas as 108 políticas RESTRICTIVE para incluir `WITH CHECK`:
 
 ```sql
--- Script para atribuir atendente atual baseado no responsável do contato
-UPDATE conversations cv
-SET assigned_to = con.assigned_to
-FROM contacts con
-WHERE cv.contact_id = con.id
-  AND cv.status IN ('open', 'pending')
-  AND cv.assigned_to IS NULL
-  AND con.assigned_to IS NOT NULL;
+-- Lista das tabelas críticas que precisam correção imediata
+ALTER POLICY "Tenant isolation for conversations" 
+ON conversations 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+ALTER POLICY "Tenant isolation for internal_chat_messages" 
+ON internal_chat_messages 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+ALTER POLICY "Tenant isolation for internal_chat_participants" 
+ON internal_chat_participants 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+ALTER POLICY "Tenant isolation for internal_chat_threads" 
+ON internal_chat_threads 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+ALTER POLICY "Tenant isolation for tags" 
+ON tags 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+-- ... e outras 103 tabelas
 ```
 
-Esse script atribui o "atendente atual" da conversa ao mesmo "atendente responsável" do contato para todas as 948 conversas órfãs.
+### Implementação
+
+1. **Criar script SQL** com todos os `ALTER POLICY` necessários
+2. **Executar no Supabase** via SQL Editor
+3. **Testar** com usuário da Escola Master
 
 ---
 
-## Resumo das Alterações
+## Script Completo
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `supabase/functions/execute-flow-node/index.ts` | Adicionar chamada à `distribute-lead` após `transfer_department` |
-| `src/lib/flow-engine/index.ts` | Espelhar a mesma lógica no frontend |
-| `supabase/functions/distribute-lead/index.ts` | Aceitar parâmetro `force_department_id` |
-| Script SQL (manual) | Sincronizar 948 conversas órfãs |
+Criarei um arquivo `scripts/fix-rls-with-check.sql` contendo:
+
+```sql
+-- =====================================================
+-- CORREÇÃO DE POLÍTICAS RLS - WITH CHECK FALTANDO
+-- =====================================================
+-- Problema: Políticas RESTRICTIVE sem WITH CHECK bloqueiam INSERTs
+-- quando tenant_id é NULL antes do trigger executar
+-- =====================================================
+
+-- Tabelas críticas (afetam funcionalidade direta)
+ALTER POLICY "Tenant isolation for conversations" ON conversations 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+ALTER POLICY "Tenant isolation for internal_chat_messages" ON internal_chat_messages 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+ALTER POLICY "Tenant isolation for internal_chat_participants" ON internal_chat_participants 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+ALTER POLICY "Tenant isolation for internal_chat_threads" ON internal_chat_threads 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+ALTER POLICY "Tenant isolation for tags" ON tags 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+-- Outras tabelas afetadas (108 no total)
+ALTER POLICY "Tenant isolation for account_movements" ON account_movements 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+ALTER POLICY "Tenant isolation for active_rescues" ON active_rescues 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+ALTER POLICY "Tenant isolation for activity_log" ON activity_log 
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+
+-- ... (continua para todas as 108 tabelas)
+```
 
 ---
 
-## Fluxo Corrigido
+## Por Que Space Sports Funciona?
 
-```text
-Automação: "Transferir Departamento"
-   ↓
-1. Atualizar conversations.department_id
-   ↓
-2. Atualizar contacts.department_id
-   ↓
-3. Chamar distribute-lead com force_department_id
-   ↓
-4. distribute-lead atribui:
-   ├── contacts.assigned_to (Atendente Responsável)
-   └── conversations.assigned_to (Atendente Atual)
-   ↓
-5. Ambos os campos preenchidos ✓
+A tabela `contacts` já tem a política correta:
+```sql
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()))
 ```
+
+Além disso, dados antigos já têm `tenant_id` definido, então operações de SELECT/UPDATE funcionam. O problema é mais visível em **novos tenants** que tentam inserir dados pela primeira vez.
 
 ---
 
 ## Resultado Esperado
 
-- **Transferências via automação**: Atribuirão tanto atendente atual quanto responsável
-- **948 contatos existentes**: Serão corrigidos via script SQL
-- **Compatibilidade**: A função `distribute-lead` continua funcionando normalmente para chamadas sem `force_department_id`
+Após executar o script:
+- ✅ Usuários da Escola Master poderão enviar mensagens no chat interno
+- ✅ Poderão criar tags
+- ✅ Poderão atribuir contatos a outros usuários
+- ✅ Poderão criar novos contatos
+- ✅ Poderão selecionar canal para conversar
+- ✅ Todas as operações de INSERT funcionarão corretamente
+
+---
+
+## Detalhes Técnicos
+
+### Fluxo Atual (Quebrado)
+
+```text
+INSERT → RLS CHECK (tenant_id = user_tenant?) → ❌ FALHA (NULL ≠ UUID)
+```
+
+### Fluxo Corrigido
+
+```text
+INSERT → RLS CHECK (NULL OK ou tenant_id = user_tenant?) → ✅ PASSA
+       → TRIGGER define tenant_id automaticamente
+       → Dados salvos com tenant_id correto
+```
+
+### Arquivos a Criar
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `scripts/fix-rls-with-check.sql` | Script completo com todos os ALTER POLICY |
+
+### Segurança
+
+A cláusula `WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()))` é segura porque:
+1. Permite INSERT com `tenant_id = NULL` (trigger define depois)
+2. Permite INSERT com `tenant_id` do próprio tenant
+3. **Bloqueia** INSERT com `tenant_id` de outro tenant
+4. O trigger `set_tenant_id_from_user()` garante que o tenant_id correto seja sempre definido
