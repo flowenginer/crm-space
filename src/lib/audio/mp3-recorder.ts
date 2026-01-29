@@ -1,11 +1,12 @@
+import { getLamejs } from './lamejs-loader';
+
 /**
  * Mp3Recorder - Records audio directly to MP3 format
  * 
  * Uses ScriptProcessorNode to capture PCM samples from the microphone
- * and encodes them to MP3 in real-time using lamejs (loaded globally via CDN).
+ * and encodes them to MP3 in real-time using lamejs.
  * 
- * This bypasses the need for AudioContext.decodeAudioData() which
- * doesn't reliably support WebM/Opus in all browsers.
+ * Uses CDN version if available, falls back to local bundle.
  */
 export class Mp3Recorder {
   private audioContext: AudioContext | null = null;
@@ -24,8 +25,8 @@ export class Mp3Recorder {
   async start(): Promise<void> {
     this.mp3Data = [];
     
-    // Access lamejs from global scope (loaded via script in index.html)
-    const lamejs = (window as any).lamejs;
+    // Use loader with fallback instead of direct global access
+    const lamejs = await getLamejs();
     
     console.log('[Mp3Recorder] Starting, lamejs:', lamejs);
     console.log('[Mp3Recorder] Mp3Encoder:', lamejs?.Mp3Encoder);
@@ -52,7 +53,7 @@ export class Mp3Recorder {
       this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.processor = this.audioContext.createScriptProcessor(this.bufferSize, this.channels, this.channels);
       
-      // Initialize MP3 encoder with actual sample rate using global lamejs
+      // Initialize MP3 encoder with actual sample rate
       this.mp3Encoder = new lamejs.Mp3Encoder(this.channels, actualSampleRate, this.kbps);
       
       this.processor.onaudioprocess = (e) => {
