@@ -98,6 +98,15 @@ export function useImportContacts() {
       // ===== PHASE 1: PRE-LOAD ALL DATA =====
       setProgress(5);
       
+      // Helper to split array into chunks
+      const chunkArray = <T>(arr: T[], size: number): T[][] => {
+        const chunks: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) {
+          chunks.push(arr.slice(i, i + size));
+        }
+        return chunks;
+      };
+      
       // Normalize all phones first
       const normalizedPhones = rows.map(r => ({
         original: r.telefone,
@@ -112,16 +121,24 @@ export function useImportContacts() {
         }
       });
 
-      // Batch fetch existing contacts
-      const { data: existingContactsData } = await supabase
-        .from('contacts')
-        .select('id, full_name, phone, assigned_to, lead_status')
-        .in('phone', Array.from(allPhoneVariations));
-      
+      // FIXED: Batch fetch existing contacts in chunks to avoid Supabase 1000-record limit
       const contactsCache = new Map<string, ContactCache>();
-      existingContactsData?.forEach(c => {
-        contactsCache.set(c.phone, c);
-      });
+      const phoneChunks = chunkArray(Array.from(allPhoneVariations), 300);
+      
+      console.log(`[Import] Fetching contacts in ${phoneChunks.length} chunks (${allPhoneVariations.size} variations)`);
+      
+      for (const chunk of phoneChunks) {
+        const { data: chunkData } = await supabase
+          .from('contacts')
+          .select('id, full_name, phone, assigned_to, lead_status')
+          .in('phone', chunk);
+        
+        chunkData?.forEach(c => {
+          contactsCache.set(c.phone, c);
+        });
+      }
+      
+      console.log(`[Import] Found ${contactsCache.size} existing contacts`);
 
       setProgress(10);
 
@@ -167,8 +184,10 @@ export function useImportContacts() {
 
       setProgress(20);
 
-      // Batch fetch existing contact_tags for all contacts
-      const contactIds = Array.from(new Set(existingContactsData?.map(c => c.id) || []));
+      // Batch fetch existing contact_tags for all contacts (using contactsCache)
+      const contactIds = Array.from(new Set(
+        Array.from(contactsCache.values()).map(c => c.id)
+      ));
       const { data: existingContactTags } = contactIds.length > 0 
         ? await supabase
             .from('contact_tags')
@@ -186,7 +205,7 @@ export function useImportContacts() {
 
       // If channel specified, fetch existing conversations
       let existingConversations = new Map<string, string>();
-      if (options.channelId) {
+      if (options.channelId && contactIds.length > 0) {
         const { data: convData } = await supabase
           .from('conversations')
           .select('id, contact_id')
@@ -258,6 +277,17 @@ export function useImportContacts() {
           }
           
           if (!contact) {
+            // FIXED: Check if we already processed this phone in this batch (internal duplicates)
+            if (processedContacts.has(normalizedPhone)) {
+              importResult.skipped++;
+              importResult.log.push({
+                type: 'warning',
+                message: `Telefone duplicado na planilha: ${row.telefone}`,
+                row: rowNum,
+              });
+              continue;
+            }
+            
             if (options.createMissingContacts && row.nome) {
               // Queue for batch creation
               const newContactData = {
@@ -364,14 +394,22 @@ export function useImportContacts() {
       const createdContactsMap = new Map<string, string>(); // phone -> id
 
       if (contactsToCreate.length > 0) {
+        console.log(`[Import] Creating ${contactsToCreate.length} new contacts with UPSERT`);
+        
         for (let i = 0; i < contactsToCreate.length; i += batchSize) {
           const batch = contactsToCreate.slice(i, i + batchSize);
+          
+          // FIXED: Use upsert with onConflict to handle any remaining duplicates gracefully
           const { data: created, error } = await supabase
             .from('contacts')
-            .insert(batch as any)
+            .upsert(batch as any, { 
+              onConflict: 'phone,tenant_id',
+              ignoreDuplicates: false 
+            })
             .select('id, phone');
           
           if (error) {
+            console.error('[Import] Batch upsert error:', error);
             importResult.errors += batch.length;
             importResult.log.push({
               type: 'error',
