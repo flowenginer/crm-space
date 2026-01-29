@@ -109,11 +109,26 @@ export interface EvaluationDetail {
   };
 }
 
+export interface ObjectionTrecho {
+  trecho: string;
+  nota: number;
+  tratada: boolean;
+  evaluationId: string;
+  conversationDate?: string;
+}
+
 export interface ObjectionAnalysis {
   name: string;
   frequency: number;
   avgScore: number;
   handledRate: number;
+  trechos: ObjectionTrecho[];
+  scoreDistribution: {
+    bom: number;      // ≥7
+    regular: number;  // 5-7
+    fraco: number;    // 3-5
+    critico: number;  // <3
+  };
 }
 
 export interface ScoreDistribution {
@@ -521,23 +536,54 @@ export function useObjectionsAnalysis(startDate?: Date, endDate?: Date) {
   return useQuery({
     queryKey: ['objections-analysis', format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd')],
     queryFn: async (): Promise<ObjectionAnalysis[]> => {
-      const { data, error } = await queryEvaluationsView('objecoes', start, end);
+      const { data, error } = await queryEvaluationsView('id, objecoes, conversation_last_message_at', start, end);
 
       if (error) throw error;
       if (!data) return [];
 
-      const objectionStats = new Map<string, { count: number; handled: number; totalScore: number }>();
+      const objectionStats = new Map<string, { 
+        count: number; 
+        handled: number; 
+        totalScore: number;
+        trechos: ObjectionTrecho[];
+        scoreDistribution: { bom: number; regular: number; fraco: number; critico: number };
+      }>();
 
       data.forEach((evaluation: any) => {
-        const objecoes = evaluation.objecoes as Record<string, { apareceu: number; tratada: number; nota: number }> | null;
+        const objecoes = evaluation.objecoes as Record<string, { apareceu: number; tratada: number; nota: number; trecho?: string }> | null;
         if (!objecoes) return;
 
         Object.entries(objecoes).forEach(([name, obj]) => {
           if (obj.apareceu === 1) {
-            const stats = objectionStats.get(name) || { count: 0, handled: 0, totalScore: 0 };
+            const stats = objectionStats.get(name) || { 
+              count: 0, 
+              handled: 0, 
+              totalScore: 0, 
+              trechos: [],
+              scoreDistribution: { bom: 0, regular: 0, fraco: 0, critico: 0 }
+            };
             stats.count++;
             if (obj.tratada === 1) stats.handled++;
             stats.totalScore += obj.nota || 0;
+            
+            // Score distribution
+            const nota = obj.nota || 0;
+            if (nota >= 7) stats.scoreDistribution.bom++;
+            else if (nota >= 5) stats.scoreDistribution.regular++;
+            else if (nota >= 3) stats.scoreDistribution.fraco++;
+            else stats.scoreDistribution.critico++;
+            
+            // Collect trechos (up to 10, prioritizing extreme scores)
+            if (obj.trecho && stats.trechos.length < 10) {
+              stats.trechos.push({
+                trecho: obj.trecho,
+                nota: obj.nota || 0,
+                tratada: obj.tratada === 1,
+                evaluationId: evaluation.id,
+                conversationDate: evaluation.conversation_last_message_at,
+              });
+            }
+            
             objectionStats.set(name, stats);
           }
         });
@@ -545,11 +591,23 @@ export function useObjectionsAnalysis(startDate?: Date, endDate?: Date) {
 
       const result: ObjectionAnalysis[] = [];
       objectionStats.forEach((stats, name) => {
+        // Sort trechos: prioritize extreme scores (≥8 or ≤3), then by date
+        const sortedTrechos = stats.trechos.sort((a, b) => {
+          const aIsExtreme = a.nota >= 8 || a.nota <= 3;
+          const bIsExtreme = b.nota >= 8 || b.nota <= 3;
+          if (aIsExtreme && !bIsExtreme) return -1;
+          if (!aIsExtreme && bIsExtreme) return 1;
+          // Then by date (most recent first)
+          return new Date(b.conversationDate || 0).getTime() - new Date(a.conversationDate || 0).getTime();
+        });
+
         result.push({
           name,
           frequency: stats.count,
           avgScore: Math.round((stats.totalScore / stats.count) * 10) / 10,
           handledRate: Math.round((stats.handled / stats.count) * 100),
+          trechos: sortedTrechos.slice(0, 10),
+          scoreDistribution: stats.scoreDistribution,
         });
       });
 

@@ -1,11 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, MousePointerClick } from 'lucide-react';
 import { ObjectionAnalysis } from '@/hooks/useSalesEvaluations';
 
 interface ObjectionsBarChartProps {
   data: ObjectionAnalysis[] | undefined;
   isLoading: boolean;
+  onSelectObjection?: (objection: ObjectionAnalysis) => void;
 }
 
 function getBarColor(score: number): string {
@@ -15,7 +16,7 @@ function getBarColor(score: number): string {
   return 'hsl(0, 84%, 60%)'; // red
 }
 
-export function ObjectionsBarChart({ data, isLoading }: ObjectionsBarChartProps) {
+export function ObjectionsBarChart({ data, isLoading, onSelectObjection }: ObjectionsBarChartProps) {
   if (isLoading) {
     return (
       <Card className="h-full">
@@ -38,6 +39,7 @@ export function ObjectionsBarChart({ data, isLoading }: ObjectionsBarChartProps)
     ...obj,
     name: obj.name.length > 15 ? obj.name.substring(0, 15) + '...' : obj.name,
     fullName: obj.name,
+    originalData: obj,
   }));
 
   if (chartData.length === 0) {
@@ -58,12 +60,26 @@ export function ObjectionsBarChart({ data, isLoading }: ObjectionsBarChartProps)
     );
   }
 
+  const handleBarClick = (entry: typeof chartData[0]) => {
+    if (onSelectObjection && entry.originalData) {
+      onSelectObjection(entry.originalData);
+    }
+  };
+
   return (
     <Card className="h-full">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5" />
-          Top Objeções (frequência)
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" />
+            Top Objeções (frequência)
+          </div>
+          {onSelectObjection && (
+            <span className="text-xs text-muted-foreground font-normal flex items-center gap-1">
+              <MousePointerClick className="h-3 w-3" />
+              Clique para detalhes
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -83,7 +99,11 @@ export function ObjectionsBarChart({ data, isLoading }: ObjectionsBarChartProps)
             <Tooltip 
               formatter={(value: number, name: string, props: { payload: typeof chartData[0] }) => {
                 if (name === 'frequency') {
-                  return [`${value}x (nota média: ${props.payload.avgScore})`, 'Frequência'];
+                  const hasTrechos = props.payload.originalData?.trechos?.length > 0;
+                  return [
+                    `${value}x (nota média: ${props.payload.avgScore})${hasTrechos ? ' • Clique para ver trechos' : ''}`, 
+                    'Frequência'
+                  ];
                 }
                 return [value, name];
               }}
@@ -99,6 +119,8 @@ export function ObjectionsBarChart({ data, isLoading }: ObjectionsBarChartProps)
             <Bar 
               dataKey="frequency" 
               radius={[0, 4, 4, 0]}
+              cursor={onSelectObjection ? 'pointer' : undefined}
+              onClick={(data) => handleBarClick(data)}
             >
               {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={getBarColor(entry.avgScore)} />
