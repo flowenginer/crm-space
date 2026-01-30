@@ -1,169 +1,186 @@
 
-# Correção de Áudio Mudo em Chamadas WebRTC
 
-## Problema Identificado
+# Correção do Áudio Mudo em Chamadas WebRTC
 
-A chamada conecta com sucesso, mas não há som porque:
-1. O `remoteStream` (áudio do cliente) é recebido via WebRTC
-2. **Porém, nunca é conectado a um elemento `<audio>` para reprodução**
-3. O `localStream` (microfone) também não está sendo transmitido de forma audível para o cliente
+## Diagnóstico
 
-## Solução: Adicionar Elementos de Áudio
+A chamada conecta com sucesso via Meta Cloud API, mas o áudio não funciona porque:
 
-### Parte 1: Reproduzir Áudio Remoto (ouvir o cliente)
+1. **SDP Answer não está chegando ao frontend**: Para chamadas outbound (business-initiated), o Meta envia o SDP answer via webhook, mas o sistema atual **não propaga o SDP answer para o frontend** via Realtime.
 
-| Arquivo | Modificação |
-|---------|-------------|
-| `src/components/calls/ActiveCallOverlay.tsx` | Adicionar elemento `<audio>` para `remoteStream` |
+2. **O `remoteStream` fica null**: Sem receber o SDP answer, o frontend não consegue completar a negociação WebRTC, então o `pc.ontrack` nunca dispara e o `remoteStream` nunca é populado.
 
-**Implementação:**
-```tsx
-import { useRef, useEffect } from 'react';
+3. **O elemento `<audio>` existe mas não tem stream**: O código do `ActiveCallOverlay.tsx` já tem o elemento de áudio, mas `callState.remoteStream` está null.
 
-// Dentro do componente:
-const remoteAudioRef = useRef<HTMLAudioElement>(null);
-
-// Hook para conectar o stream ao audio element
-useEffect(() => {
-  if (remoteAudioRef.current && callState.remoteStream) {
-    remoteAudioRef.current.srcObject = callState.remoteStream;
-    remoteAudioRef.current.play().catch(err => {
-      console.error('[Audio] Failed to play remote audio:', err);
-    });
-  }
-}, [callState.remoteStream]);
-
-// No JSX (invisível, apenas para reprodução):
-<audio ref={remoteAudioRef} autoPlay playsInline />
-```
-
-### Parte 2: Expor `remoteStream` no Contexto
-
-Atualmente, o `CallProvider` não expõe o `remoteStream` para os componentes filhos.
-
-| Arquivo | Modificação |
-|---------|-------------|
-| `src/providers/CallProvider.tsx` | Incluir `remoteStream` no `callState` exposto |
-
-O estado já inclui `remoteStream`, mas preciso verificar se está sendo passado corretamente.
-
-### Parte 3: Debug do Microfone Local
-
-Para garantir que o microfone está sendo enviado:
-
-| Arquivo | Modificação |
-|---------|-------------|
-| `src/hooks/useWebRTCCall.ts` | Adicionar logs de debug para tracks |
-
-**Logs adicionais:**
-```tsx
-localStream.getTracks().forEach(track => {
-  console.log('[WebRTC] Adding local track:', track.kind, track.enabled, track.readyState);
-  pc.addTrack(track, localStream);
-});
-```
-
-## Diagrama do Fluxo de Áudio Corrigido
+## Fluxo Atual (Quebrado)
 
 ```text
-┌────────────────────────────────────────────────────────────────┐
-│                        CRM (Browser)                           │
-├────────────────────────────────────────────────────────────────┤
-│                                                                │
-│  Microfone ──► getUserMedia() ──► localStream                  │
-│                                         │                      │
-│                                         ▼                      │
-│                               RTCPeerConnection                │
-│                                    │    │                      │
-│                           addTrack()   ontrack()               │
-│                                    │    │                      │
-│                                    ▼    ▼                      │
-│                              Meta Cloud API                    │
-│                                    │    │                      │
-│                                    ▼    ▼                      │
-│                               remoteStream                     │
-│                                         │                      │
-│                                         ▼                      │
-│  [FALTA] ────────────► <audio srcObject={remoteStream} />      │
-│                                         │                      │
-│                                         ▼                      │
-│                                   Alto-falante                 │
-│                                                                │
-└────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           CHAMADA OUTBOUND                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. Frontend gera SDP Offer ─────────► cloudapi-initiate-call           │
+│                                                │                        │
+│  2. Meta recebe e responde com call_id ◄───────┘                        │
+│                                                                         │
+│  3. Cliente aceita a chamada no WhatsApp                                │
+│                                                │                        │
+│  4. Meta envia webhook com SDP Answer ─────────► cloudapi-webhook       │
+│                                                │                        │
+│  5. Webhook processa mas NÃO ENVIA para ───────┘ [PROBLEMA AQUI]       │
+│     o frontend                                                          │
+│                                                                         │
+│  6. Frontend fica esperando o remoteStream ──► NUNCA CHEGA              │
+│                                                                         │
+│  7. Áudio mudo porque RTCPeerConnection ─────► Não tem remote SDP      │
+│     nunca recebe a outra ponta                                          │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+## Solução Proposta
+
+### 1. Propagar SDP Answer via Realtime
+
+O webhook `cloudapi-webhook` precisa enviar o SDP answer para o frontend quando uma chamada outbound é aceita.
+
+**Arquivo**: `supabase/functions/cloudapi-webhook/index.ts`
+
+**Modificação**: Na função `processCalls`, quando receber status `accepted` para chamada `business_initiated`, incluir o SDP no broadcast:
+
+```typescript
+// Broadcast call state changes for active calls
+if (['accepted', 'rejected', 'terminated', 'completed', 'failed'].includes(status)) {
+  console.log('[Calls] Broadcasting call state change:', status);
+  
+  await supabase.channel('call-events').send({
+    type: 'broadcast',
+    event: 'call_state_changed',
+    payload: {
+      callId,
+      callLogId,
+      status,
+      duration,
+      timestamp: timestamp.toISOString(),
+      // NOVO: Incluir SDP answer para chamadas outbound aceitas
+      sdpAnswer: (status === 'accepted' && direction === 'business_initiated') 
+        ? session?.sdp 
+        : undefined,
+      sdpType: (status === 'accepted' && direction === 'business_initiated')
+        ? session?.sdp_type
+        : undefined,
+    },
+  });
+}
+```
+
+### 2. Receber SDP Answer no Frontend
+
+O `CallProvider` precisa processar o SDP answer e passá-lo para o hook WebRTC.
+
+**Arquivo**: `src/providers/CallProvider.tsx`
+
+**Modificação**: No listener de `call_state_changed`, chamar `setSdpAnswer` quando receber o SDP:
+
+```typescript
+const eventsChannel = supabase
+  .channel('call-events-listener')
+  .on('broadcast', { event: 'call_state_changed' }, async (payload) => {
+    console.log('[CallProvider] Call state changed:', payload);
+    
+    const { callId, status, sdpAnswer } = payload.payload;
+    
+    // Se recebemos SDP answer para nossa chamada outbound, definir no WebRTC
+    if (sdpAnswer && callState.callId === callId && callState.direction === 'outbound') {
+      console.log('[CallProvider] Received SDP answer for outbound call');
+      await setSdpAnswer(sdpAnswer);
+    }
+    
+    // Resto do código existente...
+  })
+  .subscribe();
+```
+
+### 3. Expor `setSdpAnswer` no Hook
+
+O hook `useWebRTCCall` já tem a função `setSdpAnswer`, mas ela não está sendo retornada.
+
+**Arquivo**: `src/hooks/useWebRTCCall.ts`
+
+**Modificação**: Adicionar `setSdpAnswer` no retorno:
+
+```typescript
+return {
+  state,
+  answerCall,
+  rejectCall,
+  hangup,
+  initiateCall,
+  toggleMute,
+  cleanup,
+  setSdpAnswer, // ADICIONAR
+};
+```
+
+### 4. Conectar tudo no CallProvider
+
+**Arquivo**: `src/providers/CallProvider.tsx`
+
+**Modificação**: Incluir `setSdpAnswer` na desestruturação do hook:
+
+```typescript
+const {
+  state: callState,
+  answerCall,
+  rejectCall,
+  hangup,
+  initiateCall: initiate,
+  toggleMute,
+  cleanup,
+  setSdpAnswer, // ADICIONAR
+} = useWebRTCCall();
+```
+
+## Fluxo Corrigido
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       CHAMADA OUTBOUND (CORRIGIDA)                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. Frontend gera SDP Offer ─────────► cloudapi-initiate-call           │
+│                                                │                        │
+│  2. Meta responde com call_id ◄────────────────┘                        │
+│                                                                         │
+│  3. Cliente aceita a chamada no WhatsApp                                │
+│                                                │                        │
+│  4. Meta envia webhook com SDP Answer ─────────► cloudapi-webhook       │
+│                                                │                        │
+│  5. Webhook broadcasta via Realtime ───────────┼──► call_state_changed  │
+│     com sdpAnswer incluído                     │                        │
+│                                                ▼                        │
+│  6. CallProvider recebe e chama ───────────────► setSdpAnswer()         │
+│                                                │                        │
+│  7. RTCPeerConnection.setRemoteDescription ────┘                        │
+│                                                │                        │
+│  8. ontrack dispara com remoteStream ──────────► ActiveCallOverlay      │
+│                                                │                        │
+│  9. <audio> recebe stream ─────────────────────► ÁUDIO FUNCIONA!        │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Arquivos a Modificar
 
-| Arquivo | Ação |
-|---------|------|
-| `src/components/calls/ActiveCallOverlay.tsx` | Adicionar `useRef`, `useEffect` e elemento `<audio>` |
-| `src/hooks/useWebRTCCall.ts` | Adicionar logs de debug para tracks de áudio |
+| # | Arquivo | Modificação |
+|---|---------|-------------|
+| 1 | `supabase/functions/cloudapi-webhook/index.ts` | Incluir `sdpAnswer` e `sdpType` no broadcast de `call_state_changed` para chamadas outbound aceitas |
+| 2 | `src/hooks/useWebRTCCall.ts` | Adicionar `setSdpAnswer` no objeto de retorno |
+| 3 | `src/providers/CallProvider.tsx` | Desestruturar `setSdpAnswer` do hook e chamar quando receber SDP via Realtime |
 
-## Código Final do `ActiveCallOverlay.tsx`
+## Considerações Técnicas
 
-```tsx
-import { useRef, useEffect } from 'react';
-import { Phone, PhoneOff, Mic, MicOff } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useCallContext } from '@/providers/CallProvider';
-import { cn } from '@/lib/utils';
+- **Timing**: O webhook pode chegar antes do frontend estar pronto para receber. O Realtime do Supabase deve lidar com isso se a subscription já estiver ativa.
+- **ICE Candidates**: Se houver ICE trickling, pode ser necessário implementar troca adicional de ICE candidates via Realtime.
+- **Logs de Debug**: Manter logs detalhados para diagnosticar futuros problemas.
 
-function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-export function ActiveCallOverlay() {
-  const { callState, hangupCall, toggleMute, isInCall } = useCallContext();
-  const remoteAudioRef = useRef<HTMLAudioElement>(null);
-
-  // Play remote audio stream when available
-  useEffect(() => {
-    const audioEl = remoteAudioRef.current;
-    const stream = callState.remoteStream;
-    
-    if (audioEl && stream) {
-      console.log('[ActiveCall] Connecting remote stream to audio element');
-      audioEl.srcObject = stream;
-      audioEl.play().catch(err => {
-        console.error('[ActiveCall] Failed to play remote audio:', err);
-      });
-    }
-    
-    return () => {
-      if (audioEl) {
-        audioEl.srcObject = null;
-      }
-    };
-  }, [callState.remoteStream]);
-
-  if (!isInCall || callState.status === 'idle') {
-    return null;
-  }
-
-  // ... resto do componente igual ...
-
-  return (
-    <div className="...">
-      {/* Hidden audio element for remote stream playback */}
-      <audio ref={remoteAudioRef} autoPlay playsInline />
-      
-      {/* ... resto do JSX ... */}
-    </div>
-  );
-}
-```
-
-## Benefícios
-
-1. **Áudio bidirecional**: Você ouvirá o cliente e ele ouvirá você
-2. **Debug melhorado**: Logs detalhados para identificar problemas de tracks
-3. **Cleanup adequado**: Desconecta o stream quando a chamada termina
-
-## Requisitos Técnicos
-
-- O atributo `autoPlay` é necessário para reprodução automática
-- O atributo `playsInline` é importante para iOS
-- O elemento precisa estar no DOM (mesmo invisível) para funcionar
