@@ -174,11 +174,8 @@ export default function Dashboard() {
         </TabsContent>
 
         <TabsContent value="inteligencia" className="mt-6">
-          {/* Lead Intelligence Dashboard */}
-          <LeadIntelligenceDashboard 
-            dateFrom={filters.dateFrom} 
-            dateTo={filters.dateTo} 
-          />
+          {/* Lead Intelligence Dashboard - Independent filters */}
+          <LeadIntelligenceDashboard />
         </TabsContent>
       </Tabs>
     </div>

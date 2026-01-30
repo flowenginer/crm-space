@@ -1,10 +1,15 @@
 import { useState, useMemo } from "react";
+import { startOfMonth, format, subDays, subMonths, startOfYear } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, MapPin, Layers, TrendingUp, DollarSign, Users, Shirt } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Loader2, MapPin, Layers, TrendingUp, DollarSign, Users, CalendarIcon } from "lucide-react";
 import { 
   useLeadIntelligenceByState, 
   useLeadIntelligenceBySegment, 
@@ -12,16 +17,27 @@ import {
   STATE_NAMES 
 } from "@/hooks/useLeadIntelligence";
 import { useSegments } from "@/hooks/useSegments";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from "recharts";
-
-interface LeadIntelligenceDashboardProps {
-  dateFrom?: Date;
-  dateTo?: Date;
-}
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+import { cn } from "@/lib/utils";
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
-export function LeadIntelligenceDashboard({ dateFrom, dateTo }: LeadIntelligenceDashboardProps) {
+const presetRanges = [
+  { label: 'Hoje', getValue: () => ({ from: new Date(), to: new Date() }) },
+  { label: 'Últimos 7 dias', getValue: () => ({ from: subDays(new Date(), 6), to: new Date() }) },
+  { label: 'Últimos 30 dias', getValue: () => ({ from: subDays(new Date(), 29), to: new Date() }) },
+  { label: 'Este mês', getValue: () => ({ from: startOfMonth(new Date()), to: new Date() }) },
+  { label: 'Mês passado', getValue: () => ({ from: startOfMonth(subMonths(new Date(), 1)), to: subDays(startOfMonth(new Date()), 1) }) },
+  { label: 'Este ano', getValue: () => ({ from: startOfYear(new Date()), to: new Date() }) },
+];
+
+export function LeadIntelligenceDashboard() {
+  // Independent date filters for Intelligence tab
+  const [dateFrom, setDateFrom] = useState<Date>(startOfMonth(new Date()));
+  const [dateTo, setDateTo] = useState<Date>(new Date());
+  const [startOpen, setStartOpen] = useState(false);
+  const [endOpen, setEndOpen] = useState(false);
+  
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [selectedSegment, setSelectedSegment] = useState<string | null>(null);
   
@@ -167,7 +183,7 @@ export function LeadIntelligenceDashboard({ dateFrom, dateTo }: LeadIntelligence
         </Card>
       </div>
 
-      {/* Filtros Interativos */}
+      {/* Filtros Interativos - Independentes */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -176,7 +192,70 @@ export function LeadIntelligenceDashboard({ dateFrom, dateTo }: LeadIntelligence
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-4 items-end">
+            {/* Date Range Filter */}
+            <div className="flex gap-2 items-end">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Data Inicial</label>
+                <Popover open={startOpen} onOpenChange={setStartOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className={cn("w-[140px] justify-start text-left font-normal", !dateFrom && "text-muted-foreground")}>
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "Início"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dateFrom}
+                      onSelect={(date) => { if (date) { setDateFrom(date); setStartOpen(false); } }}
+                      locale={ptBR}
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Data Final</label>
+                <Popover open={endOpen} onOpenChange={setEndOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className={cn("w-[140px] justify-start text-left font-normal", !dateTo && "text-muted-foreground")}>
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateTo ? format(dateTo, "dd/MM/yyyy") : "Fim"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dateTo}
+                      onSelect={(date) => { if (date) { setDateTo(date); setEndOpen(false); } }}
+                      locale={ptBR}
+                      disabled={(date) => dateFrom ? date < dateFrom : false}
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              {/* Preset buttons */}
+              <div className="flex gap-1 flex-wrap">
+                {presetRanges.slice(0, 4).map((preset) => (
+                  <Button
+                    key={preset.label}
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs px-2"
+                    onClick={() => {
+                      const range = preset.getValue();
+                      setDateFrom(range.from);
+                      setDateTo(range.to);
+                    }}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
             <div className="w-[200px]">
               <label className="text-xs text-muted-foreground mb-1 block">Estado</label>
               <Select 
