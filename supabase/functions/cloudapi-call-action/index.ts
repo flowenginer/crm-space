@@ -84,18 +84,25 @@ serve(async (req) => {
     console.log(`[CallAction] Sending ${action} to Meta API for call ${call_id}`);
 
     // Call Meta Graph API
+    // For hangup/reject: POST to /{call_id} directly
+    // For answer: POST to /{phone_number_id}/calls/{call_id}
     const apiVersion = config.api_version || "v22.0";
-    const graphResponse = await fetch(
-      `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}/calls/${call_id}`,
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${config.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      }
-    );
+    
+    // Meta API uses the call_id directly as the endpoint for call actions
+    const endpoint = action === "answer"
+      ? `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}/calls/${call_id}`
+      : `https://graph.facebook.com/${apiVersion}/${call_id}`;
+    
+    console.log(`[CallAction] Using endpoint: ${endpoint}`);
+    
+    const graphResponse = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${config.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
 
     const graphData = await graphResponse.json();
 
