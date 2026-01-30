@@ -394,7 +394,12 @@ export function useWebRTCCall() {
       });
 
       if (error || !data?.success) {
-        throw new Error(error?.message || data?.error || data?.details || 'Failed to initiate call');
+        const details = (data as any)?.details;
+        const metaUserMsg = details?.error_user_msg || details?.error_user_title;
+        const baseMsg = metaUserMsg || (data as any)?.error || error?.message || 'Failed to initiate call';
+        const suggestion = (data as any)?.suggestion;
+        const message = suggestion ? `${baseMsg} — ${suggestion}` : baseMsg;
+        throw new Error(message);
       }
 
       setState(prev => ({

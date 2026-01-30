@@ -3,13 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
@@ -174,13 +174,18 @@ serve(async (req) => {
       console.error("[InitiateCall] Meta API error:", graphData);
       const errorMessage = graphData.error?.message || graphData.error?.error_user_msg || "Unknown error";
       const errorCode = graphData.error?.code;
+        const errorSubcode = graphData.error?.error_subcode;
       
       // Provide helpful error messages based on common error codes
       let userMessage = errorMessage;
       let suggestion = "";
       let actionRequired = "";
       
-      if (errorCode === 138006) {
+        if (errorCode === 138000 || errorSubcode === 2593051) {
+          userMessage = "Calling API do WhatsApp não está habilitada para este número";
+          suggestion = "No Meta (WhatsApp Manager / Developers), habilite o recurso de Calling/Voice para este phone number e garanta elegibilidade (business verificado + acesso ao Calling API).";
+          actionRequired = "enable_calling_api_in_meta";
+        } else if (errorCode === 138006) {
         userMessage = "Usuário não deu permissão para receber chamadas";
         suggestion = "É necessário primeiro enviar uma mensagem de solicitação de permissão de chamada ao usuário e aguardar que ele aceite.";
         actionRequired = "request_call_permission";
