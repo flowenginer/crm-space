@@ -7,6 +7,7 @@ import {
   Edit3,
   SlidersHorizontal,
   MessageCircle,
+  MessageSquare,
   Phone,
   Video,
   Smartphone,
@@ -18,6 +19,7 @@ import {
   Send,
   Check,
   CheckCheck,
+  CheckCircle,
   X,
   XCircle,
   Mail,
@@ -1066,8 +1068,29 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                   </div>
                 )}
                 
+                {/* Interactive messages with enhanced display */}
+                {message.message_type === 'interactive' && message.content && (
+                  <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg border border-border/50">
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center",
+                      message.content.includes('✅') ? "bg-green-500/20" : 
+                      message.content.includes('❌') ? "bg-red-500/20" : 
+                      "bg-primary/20"
+                    )}>
+                      {message.content.includes('✅') ? (
+                        <CheckCircle size={16} className="text-green-500" />
+                      ) : message.content.includes('❌') ? (
+                        <XCircle size={16} className="text-red-500" />
+                      ) : (
+                        <MessageSquare size={16} className="text-primary" />
+                      )}
+                    </div>
+                    <span className="text-sm leading-relaxed">{message.content}</span>
+                  </div>
+                )}
+                
                 {/* Other message types with content - exclude handled types */}
-                {message.content && !['text', 'document', 'audio', 'video', 'image', 'sticker', 'contacts', 'location'].includes(message.message_type || '') && (
+                {message.content && !['text', 'document', 'audio', 'video', 'image', 'sticker', 'contacts', 'location', 'interactive'].includes(message.message_type || '') && (
                   <p className="text-sm leading-relaxed mt-1 whitespace-pre-wrap">{linkifyText(message.content)}</p>
                 )}
               </>
