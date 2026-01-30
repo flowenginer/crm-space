@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { 
   Loader2, 
   Phone, 
@@ -15,6 +16,9 @@ import {
   Facebook,
   ExternalLink,
   Unlink,
+  RefreshCw,
+  AlertTriangle,
+  Info,
 } from 'lucide-react';
 import { 
   useCloudAPIConfig, 
@@ -90,8 +94,12 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
       if (response.data?.error) throw new Error(response.data.error);
       return response.data;
     },
-    onSuccess: () => {
-      toast.success('Calling API habilitada com sucesso!');
+    onSuccess: (data) => {
+      if (data?.meta_calling_enabled) {
+        toast.success('Calling API habilitada com sucesso!');
+      } else {
+        toast.info('Solicitação enviada. Verifique o status no Meta.');
+      }
       refetchCallingStatus();
     },
     onError: (error: any) => {
@@ -143,6 +151,10 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
         id: existingConfig.id,
         calling_enabled: enabled,
       });
+      // Refetch calling status when enabling
+      if (enabled) {
+        refetchCallingStatus();
+      }
     } catch (error) {
       console.error('Error toggling calling:', error);
     }
@@ -236,6 +248,26 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
     );
   }
 
+  // Render tier badge with appropriate color
+  const renderTierBadge = (tierNumber: number) => {
+    if (tierNumber >= 2) {
+      return <Badge variant="default" className="bg-green-500">{`Tier ${tierNumber}`}</Badge>;
+    } else if (tierNumber === 1) {
+      return <Badge variant="secondary" className="bg-amber-500 text-white">{`Tier ${tierNumber}`}</Badge>;
+    }
+    return <Badge variant="outline">Tier desconhecido</Badge>;
+  };
+
+  // Render calling status badge
+  const renderCallingStatusBadge = (status: string) => {
+    if (status === "ENABLED") {
+      return <Badge variant="default" className="bg-green-500">ENABLED</Badge>;
+    } else if (status === "DISABLED") {
+      return <Badge variant="destructive">DISABLED</Badge>;
+    }
+    return <Badge variant="outline">{status || "desconhecido"}</Badge>;
+  };
+
   // Se tem configuração, mostrar dados em modo visualização
   return (
     <div className="space-y-6">
@@ -290,6 +322,7 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
           webhookUrl={webhookUrl}
           verifyToken={existingConfig.verify_token}
           isConfigured={existingConfig.webhook_configured}
+          callingEnabled={existingConfig.calling_enabled}
         />
       </div>
 
@@ -313,50 +346,152 @@ export function CloudAPIConfigForm({ onSuccess }: CloudAPIConfigFormProps) {
         </div>
 
         {existingConfig.calling_enabled && (
-          <div className="space-y-3 pl-4 border-l-2 border-muted">
-            {isLoadingCallingStatus ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Verificando status...
-              </div>
-            ) : callingStatus?.meta_calling_enabled ? (
-              <Alert className="border-green-500/50 bg-green-500/10">
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                <AlertDescription className="text-green-700 dark:text-green-400">
-                  <strong>Calling API habilitada no Meta!</strong>
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <div className="space-y-3">
-                <Alert className="border-amber-500/50 bg-amber-500/10">
-                  <AlertCircle className="h-4 w-4 text-amber-500" />
-                  <AlertDescription className="text-amber-700 dark:text-amber-400">
-                    <strong>Calling API não habilitada no Meta</strong>
-                    <br />
-                    <span className="text-xs">
-                      {callingStatus?.is_eligible_for_calling === false ? (
-                        <>É necessário Tier 2+ (2.000 msgs/dia) para habilitar.</>
-                      ) : (
-                        <>Clique abaixo para habilitar a Calling API.</>
-                      )}
-                    </span>
-                  </AlertDescription>
-                </Alert>
+          <div className="space-y-4 pl-4 border-l-2 border-muted">
+            {/* Meta Diagnostics Card */}
+            <Card className="bg-muted/50">
+              <CardHeader className="py-3">
+                <CardTitle className="text-xs flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Info className="h-3.5 w-3.5" />
+                    Diagnóstico Meta
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => refetchCallingStatus()}
+                    disabled={isLoadingCallingStatus}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isLoadingCallingStatus ? 'animate-spin' : ''}`} />
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="py-2">
+                {isLoadingCallingStatus ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Consultando Meta Graph API...
+                  </div>
+                ) : callingStatus?.error ? (
+                  <Alert variant="destructive" className="py-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="text-xs">
+                      {callingStatus.error}
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Phone Info */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Número:</span>
+                        <p className="font-medium">{callingStatus?.display_phone_number || '-'}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Nome verificado:</span>
+                        <p className="font-medium">{callingStatus?.verified_name || '-'}</p>
+                      </div>
+                    </div>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => enableCallingMutation.mutate()}
-                  disabled={enableCallingMutation.isPending || callingStatus?.is_eligible_for_calling === false}
-                >
-                  {enableCallingMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Phone className="h-4 w-4 mr-2" />
-                  )}
-                  Habilitar Calling API no Meta
-                </Button>
-              </div>
+                    {/* Key Status Indicators */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Tier:</span>
+                        <div className="mt-1">
+                          {renderTierBadge(callingStatus?.tier_number || 0)}
+                          {callingStatus?.tier_number < 2 && (
+                            <p className="text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              Mínimo Tier 2
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Calling Status:</span>
+                        <div className="mt-1">
+                          {renderCallingStatusBadge(callingStatus?.calling_status)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Health Status */}
+                    {callingStatus?.health_status && (
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Health:</span>
+                        <p className="font-mono text-xs bg-muted px-2 py-1 rounded mt-1">
+                          {callingStatus.health_can_send_message === "AVAILABLE" ? (
+                            <span className="text-green-600">✓ Pode enviar mensagens</span>
+                          ) : callingStatus.health_can_send_message === "LIMITED" ? (
+                            <span className="text-amber-600">⚠ Limitado</span>
+                          ) : callingStatus.health_can_send_message === "BLOCKED" ? (
+                            <span className="text-red-600">✗ Bloqueado</span>
+                          ) : (
+                            callingStatus.health_can_send_message || 'Desconhecido'
+                          )}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* API Version */}
+                    <div className="text-xs text-muted-foreground">
+                      API Version: {callingStatus?.api_version_used || 'N/A'}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Status Alert */}
+            {!isLoadingCallingStatus && (
+              <>
+                {callingStatus?.meta_calling_enabled ? (
+                  <Alert className="border-green-500/50 bg-green-500/10">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <AlertDescription className="text-green-700 dark:text-green-400">
+                      <strong>Calling API habilitada no Meta!</strong>
+                      {callingStatus?.tier_number < 2 && (
+                        <span className="block text-xs mt-1">
+                          ⚠ Porém seu Tier ({callingStatus?.tier_number}) é menor que 2. Chamadas podem falhar.
+                        </span>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <div className="space-y-3">
+                    <Alert className="border-amber-500/50 bg-amber-500/10">
+                      <AlertCircle className="h-4 w-4 text-amber-500" />
+                      <AlertDescription className="text-amber-700 dark:text-amber-400">
+                        <strong>Calling API não habilitada no Meta</strong>
+                        <br />
+                        <span className="text-xs">
+                          {callingStatus?.is_eligible_for_calling === false ? (
+                            <>É necessário Tier 2+ (2.000 msgs/dia) para habilitar.</>
+                          ) : callingStatus?.calling_status === "DISABLED" ? (
+                            <>Status atual: DISABLED. Clique abaixo para habilitar.</>
+                          ) : (
+                            <>Status atual: {callingStatus?.calling_status || 'desconhecido'}. Clique abaixo para tentar habilitar.</>
+                          )}
+                        </span>
+                      </AlertDescription>
+                    </Alert>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => enableCallingMutation.mutate()}
+                      disabled={enableCallingMutation.isPending || callingStatus?.is_eligible_for_calling === false}
+                    >
+                      {enableCallingMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Phone className="h-4 w-4 mr-2" />
+                      )}
+                      Habilitar Calling API no Meta
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

@@ -17,6 +17,7 @@ import {
   AlertCircle,
   CheckCircle2,
   MessageSquare,
+  Phone,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -24,9 +25,10 @@ interface WebhookSetupGuideProps {
   webhookUrl: string;
   verifyToken: string;
   isConfigured?: boolean;
+  callingEnabled?: boolean;
 }
 
-export function WebhookSetupGuide({ webhookUrl, verifyToken, isConfigured }: WebhookSetupGuideProps) {
+export function WebhookSetupGuide({ webhookUrl, verifyToken, isConfigured, callingEnabled }: WebhookSetupGuideProps) {
   const [isOpen, setIsOpen] = useState(!isConfigured);
   const [copied, setCopied] = useState<'url' | 'token' | null>(null);
 
@@ -126,6 +128,13 @@ export function WebhookSetupGuide({ webhookUrl, verifyToken, isConfigured }: Web
             <span className="font-medium">message_template_status_updates</span>
             <span className="text-xs text-muted-foreground">(recomendado)</span>
           </div>
+          {callingEnabled && (
+            <div className="flex items-center gap-2 text-sm">
+              <Phone className="h-4 w-4 text-primary" />
+              <span className="font-medium">calls</span>
+              <span className="text-xs text-muted-foreground">(obrigatório para ligações)</span>
+            </div>
+          )}
         </div>
       ),
     },
