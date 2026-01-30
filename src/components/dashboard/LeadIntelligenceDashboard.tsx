@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Loader2, MapPin, Layers, TrendingUp, DollarSign, Users, CalendarIcon } from "lucide-react";
+import { Loader2, MapPin, Layers, TrendingUp, DollarSign, Users, CalendarIcon, ArrowUpDown } from "lucide-react";
 import { 
   useLeadIntelligenceByState, 
   useLeadIntelligenceBySegment, 
@@ -21,6 +21,18 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { cn } from "@/lib/utils";
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
+
+type SortOption = 'leads_desc' | 'leads_asc' | 'conversion_desc' | 'conversion_asc' | 'revenue_desc' | 'alpha_asc' | 'alpha_desc';
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'leads_desc', label: 'Mais leads' },
+  { value: 'leads_asc', label: 'Menos leads' },
+  { value: 'conversion_desc', label: 'Maior conversão' },
+  { value: 'conversion_asc', label: 'Menor conversão' },
+  { value: 'revenue_desc', label: 'Maior receita' },
+  { value: 'alpha_asc', label: 'A → Z' },
+  { value: 'alpha_desc', label: 'Z → A' },
+];
 
 const presetRanges = [
   { label: 'Hoje', getValue: () => ({ from: new Date(), to: new Date() }) },
@@ -40,6 +52,10 @@ export function LeadIntelligenceDashboard() {
   
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [selectedSegment, setSelectedSegment] = useState<string | null>(null);
+  
+  // Sorting states for charts
+  const [stateSortBy, setStateSortBy] = useState<SortOption>('leads_desc');
+  const [segmentSortBy, setSegmentSortBy] = useState<SortOption>('leads_desc');
   
   const filters = useMemo(() => ({
     dateRange: { from: dateFrom, to: dateTo },
@@ -86,11 +102,36 @@ export function LeadIntelligenceDashboard() {
     [stateData]
   );
 
+  // Helper function to sort data
+  const sortData = <T extends { leads: number; converted: number; conversionRate: number; revenue?: number; name: string }>(
+    data: T[],
+    sortBy: SortOption
+  ): T[] => {
+    const sorted = [...data];
+    switch (sortBy) {
+      case 'leads_desc':
+        return sorted.sort((a, b) => b.leads - a.leads);
+      case 'leads_asc':
+        return sorted.sort((a, b) => a.leads - b.leads);
+      case 'conversion_desc':
+        return sorted.sort((a, b) => b.conversionRate - a.conversionRate);
+      case 'conversion_asc':
+        return sorted.sort((a, b) => a.conversionRate - b.conversionRate);
+      case 'revenue_desc':
+        return sorted.sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
+      case 'alpha_asc':
+        return sorted.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      case 'alpha_desc':
+        return sorted.sort((a, b) => b.name.localeCompare(a.name, 'pt-BR'));
+      default:
+        return sorted;
+    }
+  };
+
   // Dados do gráfico por estado
-  const stateChartData = useMemo(() => 
-    stateData
+  const stateChartData = useMemo(() => {
+    const mapped = stateData
       .filter(s => Number(s.total_leads) > 0)
-      .slice(0, 10)
       .map(s => ({
         state: s.state,
         name: STATE_NAMES[s.state] || s.state,
@@ -98,23 +139,23 @@ export function LeadIntelligenceDashboard() {
         converted: Number(s.converted_leads),
         revenue: Number(s.total_revenue),
         conversionRate: Number(s.conversion_rate),
-      })),
-    [stateData]
-  );
+      }));
+    return sortData(mapped, stateSortBy).slice(0, 10);
+  }, [stateData, stateSortBy]);
 
   // Dados do gráfico por segmento
-  const segmentChartData = useMemo(() => 
-    segmentData
+  const segmentChartData = useMemo(() => {
+    const mapped = segmentData
       .filter(s => Number(s.total_leads) > 0)
-      .slice(0, 8)
       .map(s => ({
         name: s.segment_name,
         leads: Number(s.total_leads),
         converted: Number(s.converted_leads),
+        revenue: 0,
         conversionRate: Number(s.conversion_rate),
-      })),
-    [segmentData]
-  );
+      }));
+    return sortData(mapped, segmentSortBy).slice(0, 8);
+  }, [segmentData, segmentSortBy]);
 
   const isLoading = loadingStates || loadingSegments || loadingCross;
 
@@ -312,10 +353,25 @@ export function LeadIntelligenceDashboard() {
         {/* Gráfico por Estado */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MapPin className="h-4 w-4" />
-              Leads por Estado (Top 10)
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                Leads por Estado (Top 10)
+              </CardTitle>
+              <Select value={stateSortBy} onValueChange={(v) => setStateSortBy(v as SortOption)}>
+                <SelectTrigger className="w-[150px] h-8 text-xs">
+                  <ArrowUpDown className="h-3 w-3 mr-1" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent>
             {loadingStates ? (
@@ -356,10 +412,25 @@ export function LeadIntelligenceDashboard() {
         {/* Gráfico por Segmento */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Layers className="h-4 w-4" />
-              Leads por Segmento (Top 8)
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Layers className="h-4 w-4" />
+                Leads por Segmento (Top 8)
+              </CardTitle>
+              <Select value={segmentSortBy} onValueChange={(v) => setSegmentSortBy(v as SortOption)}>
+                <SelectTrigger className="w-[150px] h-8 text-xs">
+                  <ArrowUpDown className="h-3 w-3 mr-1" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.filter(opt => opt.value !== 'revenue_desc').map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent>
             {loadingSegments ? (
