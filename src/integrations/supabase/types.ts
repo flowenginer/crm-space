@@ -1708,6 +1708,8 @@ export type Database = {
           avatar_url: string | null
           birth_date: string | null
           blocked_reason: string | null
+          call_permission_requested_at: string | null
+          call_permission_status: string | null
           city: string | null
           complement: string | null
           contact_type: string | null
@@ -1749,6 +1751,8 @@ export type Database = {
           avatar_url?: string | null
           birth_date?: string | null
           blocked_reason?: string | null
+          call_permission_requested_at?: string | null
+          call_permission_status?: string | null
           city?: string | null
           complement?: string | null
           contact_type?: string | null
@@ -1790,6 +1794,8 @@ export type Database = {
           avatar_url?: string | null
           birth_date?: string | null
           blocked_reason?: string | null
+          call_permission_requested_at?: string | null
+          call_permission_status?: string | null
           city?: string | null
           complement?: string | null
           contact_type?: string | null
