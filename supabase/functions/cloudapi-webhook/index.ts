@@ -558,8 +558,26 @@ async function processMessages(supabase: any, value: any) {
               await updateCallPermissionStatus(supabase, from, config.tenant_id, 'denied');
               content = '❌ Permissão de chamada negada';
             }
-          } else {
+        } else {
             content = nfmBody || '[Resposta de formulário]';
+          }
+        } else if (message.interactive?.call_permission_reply) {
+          // Native call permission response from Meta
+          const callPermReply = message.interactive.call_permission_reply;
+          console.log('[CloudAPI] Call permission reply received:', JSON.stringify(callPermReply, null, 2));
+          
+          // Check if permission was granted
+          // response can be: "accept" (granted) or "decline" (denied)
+          const permissionGranted = callPermReply.response === 'accept';
+          
+          if (permissionGranted) {
+            console.log('[CloudAPI] 📞 Call permission GRANTED via call_permission_reply');
+            await updateCallPermissionStatus(supabase, from, config.tenant_id, 'granted');
+            content = '✅ Permissão de chamada concedida';
+          } else {
+            console.log('[CloudAPI] 📞 Call permission DENIED via call_permission_reply');
+            await updateCallPermissionStatus(supabase, from, config.tenant_id, 'denied');
+            content = '❌ Permissão de chamada negada';
           }
         } else {
           content = '[Interativo]';
