@@ -985,7 +985,13 @@ async function processCalls(supabase: any, value: any) {
     
     // Broadcast call state changes for active calls
     if (['accepted', 'rejected', 'terminated', 'completed', 'failed'].includes(status)) {
-      console.log('[Calls] Broadcasting call state change:', status);
+      console.log('[Calls] Broadcasting call state change:', status, 'direction:', direction);
+      
+      // Include SDP answer for outbound calls that were accepted
+      const includeSdp = status === 'accepted' && direction === 'business_initiated';
+      if (includeSdp) {
+        console.log('[Calls] Including SDP answer for outbound call, has SDP:', !!session?.sdp);
+      }
       
       await supabase.channel('call-events').send({
         type: 'broadcast',
@@ -996,6 +1002,9 @@ async function processCalls(supabase: any, value: any) {
           status,
           duration,
           timestamp: timestamp.toISOString(),
+          // Include SDP answer for outbound calls when client accepts
+          sdpAnswer: includeSdp ? session?.sdp : undefined,
+          sdpType: includeSdp ? session?.sdp_type : undefined,
         },
       });
     }
