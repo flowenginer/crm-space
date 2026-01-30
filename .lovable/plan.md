@@ -1,133 +1,253 @@
 
-### O que sabemos pelos seus logs e pelo código atual
+# Fluxo de Permissão de Chamada - Call Permission Request
 
-1) **O CRM está chamando o endpoint certo da Meta**  
-   - Edge Function: `supabase/functions/cloudapi-initiate-call/index.ts`  
-   - Request: `POST https://graph.facebook.com/{apiVersion}/{phone_number_id}/calls` com `action:"connect"` e `session.sdp`  
-   - Nos logs aparece claramente qual `phone_number_id` está sendo usado:
-     - `phone_number_id`: **972828205910071**
-     - `config.id`: **b1e4cc2d-ea09-44f5-a494-48a6d713378b**
-     - `waba_id`: **861391676804044**
+## Contexto do Problema
 
-2) **A Meta está respondendo com erro oficial de “Calling API not enabled”**  
-   - `code: 138000`, `subcode: 2593051`  
-   - Mensagem: “WhatsApp Cloud API Calling not enabled for this phone number.”
+Quando o CRM tenta iniciar uma chamada para um contato, a Meta retorna o erro **138006** ("No approved call permission from the recipient"). Isso acontece porque a **Calling API da Meta** exige que o usuário final **aceite explicitamente** receber chamadas da empresa antes que uma chamada possa ser iniciada.
 
-Isso significa: **para a Meta, esse phone_number_id ainda não está habilitado/eligível para Calling API (especialmente chamadas iniciadas pela empresa)** — mesmo que no painel pareça “ativo”.
+## Solução Proposta
+
+Implementar um fluxo completo onde:
+1. O atendente solicita permissão de chamada ao contato (via mensagem interativa)
+2. O contato recebe a mensagem e pode aceitar ou recusar
+3. O sistema detecta a resposta e armazena o status de permissão
+4. O botão de chamada só é habilitado após permissão concedida
 
 ---
 
-### Onde provavelmente está o desalinhamento (ponto importante)
+## Arquitetura da Solução
 
-Hoje existe um “painel de diagnóstico” no CRM (Configurações → Integrações → Cloud API → API de Ligações), porém:
-
-- A Edge Function **`cloudapi-check-calling-status` está interpretando a resposta de `/settings` no formato errado**.  
-  Ela tenta ler `settingsData.data[]` e procurar `setting_type === "calling"`.  
-  Só que na documentação da Meta a resposta é no formato:
-  ```json
-  { "calling": { "status": "ENABLED" | "DISABLED", ... } }
-  ```
-  Resultado: **o CRM pode estar sempre dizendo “não habilitada” (falso negativo)** e vocês ficam sem um diagnóstico confiável dentro do próprio sistema.
-
-Além disso:
-- `cloudapi-check-calling-status` e `cloudapi-enable-calling` ainda usam um CORS mais restrito do que `cloudapi-initiate-call`. Em alguns browsers isso pode bloquear chamadas pelo frontend (preflight).
-
-Ou seja: hoje vocês podem estar “fazendo tudo certo no Meta”, mas **o CRM não consegue confirmar com precisão o status real via Graph API** e também não está trazendo evidências suficientes (tier/health/status) para cravar o motivo do 138000.
-
----
-
-### Objetivo do ajuste
-1) Transformar o erro 138000 em um **diagnóstico verificável** (mostrando o status real de calling/settings + tier + health).  
-2) Garantir que o CRM e a Meta estão “falando sobre o mesmo número” (o `phone_number_id` correto).  
-3) Se estiver tudo habilitado mesmo, retornar evidências que apontem para **restrição de elegibilidade** (Tier/Business Verification/allowlist/BIC).
-
----
-
-## Plano de correção (passo a passo)
-
-### Fase 1 — Corrigir o diagnóstico para bater com a documentação da Meta
-1. **Ajustar `supabase/functions/cloudapi-check-calling-status/index.ts`**
-   - Atualizar o parse do endpoint:
-     - `GET /{phone_number_id}/settings` → ler `settingsData.calling?.status`
-   - Incluir no retorno (para UI e logs):
-     - `calling_status` (ENABLED/DISABLED/unknown)
-     - `callback_permission_status` (se disponível)
-     - `call_icon_visibility` (se disponível)
-   - Melhorar a parte de elegibilidade:
-     - continuar retornando `messaging_limit_tier` e `tier_number`
-     - adicionar `health_status` (via `GET /{phone_number_id}?fields=health_status,messaging_limit_tier,...`) para identificar bloqueios específicos
-   - **Atualizar CORS headers** para aceitar os headers que o Supabase injeta (`x-supabase-client-*`), como já foi feito no `cloudapi-initiate-call`.
-
-2. **Ajustar `supabase/functions/cloudapi-enable-calling/index.ts`**
-   - Manter o `POST /{phone_number_id}/settings` com `calling.status="ENABLED"`.
-   - Após habilitar, fazer um `GET /settings` e devolver o status real (`calling.status`) para o frontend.
-   - Atualizar CORS headers igual acima.
-
-3. **Opcional (recomendado): “mínimo v22.0” para endpoints de calling**
-   - Hoje seu config está em `api_version: v21.0`.
-   - A documentação e exemplos de calling usam `v22.0`.  
-   - Implementar fallback: se `api_version` < `v22.0`, usar `v22.0` apenas para chamadas/calling settings.
+```text
+┌──────────────────┐     ┌─────────────────────┐     ┌────────────────┐
+│  ConversationUI  │────▶│ RequestCallPermBtn  │────▶│ cloudapi-send  │
+│  (Sidebar)       │     │ (Novo Componente)   │     │ -call-request  │
+└──────────────────┘     └─────────────────────┘     └───────┬────────┘
+                                                              │
+                                                              ▼
+                                                     ┌────────────────┐
+                                                     │  Meta Graph    │
+                                                     │  API           │
+                                                     └───────┬────────┘
+                                                              │
+                                                              ▼
+                                                     ┌────────────────┐
+                                                     │  cloudapi-     │
+                                                     │  webhook       │
+                                                     └───────┬────────┘
+                                                              │
+                                                              ▼
+                                                     ┌────────────────┐
+                                                     │ contacts.      │
+                                                     │ call_permission│
+                                                     │ _status        │
+                                                     └────────────────┘
+```
 
 ---
 
-### Fase 2 — Mostrar evidência no frontend (para vocês saberem exatamente “onde está errando”)
-4. **Atualizar `src/components/settings/integrations/forms/CloudAPIConfigForm.tsx`**
-   - Exibir um bloco “Diagnóstico Meta” quando `calling_enabled` estiver ligado, mostrando:
-     - `Phone Number ID` (já mostra)
-     - `display_phone_number`, `verified_name`
-     - `messaging_limit_tier` / `tier_number` (com destaque se < 2)
-     - `calling_status` (ENABLED/DISABLED)
-     - `health_status` (se vier como BLOCKED/LIMITED)
-   - Se `calling_status !== ENABLED`, mostrar CTA “Habilitar Calling API no Meta” (já existe), mas agora com resultado confiável.
+## Etapas de Implementação
 
-5. **Atualizar `src/components/settings/integrations/forms/WebhookSetupGuide.tsx`**
-   - Quando “API de Ligações” estiver ativa, instruir explicitamente a assinar também o campo:
-     - `calls`
-   - Hoje o guia lista só `messages` e `message_template_status_updates`, mas o backend suporta `calls` e isso é obrigatório para o fluxo de WebRTC (SDP answer via webhook).
+### 1. Banco de Dados - Adicionar campo `call_permission_status`
 
----
+Criar coluna na tabela `contacts` para armazenar o status de permissão de chamada:
 
-### Fase 3 — Diagnóstico automático no momento de iniciar a chamada (para acabar com “achismo”)
-6. **Atualizar `supabase/functions/cloudapi-initiate-call/index.ts`**
-   - Antes de chamar `/calls`, fazer um precheck:
-     - `GET /{phone_number_id}/settings` e `GET /{phone_number_id}?fields=messaging_limit_tier,health_status,...`
-   - Se `calling.status !== ENABLED`, retornar 400 com:
-     - `error: "Calling desabilitado no Meta para este phone_number_id"`
-     - `details` contendo `calling.status`, `messaging_limit_tier`, etc.
-   - Se estiver ENABLED mas continuar voltando 138000, retornar 400 com:
-     - evidências (tier, health_status, calling settings) para cravar que é **restrição de elegibilidade/allowlist** e não “configuração esquecida”.
+- **Campo**: `call_permission_status` (TEXT)
+- **Valores possíveis**: 
+  - `null` - Nunca solicitado
+  - `pending` - Solicitação enviada, aguardando resposta
+  - `granted` - Permissão concedida
+  - `denied` - Permissão negada
+- **Campo adicional**: `call_permission_requested_at` (TIMESTAMP) - Para saber quando foi a última solicitação
+
+**SQL:**
+```sql
+ALTER TABLE contacts 
+ADD COLUMN call_permission_status TEXT DEFAULT NULL,
+ADD COLUMN call_permission_requested_at TIMESTAMPTZ DEFAULT NULL;
+```
 
 ---
 
-## Como isso responde diretamente ao seu pedido (“onde estamos errando?”)
+### 2. Nova Edge Function - `cloudapi-send-call-permission-request`
 
-Após essas mudanças, vocês terão respostas objetivas dentro do CRM:
+Cria e envia uma mensagem interativa (tipo `call_permission_request`) via Graph API da Meta:
 
-- “Calling status no Graph API = DISABLED” → então **não está habilitado de verdade** no recurso do phone number (mesmo que UI do Meta pareça ativa).
-- “Calling status = ENABLED, mas tier_number = 1” → **não elegível para Business-Initiated Calls**, então `/calls` pode continuar dando 138000.
-- “Calling status = ENABLED, tier >= 2, health_status mostra bloqueio/limitação” → caso de **restrição/allowlist** e aí é Meta Support.
-- “Tudo ok (ENABLED + Tier2+), mas ainda 138000” → forte indício de:
-  - token/app sem acesso correto ao feature de calling para BIC, ou
-  - requisito adicional não cumprido (ex.: BIC gating), e o CRM exibirá os campos para comprovar.
+**Endpoint da Meta:**
+```
+POST /{phone_number_id}/messages
+```
+
+**Payload:**
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "5521999999999",
+  "type": "interactive",
+  "interactive": {
+    "type": "call_permission_request",
+    "body": {
+      "text": "Olá! Podemos ligar para você quando necessário para atendimento? Clique abaixo para autorizar."
+    },
+    "action": {
+      "name": "call_permission_request"
+    }
+  }
+}
+```
+
+**Responsabilidades:**
+- Validar autenticação
+- Buscar configuração CloudAPI do tenant
+- Formatar telefone
+- Enviar mensagem interativa
+- Atualizar `contacts.call_permission_status` para `pending`
+- Registrar mensagem no banco (tabela `messages`)
 
 ---
 
-## Checklist de validação (após implementar)
-1. Ir em **Configurações → Integrações → Cloud API → API de Ligações** e confirmar:
-   - `calling_status` aparece e faz sentido.
-   - `tier_number` aparece.
-2. Assinar o campo **`calls`** no webhook da Meta e confirmar que o webhook continua recebendo (o backend já processa).
-3. Testar iniciar chamada em `/conversations?...`:
-   - Se falhar, o toast deve mostrar **o motivo com evidência** (status/tier/health).
+### 3. Atualizar Webhook - `cloudapi-webhook`
+
+Adicionar detecção de respostas de permissão de chamada no webhook:
+
+**Tipos de resposta da Meta para call_permission:**
+- `button_reply.id === "call_permission_granted"` ou similar
+- A Meta envia um evento de `interactive` com a resposta do usuário
+
+**Ação ao detectar resposta:**
+```typescript
+// Se usuário aceitou:
+await supabase
+  .from('contacts')
+  .update({ call_permission_status: 'granted' })
+  .eq('phone', contactPhone);
+
+// Se usuário recusou:
+await supabase
+  .from('contacts')
+  .update({ call_permission_status: 'denied' })
+  .eq('phone', contactPhone);
+```
 
 ---
 
-## Notas técnicas (para implementação)
-- Arquivos principais a alterar:
-  - `supabase/functions/cloudapi-check-calling-status/index.ts` (parse correto + health_status + CORS)
-  - `supabase/functions/cloudapi-enable-calling/index.ts` (CORS + retorno pós-enable)
-  - `supabase/functions/cloudapi-initiate-call/index.ts` (precheck + evidência no erro)
-  - `src/components/settings/integrations/forms/CloudAPIConfigForm.tsx` (exibir diagnóstico)
-  - `src/components/settings/integrations/forms/WebhookSetupGuide.tsx` (incluir `calls` quando calling ativo)
-- Manter o `cloudapi-webhook` como está: ele já suporta `calls` e SDP.
+### 4. Novo Componente - `RequestCallPermissionButton`
 
+Botão que aparece ao lado do `InitiateCallButton` quando o contato ainda não deu permissão:
+
+**Localização:** `src/components/calls/RequestCallPermissionButton.tsx`
+
+**Lógica:**
+- Se `call_permission_status === 'granted'` → Não mostra (só mostra o botão de ligar)
+- Se `call_permission_status === 'pending'` → Mostra badge "Aguardando resposta"
+- Se `call_permission_status === null` ou `denied` → Mostra botão "Solicitar permissão"
+
+**UI:**
+```tsx
+<Button variant="outline" size="sm">
+  <PhoneForwarded className="h-4 w-4 mr-2" />
+  Solicitar permissão
+</Button>
+```
+
+---
+
+### 5. Atualizar `InitiateCallButton`
+
+Modificar para verificar permissão antes de iniciar chamada:
+
+**Lógica:**
+```tsx
+// Buscar status de permissão do contato
+const { data: contact } = useQuery({
+  queryKey: ['contact-call-permission', contactId],
+  queryFn: () => supabase.from('contacts').select('call_permission_status').eq('id', contactId).single()
+});
+
+const hasPermission = contact?.call_permission_status === 'granted';
+
+// Se não tem permissão, mostrar toast explicativo
+if (!hasPermission) {
+  toast.error('Solicite permissão de chamada antes de ligar');
+  return;
+}
+```
+
+---
+
+### 6. Atualizar `ConversationSidebar`
+
+Adicionar indicador visual e botões de permissão na área do telefone:
+
+**Localização:** `src/components/conversations/ConversationSidebar.tsx` (linhas ~1240)
+
+**Antes:**
+```tsx
+<InitiateCallButton contactPhone={contact.phone} ... />
+```
+
+**Depois:**
+```tsx
+<CallPermissionStatus 
+  contactId={contact.id}
+  contactPhone={contact.phone}
+  contactName={contact.full_name}
+  conversationId={conversationId}
+/>
+```
+
+**Componente CallPermissionStatus:**
+- Mostra status atual (ícone colorido)
+- Mostra botão "Solicitar" se não tem permissão
+- Mostra botão "Ligar" se tem permissão
+- Mostra badge "Aguardando" se pendente
+
+---
+
+### 7. Atualizar types do Supabase
+
+Regenerar os tipos para incluir os novos campos:
+- `call_permission_status`
+- `call_permission_requested_at`
+
+---
+
+## Fluxo Visual do Usuário
+
+1. **Sem permissão**: Atendente vê botão "📞 Solicitar permissão" ao lado do telefone
+2. **Clica em solicitar**: Sistema envia mensagem interativa para o cliente
+3. **Aguardando**: Badge amarelo "Aguardando resposta"
+4. **Cliente aceita**: Botão muda para "📞 Ligar" (verde)
+5. **Cliente recusa**: Badge vermelho "Permissão negada" + botão para solicitar novamente
+
+---
+
+## Arquivos a Criar
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `supabase/functions/cloudapi-send-call-permission-request/index.ts` | Edge function para enviar solicitação de permissão |
+| `src/components/calls/RequestCallPermissionButton.tsx` | Botão de solicitar permissão |
+| `src/components/calls/CallPermissionStatus.tsx` | Componente que agrupa status + botões |
+| `src/hooks/useCallPermission.ts` | Hook para gerenciar permissão de chamada |
+
+## Arquivos a Modificar
+
+| Arquivo | Modificação |
+|---------|-------------|
+| `supabase/functions/cloudapi-webhook/index.ts` | Detectar resposta de permissão de chamada |
+| `src/components/conversations/ConversationSidebar.tsx` | Integrar CallPermissionStatus |
+| `src/components/calls/InitiateCallButton.tsx` | Verificar permissão antes de ligar |
+| `src/integrations/supabase/types.ts` | Adicionar novos campos |
+| `supabase/config.toml` | Registrar nova edge function |
+
+---
+
+## Considerações Técnicas
+
+1. **Mensagem Interativa da Meta**: O tipo exato pode variar. A documentação da Meta para BIC (Business-Initiated Calls) indica o uso de `call_permission_request` como tipo de mensagem interativa.
+
+2. **Fallback**: Se a resposta do cliente não chegar em 24h, manter como `pending` e permitir reenvio.
+
+3. **Permissão por Tenant**: O campo `call_permission_status` é por contato (que já é por tenant), então não há conflito multi-tenant.
+
+4. **Realtime**: Usar Supabase Realtime para atualizar a UI quando o contato responder (já existe padrão similar no projeto).
