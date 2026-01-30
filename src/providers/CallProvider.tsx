@@ -72,8 +72,9 @@ export function CallProvider({ children }: CallProviderProps) {
 
     console.log('[CallProvider] Setting up incoming call listener');
 
+    // IMPORTANTE: Os nomes dos canais devem ser EXATAMENTE os mesmos do backend
     const channel = supabase
-      .channel('incoming-calls-listener')
+      .channel('incoming-calls')
       .on('broadcast', { event: 'incoming_call' }, (payload) => {
         console.log('[CallProvider] Received incoming call:', payload);
         
@@ -98,37 +99,58 @@ export function CallProvider({ children }: CallProviderProps) {
           }
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[CallProvider] incoming-calls channel status:', status);
+      });
 
-    // Also listen for call state changes
+    // Also listen for call state changes - nome IGUAL ao usado no webhook
     const eventsChannel = supabase
-      .channel('call-events-listener')
+      .channel('call-events')
       .on('broadcast', { event: 'call_state_changed' }, async (payload) => {
         console.log('[CallProvider] Call state changed:', payload);
         
-        const { callId, status, sdpAnswer } = payload.payload as { 
-          callId: string; 
+        // Aceitar tanto callId quanto call_id (diferentes edge functions usam formatos diferentes)
+        const data = payload.payload as { 
+          callId?: string;
+          call_id?: string; 
           status: string; 
           sdpAnswer?: string;
+          sdpType?: string;
         };
         
+        const receivedCallId = data.callId || data.call_id;
+        const { status, sdpAnswer, sdpType } = data;
+        
+        console.log('[CallProvider] Parsed call event:', { 
+          receivedCallId, 
+          status, 
+          hasSdpAnswer: !!sdpAnswer,
+          sdpType,
+          myCallId: callState.callId,
+          myDirection: callState.direction,
+        });
+        
         // If we received SDP answer for our outbound call, set it on the peer connection
-        if (sdpAnswer && callState.callId === callId && callState.direction === 'outbound') {
-          console.log('[CallProvider] Received SDP answer for outbound call, setting remote description');
+        if (sdpAnswer && callState.callId === receivedCallId && callState.direction === 'outbound') {
+          console.log('[CallProvider] ✅ Received SDP answer for outbound call, setting remote description');
           try {
             await setSdpAnswer(sdpAnswer);
-            console.log('[CallProvider] SDP answer set successfully');
+            console.log('[CallProvider] ✅ SDP answer set successfully');
           } catch (error) {
-            console.error('[CallProvider] Error setting SDP answer:', error);
+            console.error('[CallProvider] ❌ Error setting SDP answer:', error);
           }
         }
         
         // If the incoming call was answered/rejected elsewhere
-        if (incomingCall?.callId === callId && ['accepted', 'rejected', 'terminated'].includes(status)) {
+        // Normalizar status para lowercase para comparação
+        const normalizedStatus = String(status || '').toLowerCase();
+        if (incomingCall?.callId === receivedCallId && ['accepted', 'rejected', 'terminated'].includes(normalizedStatus)) {
           dismissIncomingCall();
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[CallProvider] call-events channel status:', status);
+      });
 
     return () => {
       console.log('[CallProvider] Cleaning up call listeners');

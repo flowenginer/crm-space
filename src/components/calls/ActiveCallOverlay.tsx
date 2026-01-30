@@ -1,5 +1,5 @@
-import { useRef, useEffect } from 'react';
-import { Phone, PhoneOff, Mic, MicOff } from 'lucide-react';
+import { useRef, useEffect, useState } from 'react';
+import { Phone, PhoneOff, Mic, MicOff, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useCallContext } from '@/providers/CallProvider';
@@ -14,6 +14,7 @@ function formatDuration(seconds: number): string {
 export function ActiveCallOverlay() {
   const { callState, hangupCall, toggleMute, isInCall } = useCallContext();
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const [needsAudioEnable, setNeedsAudioEnable] = useState(false);
 
   // Connect remote stream to audio element for playback
   useEffect(() => {
@@ -25,10 +26,25 @@ export function ActiveCallOverlay() {
       stream.getAudioTracks().forEach(track => {
         console.log('[ActiveCall] Remote audio track:', track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
       });
+      
+      // Garantir que audio não está mudo
+      audioEl.muted = false;
+      audioEl.volume = 1;
       audioEl.srcObject = stream;
-      audioEl.play().catch(err => {
-        console.error('[ActiveCall] Failed to play remote audio:', err);
-      });
+      
+      audioEl.play()
+        .then(() => {
+          console.log('[ActiveCall] ✅ Audio playback started successfully');
+          setNeedsAudioEnable(false);
+        })
+        .catch(err => {
+          console.error('[ActiveCall] ❌ Failed to play remote audio:', err);
+          // Se for erro de autoplay (NotAllowedError), mostrar botão
+          if (err.name === 'NotAllowedError') {
+            console.log('[ActiveCall] Autoplay blocked, showing enable button');
+            setNeedsAudioEnable(true);
+          }
+        });
     }
     
     return () => {
@@ -37,6 +53,23 @@ export function ActiveCallOverlay() {
       }
     };
   }, [callState.remoteStream]);
+
+  // Handler para ativar áudio manualmente (bypass autoplay)
+  const handleEnableAudio = () => {
+    const audioEl = remoteAudioRef.current;
+    if (audioEl) {
+      audioEl.muted = false;
+      audioEl.volume = 1;
+      audioEl.play()
+        .then(() => {
+          console.log('[ActiveCall] ✅ Manual audio playback started');
+          setNeedsAudioEnable(false);
+        })
+        .catch(err => {
+          console.error('[ActiveCall] ❌ Manual audio failed:', err);
+        });
+    }
+  };
 
   if (!isInCall || callState.status === 'idle') {
     return null;
@@ -94,6 +127,20 @@ export function ActiveCallOverlay() {
             {callState.direction === 'inbound' ? 'Chamada recebida' : 'Chamada realizada'}
           </span>
         </div>
+
+        {/* Audio enable button (shows when autoplay is blocked) */}
+        {needsAudioEnable && callState.status === 'active' && (
+          <div className="mb-4">
+            <Button 
+              variant="outline" 
+              className="w-full gap-2 bg-yellow-500/10 border-yellow-500/30 text-yellow-700 hover:bg-yellow-500/20"
+              onClick={handleEnableAudio}
+            >
+              <Volume2 className="h-4 w-4" />
+              Ativar áudio
+            </Button>
+          </div>
+        )}
 
         {/* Controls */}
         <div className="flex items-center justify-center gap-3">

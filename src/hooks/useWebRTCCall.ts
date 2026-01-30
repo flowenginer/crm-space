@@ -95,18 +95,56 @@ export function useWebRTCCall() {
     }, 1000);
   }, []);
 
-  // Get local media stream
+  // Get local media stream with permission diagnostics
   const getLocalStream = useCallback(async (video: boolean = false): Promise<MediaStream> => {
     try {
+      // Tentar verificar permissão antes de solicitar
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+          console.log('[WebRTC] Microphone permission status:', permissionStatus.state);
+          
+          if (permissionStatus.state === 'denied') {
+            toast.error('Microfone bloqueado. Clique no cadeado ao lado da URL e permita o acesso.');
+            throw new Error('Microphone permission denied');
+          }
+        } catch (permError) {
+          // navigator.permissions.query pode não suportar 'microphone' em alguns browsers
+          console.log('[WebRTC] Could not query microphone permission:', permError);
+        }
+      }
+      
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
         video: video,
       });
-      console.log('[WebRTC] Got local stream');
+      
+      // Log detalhes do stream para diagnóstico
+      const audioTracks = stream.getAudioTracks();
+      console.log('[WebRTC] ✅ Got local stream with', audioTracks.length, 'audio track(s)');
+      audioTracks.forEach((track, i) => {
+        console.log(`[WebRTC] Audio track ${i}:`, {
+          label: track.label,
+          enabled: track.enabled,
+          muted: track.muted,
+          readyState: track.readyState,
+        });
+      });
+      
       return stream;
     } catch (error) {
-      console.error('[WebRTC] Error getting local stream:', error);
-      toast.error('Não foi possível acessar o microfone. Verifique as permissões.');
+      console.error('[WebRTC] ❌ Error getting local stream:', error);
+      
+      // Mensagens mais específicas baseadas no tipo de erro
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError' || error.message.includes('denied')) {
+          toast.error('Microfone bloqueado. Clique no cadeado ao lado da URL e permita o acesso.');
+        } else if (error.name === 'NotFoundError') {
+          toast.error('Nenhum microfone encontrado. Conecte um microfone e tente novamente.');
+        } else {
+          toast.error('Não foi possível acessar o microfone. Verifique as permissões.');
+        }
+      }
       throw error;
     }
   }, []);

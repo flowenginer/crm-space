@@ -876,23 +876,37 @@ async function processCalls(supabase: any, value: any) {
     const callId = call.id;
     const from = call.from;
     const to = call.to;
-    const status = call.status; // ringing, accepted, rejected, terminated, completed, failed
-    const direction = call.direction; // user_initiated, business_initiated
+    
+    // Normalizar campos para lowercase (Meta envia em MAIÚSCULO às vezes)
+    const rawStatus = call.status; // ringing, accepted, rejected, terminated, completed, failed
+    const rawDirection = call.direction; // user_initiated, business_initiated
+    const rawEvent = call.event; // connect, terminate, etc
+    const status = String(rawStatus || '').toLowerCase();
+    const direction = String(rawDirection || '').toLowerCase();
+    const event = String(rawEvent || '').toLowerCase();
+    
     const timestamp = new Date(parseInt(call.timestamp) * 1000);
     const duration = call.duration; // in seconds
     const errorCode = call.error?.code;
     const mediaType = call.media_type; // audio, video
     const session = call.session; // Contains SDP offer/answer
+    const sdpType = String(session?.sdp_type || '').toLowerCase();
 
     console.log('[Calls] Processing call event:', { 
       callId, 
       from, 
       to, 
-      status, 
-      direction, 
+      rawStatus,
+      rawDirection,
+      rawEvent,
+      status, // normalizado
+      direction, // normalizado
+      event, // normalizado
+      sdpType, // normalizado
       duration,
       mediaType,
       hasSDP: !!session?.sdp,
+      sdpLength: session?.sdp?.length || 0,
       timestamp 
     });
 
@@ -960,7 +974,8 @@ async function processCalls(supabase: any, value: any) {
     }
 
     // Broadcast incoming calls via Realtime
-    if (status === 'ringing' && direction === 'user_initiated') {
+    // Comparar com valores normalizados
+    if ((status === 'ringing' || event === 'ringing') && direction === 'user_initiated') {
       console.log('[Calls] Broadcasting incoming call to agents');
       
       await supabase.channel('incoming-calls').send({
@@ -977,21 +992,38 @@ async function processCalls(supabase: any, value: any) {
           tenantId: config.tenant_id,
           mediaType: mediaType || 'audio',
           sdpOffer: session?.sdp || null,
-          sdpType: session?.sdp_type || null,
+          sdpType: sdpType || null,
           timestamp: timestamp.toISOString(),
         },
       });
     }
     
     // Broadcast call state changes for active calls
-    if (['accepted', 'rejected', 'terminated', 'completed', 'failed'].includes(status)) {
-      console.log('[Calls] Broadcasting call state change:', status, 'direction:', direction);
+    // Usar valores normalizados para comparação
+    const shouldBroadcast = ['accepted', 'rejected', 'terminated', 'completed', 'failed'].includes(status) 
+      || ['connect', 'terminate'].includes(event);
       
-      // Include SDP answer for outbound calls that were accepted
-      const includeSdp = status === 'accepted' && direction === 'business_initiated';
-      if (includeSdp) {
-        console.log('[Calls] Including SDP answer for outbound call, has SDP:', !!session?.sdp);
+    if (shouldBroadcast) {
+      console.log('[Calls] Broadcasting call state change:', { status, event, direction });
+      
+      // Include SDP answer for outbound calls when:
+      // 1. status=accepted OU event=connect
+      // 2. direction=business_initiated
+      // 3. sdp_type=answer (normalizado)
+      // 4. Existe SDP no payload
+      const isOutboundAccepted = direction === 'business_initiated' 
+        && (status === 'accepted' || event === 'connect')
+        && sdpType === 'answer'
+        && !!session?.sdp;
+        
+      if (isOutboundAccepted) {
+        console.log('[Calls] ✅ Including SDP answer for outbound call, sdp length:', session.sdp.length);
       }
+      
+      // Mapear event para status se necessário (ex: connect -> accepted)
+      const broadcastStatus = event === 'connect' ? 'accepted' : 
+                             event === 'terminate' ? 'terminated' : 
+                             status;
       
       await supabase.channel('call-events').send({
         type: 'broadcast',
@@ -999,12 +1031,12 @@ async function processCalls(supabase: any, value: any) {
         payload: {
           callId,
           callLogId,
-          status,
+          status: broadcastStatus, // sempre em lowercase
           duration,
           timestamp: timestamp.toISOString(),
           // Include SDP answer for outbound calls when client accepts
-          sdpAnswer: includeSdp ? session?.sdp : undefined,
-          sdpType: includeSdp ? session?.sdp_type : undefined,
+          sdpAnswer: isOutboundAccepted ? session.sdp : undefined,
+          sdpType: isOutboundAccepted ? sdpType : undefined,
         },
       });
     }
