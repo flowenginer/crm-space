@@ -123,6 +123,7 @@ export function useWebRTCCall() {
 
     // Add local tracks to connection
     localStream.getTracks().forEach(track => {
+      console.log('[WebRTC] Adding local track:', track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
       pc.addTrack(track, localStream);
     });
 
@@ -286,13 +287,15 @@ export function useWebRTCCall() {
 
     // Add local tracks to connection
     localStream.getTracks().forEach(track => {
+      console.log('[WebRTC] [Outbound] Adding local track:', track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
       pc.addTrack(track, localStream);
     });
 
     // Handle remote stream
     pc.ontrack = (event) => {
-      console.log('[WebRTC] Received remote track');
+      console.log('[WebRTC] Received remote track:', event.track.kind, 'enabled:', event.track.enabled);
       if (event.streams && event.streams[0]) {
+        console.log('[WebRTC] Remote stream has', event.streams[0].getAudioTracks().length, 'audio tracks');
         setState(prev => ({
           ...prev,
           remoteStream: event.streams[0],

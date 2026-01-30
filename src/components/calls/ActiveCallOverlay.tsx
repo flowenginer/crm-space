@@ -1,4 +1,5 @@
-import { Phone, PhoneOff, Mic, MicOff, X } from 'lucide-react';
+import { useRef, useEffect } from 'react';
+import { Phone, PhoneOff, Mic, MicOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useCallContext } from '@/providers/CallProvider';
@@ -12,6 +13,30 @@ function formatDuration(seconds: number): string {
 
 export function ActiveCallOverlay() {
   const { callState, hangupCall, toggleMute, isInCall } = useCallContext();
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+
+  // Connect remote stream to audio element for playback
+  useEffect(() => {
+    const audioEl = remoteAudioRef.current;
+    const stream = callState.remoteStream;
+    
+    if (audioEl && stream) {
+      console.log('[ActiveCall] Connecting remote stream to audio element, tracks:', stream.getAudioTracks().length);
+      stream.getAudioTracks().forEach(track => {
+        console.log('[ActiveCall] Remote audio track:', track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
+      });
+      audioEl.srcObject = stream;
+      audioEl.play().catch(err => {
+        console.error('[ActiveCall] Failed to play remote audio:', err);
+      });
+    }
+    
+    return () => {
+      if (audioEl) {
+        audioEl.srcObject = null;
+      }
+    };
+  }, [callState.remoteStream]);
 
   if (!isInCall || callState.status === 'idle') {
     return null;
@@ -30,6 +55,9 @@ export function ActiveCallOverlay() {
 
   return (
     <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-4 fade-in duration-300">
+      {/* Hidden audio element for remote stream playback */}
+      <audio ref={remoteAudioRef} autoPlay playsInline />
+      
       <div className="bg-card border border-border rounded-2xl shadow-xl p-4 min-w-[280px]">
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
