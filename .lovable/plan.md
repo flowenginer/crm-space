@@ -1,186 +1,162 @@
 
+## Objetivo
+Fazer o áudio das ligações WebRTC (WhatsApp Cloud API Calling) funcionar de forma confiável, cobrindo:
+1) permissão de microfone no Chrome,
+2) chegada do SDP Answer via webhook,
+3) entrega do SDP Answer ao frontend via Supabase Realtime,
+4) reprodução do `remoteStream` no navegador (e fallback caso o autoplay seja bloqueado).
 
-# Correção do Áudio Mudo em Chamadas WebRTC
+---
 
-## Diagnóstico
+## O que eu já consegui inferir pelos dados do seu projeto (causas mais prováveis)
 
-A chamada conecta com sucesso via Meta Cloud API, mas o áudio não funciona porque:
+### 1) O webhook **está recebendo o SDP Answer**
+Na tabela `cloudapi_webhook_logs` (event_type = `calls`) existe evento com:
+- `direction: BUSINESS_INITIATED`
+- `event: connect`
+- `session.sdp_type: answer`
+- `session.sdp: ... (SDP completo)`
 
-1. **SDP Answer não está chegando ao frontend**: Para chamadas outbound (business-initiated), o Meta envia o SDP answer via webhook, mas o sistema atual **não propaga o SDP answer para o frontend** via Realtime.
+Ou seja: o Meta está mandando o “SDP answer” corretamente.
 
-2. **O `remoteStream` fica null**: Sem receber o SDP answer, o frontend não consegue completar a negociação WebRTC, então o `pc.ontrack` nunca dispara e o `remoteStream` nunca é populado.
+### 2) O frontend provavelmente **não está recebendo** os broadcasts do webhook
+No backend (`cloudapi-webhook`) o broadcast é feito no canal:
+- `supabase.channel('call-events').send(...)`
+e `incoming-calls` para chamadas recebidas.
 
-3. **O elemento `<audio>` existe mas não tem stream**: O código do `ActiveCallOverlay.tsx` já tem o elemento de áudio, mas `callState.remoteStream` está null.
+Mas no frontend (`CallProvider`) você está inscrito em canais com nomes diferentes:
+- `supabase.channel('call-events-listener')`
+- `supabase.channel('incoming-calls-listener')`
 
-## Fluxo Atual (Quebrado)
+No Realtime do Supabase, broadcast é por “topic/canal”. Se o canal não for o mesmo, o listener não recebe. Isso por si só explica:
+- `setSdpAnswer()` não ser chamado (logo `remoteStream` pode nunca aparecer)
+- e também explicaria eventuais “incoming_call” não aparecerem.
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           CHAMADA OUTBOUND                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  1. Frontend gera SDP Offer ─────────► cloudapi-initiate-call           │
-│                                                │                        │
-│  2. Meta recebe e responde com call_id ◄───────┘                        │
-│                                                                         │
-│  3. Cliente aceita a chamada no WhatsApp                                │
-│                                                │                        │
-│  4. Meta envia webhook com SDP Answer ─────────► cloudapi-webhook       │
-│                                                │                        │
-│  5. Webhook processa mas NÃO ENVIA para ───────┘ [PROBLEMA AQUI]       │
-│     o frontend                                                          │
-│                                                                         │
-│  6. Frontend fica esperando o remoteStream ──► NUNCA CHEGA              │
-│                                                                         │
-│  7. Áudio mudo porque RTCPeerConnection ─────► Não tem remote SDP      │
-│     nunca recebe a outra ponta                                          │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+### 3) O seu backend está comparando strings em minúsculas, mas o webhook manda em MAIÚSCULAS
+Seu `processCalls` comenta/assume:
+- `direction === 'business_initiated'`
+- `status === 'accepted'`
 
-## Solução Proposta
+Mas nos logs reais do webhook:
+- `direction: BUSINESS_INITIATED` (maiúsculo)
+- status e “event” parecem vir como `COMPLETED` e `connect/terminate`, nem sempre “accepted”.
 
-### 1. Propagar SDP Answer via Realtime
+Isso pode impedir o `includeSdp` de disparar mesmo que o SDP exista.
 
-O webhook `cloudapi-webhook` precisa enviar o SDP answer para o frontend quando uma chamada outbound é aceita.
+### 4) Mesmo com `remoteStream`, o Chrome pode bloquear o `audioEl.play()` se ocorrer “tarde demais”
+Você já tem `<audio autoPlay playsInline />` e chama `audioEl.play()` dentro de `useEffect`.
+Em alguns cenários o Chrome entende que não foi uma ação direta do usuário e bloqueia (NotAllowedError). Precisamos ter fallback com um botão “Ativar áudio”.
 
-**Arquivo**: `supabase/functions/cloudapi-webhook/index.ts`
+---
 
-**Modificação**: Na função `processCalls`, quando receber status `accepted` para chamada `business_initiated`, incluir o SDP no broadcast:
+## Plano de correção (implementação)
 
-```typescript
-// Broadcast call state changes for active calls
-if (['accepted', 'rejected', 'terminated', 'completed', 'failed'].includes(status)) {
-  console.log('[Calls] Broadcasting call state change:', status);
-  
-  await supabase.channel('call-events').send({
-    type: 'broadcast',
-    event: 'call_state_changed',
-    payload: {
-      callId,
-      callLogId,
-      status,
-      duration,
-      timestamp: timestamp.toISOString(),
-      // NOVO: Incluir SDP answer para chamadas outbound aceitas
-      sdpAnswer: (status === 'accepted' && direction === 'business_initiated') 
-        ? session?.sdp 
-        : undefined,
-      sdpType: (status === 'accepted' && direction === 'business_initiated')
-        ? session?.sdp_type
-        : undefined,
-    },
-  });
-}
-```
+### Etapa A — Ajustar os canais do Supabase Realtime (frontend) para bater com o backend
+**Arquivo:** `src/providers/CallProvider.tsx`
 
-### 2. Receber SDP Answer no Frontend
+1) Trocar:
+- `supabase.channel('incoming-calls-listener')` → `supabase.channel('incoming-calls')`
+- `supabase.channel('call-events-listener')` → `supabase.channel('call-events')`
 
-O `CallProvider` precisa processar o SDP answer e passá-lo para o hook WebRTC.
+2) Tornar o handler de `call_state_changed` mais resiliente:
+- Aceitar `callId` OU `call_id` (porque `cloudapi-call-action` atualmente publica `call_id`).
+- Logar explicitamente quando chegou `sdpAnswer` e qual callId casou.
 
-**Arquivo**: `src/providers/CallProvider.tsx`
+**Resultado esperado:** o frontend finalmente recebe o `call_state_changed` com `sdpAnswer`, então consegue chamar `setSdpAnswer()`.
 
-**Modificação**: No listener de `call_state_changed`, chamar `setSdpAnswer` quando receber o SDP:
+---
 
-```typescript
-const eventsChannel = supabase
-  .channel('call-events-listener')
-  .on('broadcast', { event: 'call_state_changed' }, async (payload) => {
-    console.log('[CallProvider] Call state changed:', payload);
-    
-    const { callId, status, sdpAnswer } = payload.payload;
-    
-    // Se recebemos SDP answer para nossa chamada outbound, definir no WebRTC
-    if (sdpAnswer && callState.callId === callId && callState.direction === 'outbound') {
-      console.log('[CallProvider] Received SDP answer for outbound call');
-      await setSdpAnswer(sdpAnswer);
-    }
-    
-    // Resto do código existente...
-  })
-  .subscribe();
-```
+### Etapa B — Normalizar os campos do webhook e disparar SDP quando ele realmente chega (backend)
+**Arquivo:** `supabase/functions/cloudapi-webhook/index.ts`
 
-### 3. Expor `setSdpAnswer` no Hook
+1) Normalizar:
+- `directionNormalized = String(call.direction || '').toLowerCase()`
+- `statusNormalized = String(call.status || '').toLowerCase()`
+- `eventNormalized = String(call.event || '').toLowerCase()`
+- `sdpTypeNormalized = String(call.session?.sdp_type || '').toLowerCase()`
 
-O hook `useWebRTCCall` já tem a função `setSdpAnswer`, mas ela não está sendo retornada.
+2) Ajustar critérios para “tem SDP Answer que interessa”:
+- Em vez de `status === 'accepted' && direction === 'business_initiated'`,
+usar algo como:
+  - `directionNormalized === 'business_initiated'`
+  - `sdpTypeNormalized === 'answer'`
+  - `!!session?.sdp`
+  - e opcionalmente `eventNormalized === 'connect'` (ou “status” equivalente se existir)
 
-**Arquivo**: `src/hooks/useWebRTCCall.ts`
+3) Atualizar a lógica de broadcast para incluir `sdpAnswer` quando:
+- vier `event=connect` com `session.sdp_type=answer`
+- (e manter broadcast para outros estados como terminated/completed etc)
 
-**Modificação**: Adicionar `setSdpAnswer` no retorno:
+4) (Opcional, mas recomendado) Padronizar no payload broadcast:
+- sempre enviar `callId` (camelCase) no broadcast do webhook (hoje já envia)
+- sempre enviar `status` em minúsculas (ex.: `accepted`, `terminated`, `completed`) para o frontend consumir de maneira consistente.
 
-```typescript
-return {
-  state,
-  answerCall,
-  rejectCall,
-  hangup,
-  initiateCall,
-  toggleMute,
-  cleanup,
-  setSdpAnswer, // ADICIONAR
-};
-```
+**Resultado esperado:** o webhook sempre vai mandar `sdpAnswer` quando ele existir, independentemente de maiúsculas/minúsculas e da variação “status vs event”.
 
-### 4. Conectar tudo no CallProvider
+---
 
-**Arquivo**: `src/providers/CallProvider.tsx`
+### Etapa C — Fallback de reprodução de áudio no Chrome (UI)
+**Arquivo:** `src/components/calls/ActiveCallOverlay.tsx`
 
-**Modificação**: Incluir `setSdpAnswer` na desestruturação do hook:
+1) Detectar falha de autoplay:
+- Quando `audioEl.play()` der erro (NotAllowedError), setar um estado local `needsUserAudioEnable=true`.
 
-```typescript
-const {
-  state: callState,
-  answerCall,
-  rejectCall,
-  hangup,
-  initiateCall: initiate,
-  toggleMute,
-  cleanup,
-  setSdpAnswer, // ADICIONAR
-} = useWebRTCCall();
-```
+2) Mostrar um botão simples no overlay quando `needsUserAudioEnable` for true:
+- Texto: “Ativar áudio”
+- onClick: chama `audioEl.play()` novamente (agora com gesto do usuário)
 
-## Fluxo Corrigido
+3) Garantir que:
+- `audioEl.muted = false`
+- `audioEl.volume = 1`
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                       CHAMADA OUTBOUND (CORRIGIDA)                      │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  1. Frontend gera SDP Offer ─────────► cloudapi-initiate-call           │
-│                                                │                        │
-│  2. Meta responde com call_id ◄────────────────┘                        │
-│                                                                         │
-│  3. Cliente aceita a chamada no WhatsApp                                │
-│                                                │                        │
-│  4. Meta envia webhook com SDP Answer ─────────► cloudapi-webhook       │
-│                                                │                        │
-│  5. Webhook broadcasta via Realtime ───────────┼──► call_state_changed  │
-│     com sdpAnswer incluído                     │                        │
-│                                                ▼                        │
-│  6. CallProvider recebe e chama ───────────────► setSdpAnswer()         │
-│                                                │                        │
-│  7. RTCPeerConnection.setRemoteDescription ────┘                        │
-│                                                │                        │
-│  8. ontrack dispara com remoteStream ──────────► ActiveCallOverlay      │
-│                                                │                        │
-│  9. <audio> recebe stream ─────────────────────► ÁUDIO FUNCIONA!        │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+**Resultado esperado:** mesmo se o Chrome bloquear autoplay, você consegue destravar com 1 clique.
 
-## Arquivos a Modificar
+---
 
-| # | Arquivo | Modificação |
-|---|---------|-------------|
-| 1 | `supabase/functions/cloudapi-webhook/index.ts` | Incluir `sdpAnswer` e `sdpType` no broadcast de `call_state_changed` para chamadas outbound aceitas |
-| 2 | `src/hooks/useWebRTCCall.ts` | Adicionar `setSdpAnswer` no objeto de retorno |
-| 3 | `src/providers/CallProvider.tsx` | Desestruturar `setSdpAnswer` do hook e chamar quando receber SDP via Realtime |
+### Etapa D — Diagnóstico de permissão de microfone (UX simples)
+**Arquivo:** `src/hooks/useWebRTCCall.ts` (pequena melhoria)
 
-## Considerações Técnicas
+1) Antes de chamar `getUserMedia`, tentar:
+- `navigator.permissions.query({ name: 'microphone' as PermissionName })` (quando suportado)
+- se vier “denied”, mostrar toast mais direto: “Microfone bloqueado no Chrome. Clique no cadeado ao lado da URL e permita.”
 
-- **Timing**: O webhook pode chegar antes do frontend estar pronto para receber. O Realtime do Supabase deve lidar com isso se a subscription já estiver ativa.
-- **ICE Candidates**: Se houver ICE trickling, pode ser necessário implementar troca adicional de ICE candidates via Realtime.
-- **Logs de Debug**: Manter logs detalhados para diagnosticar futuros problemas.
+2) Logar detalhes do track local após `getUserMedia`:
+- `enabled`, `muted`, `readyState`
+- para diferenciar “tenho stream mas está mudo” vs “não tenho stream”.
 
+---
+
+## Passos de validação (checklist rápido de teste)
+1) No Chrome, abrir o CRM e clicar no cadeado ao lado da URL → **Microfone = Permitir**.
+2) Iniciar a chamada pelo CRM e atender no celular.
+3) Conferir no console:
+   - `[CallProvider] Call state changed:` deve aparecer
+   - Deve aparecer log de SDP recebida: “Received SDP answer…”
+   - Deve aparecer `[WebRTC] Setting SDP answer`
+   - Deve aparecer `[WebRTC] Received remote track`
+   - Deve aparecer `[ActiveCall] Connecting remote stream... tracks: 1`
+4) Se aparecer erro de autoplay, clicar no botão “Ativar áudio”.
+
+---
+
+## Arquivos que serão alterados
+- `src/providers/CallProvider.tsx` (trocar nomes de canais + aceitar call_id/callId + logs)
+- `supabase/functions/cloudapi-webhook/index.ts` (normalização + lógica correta de incluir SDP answer)
+- `src/components/calls/ActiveCallOverlay.tsx` (fallback de “Ativar áudio” se autoplay bloquear)
+- (opcional) `src/hooks/useWebRTCCall.ts` (melhor diagnóstico de permissão e logs)
+
+---
+
+## Observação importante (para você testar agora, antes do código)
+Mesmo sem mudar código: no Chrome, vá em:
+- Chrome → Settings → Privacy and security → Site settings → Microphone
+- Confirme que o domínio do seu app está como **Allowed**.
+E na página do CRM:
+- Clique no ícone do cadeado → Microphone → Allow → Reload.
+
+---
+
+## Próximas melhorias (depois que o áudio estiver OK)
+- Mostrar um indicador “Webhook calls OK / último evento calls há X min” no card “Diagnóstico Meta”.
+- Persistir no DB o `sdp_answer_received_at` no `call_logs` para troubleshooting.
+- Implementar troca de ICE candidates se a Meta exigir em certos cenários de rede.
