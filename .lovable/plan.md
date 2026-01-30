@@ -1,120 +1,88 @@
 
 
-# Correção: Detecção de Resposta de Permissão de Chamada
+# Melhoria na Exibição de Respostas Interativas
 
-## Problema Identificado
+## Problema Atual
 
-A resposta de permissão de chamada **está chegando corretamente** no webhook da Meta, porém o formato é diferente do esperado:
+As mensagens de resposta interativa (como permissão de chamada) são exibidas como "[Interativo]" em vez de mostrar o que o cliente realmente selecionou.
 
-### Formato Real (Meta envia)
-```json
-{
-  "type": "interactive",
-  "interactive": {
-    "type": "call_permission_reply",
-    "call_permission_reply": {
-      "response": "accept",
-      "is_permanent": true,
-      "response_source": "user_action"
-    }
-  }
-}
+## Solução em 2 Partes
+
+### Parte 1: Corrigir Mensagens Existentes no Banco
+
+As mensagens antigas foram salvas com `[Interativo]` porque a correção foi feita depois. Vou criar uma migração para atualizar o conteúdo dessas mensagens específicas.
+
+| Arquivo | Ação |
+|---------|------|
+| `supabase/migrations/fix_interactive_messages.sql` | Criar migração para atualizar conteúdo |
+
+**SQL da Migração:**
+```sql
+-- Atualiza mensagens de permissão de chamada que foram salvas incorretamente
+UPDATE messages 
+SET content = '✅ Permissão de chamada concedida',
+    updated_at = now()
+WHERE message_type = 'interactive' 
+AND content = '[Interativo]'
+AND conversation_id IN (
+  SELECT id FROM conversations 
+  WHERE contact_id IN (
+    SELECT id FROM contacts 
+    WHERE call_permission_status = 'granted'
+  )
+);
 ```
 
-### Formato Esperado (código atual procura)
-```json
-{
-  "type": "interactive",
-  "interactive": {
-    "type": "button_reply",
-    "button_reply": {
-      "id": "call_permission_granted"
-    }
-  }
-}
-```
+### Parte 2: Melhorar Renderização no Frontend
 
-## Solução
-
-Atualizar o webhook `cloudapi-webhook` para detectar o tipo correto `call_permission_reply`.
-
-## Arquivos a Modificar
+Atualizar o componente de chat para exibir mensagens interativas de forma mais amigável, com ícones e formatação adequada.
 
 | Arquivo | Modificação |
 |---------|-------------|
-| `supabase/functions/cloudapi-webhook/index.ts` | Adicionar tratamento para `call_permission_reply` |
+| `src/pages/Conversations.tsx` | Adicionar tratamento visual para `interactive` |
 
-## Mudança no Código
+**Mudança no Código:**
+Em vez de renderizar apenas texto genérico, adicionar tratamento especial para mensagens interativas:
 
-No arquivo `cloudapi-webhook/index.ts`, adicionar uma nova condição dentro do `case 'interactive':` (por volta da linha 529):
-
-### Código a Adicionar
-```typescript
-} else if (message.interactive?.call_permission_reply) {
-  // Native call permission response from Meta
-  const callPermReply = message.interactive.call_permission_reply;
-  console.log('[CloudAPI] Call permission reply received:', JSON.stringify(callPermReply, null, 2));
-  
-  // Check if permission was granted
-  // response can be: "accept" (granted) or "decline" (denied)
-  const permissionGranted = callPermReply.response === 'accept';
-  
-  if (permissionGranted) {
-    console.log('[CloudAPI] 📞 Call permission GRANTED via call_permission_reply');
-    await updateCallPermissionStatus(supabase, from, config.tenant_id, 'granted');
-    content = '✅ Permissão de chamada concedida';
-  } else {
-    console.log('[CloudAPI] 📞 Call permission DENIED via call_permission_reply');
-    await updateCallPermissionStatus(supabase, from, config.tenant_id, 'denied');
-    content = '❌ Permissão de chamada negada';
-  }
-  
-  messageType = 'interactive';
-}
+```tsx
+{/* Interactive messages with better display */}
+{message.message_type === 'interactive' && message.content && (
+  <div className="flex items-center gap-2 text-sm">
+    {message.content.includes('✅') ? (
+      <CheckCircle className="h-4 w-4 text-green-500" />
+    ) : message.content.includes('❌') ? (
+      <XCircle className="h-4 w-4 text-red-500" />
+    ) : (
+      <MessageSquare className="h-4 w-4 text-muted-foreground" />
+    )}
+    <span className="leading-relaxed">{message.content}</span>
+  </div>
+)}
 ```
 
-## Fluxo Após Correção
+## Fluxo Visual Após Correção
 
 ```text
-Usuário aceita permissão no WhatsApp
-           │
-           ▼
-  Meta envia webhook com:
-  interactive.type = "call_permission_reply"
-  call_permission_reply.response = "accept"
-           │
-           ▼
-  Webhook detecta call_permission_reply
-           │
-           ▼
-  updateCallPermissionStatus(supabase, phone, tenantId, 'granted')
-           │
-           ▼
-  contacts.call_permission_status → 'granted'
-           │
-           ▼
-  Supabase Realtime notifica frontend
-           │
-           ▼
-  UI atualiza: botão "Ligar" liberado ✅
+ANTES:                           DEPOIS:
+┌─────────────────────┐         ┌─────────────────────────────────┐
+│ [Interativo]        │   →     │ ✅ Permissão de chamada         │
+│ 14:35               │         │    concedida                    │
+└─────────────────────┘         │ 14:35                           │
+                                └─────────────────────────────────┘
 ```
 
-## Benefício Adicional
+## Benefícios
 
-Após a correção, **não será necessário solicitar permissão novamente** para o contato Michel Santos. O status já foi aceito 2x (17:35:55 e 17:37:29), então basta rodar uma query manual para corrigir o estado atual:
+1. **Clareza**: Cliente e atendente sabem exatamente o que foi respondido
+2. **Histórico**: Mensagens antigas serão corrigidas retroativamente
+3. **Consistência**: Novas respostas já serão salvas com o texto correto (webhook já corrigido)
 
-```sql
-UPDATE contacts 
-SET call_permission_status = 'granted'
-WHERE phone = '5521992731918';
-```
+## Resposta sobre Cobrança
 
-(Isso será feito automaticamente pelo código após a correção, para novos eventos)
+| Cenário | Cobrança Meta |
+|---------|---------------|
+| Dentro da janela de 24h | ❌ Não cobra |
+| Fora da janela de 24h | ✅ Cobra como conversa iniciada pela empresa |
 
-## Resumo
-
-- **Causa raiz**: O código esperava `button_reply` ou `nfm_reply`, mas a Meta envia `call_permission_reply`
-- **Impacto**: Todas as respostas de permissão estavam sendo ignoradas
-- **Solução**: Adicionar handler para `call_permission_reply` no webhook
-- **Complexidade**: Baixa (adicionar ~15 linhas de código)
+O pedido de permissão de chamada enviado **dentro da janela de 24 horas** (enquanto há uma conversa ativa com o cliente) **não é cobrado** pela Meta. É considerado parte da conversa de serviço já em andamento.
 
