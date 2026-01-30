@@ -69,9 +69,13 @@ serve(async (req) => {
     }
 
     // Build request body based on action - Meta requires messaging_product
+    // Meta API uses "terminate" instead of "hangup" and "decline" instead of "reject"
+    const metaAction = action === "hangup" ? "terminate" : action === "reject" ? "decline" : action;
+    
     let requestBody: Record<string, unknown> = { 
       messaging_product: "whatsapp",
-      action 
+      call_id: call_id, // call_id goes in the body, not the URL
+      action: metaAction
     };
 
     if (action === "answer" && sdp_answer) {
@@ -81,17 +85,12 @@ serve(async (req) => {
       };
     }
 
-    console.log(`[CallAction] Sending ${action} to Meta API for call ${call_id}`);
+    console.log(`[CallAction] Sending ${metaAction} to Meta API for call ${call_id}`);
+    console.log(`[CallAction] Request body:`, JSON.stringify(requestBody));
 
-    // Call Meta Graph API
-    // For hangup/reject: POST to /{call_id} directly
-    // For answer: POST to /{phone_number_id}/calls/{call_id}
+    // Call Meta Graph API - All call actions go to POST /{phone_number_id}/calls
     const apiVersion = config.api_version || "v22.0";
-    
-    // Meta API uses the call_id directly as the endpoint for call actions
-    const endpoint = action === "answer"
-      ? `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}/calls/${call_id}`
-      : `https://graph.facebook.com/${apiVersion}/${call_id}`;
+    const endpoint = `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}/calls`;
     
     console.log(`[CallAction] Using endpoint: ${endpoint}`);
     
