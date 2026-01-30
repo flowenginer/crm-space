@@ -454,5 +454,6 @@ export function useWebRTCCall() {
     initiateCall,
     toggleMute,
     cleanup,
+    setSdpAnswer,
   };
 }

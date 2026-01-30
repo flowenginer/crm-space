@@ -63,6 +63,7 @@ export function CallProvider({ children }: CallProviderProps) {
     initiateCall: initiate,
     toggleMute,
     cleanup,
+    setSdpAnswer,
   } = useWebRTCCall();
 
   // Listen for incoming calls via Supabase Realtime
@@ -102,10 +103,25 @@ export function CallProvider({ children }: CallProviderProps) {
     // Also listen for call state changes
     const eventsChannel = supabase
       .channel('call-events-listener')
-      .on('broadcast', { event: 'call_state_changed' }, (payload) => {
+      .on('broadcast', { event: 'call_state_changed' }, async (payload) => {
         console.log('[CallProvider] Call state changed:', payload);
         
-        const { callId, status } = payload.payload as { callId: string; status: string };
+        const { callId, status, sdpAnswer } = payload.payload as { 
+          callId: string; 
+          status: string; 
+          sdpAnswer?: string;
+        };
+        
+        // If we received SDP answer for our outbound call, set it on the peer connection
+        if (sdpAnswer && callState.callId === callId && callState.direction === 'outbound') {
+          console.log('[CallProvider] Received SDP answer for outbound call, setting remote description');
+          try {
+            await setSdpAnswer(sdpAnswer);
+            console.log('[CallProvider] SDP answer set successfully');
+          } catch (error) {
+            console.error('[CallProvider] Error setting SDP answer:', error);
+          }
+        }
         
         // If the incoming call was answered/rejected elsewhere
         if (incomingCall?.callId === callId && ['accepted', 'rejected', 'terminated'].includes(status)) {
@@ -119,7 +135,7 @@ export function CallProvider({ children }: CallProviderProps) {
       supabase.removeChannel(channel);
       supabase.removeChannel(eventsChannel);
     };
-  }, [user, callState.status, incomingCall?.callId]);
+  }, [user, callState.status, callState.callId, callState.direction, incomingCall?.callId, setSdpAnswer]);
 
   // Stop ringtone helper
   const stopRingtone = useCallback(() => {
