@@ -57,6 +57,10 @@ export function LeadIntelligenceDashboard() {
   const [stateSortBy, setStateSortBy] = useState<SortOption>('leads_desc');
   const [segmentSortBy, setSegmentSortBy] = useState<SortOption>('leads_desc');
   
+  // Sorting states for tables
+  const [stateTableSortBy, setStateTableSortBy] = useState<SortOption>('alpha_asc');
+  const [segmentTableSortBy, setSegmentTableSortBy] = useState<SortOption>('alpha_asc');
+  
   const filters = useMemo(() => ({
     dateRange: { from: dateFrom, to: dateTo },
     state: selectedState,
@@ -480,15 +484,28 @@ export function LeadIntelligenceDashboard() {
       {/* Tabela Detalhada por Estado */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <MapPin className="h-4 w-4" />
-            Análise por Estado
-            {selectedState && (
-              <Badge variant="outline" className="ml-2">
-                Filtrado: {STATE_NAMES[selectedState] || selectedState}
-              </Badge>
-            )}
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MapPin className="h-4 w-4" />
+              Análise por Estado
+              {selectedState && (
+                <Badge variant="outline" className="ml-2">
+                  Filtrado: {STATE_NAMES[selectedState] || selectedState}
+                </Badge>
+              )}
+            </CardTitle>
+            <Select value={stateTableSortBy} onValueChange={(v) => setStateTableSortBy(v as SortOption)}>
+              <SelectTrigger className="w-[150px] h-8 text-xs">
+                <ArrowUpDown className="h-3 w-3 mr-1" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[300px]">
@@ -517,7 +534,20 @@ export function LeadIntelligenceDashboard() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  stateData.map((row) => (
+                  [...stateData]
+                    .sort((a, b) => {
+                      switch (stateTableSortBy) {
+                        case 'leads_desc': return Number(b.total_leads) - Number(a.total_leads);
+                        case 'leads_asc': return Number(a.total_leads) - Number(b.total_leads);
+                        case 'conversion_desc': return Number(b.conversion_rate) - Number(a.conversion_rate);
+                        case 'conversion_asc': return Number(a.conversion_rate) - Number(b.conversion_rate);
+                        case 'revenue_desc': return Number(b.total_revenue) - Number(a.total_revenue);
+                        case 'alpha_asc': return (STATE_NAMES[a.state] || a.state).localeCompare(STATE_NAMES[b.state] || b.state, 'pt-BR');
+                        case 'alpha_desc': return (STATE_NAMES[b.state] || b.state).localeCompare(STATE_NAMES[a.state] || a.state, 'pt-BR');
+                        default: return 0;
+                      }
+                    })
+                    .map((row) => (
                     <TableRow 
                       key={row.state} 
                       className="cursor-pointer hover:bg-muted/50"
@@ -556,15 +586,28 @@ export function LeadIntelligenceDashboard() {
       {/* Tabela Detalhada por Segmento */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Layers className="h-4 w-4" />
-            Análise por Segmento
-            {selectedSegment && (
-              <Badge variant="outline" className="ml-2">
-                Filtrado
-              </Badge>
-            )}
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Layers className="h-4 w-4" />
+              Análise por Segmento
+              {selectedSegment && (
+                <Badge variant="outline" className="ml-2">
+                  Filtrado
+                </Badge>
+              )}
+            </CardTitle>
+            <Select value={segmentTableSortBy} onValueChange={(v) => setSegmentTableSortBy(v as SortOption)}>
+              <SelectTrigger className="w-[150px] h-8 text-xs">
+                <ArrowUpDown className="h-3 w-3 mr-1" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[300px]">
@@ -593,7 +636,20 @@ export function LeadIntelligenceDashboard() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  segmentData.map((row) => (
+                  [...segmentData]
+                    .sort((a, b) => {
+                      switch (segmentTableSortBy) {
+                        case 'leads_desc': return Number(b.total_leads) - Number(a.total_leads);
+                        case 'leads_asc': return Number(a.total_leads) - Number(b.total_leads);
+                        case 'conversion_desc': return Number(b.conversion_rate) - Number(a.conversion_rate);
+                        case 'conversion_asc': return Number(a.conversion_rate) - Number(b.conversion_rate);
+                        case 'revenue_desc': return Number(b.total_revenue) - Number(a.total_revenue);
+                        case 'alpha_asc': return a.segment_name.localeCompare(b.segment_name, 'pt-BR');
+                        case 'alpha_desc': return b.segment_name.localeCompare(a.segment_name, 'pt-BR');
+                        default: return 0;
+                      }
+                    })
+                    .map((row) => (
                     <TableRow 
                       key={row.segment_id || 'sem_segmento'}
                       className="cursor-pointer hover:bg-muted/50"
