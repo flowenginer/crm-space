@@ -15,6 +15,7 @@ import {
   X, Phone, Loader2, Plus, Save, Send, Smartphone, ArrowRightLeft, Lock, Check, Share2, FileText, Package, Play, Pause, Layers, ChevronsUpDown, ChevronLeft, ChevronRight, UserCircle, Settings, Clock, AlertTriangle
 } from 'lucide-react';
 import { InitiateCallButton } from '@/components/calls/InitiateCallButton';
+import { CallPermissionStatus } from '@/components/calls/CallPermissionStatus';
 import { usePermissions } from '@/hooks/usePermissions';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -1237,13 +1238,13 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
                     <Phone size={10} className="flex-shrink-0" />
                     <span className="truncate">{formatPhone(contact.phone)}</span>
                   </p>
-                  <InitiateCallButton
-                    contactPhone={contact.phone}
+                  <CallPermissionStatus
                     contactId={contact.id}
+                    contactPhone={contact.phone}
                     contactName={contact.full_name || undefined}
-                    size="icon"
-                    variant="ghost"
-                    className="h-5 w-5 ml-1"
+                    conversationId={conversationId}
+                    channelId={channel?.id}
+                    compact={true}
                   />
                 </div>
                 

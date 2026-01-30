@@ -513,9 +513,54 @@ async function processMessages(supabase: any, value: any) {
         if (message.interactive?.button_reply) {
           content = message.interactive.button_reply.title || '[Botão]';
           console.log('[CloudAPI] Interactive button_reply:', message.interactive.button_reply);
+          
+          // Check for call permission response
+          const buttonId = message.interactive.button_reply.id;
+          if (buttonId === 'call_permission_granted' || buttonId === 'call_permission_accepted') {
+            console.log('[CloudAPI] 📞 Call permission GRANTED by user');
+            await updateCallPermissionStatus(supabase, from, config.tenant_id, 'granted');
+          } else if (buttonId === 'call_permission_denied' || buttonId === 'call_permission_rejected') {
+            console.log('[CloudAPI] 📞 Call permission DENIED by user');
+            await updateCallPermissionStatus(supabase, from, config.tenant_id, 'denied');
+          }
         } else if (message.interactive?.list_reply) {
           content = message.interactive.list_reply.title || '[Lista]';
           console.log('[CloudAPI] Interactive list_reply:', message.interactive.list_reply);
+        } else if (message.interactive?.nfm_reply) {
+          // Native Flow Message reply - includes call_permission responses
+          console.log('[CloudAPI] Interactive nfm_reply:', JSON.stringify(message.interactive.nfm_reply, null, 2));
+          const nfmName = message.interactive.nfm_reply?.name;
+          const nfmBody = message.interactive.nfm_reply?.body;
+          const nfmResponseJson = message.interactive.nfm_reply?.response_json;
+          
+          // Check if this is a call permission response
+          if (nfmName === 'call_permission_request' || nfmBody?.includes('call_permission')) {
+            // Parse the response to determine if granted or denied
+            let permissionGranted = false;
+            if (nfmResponseJson) {
+              try {
+                const responseData = JSON.parse(nfmResponseJson);
+                permissionGranted = responseData.permission === 'granted' || responseData.accepted === true;
+              } catch (e) {
+                // If parsing fails, check raw body
+                permissionGranted = nfmBody?.toLowerCase().includes('accept') || 
+                                   nfmBody?.toLowerCase().includes('grant') ||
+                                   nfmBody?.toLowerCase().includes('yes');
+              }
+            }
+            
+            if (permissionGranted) {
+              console.log('[CloudAPI] 📞 Call permission GRANTED via nfm_reply');
+              await updateCallPermissionStatus(supabase, from, config.tenant_id, 'granted');
+              content = '✅ Permissão de chamada concedida';
+            } else {
+              console.log('[CloudAPI] 📞 Call permission DENIED via nfm_reply');
+              await updateCallPermissionStatus(supabase, from, config.tenant_id, 'denied');
+              content = '❌ Permissão de chamada negada';
+            }
+          } else {
+            content = nfmBody || '[Resposta de formulário]';
+          }
         } else {
           content = '[Interativo]';
         }
@@ -1016,5 +1061,55 @@ async function processReaction(supabase: any, message: any, from: string, tenant
     console.error('[CloudAPI] ❌ Error updating reactions:', updateError.message);
   } else {
     console.log('[CloudAPI] ✅ Reactions updated successfully, total:', currentReactions.length);
+  }
+}
+
+// Helper function to update call permission status for a contact
+async function updateCallPermissionStatus(
+  supabase: any, 
+  phone: string, 
+  tenantId: string, 
+  status: 'granted' | 'denied'
+) {
+  // Get phone variations to find the contact
+  const digits = phone.replace(/\D/g, '');
+  const variations: string[] = [digits];
+  
+  if (!digits.startsWith('55') && digits.length >= 10) {
+    variations.push(`55${digits}`);
+  }
+  if (digits.startsWith('55')) {
+    variations.push(digits.slice(2));
+  }
+  
+  const hasCountry = digits.startsWith('55');
+  const baseNumber = hasCountry ? digits.slice(2) : digits;
+  const ddd = baseNumber.slice(0, 2);
+  const rest = baseNumber.slice(2);
+  
+  if (rest.length === 9 && rest.startsWith('9')) {
+    variations.push(`55${ddd}${rest.slice(1)}`);
+    variations.push(`${ddd}${rest.slice(1)}`);
+  }
+  if (rest.length === 8) {
+    variations.push(`55${ddd}9${rest}`);
+    variations.push(`${ddd}9${rest}`);
+  }
+  
+  const uniqueVariations = [...new Set(variations)];
+
+  console.log('[CloudAPI] Updating call_permission_status to', status, 'for phone variations:', uniqueVariations);
+
+  const { data, error } = await supabase
+    .from('contacts')
+    .update({ call_permission_status: status })
+    .in('phone', uniqueVariations)
+    .eq('tenant_id', tenantId)
+    .select('id, phone');
+
+  if (error) {
+    console.error('[CloudAPI] Error updating call permission status:', error);
+  } else {
+    console.log('[CloudAPI] ✅ Call permission status updated for', data?.length || 0, 'contacts');
   }
 }
