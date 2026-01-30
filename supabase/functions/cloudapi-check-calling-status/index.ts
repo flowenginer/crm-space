@@ -3,13 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
@@ -60,7 +60,7 @@ serve(async (req) => {
     // Get CloudAPI config for this tenant
     const { data: config, error: configError } = await supabase
       .from("cloudapi_configs")
-      .select("phone_number_id, access_token, api_version")
+      .select("phone_number_id, access_token, api_version, waba_id")
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .single();
@@ -79,10 +79,14 @@ serve(async (req) => {
 
     console.log(`[CheckCallingStatus] Checking calling status for phone_number_id ${config.phone_number_id}`);
 
-    // Check calling status via Meta Graph API
-    const apiVersion = config.api_version || "v22.0";
+    // Use minimum v22.0 for calling endpoints (Meta docs recommend this)
+    const configVersion = config.api_version || "v22.0";
+    const versionNumber = parseInt(configVersion.replace(/[^\d]/g, "")) || 22;
+    const apiVersion = versionNumber >= 22 ? configVersion : "v22.0";
+
+    // Fetch phone number details including health_status
     const graphResponse = await fetch(
-      `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}?fields=display_phone_number,verified_name,quality_rating,messaging_limit_tier`,
+      `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}?fields=id,display_phone_number,verified_name,quality_rating,messaging_limit_tier,health_status,account_mode`,
       {
         method: "GET",
         headers: {
@@ -99,15 +103,16 @@ serve(async (req) => {
         JSON.stringify({ 
           error: `Erro ao verificar status no Meta: ${graphData.error?.message || "Unknown error"}`,
           calling_enabled: false,
-          meta_calling_enabled: false
+          meta_calling_enabled: false,
+          meta_error: graphData.error
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[CheckCallingStatus] Phone number data:`, graphData);
+    console.log(`[CheckCallingStatus] Phone number data:`, JSON.stringify(graphData));
 
-    // Check calling settings specifically
+    // Check calling settings specifically - Meta returns { calling: { status: "ENABLED" | "DISABLED" } }
     const settingsResponse = await fetch(
       `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}/settings`,
       {
@@ -120,42 +125,75 @@ serve(async (req) => {
 
     let callingStatus = "unknown";
     let callingEnabled = false;
+    let callbackPermissionStatus: string | null = null;
+    let callIconVisibility: string | null = null;
+    let settingsRaw: any = null;
 
     if (settingsResponse.ok) {
       const settingsData = await settingsResponse.json();
-      console.log(`[CheckCallingStatus] Settings data:`, settingsData);
+      console.log(`[CheckCallingStatus] Settings data (raw):`, JSON.stringify(settingsData));
+      settingsRaw = settingsData;
       
-      // Check if calling is in the settings
-      if (settingsData.data) {
-        const callingSetting = settingsData.data.find((s: any) => s.setting_type === "calling");
+      // Per Meta documentation, settings returns { calling: { status: "ENABLED" | "DISABLED", ... } }
+      if (settingsData.calling) {
+        callingStatus = settingsData.calling.status || "unknown";
+        callingEnabled = callingStatus === "ENABLED";
+        callbackPermissionStatus = settingsData.calling.callback_permission_status || null;
+        callIconVisibility = settingsData.calling.call_icon_visibility || null;
+      } else if (settingsData.data && Array.isArray(settingsData.data)) {
+        // Fallback: some versions may use data array format
+        const callingSetting = settingsData.data.find((s: any) => s.setting_type === "calling" || s.type === "calling");
         if (callingSetting) {
-          callingStatus = callingSetting.value?.status || "disabled";
+          callingStatus = callingSetting.value?.status || callingSetting.status || "unknown";
           callingEnabled = callingStatus === "ENABLED";
         }
       }
     } else {
       const settingsError = await settingsResponse.json();
-      console.log(`[CheckCallingStatus] Could not fetch settings:`, settingsError);
+      console.log(`[CheckCallingStatus] Could not fetch settings:`, JSON.stringify(settingsError));
     }
 
     // Parse messaging limit tier to check if eligible for calling (needs tier 2+)
     const messagingLimitTier = graphData.messaging_limit_tier || "TIER_NOT_SET";
-    const tierNumber = parseInt(messagingLimitTier.replace(/\D/g, "")) || 0;
+    const tierMatch = messagingLimitTier.match(/(\d+)/);
+    const tierNumber = tierMatch ? parseInt(tierMatch[1]) : 0;
     const isEligibleForCalling = tierNumber >= 2;
 
+    // Parse health_status
+    const healthStatus = graphData.health_status || null;
+    const healthCanSendMessage = healthStatus?.can_send_message;
+    const healthEntities = healthStatus?.entities || [];
+
+    // Build detailed response
+    const response = {
+      success: true,
+      phone_number_id: config.phone_number_id,
+      waba_id: config.waba_id,
+      display_phone_number: graphData.display_phone_number,
+      verified_name: graphData.verified_name,
+      quality_rating: graphData.quality_rating,
+      account_mode: graphData.account_mode,
+      messaging_limit_tier: messagingLimitTier,
+      tier_number: tierNumber,
+      is_eligible_for_calling: isEligibleForCalling,
+      // Calling-specific
+      calling_status: callingStatus,
+      meta_calling_enabled: callingEnabled,
+      callback_permission_status: callbackPermissionStatus,
+      call_icon_visibility: callIconVisibility,
+      // Health
+      health_status: healthStatus,
+      health_can_send_message: healthCanSendMessage,
+      health_entities: healthEntities,
+      // Debug
+      api_version_used: apiVersion,
+      settings_raw: settingsRaw,
+    };
+
+    console.log(`[CheckCallingStatus] Final response:`, JSON.stringify(response));
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        phone_number_id: config.phone_number_id,
-        display_phone_number: graphData.display_phone_number,
-        verified_name: graphData.verified_name,
-        quality_rating: graphData.quality_rating,
-        messaging_limit_tier: messagingLimitTier,
-        tier_number: tierNumber,
-        is_eligible_for_calling: isEligibleForCalling,
-        calling_status: callingStatus,
-        meta_calling_enabled: callingEnabled,
-      }),
+      JSON.stringify(response),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

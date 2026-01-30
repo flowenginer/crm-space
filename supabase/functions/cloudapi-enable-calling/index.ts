@@ -3,13 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
@@ -77,8 +77,12 @@ serve(async (req) => {
 
     console.log(`[EnableCalling] Enabling calling for phone_number_id ${config.phone_number_id}`);
 
+    // Use minimum v22.0 for calling endpoints
+    const configVersion = config.api_version || "v22.0";
+    const versionNumber = parseInt(configVersion.replace(/[^\d]/g, "")) || 22;
+    const apiVersion = versionNumber >= 22 ? configVersion : "v22.0";
+
     // Enable calling via Meta Graph API
-    const apiVersion = config.api_version || "v22.0";
     const graphResponse = await fetch(
       `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}/settings`,
       {
@@ -102,6 +106,7 @@ serve(async (req) => {
       
       const errorMessage = graphData.error?.message || "Unknown error";
       const errorCode = graphData.error?.code;
+      const errorSubcode = graphData.error?.error_subcode;
       
       // Provide helpful error messages based on common error codes
       let userMessage = errorMessage;
@@ -116,6 +121,9 @@ serve(async (req) => {
       } else if (errorCode === 190 || errorMessage.includes("access token")) {
         userMessage = "Token de acesso inválido ou expirado";
         suggestion = "Gere um novo token de acesso permanente no Meta for Developers.";
+      } else if (errorCode === 10 || errorMessage.includes("Application does not have permission")) {
+        userMessage = "Aplicativo sem permissão para Calling API";
+        suggestion = "Seu aplicativo Meta não tem acesso ao recurso de Calling. Verifique se você está elegível (business verificado, Tier 2+) e solicite acesso ao recurso.";
       }
       
       return new Response(
@@ -123,19 +131,49 @@ serve(async (req) => {
           error: userMessage,
           suggestion,
           details: graphData.error,
-          meta_error_code: errorCode
+          meta_error_code: errorCode,
+          meta_error_subcode: errorSubcode
         }),
         { status: graphResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[EnableCalling] Calling enabled successfully:`, graphData);
+    console.log(`[EnableCalling] Enable response:`, JSON.stringify(graphData));
+
+    // Verify the status after enabling by fetching settings again
+    const verifyResponse = await fetch(
+      `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}/settings`,
+      {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${config.access_token}`,
+        },
+      }
+    );
+
+    let verifiedStatus = "unknown";
+    let verifiedEnabled = false;
+
+    if (verifyResponse.ok) {
+      const verifyData = await verifyResponse.json();
+      console.log(`[EnableCalling] Verify settings after enable:`, JSON.stringify(verifyData));
+      
+      if (verifyData.calling) {
+        verifiedStatus = verifyData.calling.status || "unknown";
+        verifiedEnabled = verifiedStatus === "ENABLED";
+      }
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Calling API habilitada com sucesso no Meta!",
-        data: graphData
+        message: verifiedEnabled 
+          ? "Calling API habilitada com sucesso no Meta!" 
+          : "Solicitação enviada. Verifique o status no Meta.",
+        calling_status: verifiedStatus,
+        meta_calling_enabled: verifiedEnabled,
+        data: graphData,
+        api_version_used: apiVersion
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

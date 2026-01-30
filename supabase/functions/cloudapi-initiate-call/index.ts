@@ -6,6 +6,87 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Helper to check calling status before attempting call
+async function checkCallingPrerequisites(
+  phoneNumberId: string,
+  accessToken: string,
+  apiVersion: string
+): Promise<{
+  canCall: boolean;
+  callingStatus: string;
+  tierNumber: number;
+  messagingLimitTier: string;
+  healthStatus: any;
+  displayPhoneNumber: string;
+  verifiedName: string;
+  errorReason?: string;
+}> {
+  // Fetch phone number info
+  const phoneResp = await fetch(
+    `https://graph.facebook.com/${apiVersion}/${phoneNumberId}?fields=display_phone_number,verified_name,messaging_limit_tier,health_status`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+  
+  const phoneData = await phoneResp.json();
+  
+  if (!phoneResp.ok) {
+    return {
+      canCall: false,
+      callingStatus: "unknown",
+      tierNumber: 0,
+      messagingLimitTier: "unknown",
+      healthStatus: null,
+      displayPhoneNumber: "",
+      verifiedName: "",
+      errorReason: `Erro ao acessar phone number: ${phoneData.error?.message || "Unknown"}`
+    };
+  }
+
+  // Fetch settings
+  const settingsResp = await fetch(
+    `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/settings`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+
+  let callingStatus = "unknown";
+  if (settingsResp.ok) {
+    const settingsData = await settingsResp.json();
+    if (settingsData.calling) {
+      callingStatus = settingsData.calling.status || "unknown";
+    }
+  }
+
+  const messagingLimitTier = phoneData.messaging_limit_tier || "TIER_NOT_SET";
+  const tierMatch = messagingLimitTier.match(/(\d+)/);
+  const tierNumber = tierMatch ? parseInt(tierMatch[1]) : 0;
+
+  let errorReason: string | undefined;
+  let canCall = true;
+
+  if (callingStatus !== "ENABLED") {
+    canCall = false;
+    errorReason = `Calling API não está ENABLED no Meta (status atual: ${callingStatus})`;
+  } else if (tierNumber < 2) {
+    canCall = false;
+    errorReason = `Tier insuficiente para Calling API (tier atual: ${tierNumber}, mínimo: 2)`;
+  }
+
+  return {
+    canCall,
+    callingStatus,
+    tierNumber,
+    messagingLimitTier,
+    healthStatus: phoneData.health_status || null,
+    displayPhoneNumber: phoneData.display_phone_number || "",
+    verifiedName: phoneData.verified_name || "",
+    errorReason,
+  };
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -90,6 +171,11 @@ serve(async (req) => {
 
     console.log(`[InitiateCall] Using Cloud API config ${config.id} with phone_number_id ${config.phone_number_id}`);
 
+    // Use minimum v22.0 for calling endpoints
+    const configVersion = config.api_version || "v22.0";
+    const versionNumber = parseInt(configVersion.replace(/[^\d]/g, "")) || 22;
+    const apiVersion = versionNumber >= 22 ? configVersion : "v22.0";
+
     // Format phone number - Meta expects E.164 without the "+" prefix
     const formattedPhone = to.replace(/\D/g, "");
 
@@ -97,8 +183,6 @@ serve(async (req) => {
     if (!sdp_offer) {
       console.log(`[InitiateCall] No SDP offer provided - returning instructions for WebRTC setup`);
       
-      // For now, return an error explaining that WebRTC SDP is required
-      // The WhatsApp Calling API requires a full WebRTC implementation
       return new Response(
         JSON.stringify({ 
           error: "WebRTC SDP offer é obrigatório",
@@ -113,39 +197,44 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[InitiateCall] Calling Meta Graph API to initiate call to ${formattedPhone} with WebRTC SDP`);
-
-    // Quick permission sanity-check: verify token can access this Phone Number ID
-    const apiVersion = config.api_version || "v22.0";
-    const phoneCheckResp = await fetch(
-      `https://graph.facebook.com/${apiVersion}/${config.phone_number_id}?fields=id,display_phone_number,verified_name`,
-      {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${config.access_token}`,
-        },
-      }
+    // ========== PRECHECK: Verify calling is enabled and eligible before calling Meta ==========
+    console.log(`[InitiateCall] Running pre-call checks for phone_number_id ${config.phone_number_id}`);
+    
+    const precheck = await checkCallingPrerequisites(
+      config.phone_number_id,
+      config.access_token,
+      apiVersion
     );
 
-    const phoneCheckData = await phoneCheckResp.json().catch(() => ({}));
+    console.log(`[InitiateCall] Precheck result:`, JSON.stringify(precheck));
 
-    if (!phoneCheckResp.ok) {
-      console.error("[InitiateCall] Phone number access check failed:", phoneCheckData);
+    if (!precheck.canCall) {
+      console.warn(`[InitiateCall] Precheck failed: ${precheck.errorReason}`);
       return new Response(
         JSON.stringify({
-          error: "Token sem acesso ao Phone Number ID",
-          suggestion:
-            "O access_token configurado não tem permissão/escopo para operar neste phone_number_id (ou pertence a outra WABA). Gere um token permanente de um System User com acesso ao mesmo Business/WABA e com as permissões WhatsApp necessárias.",
-          action_required: "fix_access_token_or_phone_number_id",
-          details: phoneCheckData?.error || phoneCheckData,
-          meta_error_code: phoneCheckData?.error?.code,
+          error: precheck.errorReason || "Calling API não disponível",
+          suggestion: precheck.callingStatus !== "ENABLED"
+            ? "Habilite a Calling API no Meta (WhatsApp Manager → Phone Numbers → Settings) e verifique se seu número é elegível (business verificado, Tier 2+)."
+            : "Seu número precisa ter limite de pelo menos 2.000 mensagens/dia (Tier 2+) para usar a Calling API.",
+          action_required: precheck.callingStatus !== "ENABLED" 
+            ? "enable_calling_api_in_meta" 
+            : "upgrade_tier",
+          diagnostics: {
+            phone_number_id: config.phone_number_id,
+            display_phone_number: precheck.displayPhoneNumber,
+            verified_name: precheck.verifiedName,
+            calling_status: precheck.callingStatus,
+            messaging_limit_tier: precheck.messagingLimitTier,
+            tier_number: precheck.tierNumber,
+            health_status: precheck.healthStatus,
+            api_version: apiVersion,
+          }
         }),
-        {
-          status: phoneCheckResp.status,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log(`[InitiateCall] Precheck passed. Calling Meta Graph API to initiate call to ${formattedPhone}`);
 
     // Initiate call via Meta Graph API with proper WebRTC format
     const graphResponse = await fetch(
@@ -174,18 +263,18 @@ serve(async (req) => {
       console.error("[InitiateCall] Meta API error:", graphData);
       const errorMessage = graphData.error?.message || graphData.error?.error_user_msg || "Unknown error";
       const errorCode = graphData.error?.code;
-        const errorSubcode = graphData.error?.error_subcode;
+      const errorSubcode = graphData.error?.error_subcode;
       
       // Provide helpful error messages based on common error codes
       let userMessage = errorMessage;
       let suggestion = "";
       let actionRequired = "";
       
-        if (errorCode === 138000 || errorSubcode === 2593051) {
-          userMessage = "Calling API do WhatsApp não está habilitada para este número";
-          suggestion = "No Meta (WhatsApp Manager / Developers), habilite o recurso de Calling/Voice para este phone number e garanta elegibilidade (business verificado + acesso ao Calling API).";
-          actionRequired = "enable_calling_api_in_meta";
-        } else if (errorCode === 138006) {
+      if (errorCode === 138000 || errorSubcode === 2593051) {
+        userMessage = "Calling API do WhatsApp não está habilitada para este número";
+        suggestion = "Mesmo com precheck positivo, o Meta rejeitou a chamada. Isso pode indicar: 1) Restrição de allowlist/BIC gating, 2) Token sem escopo para calling, 3) WABA não habilitada para Voice. Contate o suporte Meta.";
+        actionRequired = "contact_meta_support";
+      } else if (errorCode === 138006) {
         userMessage = "Usuário não deu permissão para receber chamadas";
         suggestion = "É necessário primeiro enviar uma mensagem de solicitação de permissão de chamada ao usuário e aguardar que ele aceite.";
         actionRequired = "request_call_permission";
@@ -213,7 +302,20 @@ serve(async (req) => {
           suggestion,
           action_required: actionRequired,
           details: graphData.error || graphData,
-          meta_error_code: errorCode
+          meta_error_code: errorCode,
+          meta_error_subcode: errorSubcode,
+          // Include precheck diagnostics for debugging
+          diagnostics: {
+            precheck_passed: true,
+            phone_number_id: config.phone_number_id,
+            display_phone_number: precheck.displayPhoneNumber,
+            verified_name: precheck.verifiedName,
+            calling_status: precheck.callingStatus,
+            messaging_limit_tier: precheck.messagingLimitTier,
+            tier_number: precheck.tierNumber,
+            health_status: precheck.healthStatus,
+            api_version: apiVersion,
+          }
         }),
         { status: graphResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
