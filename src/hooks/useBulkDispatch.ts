@@ -16,6 +16,8 @@ export interface BulkDispatchFilters {
   includeBlocked?: boolean;
   // Filtro de última mensagem do cliente
   lastClientMessageDaysAgo?: number;
+  // Filtro de motivo de fechamento
+  closeReasonIds?: string[];
 }
 
 export interface ScheduleOverride {
@@ -235,6 +237,7 @@ async function prepareRpcParams(filters: BulkDispatchFilters) {
     p_include_blocked: filters.includeBlocked || false,
     p_first_contact_start: filters.firstContactStart || null,
     p_first_contact_end: filters.firstContactEnd ? filters.firstContactEnd + 'T23:59:59' : null,
+    p_close_reason_ids: filters.closeReasonIds?.length ? filters.closeReasonIds : null,
   };
 }
 

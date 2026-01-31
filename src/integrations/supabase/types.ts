@@ -11134,51 +11134,100 @@ export type Database = {
         }
       }
       get_base_tenant_id: { Args: never; Returns: string }
-      get_bulk_dispatch_preview_contacts: {
-        Args: {
-          p_assigned_to?: string[]
-          p_contact_type?: string
-          p_conversation_statuses?: string[]
-          p_department_ids?: string[]
-          p_first_contact_end?: string
-          p_first_contact_start?: string
-          p_include_blocked?: boolean
-          p_last_client_message_days_ago?: number
-          p_lead_status_names?: string[]
-          p_limit_val?: number
-          p_offset_val?: number
-          p_origin?: string
-          p_segment_id?: string
-          p_tag_ids?: string[]
-          p_tenant_id: string
-        }
-        Returns: {
-          avatar_url: string
-          full_name: string
-          id: string
-          last_interaction_at: string
-          lead_status: string
-          phone: string
-        }[]
-      }
-      get_bulk_dispatch_preview_count: {
-        Args: {
-          p_assigned_to?: string[]
-          p_contact_type?: string
-          p_conversation_statuses?: string[]
-          p_department_ids?: string[]
-          p_first_contact_end?: string
-          p_first_contact_start?: string
-          p_include_blocked?: boolean
-          p_last_client_message_days_ago?: number
-          p_lead_status_names?: string[]
-          p_origin?: string
-          p_segment_id?: string
-          p_tag_ids?: string[]
-          p_tenant_id: string
-        }
-        Returns: number
-      }
+      get_bulk_dispatch_preview_contacts:
+        | {
+            Args: {
+              p_assigned_to?: string[]
+              p_contact_type?: string
+              p_conversation_statuses?: string[]
+              p_department_ids?: string[]
+              p_first_contact_end?: string
+              p_first_contact_start?: string
+              p_include_blocked?: boolean
+              p_last_client_message_days_ago?: number
+              p_lead_status_names?: string[]
+              p_limit_val?: number
+              p_offset_val?: number
+              p_origin?: string
+              p_segment_id?: string
+              p_tag_ids?: string[]
+              p_tenant_id: string
+            }
+            Returns: {
+              avatar_url: string
+              full_name: string
+              id: string
+              last_interaction_at: string
+              lead_status: string
+              phone: string
+            }[]
+          }
+        | {
+            Args: {
+              p_assigned_to?: string[]
+              p_close_reason_ids?: string[]
+              p_contact_type?: string
+              p_conversation_statuses?: string[]
+              p_department_ids?: string[]
+              p_first_contact_end?: string
+              p_first_contact_start?: string
+              p_include_blocked?: boolean
+              p_last_client_message_days_ago?: number
+              p_lead_status_names?: string[]
+              p_limit_val?: number
+              p_offset_val?: number
+              p_origin?: string
+              p_segment_id?: string
+              p_tag_ids?: string[]
+              p_tenant_id: string
+            }
+            Returns: {
+              avatar_url: string
+              full_name: string
+              id: string
+              last_interaction_at: string
+              lead_status: string
+              phone: string
+            }[]
+          }
+      get_bulk_dispatch_preview_count:
+        | {
+            Args: {
+              p_assigned_to?: string[]
+              p_contact_type?: string
+              p_conversation_statuses?: string[]
+              p_department_ids?: string[]
+              p_first_contact_end?: string
+              p_first_contact_start?: string
+              p_include_blocked?: boolean
+              p_last_client_message_days_ago?: number
+              p_lead_status_names?: string[]
+              p_origin?: string
+              p_segment_id?: string
+              p_tag_ids?: string[]
+              p_tenant_id: string
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_assigned_to?: string[]
+              p_close_reason_ids?: string[]
+              p_contact_type?: string
+              p_conversation_statuses?: string[]
+              p_department_ids?: string[]
+              p_first_contact_end?: string
+              p_first_contact_start?: string
+              p_include_blocked?: boolean
+              p_last_client_message_days_ago?: number
+              p_lead_status_names?: string[]
+              p_origin?: string
+              p_segment_id?: string
+              p_tag_ids?: string[]
+              p_tenant_id: string
+            }
+            Returns: number
+          }
       get_channel_by_instance: {
         Args: { p_instance_id: string }
         Returns: {
