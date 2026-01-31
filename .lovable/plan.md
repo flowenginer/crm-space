@@ -1,288 +1,205 @@
 
-# Sistema de Atualizacao de Leads via PDF/Planilha do Bling
+# Comparacao de Dados e Ativacao/Desativacao por Campo
 
 ## Objetivo
 
-Criar um sistema que permite importar PDFs ou planilhas de vendas do Bling e atualizar automaticamente:
-- **Valor Negociado** (`negotiated_value`)
-- **Qtd. Camisas** (`shirt_quantity`)
-- **Status de Lead** para "07 - Pedido Fechado"
-- **Vendedor/Agente responsavel** (`assigned_to` em contacts e conversations)
+Melhorar o preview da atualizacao em massa para:
+
+1. **Exibir dados do sistema abaixo de cada linha importada** - permitindo comparacao visual
+2. **Corrigir problema da quantidade** - que esta exibindo "-" mesmo quando existe valor na planilha
+3. **Permitir ativar/desativar campos individualmente** - para cada linha, o usuario pode escolher quais campos atualizar
 
 ---
 
-## Dados do PDF Analisado
+## Problema Identificado: Quantidade
 
-O PDF "VENDAS_01-01_26" contém a seguinte estrutura:
-
-| Campo no PDF | Campo no Sistema | Tipo |
-|--------------|------------------|------|
-| Celular / Telefone | `phone` (identificador) | texto |
-| Qtd | `shirt_quantity` | inteiro |
-| Total Pedido | `negotiated_value` | decimal |
-| Vendedor | `assigned_to` | uuid (via mapeamento) |
-
-### Mapeamento de Vendedores Identificados
-
-| Nome no PDF | Perfil no Sistema | ID |
-|-------------|-------------------|-----|
-| SCARLET 07 | Scarlet Costa | `97ad6ef8-...` |
-| YASMIM SANT´ANNA | Yasmin Sant'Anna | `62cf8e40-...` |
-
-O sistema usara matching fuzzy existente para:
-- Normalizar acentos (YASMIM → yasmin)
-- Match por primeiro nome (SCARLET → scarlet costa)
-- Ignorar sufixos numericos ("07")
+Analisando o codigo, a funcao `parseQuantity` esta correta, mas o problema pode estar no mapeamento automatico. A coluna "Qtd" do Bling pode nao estar sendo detectada. Vou revisar e garantir que:
+- O auto-mapping reconheca "Qtd" exatamente (case insensitive)
+- O valor seja exibido corretamente na tabela
 
 ---
 
-## Arquitetura da Solucao
-
-### Arquivos a Criar
-
-| Arquivo | Descricao |
-|---------|-----------|
-| `src/pages/BulkLeadUpdate.tsx` | Pagina dedicada para atualizacao em massa |
-| `src/hooks/useBulkLeadUpdate.ts` | Hook com logica de processamento |
-| `src/components/bulk-update/BulkUpdateUploader.tsx` | Componente de upload (PDF/Excel/CSV) |
-| `src/components/bulk-update/BulkUpdatePreview.tsx` | Preview e mapeamento de colunas |
-| `src/components/bulk-update/BulkUpdateResults.tsx` | Resultados da atualizacao |
-
-### Arquivos a Modificar
-
-| Arquivo | Alteracao |
-|---------|-----------|
-| `src/App.tsx` | Adicionar rota `/leads/atualizacao` |
-| `src/components/layout/MainSidebar.tsx` | Adicionar item no menu CRM |
-
----
-
-## Fluxo do Sistema
+## Nova Interface do Preview
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│  ETAPA 1: UPLOAD                                                │
-│  ┌───────────────────────────────────────────────────────────┐ │
-│  │  📄 Arraste seu arquivo aqui                              │ │
-│  │  Formatos: PDF, Excel (.xlsx), CSV                        │ │
-│  │                                                           │ │
-│  │  [Escolher Arquivo]  [Colar Link Google Sheets]           │ │
-│  └───────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  ETAPA 2: MAPEAMENTO AUTOMATICO                                 │
-│  ┌───────────────────────────────────────────────────────────┐ │
-│  │  Colunas detectadas:                                      │ │
-│  │  "Celular" → Telefone ✓                                   │ │
-│  │  "Qtd" → Quantidade de Camisas ✓                          │ │
-│  │  "Total Pedido" → Valor Negociado ✓                       │ │
-│  │  "Vendedor" → Agente Responsavel ✓                        │ │
-│  │                                                           │ │
-│  │  ☑ Atualizar para: "07 - Pedido Fechado"                 │ │
-│  │  ☑ Atualizar vendedor do contato                         │ │
-│  └───────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  ETAPA 3: PREVIEW                                               │
-│  ┌───────────────────────────────────────────────────────────┐ │
-│  │  Leads encontrados: 5 de 5                                │ │
-│  │                                                           │ │
-│  │  Telefone       │ Valor    │ Qtd │ Vendedor   │ Status   │ │
-│  │  559899122...   │ R$ 1.798 │ 22  │ Scarlet    │ ✓ Match  │ │
-│  │  559898149...   │ R$ 849   │ 10  │ Yasmin     │ ✓ Match  │ │
-│  │  559899731...   │ R$ 849   │ 10  │ Yasmin     │ ✓ Match  │ │
-│  │  559898108...   │ R$ 1.145 │ 11  │ Scarlet    │ ✓ Match  │ │
-│  │  559898282...   │ R$ 756   │ 9   │ Yasmin     │ ✓ Match  │ │
-│  └───────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│  [Atualizar 5 Leads]                                            │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  ETAPA 4: RESULTADO                                             │
-│  ┌───────────────────────────────────────────────────────────┐ │
-│  │  ✅ 5 leads atualizados com sucesso!                      │ │
-│  │                                                           │ │
-│  │  Resumo:                                                  │ │
-│  │  • Valor total: R$ 5.397,00                               │ │
-│  │  • Total de camisas: 62                                   │ │
-│  │  • Vendedor Scarlet: 2 leads                              │ │
-│  │  • Vendedor Yasmin: 3 leads                               │ │
-│  └───────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  PREVIEW                                                                       │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │ ✓ 559899122...  │ CLIENTE X       │ R$ 1.798  │ 22   │ Scarlet          │ │
+│  │   Sistema:       │ Cliente Teste   │ R$ 500    │ 10   │ Yasmin           │ │
+│  │   Atualizar:     │ [✓] Nome        │ [✓] Valor │ [✓]  │ [✓] Vendedor     │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │ ✓ 559898149...  │ CLIENTE Y       │ R$ 849    │ 10   │ Yasmin           │ │
+│  │   Sistema:       │ Cliente Y Real  │ R$ 849    │ 10   │ Yasmin           │ │
+│  │   Atualizar:     │ [ ] Nome        │ [ ] Valor │ [ ]  │ [ ] Vendedor     │ │
+│  │   (valores iguais - desmarcados automaticamente)                         │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Detalhes Tecnicos
+## Alteracoes Necessarias
 
 ### 1. Hook `useBulkLeadUpdate.ts`
 
+**Expandir dados buscados do sistema**
+
+Modificar a funcao `processAndMatch` para trazer mais campos do contato:
+
 ```typescript
-interface BulkUpdateRow {
-  telefone: string;
-  valorNegociado?: number;
-  qtdCamisas?: number;
-  vendedor?: string;
-}
-
-interface BulkUpdateOptions {
-  updateLeadStatus: boolean;     // Atualizar para "07 - Pedido Fechado"
-  updateNegotiatedValue: boolean;
-  updateShirtQuantity: boolean;
-  updateAssignee: boolean;       // Atualizar vendedor
-}
-
-interface BulkUpdateResult {
-  total: number;
-  updated: number;
-  notFound: number;
-  errors: number;
-  summary: {
-    totalValue: number;
-    totalQuantity: number;
-    byAgent: Record<string, number>;
+interface MatchedRow extends BulkUpdateRow {
+  // ... campos existentes ...
+  
+  // NOVOS: Dados atuais do sistema para comparacao
+  currentValue: number | null;       // negotiated_value atual
+  currentQuantity: number | null;    // shirt_quantity atual
+  currentLeadStatus: string | null;  // lead_status atual
+  currentAssigneeName: string | null; // nome do vendedor atual
+  
+  // NOVOS: Controle por campo
+  updateFields: {
+    value: boolean;
+    quantity: boolean;
+    status: boolean;
+    assignee: boolean;
   };
-  log: UpdateLogEntry[];
 }
 ```
 
-### 2. Logica de Processamento
-
-Para cada linha do PDF/planilha:
-
-```text
-1. Normalizar telefone (remover formatacao)
-2. Buscar contato pelo telefone
-3. Se encontrado:
-   a. Atualizar negotiated_value
-   b. Atualizar shirt_quantity
-   c. Atualizar lead_status = "07 - Pedido Fechado"
-   d. Mapear vendedor → assigned_to (fuzzy match)
-   e. Atualizar conversations.assigned_to (sincronizacao)
-4. Registrar no log
-```
-
-### 3. Atualizacao Sincronizada (Dual-Field)
-
-Conforme regra de negocio existente, ao atualizar o vendedor:
-- Atualiza `contacts.assigned_to` (Responsavel pelo contato)
-- Atualiza `conversations.assigned_to` (Atendente atual da conversa)
+Modificar query para trazer os campos adicionais:
 
 ```sql
--- Atualizar contato
-UPDATE contacts
-SET 
-  negotiated_value = [valor],
-  shirt_quantity = [qtd],
-  lead_status = '07 - Pedido Fechado',
-  assigned_to = [profile_id],
-  updated_at = NOW()
-WHERE phone = [telefone_normalizado];
-
--- Sincronizar conversa ativa
-UPDATE conversations
-SET 
-  assigned_to = [profile_id],
-  updated_at = NOW()
-WHERE contact_id = [contact_id]
-  AND status IN ('open', 'pending');
-```
-
-### 4. Parse de PDF
-
-O sistema usara a ferramenta `document--parse_document` para extrair tabelas do PDF e converter em dados estruturados.
-
-Para PDFs do Bling, o parser identificara automaticamente:
-- Cabecalhos: "Cliente", "Celular", "Qtd", "Total Pedido", "Vendedor"
-- Linhas de dados com valores
-
-### 5. Mapeamento Automatico de Colunas
-
-```typescript
-const autoMapColumns = (headers: string[]) => {
-  const mapping = {};
-  
-  headers.forEach(h => {
-    const lower = h.toLowerCase().trim();
-    
-    // Telefone
-    if (lower.includes('celular') || lower.includes('telefone') || lower.includes('fone')) {
-      mapping.telefone = h;
-    }
-    
-    // Quantidade
-    if (lower === 'qtd' || lower.includes('quantidade')) {
-      mapping.qtdCamisas = h;
-    }
-    
-    // Valor
-    if (lower.includes('total') || lower.includes('valor') || lower.includes('pedido')) {
-      mapping.valorNegociado = h;
-    }
-    
-    // Vendedor
-    if (lower.includes('vendedor') || lower.includes('agente') || lower.includes('responsavel')) {
-      mapping.vendedor = h;
-    }
-  });
-  
-  return mapping;
-};
-```
-
-### 6. Invalidacao de Cache
-
-Apos atualizacao, invalidar queries para refletir mudancas no frontend:
-
-```typescript
-queryClient.invalidateQueries({ queryKey: ['conversation-details'] });
-queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
-queryClient.invalidateQueries({ queryKey: ['contacts-for-kanban'] });
-queryClient.invalidateQueries({ queryKey: ['contacts'] });
+SELECT 
+  id, phone, full_name, assigned_to,
+  negotiated_value, shirt_quantity, lead_status
+FROM contacts
+WHERE tenant_id = ? AND phone IN (...)
 ```
 
 ---
 
-## Navegacao e Acesso
+### 2. Componente `BulkUpdatePreview.tsx`
 
-### Rota
+**Nova estrutura da tabela**
+
+Para cada linha da planilha, exibir:
+- **Linha 1**: Dados importados (planilha)
+- **Linha 2**: Dados atuais (sistema) - com cor diferente para destacar diferencas
+- **Linha 3**: Checkboxes individuais para ativar/desativar atualizacao de cada campo
+
+**Logica de auto-deteccao de diferencas**
+
+Quando os valores sao iguais:
+- Desmarcar automaticamente o checkbox (nao precisa atualizar)
+- Exibir com cor mais suave/verde
+
+Quando os valores sao diferentes:
+- Marcar automaticamente o checkbox
+- Destacar em amarelo/laranja para chamar atencao
+
+**Novo estado para controle por linha**
 
 ```typescript
-// Em App.tsx
-<Route path="/leads/atualizacao" element={
-  <ProtectedRoute permission="deals.view">
-    <BulkLeadUpdate />
-  </ProtectedRoute>
-} />
+const [rowSettings, setRowSettings] = useState<Map<number, {
+  updateValue: boolean;
+  updateQuantity: boolean;
+  updateStatus: boolean;
+  updateAssignee: boolean;
+}>>(new Map());
 ```
 
-### Menu Lateral
+---
 
-Adicionar item "Atualizacao em Massa" dentro do grupo CRM ou como item separado com icone de upload.
+### 3. Correcao do Parse de Quantidade
+
+Revisar `autoMapBlingColumns` para garantir que "Qtd" seja mapeado:
+
+```typescript
+// Quantidade - adicionar mais variações
+if (lower === 'qtd' || lower === 'qtde' || lower.includes('quantidade') || lower.includes('qty')) {
+  mapping.qtdCamisas = h;
+}
+```
 
 ---
 
-## Beneficios
+## Fluxo Atualizado
 
-1. **Fluxo recorrente**: Pode ser usado sempre que exportar vendas do Bling
-2. **Atualizacao completa**: Status + Valor + Quantidade + Vendedor em uma operacao
-3. **Sincronizacao automatica**: Front e back atualizados simultaneamente
-4. **Mapeamento inteligente**: Reconhece vendedores mesmo com variacoes de nome
-5. **Suporte a PDF**: Processa diretamente o formato exportado do Bling
-6. **Historico**: Registra todas as atualizacoes para auditoria
+```text
+1. Usuario faz upload da planilha
+                    │
+                    ▼
+2. Sistema faz auto-mapping das colunas
+                    │
+                    ▼
+3. Usuario clica "Buscar Contatos"
+                    │
+                    ▼
+4. Sistema busca contatos E seus dados atuais
+                    │
+                    ▼
+5. Preview exibe:
+   - Dados da planilha
+   - Dados do sistema (para comparacao)
+   - Checkboxes por campo (pre-marcados se diferente)
+                    │
+                    ▼
+6. Usuario ajusta checkboxes conforme necessario
+                    │
+                    ▼
+7. Sistema atualiza apenas campos ativados de cada linha
+```
 
 ---
 
-## Proximos Passos Apos Aprovacao
+## Detalhes de Implementacao
 
-1. Criar pagina `BulkLeadUpdate.tsx` com interface de upload
-2. Implementar hook `useBulkLeadUpdate.ts` com logica de processamento
-3. Criar componentes de preview e resultado
-4. Adicionar rota e item no menu
-5. Testar com os 5 leads do PDF enviado
+### Cores de Comparacao
+
+| Situacao | Cor da Linha Sistema | Checkbox |
+|----------|---------------------|----------|
+| Valor diferente | Amarelo claro | Marcado |
+| Valor igual | Verde claro | Desmarcado |
+| Campo vazio no sistema | Cinza | Marcado |
+| Campo vazio na planilha | - | Desabilitado |
+
+### Atualizacao Final
+
+Ao processar, para cada linha verificar os checkboxes individuais em vez das opcoes globais:
+
+```typescript
+// Para cada linha
+if (row.updateFields.value && row.valorNegociado !== undefined) {
+  updateData.negotiated_value = row.valorNegociado;
+}
+if (row.updateFields.quantity && row.qtdCamisas !== undefined) {
+  updateData.shirt_quantity = row.qtdCamisas;
+}
+// ... etc
+```
+
+---
+
+## Arquivos a Modificar
+
+| Arquivo | Alteracao |
+|---------|-----------|
+| `src/hooks/useBulkLeadUpdate.ts` | Expandir MatchedRow com dados do sistema, adicionar campo updateFields, corrigir auto-mapping |
+| `src/components/bulk-update/BulkUpdatePreview.tsx` | Nova UI com linha de comparacao e checkboxes por campo |
+
+---
+
+## Resumo
+
+Esta melhoria permitira que voce:
+
+1. **Veja lado a lado** o que vem na planilha vs o que esta no sistema
+2. **A quantidade funcionara** - vou corrigir o parse/mapping
+3. **Desative campos individualmente** - se o valor ja esta certo, so desmarcar o checkbox daquela linha
+4. **Atualize apenas o necessario** - so os campos marcados serao atualizados
