@@ -1,217 +1,181 @@
 
+# Adicionar Filtro de Motivo de Fechamento no Disparo em Massa
 
-# Correção de Timeout em Ações em Massa
+## Resumo
 
-## Diagnóstico do Problema
+Você quer disparar mensagens para clientes cujas conversas foram fechadas por um **motivo específico** (ex: "Queria menos de 10" - quantidade não atingida). Atualmente esse filtro não existe na página de Disparo em Massa.
 
-O timeout ocorreu porque:
-1. **Chunks de 10 executados em paralelo** via `Promise.all` gera contenção no banco de dados
-2. **Sem intervalo entre chunks** - processamento imediato sem "respirar"
-3. **RPC `transfer_conversation` é pesado** - cada chamada faz SELECT, UPDATE, INSERT e buscas de nomes
-4. **44 conversas = 5 chunks × 10 RPCs simultâneos** = sobrecarga
+A implementação será feita de forma **aditiva**, sem alterar nada do que já funciona.
 
-## Solução Proposta
+---
 
-### 1. Reduzir tamanho do chunk e sequencializar dentro do chunk
+## O Que Será Adicionado
 
-| Antes | Depois |
-|-------|--------|
-| Chunk de 10, todos em paralelo | Chunk de 5, processados sequencialmente |
-| 10 RPCs simultâneos | 1 RPC por vez, 5 por chunk |
-| Sem delay entre chunks | 500ms de delay entre chunks |
+| Local | Alteração |
+|-------|-----------|
+| Interface de Filtros | Novo campo "Motivo de Fechamento" com multi-select |
+| Hook `useBulkDispatch.ts` | Novo campo `closeReasonIds` na interface de filtros |
+| Funções RPC no banco | Novo parâmetro `p_close_reason_ids` nas funções de preview |
+| Edge Function | Suporte ao novo filtro na geração de contatos |
 
-### 2. Adicionar delay entre chunks
+---
 
-```typescript
-// Antes
-for (const chunk of chunks) {
-  await Promise.all(chunk.map(...)); // 10 simultâneos
-}
+## Detalhes da Implementação
 
-// Depois
-for (const chunk of chunks) {
-  for (const item of chunk) {
-    await processItem(item); // 1 por vez
-    await delay(100); // 100ms entre itens
-  }
-  await delay(500); // 500ms entre chunks
-}
+### 1. Atualizar Interface de Filtros
+
+```text
+Localização: src/hooks/useBulkDispatch.ts
+
+Adicionar à interface BulkDispatchFilters:
+  closeReasonIds?: string[];  // IDs dos motivos de fechamento
 ```
 
-### 3. Adicionar callback de progresso
+### 2. Adicionar UI do Filtro
 
-Para dar feedback visual ao usuário durante operações longas:
+```text
+Localização: src/pages/BulkDispatch.tsx
 
-```typescript
-interface BulkOptions {
-  onProgress?: (processed: number, total: number) => void;
-}
+Posição: Logo abaixo do filtro de Departamento (linha ~480)
+
+Novo bloco:
+  ┌──────────────────────────────────────────────┐
+  │ Motivo de Fechamento                         │
+  │ [▼ Selecione os motivos                    ] │
+  │   ☑ Queria menos de 10                       │
+  │   ☐ Achou caro                               │
+  │   ☐ Sem interesse                            │
+  │   ☐ Contato futuro                           │
+  │   ...                                        │
+  └──────────────────────────────────────────────┘
 ```
 
-### 4. Implementar retry automático
+**Nota**: Este filtro só faz sentido quando combinado com `conversationStatus = closed`.
 
-Se um item falhar por timeout, tentar novamente 1x antes de marcar como erro.
+### 3. Atualizar Mapeamento para RPC
+
+```text
+Localização: src/hooks/useBulkDispatch.ts - função prepareRpcParams()
+
+Adicionar:
+  p_close_reason_ids: filters.closeReasonIds?.length ? filters.closeReasonIds : null,
+```
+
+### 4. Atualizar Funções RPC no Banco
+
+Duas funções precisam ser alteradas para aceitar o novo parâmetro:
+
+```sql
+-- get_bulk_dispatch_preview_count
+-- get_bulk_dispatch_preview_contacts
+
+-- Adicionar parâmetro:
+p_close_reason_ids UUID[] DEFAULT NULL
+
+-- Adicionar filtro (a coluna close_reason armazena o NOME, 
+-- então precisamos fazer JOIN com close_reasons):
+AND (p_close_reason_ids IS NULL OR EXISTS (
+  SELECT 1 FROM conversations conv
+  JOIN close_reasons cr ON cr.name = conv.close_reason AND cr.tenant_id = conv.tenant_id
+  WHERE conv.contact_id = c.id 
+    AND cr.id = ANY(p_close_reason_ids)
+))
+```
+
+### 5. Buscar Motivos de Fechamento
+
+```text
+Localização: src/pages/BulkDispatch.tsx
+
+Adicionar query para buscar close_reasons:
+  const { data: closeReasons = [] } = useQuery({
+    queryKey: ['close-reasons'],
+    queryFn: async () => {
+      const { data } = await supabase.from('close_reasons').select('id, name').order('name');
+      return data || [];
+    }
+  });
+
+Transformar em options:
+  const closeReasonOptions = closeReasons.map(cr => ({ value: cr.id, label: cr.name }));
+```
+
+---
+
+## Fluxo Esperado
+
+```text
+1. Usuário acessa Disparo em Massa
+2. Seleciona "Motivo de Fechamento" → "Queria menos de 10"
+3. Sistema automaticamente assume que quer conversas fechadas
+4. Preview mostra apenas contatos com esse motivo
+5. Disparo é enviado para esse público específico
+
+Motivos disponíveis no tenant:
+• Achou caro
+• Contato futuro
+• Duplicado
+• Número errado
+• Outro motivo
+• Queria menos de 10  ← O que você quer usar agora
+• Sem interesse
+• Spam
+• Venda realizada
+```
+
+---
 
 ## Arquivos a Modificar
 
-### `src/hooks/useBulkConversationActions.ts`
+| Arquivo | Ação |
+|---------|------|
+| `src/hooks/useBulkDispatch.ts` | Adicionar campo `closeReasonIds` à interface + mapeamento RPC |
+| `src/pages/BulkDispatch.tsx` | Adicionar query de close_reasons + componente MultiSelect |
+| Migração SQL | Alterar 2 funções RPC para aceitar novo parâmetro |
+| `supabase/functions/process-bulk-dispatch/index.ts` | Suporte ao filtro na geração server-side |
 
-1. Criar função helper `delay()` e `processWithRetry()`
-2. Modificar `useBulkTransfer` para processar sequencialmente com delays
-3. Modificar `useBulkDistribute` para processar sequencialmente com delays
-4. Modificar `useBulkCloseConversations` - pode manter paralelo (operação mais leve)
-5. Modificar `useBulkReopenConversations` para processar sequencialmente
+---
 
-### `src/components/conversations/BulkTransferModal.tsx`
+## Seção Técnica - SQL das Funções RPC
 
-1. Adicionar estado de progresso
-2. Mostrar barra de progresso durante transferência
-3. Passar callback `onProgress` para o hook
-
-### `src/components/conversations/BulkCloseModal.tsx`
-
-1. Adicionar barra de progresso (opcional, operações são mais leves)
-
-## Detalhes Técnicos
-
-### Nova função helper
-
-```typescript
-// Delay helper
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Process with retry
-async function processWithRetry<T>(
-  fn: () => Promise<T>,
-  retries: number = 1,
-  delayMs: number = 1000
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (error) {
-    if (retries > 0) {
-      await delay(delayMs);
-      return processWithRetry(fn, retries - 1, delayMs);
-    }
-    throw error;
-  }
-}
+```sql
+-- Alteração em get_bulk_dispatch_preview_count
+CREATE OR REPLACE FUNCTION get_bulk_dispatch_preview_count(
+  p_tenant_id UUID,
+  p_lead_status_names TEXT[] DEFAULT NULL,
+  p_last_client_message_days_ago INT DEFAULT NULL,
+  p_tag_ids UUID[] DEFAULT NULL,
+  p_conversation_statuses TEXT[] DEFAULT NULL,
+  p_segment_id UUID DEFAULT NULL,
+  p_origin TEXT DEFAULT NULL,
+  p_assigned_to UUID[] DEFAULT NULL,
+  p_department_ids UUID[] DEFAULT NULL,
+  p_contact_type TEXT DEFAULT NULL,
+  p_include_blocked BOOLEAN DEFAULT FALSE,
+  p_first_contact_start TIMESTAMP DEFAULT NULL,
+  p_first_contact_end TIMESTAMP DEFAULT NULL,
+  p_close_reason_ids UUID[] DEFAULT NULL  -- NOVO
+)
+RETURNS BIGINT AS $$
+  SELECT COUNT(DISTINCT c.id)
+  FROM contacts c
+  WHERE c.tenant_id = p_tenant_id
+    -- ... filtros existentes ...
+    -- Filtro de motivo de fechamento (NOVO)
+    AND (p_close_reason_ids IS NULL OR EXISTS (
+      SELECT 1 FROM conversations conv
+      JOIN close_reasons cr ON cr.name = conv.close_reason AND cr.tenant_id = conv.tenant_id
+      WHERE conv.contact_id = c.id 
+        AND cr.id = ANY(p_close_reason_ids)
+    ))
+$$ LANGUAGE SQL STABLE;
 ```
 
-### Processamento sequencial com progresso
+---
 
-```typescript
-// useBulkDistribute modificado
-mutationFn: async ({
-  conversationIds,
-  targetUserIds,
-  targetUserNames,
-  departmentId,
-  note,
-  onProgress, // NOVO
-}: {
-  conversationIds: string[];
-  targetUserIds: string[];
-  targetUserNames: Record<string, string>;
-  departmentId: string;
-  note?: string;
-  onProgress?: (processed: number, total: number) => void;
-}): Promise<DistributeResult> => {
-  
-  let processed = 0;
-  const total = conversationIds.length;
-  
-  // ... distribuição round-robin ...
-  
-  for (const [userId, convIds] of assignments) {
-    for (const convId of convIds) {
-      await processWithRetry(async () => {
-        const { error } = await supabase.rpc('transfer_conversation', {
-          p_conversation_id: convId,
-          p_to_user_id: userId,
-          p_to_department_id: departmentId,
-          p_note: note || 'Distribuição em massa',
-          p_force: false,
-        });
-        
-        if (error) throw error;
-      });
-      
-      processed++;
-      onProgress?.(processed, total);
-      
-      // Pequeno delay entre cada item
-      await delay(100);
-    }
-    
-    // Delay maior entre cada vendedor
-    await delay(300);
-  }
-  
-  return result;
-}
-```
+## Impacto Zero em Funcionalidades Existentes
 
-### UI com progresso
-
-```typescript
-// No BulkTransferModal
-const [progress, setProgress] = useState({ processed: 0, total: 0 });
-const [isProcessing, setIsProcessing] = useState(false);
-
-const handleConfirm = async () => {
-  setIsProcessing(true);
-  setProgress({ processed: 0, total: conversationIds.length });
-  
-  await distributeMutation.mutateAsync({
-    conversationIds,
-    targetUserIds: selectedAgents,
-    targetUserNames: agentNameMap,
-    departmentId: selectedDepartment!,
-    note: 'Distribuição balanceada',
-    onProgress: (processed, total) => {
-      setProgress({ processed, total });
-    },
-  });
-  
-  setIsProcessing(false);
-  onClose();
-};
-
-// Na UI
-{isProcessing && (
-  <div className="space-y-2">
-    <Progress value={(progress.processed / progress.total) * 100} />
-    <p className="text-sm text-muted-foreground text-center">
-      Processando {progress.processed} de {progress.total}...
-    </p>
-  </div>
-)}
-```
-
-## Comparativo de Performance
-
-| Cenário (44 conversas) | Antes | Depois |
-|------------------------|-------|--------|
-| RPCs simultâneos máximo | 10 | 1 |
-| Delay entre itens | 0ms | 100ms |
-| Delay entre chunks | 0ms | 300ms |
-| Tempo estimado | ~5s (com timeouts) | ~15s (estável) |
-| Taxa de sucesso | ~45% | ~99% |
-
-## Benefícios
-
-1. **Estabilidade**: Sem sobrecarga do banco de dados
-2. **Visibilidade**: Usuário vê progresso em tempo real
-3. **Resiliência**: Retry automático em caso de falha pontual
-4. **Previsibilidade**: Tempo de execução linear e previsível
-
-## Ordem de Implementação
-
-1. Adicionar helpers `delay()` e `processWithRetry()` no hook
-2. Modificar `useBulkDistribute` com processamento sequencial + progresso
-3. Modificar `useBulkTransfer` com processamento sequencial + progresso
-4. Atualizar `BulkTransferModal` com barra de progresso
-5. Aplicar mesma lógica nos outros hooks de bulk (close, reopen)
-6. Testar com 40+ conversas
-
+- Filtros existentes continuam funcionando normalmente
+- Novo parâmetro tem `DEFAULT NULL` (não afeta chamadas antigas)
+- UI adiciona campo sem remover nenhum outro
+- Edge function mantém lógica original, apenas adiciona verificação extra
