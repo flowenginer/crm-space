@@ -30,6 +30,18 @@ export interface MatchedRow extends BulkUpdateRow {
   matchedAgentId: string | null;
   matchedAgentName: string | null;
   matchStatus: 'found' | 'not_found' | 'duplicate';
+  // Dados atuais do sistema para comparação
+  currentValue: number | null;
+  currentQuantity: number | null;
+  currentLeadStatus: string | null;
+  currentAssigneeName: string | null;
+  // Controle por campo
+  updateFields: {
+    value: boolean;
+    quantity: boolean;
+    status: boolean;
+    assignee: boolean;
+  };
 }
 
 export interface UpdateLogEntry {
@@ -142,16 +154,27 @@ export function useBulkLeadUpdate() {
       }
     });
 
-    // Buscar contatos existentes
+    // Buscar contatos existentes COM dados adicionais para comparação
     const { data: contacts, error } = await supabase
       .from('contacts')
-      .select('id, phone, full_name, assigned_to')
+      .select('id, phone, full_name, assigned_to, negotiated_value, shirt_quantity, lead_status')
       .eq('tenant_id', tenantId)
       .in('phone', [...new Set(phonesToSearch)]);
 
     if (error) {
       console.error('Error fetching contacts:', error);
       throw error;
+    }
+
+    // Buscar nomes dos assigned_to
+    const assigneeIds = [...new Set(contacts?.filter(c => c.assigned_to).map(c => c.assigned_to) || [])];
+    let assigneeMap = new Map<string, string>();
+    if (assigneeIds.length > 0) {
+      const { data: assignees } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', assigneeIds);
+      assignees?.forEach(a => assigneeMap.set(a.id, a.full_name));
     }
 
     // Criar map de telefone -> contato
@@ -180,6 +203,19 @@ export function useBulkLeadUpdate() {
       // Match vendedor
       const matchedProfile = row.vendedor ? findProfileByName(row.vendedor) : null;
 
+      // Dados atuais do sistema
+      const currentValue = foundContact?.negotiated_value ?? null;
+      const currentQuantity = foundContact?.shirt_quantity ?? null;
+      const currentLeadStatus = foundContact?.lead_status ?? null;
+      const currentAssigneeName = foundContact?.assigned_to 
+        ? assigneeMap.get(foundContact.assigned_to) ?? null 
+        : null;
+
+      // Detectar diferenças para auto-marcar checkboxes
+      const valueIsDifferent = row.valorNegociado !== undefined && row.valorNegociado !== currentValue;
+      const quantityIsDifferent = row.qtdCamisas !== undefined && row.qtdCamisas !== currentQuantity;
+      const assigneeIsDifferent = matchedProfile && matchedProfile.id !== foundContact?.assigned_to;
+
       return {
         ...row,
         telefone: normalizedPhone,
@@ -189,6 +225,18 @@ export function useBulkLeadUpdate() {
         matchedAgentId: matchedProfile?.id || null,
         matchedAgentName: matchedProfile?.full_name || null,
         matchStatus: foundContact ? 'found' : 'not_found',
+        // Dados atuais para comparação
+        currentValue,
+        currentQuantity,
+        currentLeadStatus,
+        currentAssigneeName,
+        // Campos a atualizar (auto-marcados se diferentes)
+        updateFields: {
+          value: valueIsDifferent,
+          quantity: quantityIsDifferent,
+          status: true, // Status sempre marcado por padrão
+          assignee: !!assigneeIsDifferent,
+        },
       };
     });
 
@@ -231,28 +279,31 @@ export function useBulkLeadUpdate() {
           };
           const updatedFields: string[] = [];
 
+          // Usar updateFields individual da linha em vez das opções globais
+          const fieldSettings = row.updateFields;
+
           // Atualizar valor negociado
-          if (options.updateNegotiatedValue && row.valorNegociado !== undefined) {
+          if (fieldSettings.value && row.valorNegociado !== undefined) {
             updateData.negotiated_value = row.valorNegociado;
             updatedFields.push('valor_negociado');
             totalValue += row.valorNegociado;
           }
 
           // Atualizar quantidade
-          if (options.updateShirtQuantity && row.qtdCamisas !== undefined) {
+          if (fieldSettings.quantity && row.qtdCamisas !== undefined) {
             updateData.shirt_quantity = row.qtdCamisas;
             updatedFields.push('qtd_camisas');
             totalQuantity += row.qtdCamisas;
           }
 
           // Atualizar status
-          if (options.updateLeadStatus && options.targetLeadStatus) {
+          if (fieldSettings.status && options.targetLeadStatus) {
             updateData.lead_status = options.targetLeadStatus;
             updatedFields.push('lead_status');
           }
 
           // Atualizar vendedor (dual-field)
-          if (options.updateAssignee && row.matchedAgentId) {
+          if (fieldSettings.assignee && row.matchedAgentId) {
             updateData.assigned_to = row.matchedAgentId;
             updatedFields.push('assigned_to');
             
@@ -270,7 +321,7 @@ export function useBulkLeadUpdate() {
           if (contactError) throw contactError;
 
           // Sincronizar conversa ativa (dual-field requirement)
-          if (options.updateAssignee && row.matchedAgentId) {
+          if (fieldSettings.assignee && row.matchedAgentId) {
             await supabase
               .from('conversations')
               .update({
@@ -351,8 +402,8 @@ export function autoMapBlingColumns(headers: string[]): Record<string, string> {
       mapping.telefone = h;
     }
     
-    // Quantidade
-    if (lower === 'qtd' || lower.includes('quantidade')) {
+    // Quantidade - adicionar mais variações
+    if (lower === 'qtd' || lower === 'qtde' || lower.includes('quantidade') || lower.includes('qty')) {
       mapping.qtdCamisas = h;
     }
     
