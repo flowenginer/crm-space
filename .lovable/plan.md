@@ -1,162 +1,487 @@
 
-## Objetivo
-Fazer o áudio das ligações WebRTC (WhatsApp Cloud API Calling) funcionar de forma confiável, cobrindo:
-1) permissão de microfone no Chrome,
-2) chegada do SDP Answer via webhook,
-3) entrega do SDP Answer ao frontend via Supabase Realtime,
-4) reprodução do `remoteStream` no navegador (e fallback caso o autoplay seja bloqueado).
+
+# Centro de Ações em Massa para Atendimentos
+
+## Resumo Executivo
+
+Este plano implementa um **Centro de Ações em Massa** integrado à página "Consultar Atendimentos", permitindo realizar operações como transferência, fechamento, etiquetagem e alteração de status em múltiplos atendimentos simultaneamente. 
+
+O diferencial será a **Distribuição Balanceada/Randomizada**: ao transferir clientes de um vendedor que saiu, você poderá selecionar múltiplos vendedores destino e o sistema distribuirá automaticamente de forma equilibrada entre eles.
 
 ---
 
-## O que eu já consegui inferir pelos dados do seu projeto (causas mais prováveis)
+## Funcionalidades Principais
 
-### 1) O webhook **está recebendo o SDP Answer**
-Na tabela `cloudapi_webhook_logs` (event_type = `calls`) existe evento com:
-- `direction: BUSINESS_INITIATED`
-- `event: connect`
-- `session.sdp_type: answer`
-- `session.sdp: ... (SDP completo)`
-
-Ou seja: o Meta está mandando o “SDP answer” corretamente.
-
-### 2) O frontend provavelmente **não está recebendo** os broadcasts do webhook
-No backend (`cloudapi-webhook`) o broadcast é feito no canal:
-- `supabase.channel('call-events').send(...)`
-e `incoming-calls` para chamadas recebidas.
-
-Mas no frontend (`CallProvider`) você está inscrito em canais com nomes diferentes:
-- `supabase.channel('call-events-listener')`
-- `supabase.channel('incoming-calls-listener')`
-
-No Realtime do Supabase, broadcast é por “topic/canal”. Se o canal não for o mesmo, o listener não recebe. Isso por si só explica:
-- `setSdpAnswer()` não ser chamado (logo `remoteStream` pode nunca aparecer)
-- e também explicaria eventuais “incoming_call” não aparecerem.
-
-### 3) O seu backend está comparando strings em minúsculas, mas o webhook manda em MAIÚSCULAS
-Seu `processCalls` comenta/assume:
-- `direction === 'business_initiated'`
-- `status === 'accepted'`
-
-Mas nos logs reais do webhook:
-- `direction: BUSINESS_INITIATED` (maiúsculo)
-- status e “event” parecem vir como `COMPLETED` e `connect/terminate`, nem sempre “accepted”.
-
-Isso pode impedir o `includeSdp` de disparar mesmo que o SDP exista.
-
-### 4) Mesmo com `remoteStream`, o Chrome pode bloquear o `audioEl.play()` se ocorrer “tarde demais”
-Você já tem `<audio autoPlay playsInline />` e chama `audioEl.play()` dentro de `useEffect`.
-Em alguns cenários o Chrome entende que não foi uma ação direta do usuário e bloqueia (NotAllowedError). Precisamos ter fallback com um botão “Ativar áudio”.
+| Ação | Descrição | Modo |
+|------|-----------|------|
+| **Transferir** | Para um vendedor específico OU distribuição balanceada entre múltiplos vendedores | Único ou Múltiplo |
+| **Fechar Conversa** | Encerrar atendimentos selecionados | Em lote |
+| **Aplicar Etiqueta** | Adicionar tag aos contatos | Em lote |
+| **Remover Etiqueta** | Remover tag dos contatos | Em lote |
+| **Alterar Status do Lead** | Mudar etapa do funil | Em lote |
+| **Reabrir Conversa** | Reabrir atendimentos fechados | Em lote |
 
 ---
 
-## Plano de correção (implementação)
+## Fluxo de Usuário: Distribuição Balanceada
 
-### Etapa A — Ajustar os canais do Supabase Realtime (frontend) para bater com o backend
-**Arquivo:** `src/providers/CallProvider.tsx`
+```text
+Cenário: Yasmim foi desligada e seus 30 clientes precisam ser redistribuídos
 
-1) Trocar:
-- `supabase.channel('incoming-calls-listener')` → `supabase.channel('incoming-calls')`
-- `supabase.channel('call-events-listener')` → `supabase.channel('call-events')`
-
-2) Tornar o handler de `call_state_changed` mais resiliente:
-- Aceitar `callId` OU `call_id` (porque `cloudapi-call-action` atualmente publica `call_id`).
-- Logar explicitamente quando chegou `sdpAnswer` e qual callId casou.
-
-**Resultado esperado:** o frontend finalmente recebe o `call_state_changed` com `sdpAnswer`, então consegue chamar `setSdpAnswer()`.
-
----
-
-### Etapa B — Normalizar os campos do webhook e disparar SDP quando ele realmente chega (backend)
-**Arquivo:** `supabase/functions/cloudapi-webhook/index.ts`
-
-1) Normalizar:
-- `directionNormalized = String(call.direction || '').toLowerCase()`
-- `statusNormalized = String(call.status || '').toLowerCase()`
-- `eventNormalized = String(call.event || '').toLowerCase()`
-- `sdpTypeNormalized = String(call.session?.sdp_type || '').toLowerCase()`
-
-2) Ajustar critérios para “tem SDP Answer que interessa”:
-- Em vez de `status === 'accepted' && direction === 'business_initiated'`,
-usar algo como:
-  - `directionNormalized === 'business_initiated'`
-  - `sdpTypeNormalized === 'answer'`
-  - `!!session?.sdp`
-  - e opcionalmente `eventNormalized === 'connect'` (ou “status” equivalente se existir)
-
-3) Atualizar a lógica de broadcast para incluir `sdpAnswer` quando:
-- vier `event=connect` com `session.sdp_type=answer`
-- (e manter broadcast para outros estados como terminated/completed etc)
-
-4) (Opcional, mas recomendado) Padronizar no payload broadcast:
-- sempre enviar `callId` (camelCase) no broadcast do webhook (hoje já envia)
-- sempre enviar `status` em minúsculas (ex.: `accepted`, `terminated`, `completed`) para o frontend consumir de maneira consistente.
-
-**Resultado esperado:** o webhook sempre vai mandar `sdpAnswer` quando ele existir, independentemente de maiúsculas/minúsculas e da variação “status vs event”.
+1. Admin acessa "Consultar Atendimentos"
+2. Filtra por Agente = "Yasmim" 
+3. Clica "GERAR" → aparecem os 30 clientes
+4. Marca "Selecionar Todos" (ou seleciona manualmente)
+5. Barra de ações aparece: "30 selecionados"
+6. Clica em "Transferir"
+7. Modal abre com 2 opções:
+   ├─ ○ Para um vendedor específico (comportamento atual)
+   └─ ● Distribuir entre vendedores (NOVA OPÇÃO)
+8. Ao selecionar "Distribuir entre vendedores":
+   - Escolhe o departamento
+   - Marca os vendedores destino (ex: João, Maria, Pedro)
+   - Sistema calcula: 30 ÷ 3 = 10 clientes para cada
+9. Clica "Confirmar Distribuição"
+10. Sistema processa e mostra:
+    "✓ 30 transferidos: João (10), Maria (10), Pedro (10)"
+```
 
 ---
 
-### Etapa C — Fallback de reprodução de áudio no Chrome (UI)
-**Arquivo:** `src/components/calls/ActiveCallOverlay.tsx`
+## Arquitetura da Solução
 
-1) Detectar falha de autoplay:
-- Quando `audioEl.play()` der erro (NotAllowedError), setar um estado local `needsUserAudioEnable=true`.
+### Novos Hooks em `useBulkConversationActions.ts`
 
-2) Mostrar um botão simples no overlay quando `needsUserAudioEnable` for true:
-- Texto: “Ativar áudio”
-- onClick: chama `audioEl.play()` novamente (agora com gesto do usuário)
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│                    useBulkConversationActions.ts                   │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  [Existente] useBulkTransfer()                                     │
+│  [Existente] useBulkReturnToOriginalAgent()                        │
+│                                                                    │
+│  [NOVO] useBulkDistribute() ─────► Distribuição balanceada         │
+│         - Recebe: conversationIds[], userIds[], departmentId       │
+│         - Embaralha conversas (randomização)                       │
+│         - Divide igualmente entre vendedores                       │
+│         - Retorna: { distributions: [{userId, count}], ... }       │
+│                                                                    │
+│  [NOVO] useBulkCloseConversations()                                │
+│         - Atualiza status='closed', closed_at, closed_by           │
+│         - Registra evento de fechamento                            │
+│                                                                    │
+│  [NOVO] useBulkAddTag()                                            │
+│         - Insere em contact_tags com upsert                        │
+│                                                                    │
+│  [NOVO] useBulkRemoveTag()                                         │
+│         - Remove de contact_tags                                   │
+│                                                                    │
+│  [NOVO] useBulkUpdateLeadStatus()                                  │
+│         - Atualiza contacts.lead_status                            │
+│                                                                    │
+│  [NOVO] useBulkReopenConversations()                               │
+│         - Atualiza status='open', reopen_count++, reopened_at      │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
 
-3) Garantir que:
-- `audioEl.muted = false`
-- `audioEl.volume = 1`
+### Algoritmo de Distribuição Balanceada
 
-**Resultado esperado:** mesmo se o Chrome bloquear autoplay, você consegue destravar com 1 clique.
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                   ALGORITMO DE DISTRIBUIÇÃO                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Entrada:                                                       │
+│    - conversationIds: [c1, c2, c3, ..., c30]                    │
+│    - targetUserIds: [João, Maria, Pedro]                        │
+│    - departmentId: "vendas"                                     │
+│                                                                 │
+│  Passo 1: Embaralhar conversas (Fisher-Yates shuffle)           │
+│    shuffled = [c14, c7, c22, c1, c30, ...]                      │
+│                                                                 │
+│  Passo 2: Calcular distribuição                                 │
+│    total = 30, vendedores = 3                                   │
+│    base = Math.floor(30 / 3) = 10                               │
+│    resto = 30 % 3 = 0                                           │
+│                                                                 │
+│  Passo 3: Atribuir via round-robin                              │
+│    João:  [c14, c1, c12, ...]  = 10 conversas                   │
+│    Maria: [c7, c30, c5, ...]   = 10 conversas                   │
+│    Pedro: [c22, c8, c19, ...]  = 10 conversas                   │
+│                                                                 │
+│  Saída:                                                         │
+│    { success: 30, failed: 0,                                    │
+│      distributions: [                                           │
+│        { userId: "João", count: 10 },                           │
+│        { userId: "Maria", count: 10 },                          │
+│        { userId: "Pedro", count: 10 }                           │
+│      ] }                                                        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Novos Componentes
+
+```text
+src/components/conversations/
+├── BulkActionsBar.tsx         [NOVO] Barra flutuante de ações
+├── BulkTransferModal.tsx      [MODIFICAR] Adicionar modo "distribuir"
+├── BulkCloseModal.tsx         [NOVO] Modal para fechar em massa
+├── BulkTagModal.tsx           [NOVO] Modal para gerenciar etiquetas
+├── BulkLeadStatusModal.tsx    [NOVO] Modal para alterar status do lead
+└── ...
+```
 
 ---
 
-### Etapa D — Diagnóstico de permissão de microfone (UX simples)
-**Arquivo:** `src/hooks/useWebRTCCall.ts` (pequena melhoria)
+## Detalhamento Técnico
 
-1) Antes de chamar `getUserMedia`, tentar:
-- `navigator.permissions.query({ name: 'microphone' as PermissionName })` (quando suportado)
-- se vier “denied”, mostrar toast mais direto: “Microfone bloqueado no Chrome. Clique no cadeado ao lado da URL e permita.”
+### 1. Hook `useBulkDistribute` (novo)
 
-2) Logar detalhes do track local após `getUserMedia`:
-- `enabled`, `muted`, `readyState`
-- para diferenciar “tenho stream mas está mudo” vs “não tenho stream”.
+```typescript
+interface DistributeResult {
+  success: number;
+  failed: number;
+  errors: string[];
+  distributions: Array<{
+    userId: string;
+    userName: string;
+    count: number;
+  }>;
+}
+
+export function useBulkDistribute() {
+  return useMutation({
+    mutationFn: async ({
+      conversationIds,
+      targetUserIds,
+      departmentId,
+      note,
+    }: {
+      conversationIds: string[];
+      targetUserIds: string[];  // Múltiplos vendedores
+      departmentId: string;
+      note?: string;
+    }): Promise<DistributeResult> => {
+      
+      // 1. Embaralhar conversas (randomização)
+      const shuffled = shuffleArray([...conversationIds]);
+      
+      // 2. Distribuir igualmente via round-robin
+      const assignments = new Map<string, string[]>();
+      targetUserIds.forEach(id => assignments.set(id, []));
+      
+      shuffled.forEach((convId, index) => {
+        const targetUser = targetUserIds[index % targetUserIds.length];
+        assignments.get(targetUser)!.push(convId);
+      });
+      
+      // 3. Processar transferências em chunks
+      const result = { success: 0, failed: 0, errors: [], distributions: [] };
+      
+      for (const [userId, convIds] of assignments) {
+        for (const convId of convIds) {
+          await supabase.rpc('transfer_conversation', {
+            p_conversation_id: convId,
+            p_to_user_id: userId,
+            p_to_department_id: departmentId,
+            p_note: note || 'Distribuição em massa',
+            p_force: false,
+          });
+          result.success++;
+        }
+        result.distributions.push({ userId, count: convIds.length });
+      }
+      
+      return result;
+    }
+  });
+}
+
+// Fisher-Yates shuffle
+function shuffleArray<T>(array: T[]): T[] {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+```
+
+### 2. Componente `BulkActionsBar`
+
+Barra flutuante que aparece quando há conversas selecionadas:
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│  ☑ 30 selecionados  │ Transferir │ Fechar │ Etiqueta │ Status │ Reabrir │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+- Aparece com animação (slide-up)
+- Mostra contador de selecionados
+- Botões contextuais baseados no status das conversas
+- Botão "Limpar seleção"
+
+### 3. Modal de Transferência Aprimorado
+
+O `BulkTransferModal` existente será expandido para suportar dois modos:
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│                     Transferir em Lote                           │
+│                     30 conversa(s) selecionada(s)                │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Modo de transferência:                                          │
+│                                                                  │
+│  ┌─────────────────────┐  ┌─────────────────────┐                │
+│  │ ○ Para um vendedor  │  │ ● Distribuir entre  │                │
+│  │   específico        │  │   vendedores        │                │
+│  │   Atribuição direta │  │   Divisão igualitária               │
+│  └─────────────────────┘  └─────────────────────┘                │
+│                                                                  │
+│  Departamento: [▼ Vendas                    ]                    │
+│                                                                  │
+│  Vendedores destino: (selecione 2 ou mais)                       │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐                    │
+│  │ ☑ João     │ │ ☑ Maria    │ │ ☑ Pedro    │                    │
+│  │ (10)       │ │ (10)       │ │ (10)       │                    │
+│  └────────────┘ └────────────┘ └────────────┘                    │
+│                                                                  │
+│  Prévia: 30 conversas ÷ 3 vendedores = 10 cada                   │
+│                                                                  │
+├──────────────────────────────────────────────────────────────────┤
+│                              [Cancelar]  [Confirmar Distribuição]│
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 4. Hooks Adicionais
+
+```typescript
+// Fechar conversas em massa
+export function useBulkCloseConversations() {
+  return useMutation({
+    mutationFn: async ({ 
+      conversationIds, 
+      closeReason 
+    }: { 
+      conversationIds: string[]; 
+      closeReason?: string;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Processar em chunks de 10
+      for (const chunk of chunkArray(conversationIds, 10)) {
+        await Promise.all(chunk.map(id => 
+          supabase.rpc('close_conversation', {
+            p_conversation_id: id,
+            p_close_reason: closeReason || null,
+            p_notes: 'Fechamento em massa'
+          })
+        ));
+      }
+    }
+  });
+}
+
+// Adicionar etiqueta em massa
+export function useBulkAddTag() {
+  return useMutation({
+    mutationFn: async ({ 
+      contactIds, 
+      tagId 
+    }: { 
+      contactIds: string[]; 
+      tagId: string;
+    }) => {
+      // Usar upsert para evitar duplicatas
+      const inserts = contactIds.map(contactId => ({
+        contact_id: contactId,
+        tag_id: tagId
+      }));
+      
+      await supabase
+        .from('contact_tags')
+        .upsert(inserts, { onConflict: 'contact_id,tag_id' });
+    }
+  });
+}
+
+// Remover etiqueta em massa
+export function useBulkRemoveTag() {
+  return useMutation({
+    mutationFn: async ({ 
+      contactIds, 
+      tagId 
+    }: { 
+      contactIds: string[]; 
+      tagId: string;
+    }) => {
+      await supabase
+        .from('contact_tags')
+        .delete()
+        .in('contact_id', contactIds)
+        .eq('tag_id', tagId);
+    }
+  });
+}
+
+// Alterar status do lead em massa
+export function useBulkUpdateLeadStatus() {
+  return useMutation({
+    mutationFn: async ({ 
+      contactIds, 
+      leadStatus 
+    }: { 
+      contactIds: string[]; 
+      leadStatus: string;
+    }) => {
+      await supabase
+        .from('contacts')
+        .update({ lead_status: leadStatus })
+        .in('id', contactIds);
+    }
+  });
+}
+
+// Reabrir conversas em massa
+export function useBulkReopenConversations() {
+  return useMutation({
+    mutationFn: async (conversationIds: string[]) => {
+      const now = new Date().toISOString();
+      
+      for (const id of conversationIds) {
+        await supabase
+          .from('conversations')
+          .update({
+            status: 'open',
+            reopened_at: now,
+            reopen_count: supabase.raw('COALESCE(reopen_count, 0) + 1')
+          })
+          .eq('id', id);
+      }
+    }
+  });
+}
+```
 
 ---
 
-## Passos de validação (checklist rápido de teste)
-1) No Chrome, abrir o CRM e clicar no cadeado ao lado da URL → **Microfone = Permitir**.
-2) Iniciar a chamada pelo CRM e atender no celular.
-3) Conferir no console:
-   - `[CallProvider] Call state changed:` deve aparecer
-   - Deve aparecer log de SDP recebida: “Received SDP answer…”
-   - Deve aparecer `[WebRTC] Setting SDP answer`
-   - Deve aparecer `[WebRTC] Received remote track`
-   - Deve aparecer `[ActiveCall] Connecting remote stream... tracks: 1`
-4) Se aparecer erro de autoplay, clicar no botão “Ativar áudio”.
+## Modificações na Página ConversationReport
+
+### Novos Estados
+
+```typescript
+const [showBulkActionsBar, setShowBulkActionsBar] = useState(false);
+const [bulkTransferModalOpen, setBulkTransferModalOpen] = useState(false);
+const [bulkCloseModalOpen, setBulkCloseModalOpen] = useState(false);
+const [bulkTagModalOpen, setBulkTagModalOpen] = useState(false);
+const [bulkLeadStatusModalOpen, setBulkLeadStatusModalOpen] = useState(false);
+```
+
+### Dados Selecionados Enriquecidos
+
+```typescript
+// Mapear IDs selecionados para dados completos
+const selectedConversationsData = useMemo(() => {
+  if (!reportData?.conversations) return [];
+  return reportData.conversations.filter(c => selectedRows.has(c.id));
+}, [reportData, selectedRows]);
+
+// Extrair contact_ids únicos
+const selectedContactIds = useMemo(() => {
+  return [...new Set(selectedConversationsData.map(c => c.contact_id))];
+}, [selectedConversationsData]);
+```
+
+### Integração da Barra de Ações
+
+```tsx
+{/* Barra de ações em massa - aparece quando há seleção */}
+{selectedRows.size > 0 && (
+  <BulkActionsBar
+    selectedCount={selectedRows.size}
+    selectedConversations={selectedConversationsData}
+    onClearSelection={() => {
+      setSelectedRows(new Set());
+      setSelectAll(false);
+    }}
+    onTransfer={() => setBulkTransferModalOpen(true)}
+    onClose={() => setBulkCloseModalOpen(true)}
+    onAddTag={() => setBulkTagModalOpen(true)}
+    onChangeLeadStatus={() => setBulkLeadStatusModalOpen(true)}
+    onReopen={handleBulkReopen}
+  />
+)}
+
+{/* Modais */}
+<BulkTransferModal
+  open={bulkTransferModalOpen}
+  onClose={() => setBulkTransferModalOpen(false)}
+  conversationIds={Array.from(selectedRows)}
+  onTransferSuccess={handleBulkSuccess}
+/>
+
+<BulkCloseModal ... />
+<BulkTagModal ... />
+<BulkLeadStatusModal ... />
+```
 
 ---
 
-## Arquivos que serão alterados
-- `src/providers/CallProvider.tsx` (trocar nomes de canais + aceitar call_id/callId + logs)
-- `supabase/functions/cloudapi-webhook/index.ts` (normalização + lógica correta de incluir SDP answer)
-- `src/components/calls/ActiveCallOverlay.tsx` (fallback de “Ativar áudio” se autoplay bloquear)
-- (opcional) `src/hooks/useWebRTCCall.ts` (melhor diagnóstico de permissão e logs)
+## Arquivos a Criar/Modificar
+
+| Arquivo | Ação | Descrição |
+|---------|------|-----------|
+| `src/hooks/useBulkConversationActions.ts` | Expandir | Adicionar 5 novos hooks incluindo `useBulkDistribute` |
+| `src/components/conversations/BulkActionsBar.tsx` | Criar | Barra flutuante de ações |
+| `src/components/conversations/BulkTransferModal.tsx` | Modificar | Adicionar modo "distribuir entre vendedores" |
+| `src/components/conversations/BulkCloseModal.tsx` | Criar | Modal para fechamento em massa |
+| `src/components/conversations/BulkTagModal.tsx` | Criar | Modal para gerenciar etiquetas |
+| `src/components/conversations/BulkLeadStatusModal.tsx` | Criar | Modal para alterar status do lead |
+| `src/pages/ConversationReport.tsx` | Modificar | Integrar barra de ações e modais |
 
 ---
 
-## Observação importante (para você testar agora, antes do código)
-Mesmo sem mudar código: no Chrome, vá em:
-- Chrome → Settings → Privacy and security → Site settings → Microphone
-- Confirme que o domínio do seu app está como **Allowed**.
-E na página do CRM:
-- Clique no ícone do cadeado → Microphone → Allow → Reload.
+## Considerações de Performance
+
+1. **Chunks de 10**: Todas as operações são processadas em lotes de 10 para não sobrecarregar o servidor
+2. **Progress Bar**: UI mostra progresso durante operações longas
+3. **Promise.all por chunk**: Paralelismo dentro de cada chunk
+4. **Invalidação de queries**: Refresh automático após conclusão
 
 ---
 
-## Próximas melhorias (depois que o áudio estiver OK)
-- Mostrar um indicador “Webhook calls OK / último evento calls há X min” no card “Diagnóstico Meta”.
-- Persistir no DB o `sdp_answer_received_at` no `call_logs` para troubleshooting.
-- Implementar troca de ICE candidates se a Meta exigir em certos cenários de rede.
+## Feedback ao Usuário
+
+### Toast de Sucesso com Detalhes
+```
+✓ Distribuição concluída!
+  30 conversas transferidas:
+  • João: 10
+  • Maria: 10  
+  • Pedro: 10
+```
+
+### Toast de Falha Parcial
+```
+⚠ Distribuição parcial
+  28 sucesso, 2 falhas
+  [Ver detalhes]
+```
+
+---
+
+## Ordem de Implementação
+
+1. Expandir `useBulkConversationActions.ts` com todos os novos hooks
+2. Criar `BulkActionsBar.tsx`
+3. Modificar `BulkTransferModal.tsx` para suportar distribuição
+4. Criar `BulkCloseModal.tsx`
+5. Criar `BulkTagModal.tsx`
+6. Criar `BulkLeadStatusModal.tsx`
+7. Integrar tudo em `ConversationReport.tsx`
+8. Testar cada ação individualmente
+
