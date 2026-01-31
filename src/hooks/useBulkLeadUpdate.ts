@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 // Types
 export interface BulkUpdateRow {
   telefone: string;
+  nomeContato?: string;
   valorNegociado?: number;
   qtdCamisas?: number;
   vendedor?: string;
@@ -37,6 +38,7 @@ export interface MatchedRow extends BulkUpdateRow {
   currentAssigneeName: string | null;
   // Controle por campo
   updateFields: {
+    name: boolean;
     value: boolean;
     quantity: boolean;
     status: boolean;
@@ -212,6 +214,8 @@ export function useBulkLeadUpdate() {
         : null;
 
       // Detectar diferenças para auto-marcar checkboxes
+      const nameIsDifferent = row.nomeContato && foundContact?.full_name && 
+        row.nomeContato.toLowerCase() !== foundContact.full_name.toLowerCase();
       const valueIsDifferent = row.valorNegociado !== undefined && row.valorNegociado !== currentValue;
       const quantityIsDifferent = row.qtdCamisas !== undefined && row.qtdCamisas !== currentQuantity;
       const assigneeIsDifferent = matchedProfile && matchedProfile.id !== foundContact?.assigned_to;
@@ -232,6 +236,7 @@ export function useBulkLeadUpdate() {
         currentAssigneeName,
         // Campos a atualizar (auto-marcados se diferentes)
         updateFields: {
+          name: !!nameIsDifferent,
           value: valueIsDifferent,
           quantity: quantityIsDifferent,
           status: true, // Status sempre marcado por padrão
@@ -281,6 +286,12 @@ export function useBulkLeadUpdate() {
 
           // Usar updateFields individual da linha em vez das opções globais
           const fieldSettings = row.updateFields;
+
+          // Atualizar nome do contato
+          if (fieldSettings.name && row.nomeContato) {
+            updateData.full_name = row.nomeContato;
+            updatedFields.push('nome');
+          }
 
           // Atualizar valor negociado
           if (fieldSettings.value && row.valorNegociado !== undefined) {
@@ -400,6 +411,13 @@ export function autoMapBlingColumns(headers: string[]): Record<string, string> {
     // Telefone
     if (lower.includes('celular') || lower.includes('telefone') || lower.includes('fone')) {
       mapping.telefone = h;
+    }
+    
+    // Nome do contato
+    if (lower === 'nome' || lower === 'cliente' || lower === 'comprador' || 
+        lower.includes('nome do cliente') || lower.includes('nome cliente') ||
+        lower.includes('razao social') || lower === 'contato') {
+      mapping.nomeContato = h;
     }
     
     // Quantidade - adicionar mais variações
