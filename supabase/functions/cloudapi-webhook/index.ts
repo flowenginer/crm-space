@@ -808,6 +808,29 @@ async function processMessages(supabase: any, value: any) {
     } catch (webhookError) {
       console.error('[CloudAPI] Error dispatching webhook:', webhookError);
     }
+
+    // ============================================================
+    // TRIGGER KEYWORD AUTOMATIONS (chatbot flows)
+    // ============================================================
+    try {
+      console.log(`[CloudAPI] 🤖 Checking keyword automations for received message...`);
+      
+      await supabase.functions.invoke('process-flow-triggers', {
+        body: {
+          trigger_type: 'keyword',
+          tenant_id: config.tenant_id,
+          contact_id: contactId,
+          channel_id: config.channel_id,
+          conversation_id: conversationId,
+          message_content: content,
+        }
+      });
+      
+      console.log('[CloudAPI] ✅ Keyword automations check completed');
+    } catch (flowError) {
+      // Não falhar a mensagem se automação falhar
+      console.error('[CloudAPI] ⚠️ Error triggering flow automations:', flowError);
+    }
   }
 }
 
