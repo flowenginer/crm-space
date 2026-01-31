@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,12 @@ import { ptBR } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
 import { DateRangePicker } from '@/components/reports/DateRangePicker';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
+import { BulkActionsBar } from '@/components/conversations/BulkActionsBar';
+import { BulkTransferModal } from '@/components/conversations/BulkTransferModal';
+import { BulkCloseModal } from '@/components/conversations/BulkCloseModal';
+import { BulkTagModal } from '@/components/conversations/BulkTagModal';
+import { BulkLeadStatusModal } from '@/components/conversations/BulkLeadStatusModal';
+import { useBulkReopenConversations } from '@/hooks/useBulkConversationActions';
 
 interface Filters {
   startDate: string;
@@ -58,6 +64,16 @@ export default function ConversationReportPage() {
   const [selectAll, setSelectAll] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [previewConversationId, setPreviewConversationId] = useState<string | null>(null);
+  
+  // Bulk action modals
+  const [bulkTransferModalOpen, setBulkTransferModalOpen] = useState(false);
+  const [bulkCloseModalOpen, setBulkCloseModalOpen] = useState(false);
+  const [bulkTagModalOpen, setBulkTagModalOpen] = useState(false);
+  const [bulkLeadStatusModalOpen, setBulkLeadStatusModalOpen] = useState(false);
+  const [isReopening, setIsReopening] = useState(false);
+  
+  const bulkReopen = useBulkReopenConversations();
+  
   const pageSize = 50;
 
   // Setup realtime subscription
@@ -282,6 +298,50 @@ export default function ConversationReportPage() {
       setSelectedRows(new Set(reportData?.conversations.map((c: any) => c.id) || []));
     }
     setSelectAll(!selectAll);
+  };
+
+  // Get selected conversations data for bulk actions
+  const selectedConversationsData = useMemo(() => {
+    if (!reportData?.conversations) return [];
+    return reportData.conversations.filter((c: any) => selectedRows.has(c.id));
+  }, [reportData, selectedRows]);
+
+  // Get unique contact IDs from selected conversations
+  const selectedContactIds = useMemo(() => {
+    return [...new Set(selectedConversationsData.map((c: any) => c.contact_id))];
+  }, [selectedConversationsData]);
+
+  const handleBulkSuccess = () => {
+    setSelectedRows(new Set());
+    setSelectAll(false);
+  };
+
+  const handleBulkReopen = async () => {
+    const closedConversations = selectedConversationsData.filter((c: any) => c.status === 'closed');
+    if (closedConversations.length === 0) {
+      toast.error('Nenhuma conversa fechada selecionada');
+      return;
+    }
+
+    setIsReopening(true);
+    try {
+      const result = await bulkReopen.mutateAsync(closedConversations.map((c: any) => c.id));
+      
+      if (result.success > 0 && result.failed === 0) {
+        toast.success(`${result.success} conversa(s) reaberta(s) com sucesso`);
+      } else if (result.success > 0 && result.failed > 0) {
+        toast.warning(`${result.success} reaberta(s), ${result.failed} falhou(aram)`);
+      } else {
+        toast.error('Falha ao reabrir conversas');
+      }
+      
+      handleBulkSuccess();
+    } catch (error: any) {
+      console.error('[ConversationReport] Reopen error:', error);
+      toast.error('Erro ao reabrir conversas');
+    } finally {
+      setIsReopening(false);
+    }
   };
 
   const handleExportExcel = () => {
@@ -673,6 +733,55 @@ export default function ConversationReportPage() {
         conversationId={previewConversationId}
         isOpen={!!previewConversationId}
         onClose={() => setPreviewConversationId(null)}
+      />
+
+      {/* Bulk Actions Bar */}
+      <BulkActionsBar
+        selectedCount={selectedRows.size}
+        selectedConversations={selectedConversationsData.map((c: any) => ({
+          id: c.id,
+          contact_id: c.contact_id,
+          status: c.status,
+        }))}
+        onClearSelection={() => {
+          setSelectedRows(new Set());
+          setSelectAll(false);
+        }}
+        onTransfer={() => setBulkTransferModalOpen(true)}
+        onClose={() => setBulkCloseModalOpen(true)}
+        onAddTag={() => setBulkTagModalOpen(true)}
+        onChangeLeadStatus={() => setBulkLeadStatusModalOpen(true)}
+        onReopen={handleBulkReopen}
+        isLoading={isReopening}
+      />
+
+      {/* Bulk Action Modals */}
+      <BulkTransferModal
+        open={bulkTransferModalOpen}
+        onClose={() => setBulkTransferModalOpen(false)}
+        conversationIds={Array.from(selectedRows)}
+        onTransferSuccess={handleBulkSuccess}
+      />
+
+      <BulkCloseModal
+        open={bulkCloseModalOpen}
+        onClose={() => setBulkCloseModalOpen(false)}
+        conversationIds={Array.from(selectedRows)}
+        onSuccess={handleBulkSuccess}
+      />
+
+      <BulkTagModal
+        open={bulkTagModalOpen}
+        onClose={() => setBulkTagModalOpen(false)}
+        contactIds={selectedContactIds}
+        onSuccess={handleBulkSuccess}
+      />
+
+      <BulkLeadStatusModal
+        open={bulkLeadStatusModalOpen}
+        onClose={() => setBulkLeadStatusModalOpen(false)}
+        contactIds={selectedContactIds}
+        onSuccess={handleBulkSuccess}
       />
     </div>
   );
