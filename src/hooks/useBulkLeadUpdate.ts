@@ -601,15 +601,40 @@ export function autoMapBlingColumns(headers: string[]): Record<string, string> {
   return mapping;
 }
 
-// Parse valor monetário brasileiro
-export function parseBRLValue(value: string): number {
-  if (!value) return 0;
-  // Remove R$, espaços, pontos de milhar e converte vírgula para ponto
-  const cleaned = value
-    .replace(/[R$\s]/g, '')
-    .replace(/\./g, '')
-    .replace(',', '.');
-  return parseFloat(cleaned) || 0;
+// Parse valor monetário com detecção automática de formato (BR ou EN)
+export function parseBRLValue(value: string | number): number {
+  if (value === null || value === undefined || value === '') return 0;
+  
+  // Se já é número, retorna diretamente
+  if (typeof value === 'number') {
+    return isNaN(value) ? 0 : value;
+  }
+  
+  let str = String(value).trim();
+  
+  // Remove símbolos de moeda e espaços
+  str = str.replace(/[R$€£¥\s]/g, '');
+  
+  // Auto-detectar formato baseado na posição do último ponto e vírgula
+  const lastComma = str.lastIndexOf(',');
+  const lastDot = str.lastIndexOf('.');
+  
+  // Determinar se vírgula é separador decimal (formato BR: 1.234,56)
+  // ou se ponto é separador decimal (formato EN: 1,234.56 ou Excel: 1234.56)
+  const isCommaDecimal = lastComma > lastDot;
+  
+  if (isCommaDecimal) {
+    // Formato brasileiro: 1.234,56 → remove pontos, converte vírgula
+    str = str.replace(/\./g, ''); // Remove separador de milhar (pontos)
+    str = str.replace(',', '.'); // Converte vírgula decimal para ponto
+  } else {
+    // Formato inglês/Excel: 1,234.56 ou 1234.56 → remove vírgulas
+    str = str.replace(/,/g, ''); // Remove separador de milhar (vírgulas)
+    // Ponto já é decimal, não precisa converter
+  }
+  
+  const parsed = parseFloat(str);
+  return isNaN(parsed) ? 0 : parsed;
 }
 
 // Parse quantidade
