@@ -87,6 +87,7 @@ export function BulkUpdatePreview({
     // Converter dados usando o mapeamento
     const processedRows: BulkUpdateRow[] = rows.map(row => ({
       telefone: columnMapping.telefone ? row[columnMapping.telefone] : '',
+      nomeContato: columnMapping.nomeContato ? row[columnMapping.nomeContato] : undefined,
       valorNegociado: columnMapping.valorNegociado 
         ? parseBRLValue(row[columnMapping.valorNegociado]) 
         : undefined,
@@ -133,18 +134,19 @@ export function BulkUpdatePreview({
   
   // Contar quantos campos serão atualizados
   const getUpdateCounts = () => {
-    let value = 0, quantity = 0, status = 0, assignee = 0;
+    let name = 0, value = 0, quantity = 0, status = 0, assignee = 0;
     matchedRows.forEach((row, index) => {
       if (row.matchStatus !== 'found') return;
       const settings = rowFieldSettings.get(index) || row.updateFields;
+      if (settings.name && row.nomeContato) name++;
       if (settings.value && row.valorNegociado !== undefined) value++;
       if (settings.quantity && row.qtdCamisas !== undefined) quantity++;
       if (settings.status) status++;
       if (settings.assignee && row.matchedAgentId) assignee++;
     });
-    return { value, quantity, status, assignee };
+    return { name, value, quantity, status, assignee };
   };
-  const updateCounts = hasMatched ? getUpdateCounts() : { value: 0, quantity: 0, status: 0, assignee: 0 };
+  const updateCounts = hasMatched ? getUpdateCounts() : { name: 0, value: 0, quantity: 0, status: 0, assignee: 0 };
 
   const formatCurrency = (value?: number | null) => {
     if (value === null || value === undefined) return '-';
@@ -181,12 +183,30 @@ export function BulkUpdatePreview({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="space-y-2">
                   <Label>Telefone *</Label>
                   <Select 
                     value={columnMapping.telefone || 'none'} 
                     onValueChange={(v) => handleColumnChange('telefone', v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Não mapear</SelectItem>
+                      {headers.map(h => (
+                        <SelectItem key={h} value={h}>{h}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Nome do Contato</Label>
+                  <Select 
+                    value={columnMapping.nomeContato || 'none'} 
+                    onValueChange={(v) => handleColumnChange('nomeContato', v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
@@ -279,6 +299,9 @@ export function BulkUpdatePreview({
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-3">
+              <Badge variant={updateCounts.name > 0 ? 'default' : 'secondary'}>
+                Nome: {updateCounts.name} leads
+              </Badge>
               <Badge variant={updateCounts.status > 0 ? 'default' : 'secondary'}>
                 Status: {updateCounts.status} leads
               </Badge>
@@ -345,9 +368,12 @@ export function BulkUpdatePreview({
                             <AlertTriangle className="h-4 w-4 text-yellow-500" />
                           )}
                           <span className="font-mono text-xs text-muted-foreground">{row.telefone}</span>
-                          <span className="font-medium">{row.contactName || 'Não encontrado'}</span>
                         </div>
-                        <div className="grid grid-cols-4 gap-4 text-sm">
+                        <div className="grid grid-cols-5 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground text-xs">Nome (planilha):</span>
+                            <div className="font-medium">{row.nomeContato || '-'}</div>
+                          </div>
                           <div>
                             <span className="text-muted-foreground text-xs">Valor (planilha):</span>
                             <div className="font-medium">{formatCurrency(row.valorNegociado)}</div>
@@ -383,7 +409,11 @@ export function BulkUpdatePreview({
                             <ArrowDown className="h-4 w-4 text-muted-foreground" />
                             <span className="text-xs text-muted-foreground">Dados atuais no sistema:</span>
                           </div>
-                          <div className="grid grid-cols-4 gap-4 text-sm">
+                          <div className="grid grid-cols-5 gap-4 text-sm">
+                            <div className={row.nomeContato && row.contactName && row.nomeContato.toLowerCase() !== row.contactName.toLowerCase() ? 'text-amber-600' : 'text-green-600'}>
+                              <span className="text-xs">Nome atual:</span>
+                              <div className="font-medium">{row.contactName || '-'}</div>
+                            </div>
                             <div className={isDifferent(row.valorNegociado, row.currentValue) ? 'text-amber-600' : 'text-green-600'}>
                               <span className="text-xs">Valor atual:</span>
                               <div className="font-medium">{formatCurrency(row.currentValue)}</div>
@@ -417,7 +447,26 @@ export function BulkUpdatePreview({
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-xs font-medium">Atualizar:</span>
                           </div>
-                          <div className="grid grid-cols-4 gap-4">
+                          <div className="grid grid-cols-5 gap-4">
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                id={`name-${index}`}
+                                checked={settings.name}
+                                disabled={!row.nomeContato}
+                                onCheckedChange={() => toggleRowField(index, 'name')}
+                              />
+                              <Label 
+                                htmlFor={`name-${index}`} 
+                                className={`text-xs cursor-pointer ${!row.nomeContato ? 'text-muted-foreground' : ''}`}
+                              >
+                                Nome
+                              </Label>
+                              {row.nomeContato && row.contactName && row.nomeContato.toLowerCase() !== row.contactName.toLowerCase() && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                                  diferente
+                                </Badge>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2">
                               <Checkbox
                                 id={`value-${index}`}
@@ -431,7 +480,7 @@ export function BulkUpdatePreview({
                               >
                                 Valor
                               </Label>
-                            {isDifferent(row.valorNegociado, row.currentValue) && (
+                              {isDifferent(row.valorNegociado, row.currentValue) && (
                                 <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
                                   diferente
                                 </Badge>
@@ -450,7 +499,7 @@ export function BulkUpdatePreview({
                               >
                                 Quantidade
                               </Label>
-                            {isDifferent(row.qtdCamisas, row.currentQuantity) && (
+                              {isDifferent(row.qtdCamisas, row.currentQuantity) && (
                                 <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
                                   diferente
                                 </Badge>
@@ -469,7 +518,7 @@ export function BulkUpdatePreview({
                               >
                                 Vendedor
                               </Label>
-                            {row.matchedAgentId && row.matchedAgentId !== row.currentAssignee && (
+                              {row.matchedAgentId && row.matchedAgentId !== row.currentAssignee && (
                                 <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
                                   diferente
                                 </Badge>
