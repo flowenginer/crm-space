@@ -403,7 +403,7 @@ export function BulkUpdatePreview({
                                 ) : '-'}
                               </div>
                             </div>
-                            <div>
+                            <div className={row.currentLeadStatus !== DEFAULT_STATUS ? 'text-amber-600' : 'text-green-600'}>
                               <span className="text-xs">Status atual:</span>
                               <div className="font-medium">{row.currentLeadStatus || '-'}</div>
                             </div>
@@ -484,6 +484,11 @@ export function BulkUpdatePreview({
                               <Label htmlFor={`status-${index}`} className="text-xs cursor-pointer">
                                 Status
                               </Label>
+                              {row.currentLeadStatus !== DEFAULT_STATUS && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                                  diferente
+                                </Badge>
+                              )}
                             </div>
                           </div>
                         </div>
