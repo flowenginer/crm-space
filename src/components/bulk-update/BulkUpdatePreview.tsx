@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Check, AlertTriangle, X, User, ChevronDown, ArrowDown } from 'lucide-react';
+import { Check, AlertTriangle, X, User, ChevronDown, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
@@ -44,6 +44,7 @@ export function BulkUpdatePreview({
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [hasMatched, setHasMatched] = useState(false);
   const [isMappingOpen, setIsMappingOpen] = useState(true);
+  const [currentPage, setCurrentPage] = useState(0); // Índice do lead atual na visualização paginada
   
   // Estado local para controle de campos por linha
   const [rowFieldSettings, setRowFieldSettings] = useState<Map<number, MatchedRow['updateFields']>>(new Map());
@@ -483,340 +484,434 @@ export function BulkUpdatePreview({
             </div>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-[500px]">
-              <div className="space-y-3">
-                {matchedRows.map((row, index) => {
-                  const settings = rowFieldSettings.get(index) || row.updateFields;
-                  const isFound = row.matchStatus === 'found';
-                  
-                  return (
-                    <div 
-                      key={index} 
-                      className={`border rounded-lg overflow-hidden ${!isFound ? 'opacity-50' : ''}`}
-                    >
-                      {/* Linha 1: Dados da Planilha */}
-                      <div className="bg-muted/30 p-3 border-b">
-                        <div className="flex items-center gap-2 mb-2">
-                          {isFound ? (
-                            <Check className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                          )}
-                          <span className="font-mono text-xs text-muted-foreground">{row.telefone}</span>
+            {/* Navegação paginada */}
+            <div className="flex items-center justify-between mb-4 pb-3 border-b">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                disabled={currentPage === 0}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Anterior
+              </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">
+                  {currentPage + 1} de {matchedRows.length}
+                </span>
+                <Badge variant="outline" className="text-xs">
+                  {foundCount} encontrados
+                </Badge>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.min(matchedRows.length - 1, currentPage + 1))}
+                disabled={currentPage >= matchedRows.length - 1}
+              >
+                Próximo
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+
+            {/* Item atual */}
+            {matchedRows[currentPage] && (() => {
+              const row = matchedRows[currentPage];
+              const index = currentPage;
+              const settings = rowFieldSettings.get(index) || row.updateFields;
+              const isFound = row.matchStatus === 'found';
+              
+              return (
+                <div className={`border rounded-lg overflow-hidden ${!isFound ? 'opacity-50' : ''}`}>
+                  {/* Linha 1: Dados da Planilha */}
+                  <div className="bg-muted/30 p-4 border-b">
+                    <div className="flex items-center gap-2 mb-3">
+                      {isFound ? (
+                        <Check className="h-5 w-5 text-green-500" />
+                      ) : (
+                        <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                      )}
+                      <span className="font-mono text-sm">{row.telefone}</span>
+                      {isFound && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          Encontrado no sistema
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-5 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground text-xs">Nome (planilha):</span>
+                        <div className="font-medium">{row.nomeContato || '-'}</div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground text-xs">Valor (planilha):</span>
+                        <div className="font-medium">{formatCurrency(row.valorNegociado)}</div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground text-xs">Qtd (planilha):</span>
+                        <div className="font-medium">{row.qtdCamisas ?? '-'}</div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground text-xs">Vendedor (planilha):</span>
+                        <div className="font-medium flex items-center gap-1">
+                          {row.matchedAgentName ? (
+                            <>
+                              <User className="h-3 w-3" />
+                              {row.matchedAgentName}
+                            </>
+                          ) : row.vendedor ? (
+                            <span className="text-muted-foreground">{row.vendedor}</span>
+                          ) : '-'}
                         </div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground text-xs">Status:</span>
+                        <div className="font-medium">{DEFAULT_STATUS}</div>
+                      </div>
+                    </div>
+                    {/* Campos adicionais da planilha */}
+                    {(row.cpfCnpj || row.email || row.bairro || row.cidade || row.estado) && (
+                      <div className="mt-3 pt-3 border-t border-border/50">
                         <div className="grid grid-cols-5 gap-4 text-sm">
                           <div>
-                            <span className="text-muted-foreground text-xs">Nome (planilha):</span>
-                            <div className="font-medium">{row.nomeContato || '-'}</div>
+                            <span className="text-muted-foreground text-xs">CPF/CNPJ:</span>
+                            <div className="font-medium">{row.cpfCnpj || '-'}</div>
                           </div>
                           <div>
-                            <span className="text-muted-foreground text-xs">Valor (planilha):</span>
-                            <div className="font-medium">{formatCurrency(row.valorNegociado)}</div>
+                            <span className="text-muted-foreground text-xs">E-mail:</span>
+                            <div className="font-medium truncate">{row.email || '-'}</div>
                           </div>
                           <div>
-                            <span className="text-muted-foreground text-xs">Qtd (planilha):</span>
-                            <div className="font-medium">{row.qtdCamisas ?? '-'}</div>
+                            <span className="text-muted-foreground text-xs">Bairro:</span>
+                            <div className="font-medium">{row.bairro || '-'}</div>
                           </div>
                           <div>
-                            <span className="text-muted-foreground text-xs">Vendedor (planilha):</span>
-                            <div className="font-medium flex items-center gap-1">
-                              {row.matchedAgentName ? (
-                                <>
-                                  <User className="h-3 w-3" />
-                                  {row.matchedAgentName}
-                                </>
-                              ) : row.vendedor ? (
-                                <span className="text-muted-foreground">{row.vendedor}</span>
-                              ) : '-'}
-                            </div>
+                            <span className="text-muted-foreground text-xs">Cidade:</span>
+                            <div className="font-medium">{row.cidade || '-'}</div>
                           </div>
                           <div>
-                            <span className="text-muted-foreground text-xs">Status:</span>
-                            <div className="font-medium">{DEFAULT_STATUS}</div>
+                            <span className="text-muted-foreground text-xs">Estado:</span>
+                            <div className="font-medium">{row.estado || '-'}</div>
                           </div>
                         </div>
                       </div>
-
-                      {/* Linha 2: Dados do Sistema (apenas se encontrado) */}
-                      {isFound && (
-                        <div className="p-3 border-b bg-background">
-                          <div className="flex items-center gap-2 mb-2">
-                            <ArrowDown className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground">Dados atuais no sistema:</span>
-                          </div>
-                          <div className="grid grid-cols-6 gap-4 text-sm">
-                            <div className={row.nomeContato && row.contactName && row.nomeContato.toLowerCase() !== row.contactName.toLowerCase() ? 'text-amber-600' : 'text-green-600'}>
-                              <span className="text-xs">Nome atual:</span>
-                              <div className="font-medium">{row.contactName || '-'}</div>
-                            </div>
-                            <div className={isDifferent(row.valorNegociado, row.currentValue) ? 'text-amber-600' : 'text-green-600'}>
-                              <span className="text-xs">Valor atual:</span>
-                              <div className="font-medium">{formatCurrency(row.currentValue)}</div>
-                            </div>
-                            <div className={isDifferent(row.qtdCamisas, row.currentQuantity) ? 'text-amber-600' : 'text-green-600'}>
-                              <span className="text-xs">Qtd atual:</span>
-                              <div className="font-medium">{row.currentQuantity ?? '-'}</div>
-                            </div>
-                            <div className={row.matchedAgentId && row.matchedAgentId !== row.currentAssignee ? 'text-amber-600' : 'text-green-600'}>
-                              <span className="text-xs">Agente Responsável:</span>
-                              <div className="font-medium flex items-center gap-1">
-                                {row.currentAssigneeName ? (
-                                  <>
-                                    <User className="h-3 w-3" />
-                                    {row.currentAssigneeName}
-                                  </>
-                                ) : '-'}
-                              </div>
-                            </div>
-                            <div className={row.matchedAgentId && row.matchedAgentId !== row.currentAgentId ? 'text-amber-600' : 'text-green-600'}>
-                              <span className="text-xs">Atendente Atual:</span>
-                              <div className="font-medium flex items-center gap-1">
-                                {row.currentAgentName ? (
-                                  <>
-                                    <User className="h-3 w-3" />
-                                    {row.currentAgentName}
-                                  </>
-                                ) : '-'}
-                              </div>
-                            </div>
-                            <div className={row.currentLeadStatus !== DEFAULT_STATUS ? 'text-amber-600' : 'text-green-600'}>
-                              <span className="text-xs">Status atual:</span>
-                              <div className="font-medium">{row.currentLeadStatus || '-'}</div>
+                    )}
+                  </div>
+                  
+                  {/* Linha 2: Dados Atuais do Sistema */}
+                  {isFound && (
+                    <div className="p-4 border-b bg-background">
+                      <div className="flex items-center gap-2 mb-3">
+                        <ArrowDown className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground font-medium">Dados atuais no sistema:</span>
+                      </div>
+                      <div className="grid grid-cols-5 gap-4 text-sm">
+                        <div className={row.nomeContato && row.contactName && row.nomeContato.toLowerCase() !== row.contactName.toLowerCase() ? 'text-amber-600' : 'text-green-600'}>
+                          <span className="text-xs">Nome atual:</span>
+                          <div className="font-medium">{row.contactName || '-'}</div>
+                        </div>
+                        <div className={row.valorNegociado !== undefined && row.valorNegociado !== row.currentValue ? 'text-amber-600' : 'text-green-600'}>
+                          <span className="text-xs">Valor atual:</span>
+                          <div className="font-medium">{formatCurrency(row.currentValue)}</div>
+                        </div>
+                        <div className={row.qtdCamisas !== undefined && row.qtdCamisas !== row.currentQuantity ? 'text-amber-600' : 'text-green-600'}>
+                          <span className="text-xs">Qtd atual:</span>
+                          <div className="font-medium">{row.currentQuantity ?? '-'}</div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className={row.matchedAgentId && row.matchedAgentId !== row.currentAssignee ? 'text-amber-600' : 'text-green-600'}>
+                            <span className="text-xs">Agente Responsável:</span>
+                            <div className="font-medium flex items-center gap-1">
+                              {row.currentAssigneeName ? (
+                                <>
+                                  <User className="h-3 w-3" />
+                                  {row.currentAssigneeName}
+                                </>
+                              ) : '-'}
                             </div>
                           </div>
                         </div>
-                      )}
-
-                      {/* Linha 3: Checkboxes de Atualização (apenas se encontrado) */}
-                      {isFound && (
-                        <div className="p-3 bg-muted/10">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-medium">Atualizar campos principais:</span>
-                          </div>
-                          <div className="grid grid-cols-3 md:grid-cols-7 gap-3 mb-3">
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                id={`name-${index}`}
-                                checked={settings.name}
-                                disabled={!row.nomeContato}
-                                onCheckedChange={() => toggleRowField(index, 'name')}
-                              />
-                              <Label 
-                                htmlFor={`name-${index}`} 
-                                className={`text-xs cursor-pointer ${!row.nomeContato ? 'text-muted-foreground' : ''}`}
-                              >
-                                Nome
-                              </Label>
-                              {row.nomeContato && row.contactName && row.nomeContato.toLowerCase() !== row.contactName.toLowerCase() && (
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                  diferente
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                id={`value-${index}`}
-                                checked={settings.value}
-                                disabled={row.valorNegociado === undefined}
-                                onCheckedChange={() => toggleRowField(index, 'value')}
-                              />
-                              <Label 
-                                htmlFor={`value-${index}`} 
-                                className={`text-xs cursor-pointer ${row.valorNegociado === undefined ? 'text-muted-foreground' : ''}`}
-                              >
-                                Valor
-                              </Label>
-                              {isDifferent(row.valorNegociado, row.currentValue) && (
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                  diferente
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                id={`quantity-${index}`}
-                                checked={settings.quantity}
-                                disabled={row.qtdCamisas === undefined}
-                                onCheckedChange={() => toggleRowField(index, 'quantity')}
-                              />
-                              <Label 
-                                htmlFor={`quantity-${index}`} 
-                                className={`text-xs cursor-pointer ${row.qtdCamisas === undefined ? 'text-muted-foreground' : ''}`}
-                              >
-                                Qtd
-                              </Label>
-                              {isDifferent(row.qtdCamisas, row.currentQuantity) && (
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                  diferente
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                id={`assignee-${index}`}
-                                checked={settings.assignee}
-                                disabled={!row.matchedAgentId}
-                                onCheckedChange={() => toggleRowField(index, 'assignee')}
-                              />
-                              <Label 
-                                htmlFor={`assignee-${index}`} 
-                                className={`text-xs cursor-pointer ${!row.matchedAgentId ? 'text-muted-foreground' : ''}`}
-                              >
-                                Ag. Responsável
-                              </Label>
-                              {row.matchedAgentId && row.matchedAgentId !== row.currentAssignee && (
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                  diferente
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                id={`currentAgent-${index}`}
-                                checked={settings.currentAgent}
-                                disabled={!row.matchedAgentId}
-                                onCheckedChange={() => toggleRowField(index, 'currentAgent')}
-                              />
-                              <Label 
-                                htmlFor={`currentAgent-${index}`} 
-                                className={`text-xs cursor-pointer ${!row.matchedAgentId ? 'text-muted-foreground' : ''}`}
-                              >
-                                Atend. Atual
-                              </Label>
-                              {row.matchedAgentId && row.matchedAgentId !== row.currentAgentId && (
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                  diferente
-                                </Badge>
-                              )}
-                              <span className="text-[10px] text-muted-foreground">(opcional)</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                id={`status-${index}`}
-                                checked={settings.status}
-                                onCheckedChange={() => toggleRowField(index, 'status')}
-                              />
-                              <Label htmlFor={`status-${index}`} className="text-xs cursor-pointer">
-                                Status
-                              </Label>
-                              {row.currentLeadStatus !== DEFAULT_STATUS && (
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                  diferente
-                                </Badge>
-                              )}
+                        <div className="space-y-1">
+                          <div className={row.matchedAgentId && row.matchedAgentId !== row.currentAgentId ? 'text-amber-600' : 'text-green-600'}>
+                            <span className="text-xs">Atendente Atual:</span>
+                            <div className="font-medium flex items-center gap-1">
+                              {row.currentAgentName ? (
+                                <>
+                                  <User className="h-3 w-3" />
+                                  {row.currentAgentName}
+                                </>
+                              ) : '-'}
                             </div>
                           </div>
-                          
-                          {/* Campos adicionais */}
-                          <div className="border-t pt-2 mt-2">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-xs text-muted-foreground">Campos adicionais:</span>
+                          <div className={row.currentLeadStatus !== DEFAULT_STATUS ? 'text-amber-600' : 'text-green-600'}>
+                            <span className="text-xs">Status atual:</span>
+                            <div className="font-medium">{row.currentLeadStatus || '-'}</div>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Campos adicionais atuais */}
+                      {(row.cpfCnpj || row.email || row.bairro || row.cidade || row.estado) && (
+                        <div className="mt-3 pt-3 border-t border-border/50">
+                          <div className="grid grid-cols-5 gap-4 text-sm">
+                            <div className={row.cpfCnpj && row.cpfCnpj !== row.currentCpfCnpj ? 'text-amber-600' : 'text-green-600'}>
+                              <span className="text-xs">CPF/CNPJ atual:</span>
+                              <div className="font-medium">{row.currentCpfCnpj || '-'}</div>
                             </div>
-                            <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`cpfCnpj-${index}`}
-                                  checked={settings.cpfCnpj}
-                                  disabled={!row.cpfCnpj}
-                                  onCheckedChange={() => toggleRowField(index, 'cpfCnpj')}
-                                />
-                                <Label 
-                                  htmlFor={`cpfCnpj-${index}`} 
-                                  className={`text-xs cursor-pointer ${!row.cpfCnpj ? 'text-muted-foreground' : ''}`}
-                                >
-                                  CPF/CNPJ
-                                </Label>
-                                {row.cpfCnpj && row.cpfCnpj !== row.currentCpfCnpj && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                    diferente
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`email-${index}`}
-                                  checked={settings.email}
-                                  disabled={!row.email}
-                                  onCheckedChange={() => toggleRowField(index, 'email')}
-                                />
-                                <Label 
-                                  htmlFor={`email-${index}`} 
-                                  className={`text-xs cursor-pointer ${!row.email ? 'text-muted-foreground' : ''}`}
-                                >
-                                  E-mail
-                                </Label>
-                                {row.email && row.email !== row.currentEmail && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                    diferente
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`bairro-${index}`}
-                                  checked={settings.bairro}
-                                  disabled={!row.bairro}
-                                  onCheckedChange={() => toggleRowField(index, 'bairro')}
-                                />
-                                <Label 
-                                  htmlFor={`bairro-${index}`} 
-                                  className={`text-xs cursor-pointer ${!row.bairro ? 'text-muted-foreground' : ''}`}
-                                >
-                                  Bairro
-                                </Label>
-                                {row.bairro && row.bairro !== row.currentBairro && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                    diferente
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`cidade-${index}`}
-                                  checked={settings.cidade}
-                                  disabled={!row.cidade}
-                                  onCheckedChange={() => toggleRowField(index, 'cidade')}
-                                />
-                                <Label 
-                                  htmlFor={`cidade-${index}`} 
-                                  className={`text-xs cursor-pointer ${!row.cidade ? 'text-muted-foreground' : ''}`}
-                                >
-                                  Cidade
-                                </Label>
-                                {row.cidade && row.cidade !== row.currentCidade && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                    diferente
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`estado-${index}`}
-                                  checked={settings.estado}
-                                  disabled={!row.estado}
-                                  onCheckedChange={() => toggleRowField(index, 'estado')}
-                                />
-                                <Label 
-                                  htmlFor={`estado-${index}`} 
-                                  className={`text-xs cursor-pointer ${!row.estado ? 'text-muted-foreground' : ''}`}
-                                >
-                                  Estado
-                                </Label>
-                                {row.estado && row.estado !== row.currentEstado && (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
-                                    diferente
-                                  </Badge>
-                                )}
-                              </div>
+                            <div className={row.email && row.email !== row.currentEmail ? 'text-amber-600' : 'text-green-600'}>
+                              <span className="text-xs">E-mail atual:</span>
+                              <div className="font-medium truncate">{row.currentEmail || '-'}</div>
+                            </div>
+                            <div className={row.bairro && row.bairro !== row.currentBairro ? 'text-amber-600' : 'text-green-600'}>
+                              <span className="text-xs">Bairro atual:</span>
+                              <div className="font-medium">{row.currentBairro || '-'}</div>
+                            </div>
+                            <div className={row.cidade && row.cidade !== row.currentCidade ? 'text-amber-600' : 'text-green-600'}>
+                              <span className="text-xs">Cidade atual:</span>
+                              <div className="font-medium">{row.currentCidade || '-'}</div>
+                            </div>
+                            <div className={row.estado && row.estado !== row.currentEstado ? 'text-amber-600' : 'text-green-600'}>
+                              <span className="text-xs">Estado atual:</span>
+                              <div className="font-medium">{row.currentEstado || '-'}</div>
                             </div>
                           </div>
                         </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            </ScrollArea>
+                  )}
+                  
+                  {/* Linha 3: Checkboxes para atualização */}
+                  {isFound && (
+                    <div className="p-4 bg-muted/20">
+                      <div className="text-xs font-medium text-muted-foreground mb-3">Atualizar campos principais:</div>
+                      <div className="flex flex-wrap gap-4 mb-4">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`name-${index}`}
+                            checked={settings.name}
+                            disabled={!row.nomeContato}
+                            onCheckedChange={() => toggleRowField(index, 'name')}
+                          />
+                          <Label 
+                            htmlFor={`name-${index}`} 
+                            className={`text-xs cursor-pointer ${!row.nomeContato ? 'text-muted-foreground' : ''}`}
+                          >
+                            Nome
+                          </Label>
+                          {row.nomeContato && row.contactName && row.nomeContato.toLowerCase() !== row.contactName.toLowerCase() && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`value-${index}`}
+                            checked={settings.value}
+                            disabled={row.valorNegociado === undefined}
+                            onCheckedChange={() => toggleRowField(index, 'value')}
+                          />
+                          <Label 
+                            htmlFor={`value-${index}`} 
+                            className={`text-xs cursor-pointer ${row.valorNegociado === undefined ? 'text-muted-foreground' : ''}`}
+                          >
+                            Valor
+                          </Label>
+                          {row.valorNegociado !== undefined && row.valorNegociado !== row.currentValue && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`quantity-${index}`}
+                            checked={settings.quantity}
+                            disabled={row.qtdCamisas === undefined}
+                            onCheckedChange={() => toggleRowField(index, 'quantity')}
+                          />
+                          <Label 
+                            htmlFor={`quantity-${index}`} 
+                            className={`text-xs cursor-pointer ${row.qtdCamisas === undefined ? 'text-muted-foreground' : ''}`}
+                          >
+                            Qtd
+                          </Label>
+                          {row.qtdCamisas !== undefined && row.qtdCamisas !== row.currentQuantity && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`assignee-${index}`}
+                            checked={settings.assignee}
+                            disabled={!row.matchedAgentId}
+                            onCheckedChange={() => toggleRowField(index, 'assignee')}
+                          />
+                          <Label 
+                            htmlFor={`assignee-${index}`} 
+                            className={`text-xs cursor-pointer ${!row.matchedAgentId ? 'text-muted-foreground' : ''}`}
+                          >
+                            Ag. Responsável
+                          </Label>
+                          {row.matchedAgentId && row.matchedAgentId !== row.currentAssignee && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`currentAgent-${index}`}
+                            checked={settings.currentAgent}
+                            disabled={!row.matchedAgentId}
+                            onCheckedChange={() => toggleRowField(index, 'currentAgent')}
+                          />
+                          <Label 
+                            htmlFor={`currentAgent-${index}`} 
+                            className={`text-xs cursor-pointer ${!row.matchedAgentId ? 'text-muted-foreground' : ''}`}
+                          >
+                            Atend. Atual
+                          </Label>
+                          {row.matchedAgentId && row.matchedAgentId !== row.currentAgentId && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`status-${index}`}
+                            checked={settings.status}
+                            onCheckedChange={() => toggleRowField(index, 'status')}
+                          />
+                          <Label 
+                            htmlFor={`status-${index}`} 
+                            className="text-xs cursor-pointer"
+                          >
+                            Status
+                          </Label>
+                          {row.currentLeadStatus !== DEFAULT_STATUS && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Campos adicionais */}
+                      <div className="text-xs font-medium text-muted-foreground mb-3">Campos adicionais:</div>
+                      <div className="flex flex-wrap gap-4">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`cpfCnpj-${index}`}
+                            checked={settings.cpfCnpj}
+                            disabled={!row.cpfCnpj}
+                            onCheckedChange={() => toggleRowField(index, 'cpfCnpj')}
+                          />
+                          <Label 
+                            htmlFor={`cpfCnpj-${index}`} 
+                            className={`text-xs cursor-pointer ${!row.cpfCnpj ? 'text-muted-foreground' : ''}`}
+                          >
+                            CPF/CNPJ
+                          </Label>
+                          {row.cpfCnpj && row.cpfCnpj !== row.currentCpfCnpj && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`email-${index}`}
+                            checked={settings.email}
+                            disabled={!row.email}
+                            onCheckedChange={() => toggleRowField(index, 'email')}
+                          />
+                          <Label 
+                            htmlFor={`email-${index}`} 
+                            className={`text-xs cursor-pointer ${!row.email ? 'text-muted-foreground' : ''}`}
+                          >
+                            E-mail
+                          </Label>
+                          {row.email && row.email !== row.currentEmail && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`bairro-${index}`}
+                            checked={settings.bairro}
+                            disabled={!row.bairro}
+                            onCheckedChange={() => toggleRowField(index, 'bairro')}
+                          />
+                          <Label 
+                            htmlFor={`bairro-${index}`} 
+                            className={`text-xs cursor-pointer ${!row.bairro ? 'text-muted-foreground' : ''}`}
+                          >
+                            Bairro
+                          </Label>
+                          {row.bairro && row.bairro !== row.currentBairro && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`cidade-${index}`}
+                            checked={settings.cidade}
+                            disabled={!row.cidade}
+                            onCheckedChange={() => toggleRowField(index, 'cidade')}
+                          />
+                          <Label 
+                            htmlFor={`cidade-${index}`} 
+                            className={`text-xs cursor-pointer ${!row.cidade ? 'text-muted-foreground' : ''}`}
+                          >
+                            Cidade
+                          </Label>
+                          {row.cidade && row.cidade !== row.currentCidade && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`estado-${index}`}
+                            checked={settings.estado}
+                            disabled={!row.estado}
+                            onCheckedChange={() => toggleRowField(index, 'estado')}
+                          />
+                          <Label 
+                            htmlFor={`estado-${index}`} 
+                            className={`text-xs cursor-pointer ${!row.estado ? 'text-muted-foreground' : ''}`}
+                          >
+                            Estado
+                          </Label>
+                          {row.estado && row.estado !== row.currentEstado && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              diferente
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
       )}
