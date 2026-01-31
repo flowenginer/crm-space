@@ -28,6 +28,14 @@ interface BusinessHours {
   [key: string]: BusinessHourDay;
 }
 
+function timeToMinutes(hhmm: string): number {
+  const [hRaw, mRaw] = hhmm.split(':');
+  const h = Number(hRaw);
+  const m = Number(mRaw);
+  if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+  return h * 60 + m;
+}
+
 // Helper function to get greeting based on time of day
 function getGreeting(): string {
   const now = new Date();
@@ -480,7 +488,9 @@ function isWithinSchedule(config: ScheduleConfig): boolean {
   const currentDay = tzTime.getDay();
   const currentHour = tzTime.getHours();
   const currentMinute = tzTime.getMinutes();
-  const currentTimeStr = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
+  const currentTimeMinutes = currentHour * 60 + currentMinute;
+  const startMinutes = timeToMinutes(config.start);
+  const endMinutes = timeToMinutes(config.end);
 
   // Check if today is an allowed day
   if (!config.days.includes(currentDay)) {
@@ -488,7 +498,7 @@ function isWithinSchedule(config: ScheduleConfig): boolean {
   }
 
   // Check if current time is within allowed hours
-  return currentTimeStr >= config.start && currentTimeStr < config.end;
+  return currentTimeMinutes >= startMinutes && currentTimeMinutes < endMinutes;
 }
 
 // Calculate wait time until next valid schedule slot (in ms)
@@ -499,12 +509,12 @@ function calculateWaitTime(config: ScheduleConfig): number {
   const currentDay = tzTime.getDay();
   const currentHour = tzTime.getHours();
   const currentMinute = tzTime.getMinutes();
-  const currentTimeStr = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
+  const currentTimeMinutes = currentHour * 60 + currentMinute;
+  const startMinutes = timeToMinutes(config.start);
 
   // If today is a valid day and we're before start time, wait until start
-  if (config.days.includes(currentDay) && currentTimeStr < config.start) {
-    const [startHour, startMinute] = config.start.split(':').map(Number);
-    const waitMinutes = (startHour - currentHour) * 60 + (startMinute - currentMinute);
+  if (config.days.includes(currentDay) && currentTimeMinutes < startMinutes) {
+    const waitMinutes = startMinutes - currentTimeMinutes;
     return waitMinutes * 60 * 1000;
   }
 
@@ -519,10 +529,9 @@ function calculateWaitTime(config: ScheduleConfig): number {
   }
 
   // Calculate time until start of next valid day
-  const [startHour, startMinute] = config.start.split(':').map(Number);
   const hoursUntilMidnight = 24 - currentHour;
-  const totalHours = hoursUntilMidnight + (daysToWait - 1) * 24 + startHour;
-  const totalMinutes = totalHours * 60 - currentMinute + startMinute;
+  const minutesUntilMidnight = hoursUntilMidnight * 60 - currentMinute;
+  const totalMinutes = minutesUntilMidnight + (daysToWait - 1) * 24 * 60 + startMinutes;
 
   return totalMinutes * 60 * 1000;
 }
