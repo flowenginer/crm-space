@@ -2009,7 +2009,26 @@ serve(async (req) => {
       }
       
       const channelProvider = channel.provider as any;
+      
+      // Check if this is a Cloud API channel (no provider but has cloudapi_config)
       if (!channelProvider) {
+        // Check for Cloud API configuration
+        const { data: cloudConfig } = await supabase
+          .from('cloudapi_configs')
+          .select('id')
+          .eq('channel_id', channelId)
+          .eq('is_active', true)
+          .maybeSingle();
+        
+        if (cloudConfig) {
+          // Cloud API does not support message deletion
+          console.log('[WhatsApp Delete] Cloud API channel - deletion not supported');
+          return new Response(
+            JSON.stringify({ success: false, error: 'A API oficial do WhatsApp não suporta exclusão de mensagens enviadas' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+          );
+        }
+        
         return new Response(
           JSON.stringify({ success: false, error: 'Provedor do canal não encontrado' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
