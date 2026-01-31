@@ -139,7 +139,7 @@ export function BulkUpdatePreview({
   
   // Contar quantos campos serão atualizados
   const getUpdateCounts = () => {
-    let name = 0, value = 0, quantity = 0, status = 0, assignee = 0;
+    let name = 0, value = 0, quantity = 0, status = 0, assignee = 0, currentAgent = 0;
     let cpfCnpj = 0, email = 0, bairro = 0, cidade = 0, estado = 0;
     matchedRows.forEach((row, index) => {
       if (row.matchStatus !== 'found') return;
@@ -149,16 +149,17 @@ export function BulkUpdatePreview({
       if (settings.quantity && row.qtdCamisas !== undefined) quantity++;
       if (settings.status) status++;
       if (settings.assignee && row.matchedAgentId) assignee++;
+      if (settings.currentAgent && row.matchedAgentId) currentAgent++;
       if (settings.cpfCnpj && row.cpfCnpj) cpfCnpj++;
       if (settings.email && row.email) email++;
       if (settings.bairro && row.bairro) bairro++;
       if (settings.cidade && row.cidade) cidade++;
       if (settings.estado && row.estado) estado++;
     });
-    return { name, value, quantity, status, assignee, cpfCnpj, email, bairro, cidade, estado };
+    return { name, value, quantity, status, assignee, currentAgent, cpfCnpj, email, bairro, cidade, estado };
   };
   const updateCounts = hasMatched ? getUpdateCounts() : { 
-    name: 0, value: 0, quantity: 0, status: 0, assignee: 0, 
+    name: 0, value: 0, quantity: 0, status: 0, assignee: 0, currentAgent: 0,
     cpfCnpj: 0, email: 0, bairro: 0, cidade: 0, estado: 0 
   };
 
@@ -424,6 +425,9 @@ export function BulkUpdatePreview({
               <Badge variant={updateCounts.assignee > 0 ? 'default' : 'secondary'}>
                 Vendedor: {updateCounts.assignee} leads
               </Badge>
+              <Badge variant={updateCounts.currentAgent > 0 ? 'default' : 'secondary'} className="border border-dashed">
+                Atendente Atual: {updateCounts.currentAgent} leads (opcional)
+              </Badge>
               <Badge variant={updateCounts.cpfCnpj > 0 ? 'default' : 'secondary'}>
                 CPF/CNPJ: {updateCounts.cpfCnpj} leads
               </Badge>
@@ -534,7 +538,7 @@ export function BulkUpdatePreview({
                             <ArrowDown className="h-4 w-4 text-muted-foreground" />
                             <span className="text-xs text-muted-foreground">Dados atuais no sistema:</span>
                           </div>
-                          <div className="grid grid-cols-5 gap-4 text-sm">
+                          <div className="grid grid-cols-6 gap-4 text-sm">
                             <div className={row.nomeContato && row.contactName && row.nomeContato.toLowerCase() !== row.contactName.toLowerCase() ? 'text-amber-600' : 'text-green-600'}>
                               <span className="text-xs">Nome atual:</span>
                               <div className="font-medium">{row.contactName || '-'}</div>
@@ -548,12 +552,23 @@ export function BulkUpdatePreview({
                               <div className="font-medium">{row.currentQuantity ?? '-'}</div>
                             </div>
                             <div className={row.matchedAgentId && row.matchedAgentId !== row.currentAssignee ? 'text-amber-600' : 'text-green-600'}>
-                              <span className="text-xs">Vendedor atual:</span>
+                              <span className="text-xs">Agente Responsável:</span>
                               <div className="font-medium flex items-center gap-1">
                                 {row.currentAssigneeName ? (
                                   <>
                                     <User className="h-3 w-3" />
                                     {row.currentAssigneeName}
+                                  </>
+                                ) : '-'}
+                              </div>
+                            </div>
+                            <div className={row.matchedAgentId && row.matchedAgentId !== row.currentAgentId ? 'text-amber-600' : 'text-green-600'}>
+                              <span className="text-xs">Atendente Atual:</span>
+                              <div className="font-medium flex items-center gap-1">
+                                {row.currentAgentName ? (
+                                  <>
+                                    <User className="h-3 w-3" />
+                                    {row.currentAgentName}
                                   </>
                                 ) : '-'}
                               </div>
@@ -572,7 +587,7 @@ export function BulkUpdatePreview({
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-xs font-medium">Atualizar campos principais:</span>
                           </div>
-                          <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-3">
+                          <div className="grid grid-cols-3 md:grid-cols-7 gap-3 mb-3">
                             <div className="flex items-center gap-2">
                               <Checkbox
                                 id={`name-${index}`}
@@ -641,13 +656,33 @@ export function BulkUpdatePreview({
                                 htmlFor={`assignee-${index}`} 
                                 className={`text-xs cursor-pointer ${!row.matchedAgentId ? 'text-muted-foreground' : ''}`}
                               >
-                                Vendedor
+                                Ag. Responsável
                               </Label>
                               {row.matchedAgentId && row.matchedAgentId !== row.currentAssignee && (
                                 <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
                                   diferente
                                 </Badge>
                               )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                id={`currentAgent-${index}`}
+                                checked={settings.currentAgent}
+                                disabled={!row.matchedAgentId}
+                                onCheckedChange={() => toggleRowField(index, 'currentAgent')}
+                              />
+                              <Label 
+                                htmlFor={`currentAgent-${index}`} 
+                                className={`text-xs cursor-pointer ${!row.matchedAgentId ? 'text-muted-foreground' : ''}`}
+                              >
+                                Atend. Atual
+                              </Label>
+                              {row.matchedAgentId && row.matchedAgentId !== row.currentAgentId && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                                  diferente
+                                </Badge>
+                              )}
+                              <span className="text-[10px] text-muted-foreground">(opcional)</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <Checkbox

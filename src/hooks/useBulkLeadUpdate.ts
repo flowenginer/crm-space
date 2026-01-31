@@ -33,7 +33,7 @@ export interface BulkUpdateOptions {
 export interface MatchedRow extends BulkUpdateRow {
   contactId: string | null;
   contactName: string | null;
-  currentAssignee: string | null;
+  currentAssignee: string | null; // contacts.assigned_to (Agente Responsável)
   matchedAgentId: string | null;
   matchedAgentName: string | null;
   matchStatus: 'found' | 'not_found' | 'duplicate';
@@ -41,8 +41,10 @@ export interface MatchedRow extends BulkUpdateRow {
   currentValue: number | null;
   currentQuantity: number | null;
   currentLeadStatus: string | null;
-  currentAssigneeName: string | null;
-  // Controle por campo
+  currentAssigneeName: string | null; // Nome do Agente Responsável
+  // Atendente Atual (conversations.assigned_to)
+  currentAgentId: string | null;
+  currentAgentName: string | null;
   // Dados atuais adicionais
   currentCpfCnpj: string | null;
   currentEmail: string | null;
@@ -55,7 +57,8 @@ export interface MatchedRow extends BulkUpdateRow {
     value: boolean;
     quantity: boolean;
     status: boolean;
-    assignee: boolean;
+    assignee: boolean; // Agente Responsável (contacts.assigned_to)
+    currentAgent: boolean; // Atendente Atual (conversations.assigned_to) - OPCIONAL
     cpfCnpj: boolean;
     email: boolean;
     bairro: boolean;
@@ -186,7 +189,7 @@ export function useBulkLeadUpdate() {
       throw error;
     }
 
-    // Buscar nomes dos assigned_to
+    // Buscar nomes dos assigned_to (agente responsável)
     const assigneeIds = [...new Set(contacts?.filter(c => c.assigned_to).map(c => c.assigned_to) || [])];
     let assigneeMap = new Map<string, string>();
     if (assigneeIds.length > 0) {
@@ -195,6 +198,41 @@ export function useBulkLeadUpdate() {
         .select('id, full_name')
         .in('id', assigneeIds);
       assignees?.forEach(a => assigneeMap.set(a.id, a.full_name));
+    }
+
+    // Buscar conversas ativas para pegar o Atendente Atual
+    const contactIds = contacts?.map(c => c.id) || [];
+    let conversationAgentMap = new Map<string, { agentId: string; agentName: string }>();
+    if (contactIds.length > 0) {
+      const { data: conversations } = await supabase
+        .from('conversations')
+        .select('contact_id, assigned_to')
+        .in('contact_id', contactIds)
+        .in('status', ['open', 'pending'])
+        .order('updated_at', { ascending: false });
+      
+      // Coletar IDs de agentes únicos
+      const agentIds = [...new Set(conversations?.filter(c => c.assigned_to).map(c => c.assigned_to) || [])];
+      
+      // Buscar nomes dos agentes
+      let agentNameMap = new Map<string, string>();
+      if (agentIds.length > 0) {
+        const { data: agents } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', agentIds);
+        agents?.forEach(a => agentNameMap.set(a.id, a.full_name));
+      }
+      
+      // Mapear contact_id -> agente (pegar a primeira conversa encontrada)
+      conversations?.forEach(conv => {
+        if (conv.assigned_to && !conversationAgentMap.has(conv.contact_id)) {
+          conversationAgentMap.set(conv.contact_id, {
+            agentId: conv.assigned_to,
+            agentName: agentNameMap.get(conv.assigned_to) || 'Desconhecido',
+          });
+        }
+      });
     }
 
     // Criar map de telefone -> contato
@@ -235,13 +273,19 @@ export function useBulkLeadUpdate() {
       const currentBairro = foundContact?.neighborhood ?? null;
       const currentCidade = foundContact?.city ?? null;
       const currentEstado = foundContact?.state ?? null;
+      
+      // Atendente Atual (da conversa)
+      const currentAgent = foundContact?.id ? conversationAgentMap.get(foundContact.id) : null;
+      const currentAgentId = currentAgent?.agentId ?? null;
+      const currentAgentName = currentAgent?.agentName ?? null;
 
-      // Detectar diferenças para auto-marcar checkboxes
+      // Detectar diferenças para auto-marcar checkboxes - TUDO marcado por padrão quando há dado
       const nameIsDifferent = row.nomeContato && foundContact?.full_name && 
         row.nomeContato.toLowerCase() !== foundContact.full_name.toLowerCase();
       const valueIsDifferent = row.valorNegociado !== undefined && row.valorNegociado !== currentValue;
       const quantityIsDifferent = row.qtdCamisas !== undefined && row.qtdCamisas !== currentQuantity;
       const assigneeIsDifferent = matchedProfile && matchedProfile.id !== foundContact?.assigned_to;
+      const currentAgentIsDifferent = matchedProfile && matchedProfile.id !== currentAgentId;
       const cpfCnpjIsDifferent = row.cpfCnpj && row.cpfCnpj !== currentCpfCnpj;
       const emailIsDifferent = row.email && row.email !== currentEmail;
       const bairroIsDifferent = row.bairro && row.bairro !== currentBairro;
@@ -262,23 +306,26 @@ export function useBulkLeadUpdate() {
         currentQuantity,
         currentLeadStatus,
         currentAssigneeName,
+        currentAgentId,
+        currentAgentName,
         currentCpfCnpj,
         currentEmail,
         currentBairro,
         currentCidade,
         currentEstado,
-        // Campos a atualizar (auto-marcados se diferentes)
+        // Campos a atualizar (TODOS marcados por padrão quando há dados - exceto currentAgent que é opcional)
         updateFields: {
-          name: !!nameIsDifferent,
-          value: valueIsDifferent,
-          quantity: quantityIsDifferent,
+          name: !!row.nomeContato,  // Marcado se tem dado na planilha
+          value: row.valorNegociado !== undefined,
+          quantity: row.qtdCamisas !== undefined,
           status: true, // Status sempre marcado por padrão
-          assignee: !!assigneeIsDifferent,
-          cpfCnpj: !!cpfCnpjIsDifferent,
-          email: !!emailIsDifferent,
-          bairro: !!bairroIsDifferent,
-          cidade: !!cidadeIsDifferent,
-          estado: !!estadoIsDifferent,
+          assignee: !!matchedProfile, // Marcado se encontrou vendedor na planilha
+          currentAgent: false, // OPCIONAL - desmarcado por padrão
+          cpfCnpj: !!row.cpfCnpj,
+          email: !!row.email,
+          bairro: !!row.bairro,
+          cidade: !!row.cidade,
+          estado: !!row.estado,
         },
       };
     });
@@ -399,8 +446,8 @@ export function useBulkLeadUpdate() {
 
           if (contactError) throw contactError;
 
-          // Sincronizar conversa ativa (dual-field requirement)
-          if (fieldSettings.assignee && row.matchedAgentId) {
+          // Atualizar Atendente Atual (conversations.assigned_to) - OPCIONAL
+          if (fieldSettings.currentAgent && row.matchedAgentId) {
             await supabase
               .from('conversations')
               .update({
@@ -409,6 +456,7 @@ export function useBulkLeadUpdate() {
               })
               .eq('contact_id', row.contactId)
               .in('status', ['open', 'pending']);
+            updatedFields.push('atendente_atual');
           }
 
           updated++;
