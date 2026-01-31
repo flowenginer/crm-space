@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 
 interface BulkTransferResult {
   success: number;
@@ -39,6 +38,29 @@ interface BulkActionResult {
   errors: string[];
 }
 
+// ============ HELPER FUNCTIONS ============
+
+// Delay helper for throttling
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Process with automatic retry on failure
+async function processWithRetry<T>(
+  fn: () => Promise<T>,
+  retries: number = 1,
+  delayMs: number = 1000
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (retries > 0) {
+      console.log(`[BulkAction] Retrying after error, ${retries} attempts left...`);
+      await delay(delayMs);
+      return processWithRetry(fn, retries - 1, delayMs);
+    }
+    throw error;
+  }
+}
+
 // Fisher-Yates shuffle algorithm
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
@@ -49,7 +71,7 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
-// Helper to process in chunks
+// Helper to process in chunks (for lighter operations)
 function chunkArray<T>(array: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < array.length; i += size) {
@@ -57,6 +79,8 @@ function chunkArray<T>(array: T[], size: number): T[][] {
   }
   return chunks;
 }
+
+// ============ HOOKS ============
 
 export function useBulkTransfer() {
   const queryClient = useQueryClient();
@@ -67,11 +91,13 @@ export function useBulkTransfer() {
       toDepartmentId,
       toUserId,
       note,
+      onProgress,
     }: {
       conversationIds: string[];
       toDepartmentId: string;
       toUserId?: string | null;
       note?: string;
+      onProgress?: (processed: number, total: number) => void;
     }): Promise<BulkTransferResult> => {
       const result: BulkTransferResult = {
         success: 0,
@@ -79,13 +105,13 @@ export function useBulkTransfer() {
         errors: [],
       };
 
-      // Process in chunks of 10 to avoid overwhelming the server
-      const chunkSize = 10;
-      for (let i = 0; i < conversationIds.length; i += chunkSize) {
-        const chunk = conversationIds.slice(i, i + chunkSize);
-        
-        const promises = chunk.map(async (conversationId) => {
-          try {
+      const total = conversationIds.length;
+      let processed = 0;
+
+      // Process SEQUENTIALLY with delays to avoid timeouts
+      for (const conversationId of conversationIds) {
+        try {
+          await processWithRetry(async () => {
             const { error } = await supabase.rpc('transfer_conversation', {
               p_conversation_id: conversationId,
               p_to_user_id: toUserId || null,
@@ -94,19 +120,20 @@ export function useBulkTransfer() {
               p_force: false,
             });
 
-            if (error) {
-              result.failed++;
-              result.errors.push(`${conversationId}: ${error.message}`);
-            } else {
-              result.success++;
-            }
-          } catch (error: any) {
-            result.failed++;
-            result.errors.push(`${conversationId}: ${error.message}`);
-          }
-        });
-
-        await Promise.all(promises);
+            if (error) throw error;
+          });
+          
+          result.success++;
+        } catch (error: any) {
+          result.failed++;
+          result.errors.push(`${conversationId}: ${error.message}`);
+        }
+        
+        processed++;
+        onProgress?.(processed, total);
+        
+        // Small delay between each item to prevent DB overload
+        await delay(100);
       }
 
       return result;
@@ -125,7 +152,13 @@ export function useBulkReturnToOriginalAgent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (conversationIds: string[]): Promise<BulkReturnResult> => {
+    mutationFn: async ({
+      conversationIds,
+      onProgress,
+    }: {
+      conversationIds: string[];
+      onProgress?: (processed: number, total: number) => void;
+    }): Promise<BulkReturnResult> => {
       const result: BulkReturnResult = {
         success: 0,
         failed: 0,
@@ -163,20 +196,22 @@ export function useBulkReturnToOriginalAgent() {
         });
       }
 
-      // Process transfers in chunks
-      const chunkSize = 10;
-      for (let i = 0; i < conversations.length; i += chunkSize) {
-        const chunk = conversations.slice(i, i + chunkSize);
+      const total = conversations.length;
+      let processed = 0;
 
-        const promises = chunk.map(async (conv) => {
-          const originalAgent = agentMap.get(conv.contact_id);
+      // Process SEQUENTIALLY with delays
+      for (const conv of conversations) {
+        const originalAgent = agentMap.get(conv.contact_id);
 
-          if (!originalAgent || !originalAgent.original_agent_id) {
-            result.noOriginalAgent++;
-            return;
-          }
+        if (!originalAgent || !originalAgent.original_agent_id) {
+          result.noOriginalAgent++;
+          processed++;
+          onProgress?.(processed, total);
+          continue;
+        }
 
-          try {
+        try {
+          await processWithRetry(async () => {
             const { error } = await supabase.rpc('transfer_conversation', {
               p_conversation_id: conv.id,
               p_to_user_id: originalAgent.original_agent_id,
@@ -185,19 +220,20 @@ export function useBulkReturnToOriginalAgent() {
               p_force: false,
             });
 
-            if (error) {
-              result.failed++;
-              result.errors.push(`${conv.id}: ${error.message}`);
-            } else {
-              result.success++;
-            }
-          } catch (error: any) {
-            result.failed++;
-            result.errors.push(`${conv.id}: ${error.message}`);
-          }
-        });
+            if (error) throw error;
+          });
+          
+          result.success++;
+        } catch (error: any) {
+          result.failed++;
+          result.errors.push(`${conv.id}: ${error.message}`);
+        }
 
-        await Promise.all(promises);
+        processed++;
+        onProgress?.(processed, total);
+        
+        // Small delay between each item
+        await delay(100);
       }
 
       return result;
@@ -212,7 +248,7 @@ export function useBulkReturnToOriginalAgent() {
   });
 }
 
-// NEW: Distribute conversations evenly among multiple agents
+// Distribute conversations evenly among multiple agents
 export function useBulkDistribute() {
   const queryClient = useQueryClient();
 
@@ -223,12 +259,14 @@ export function useBulkDistribute() {
       targetUserNames,
       departmentId,
       note,
+      onProgress,
     }: {
       conversationIds: string[];
       targetUserIds: string[];
       targetUserNames: Record<string, string>;
       departmentId: string;
       note?: string;
+      onProgress?: (processed: number, total: number) => void;
     }): Promise<DistributeResult> => {
       const result: DistributeResult = {
         success: 0,
@@ -253,13 +291,16 @@ export function useBulkDistribute() {
         assignments.get(targetUser)!.push(convId);
       });
 
-      // 3. Process transfers in chunks
+      const total = conversationIds.length;
+      let processed = 0;
+
+      // 3. Process SEQUENTIALLY with delays per vendor
       for (const [userId, convIds] of assignments) {
-        const chunks = chunkArray(convIds, 10);
+        let successCount = 0;
         
-        for (const chunk of chunks) {
-          const promises = chunk.map(async (convId) => {
-            try {
+        for (const convId of convIds) {
+          try {
+            await processWithRetry(async () => {
               const { error } = await supabase.rpc('transfer_conversation', {
                 p_conversation_id: convId,
                 p_to_user_id: userId,
@@ -268,26 +309,31 @@ export function useBulkDistribute() {
                 p_force: false,
               });
 
-              if (error) {
-                result.failed++;
-                result.errors.push(`${convId}: ${error.message}`);
-              } else {
-                result.success++;
-              }
-            } catch (error: any) {
-              result.failed++;
-              result.errors.push(`${convId}: ${error.message}`);
-            }
-          });
+              if (error) throw error;
+            });
 
-          await Promise.all(promises);
+            result.success++;
+            successCount++;
+          } catch (error: any) {
+            result.failed++;
+            result.errors.push(`${convId}: ${error.message}`);
+          }
+
+          processed++;
+          onProgress?.(processed, total);
+          
+          // Small delay between each item
+          await delay(100);
         }
 
         result.distributions.push({
           userId,
           userName: targetUserNames[userId] || 'Usuário',
-          count: convIds.length,
+          count: successCount,
         });
+
+        // Additional delay between vendors
+        await delay(300);
       }
 
       return result;
@@ -302,7 +348,7 @@ export function useBulkDistribute() {
   });
 }
 
-// NEW: Close conversations in bulk
+// Close conversations in bulk
 export function useBulkCloseConversations() {
   const queryClient = useQueryClient();
 
@@ -310,9 +356,11 @@ export function useBulkCloseConversations() {
     mutationFn: async ({
       conversationIds,
       closeReason,
+      onProgress,
     }: {
       conversationIds: string[];
       closeReason?: string;
+      onProgress?: (processed: number, total: number) => void;
     }): Promise<BulkActionResult> => {
       const result: BulkActionResult = {
         success: 0,
@@ -323,7 +371,11 @@ export function useBulkCloseConversations() {
       const { data: { user } } = await supabase.auth.getUser();
       const now = new Date().toISOString();
 
-      const chunks = chunkArray(conversationIds, 10);
+      const total = conversationIds.length;
+      let processed = 0;
+
+      // Close is a lighter operation - can use smaller parallel chunks
+      const chunks = chunkArray(conversationIds, 5);
 
       for (const chunk of chunks) {
         const promises = chunk.map(async (convId) => {
@@ -358,6 +410,12 @@ export function useBulkCloseConversations() {
         });
 
         await Promise.all(promises);
+        
+        processed += chunk.length;
+        onProgress?.(processed, total);
+        
+        // Delay between chunks
+        await delay(200);
       }
 
       return result;
@@ -372,7 +430,7 @@ export function useBulkCloseConversations() {
   });
 }
 
-// NEW: Add tag to contacts in bulk
+// Add tag to contacts in bulk
 export function useBulkAddTag() {
   const queryClient = useQueryClient();
 
@@ -380,9 +438,11 @@ export function useBulkAddTag() {
     mutationFn: async ({
       contactIds,
       tagId,
+      onProgress,
     }: {
       contactIds: string[];
       tagId: string;
+      onProgress?: (processed: number, total: number) => void;
     }): Promise<BulkActionResult> => {
       const result: BulkActionResult = {
         success: 0,
@@ -397,6 +457,8 @@ export function useBulkAddTag() {
       }));
 
       const chunks = chunkArray(inserts, 50);
+      const total = chunks.length;
+      let processed = 0;
 
       for (const chunk of chunks) {
         try {
@@ -414,6 +476,9 @@ export function useBulkAddTag() {
           result.failed += chunk.length;
           result.errors.push(error.message);
         }
+        
+        processed++;
+        onProgress?.(processed, total);
       }
 
       return result;
@@ -426,7 +491,7 @@ export function useBulkAddTag() {
   });
 }
 
-// NEW: Remove tag from contacts in bulk
+// Remove tag from contacts in bulk
 export function useBulkRemoveTag() {
   const queryClient = useQueryClient();
 
@@ -472,7 +537,7 @@ export function useBulkRemoveTag() {
   });
 }
 
-// NEW: Update lead status in bulk
+// Update lead status in bulk
 export function useBulkUpdateLeadStatus() {
   const queryClient = useQueryClient();
 
@@ -480,9 +545,11 @@ export function useBulkUpdateLeadStatus() {
     mutationFn: async ({
       contactIds,
       leadStatus,
+      onProgress,
     }: {
       contactIds: string[];
       leadStatus: string;
+      onProgress?: (processed: number, total: number) => void;
     }): Promise<BulkActionResult> => {
       const result: BulkActionResult = {
         success: 0,
@@ -491,6 +558,8 @@ export function useBulkUpdateLeadStatus() {
       };
 
       const chunks = chunkArray(contactIds, 50);
+      const total = chunks.length;
+      let processed = 0;
 
       for (const chunk of chunks) {
         try {
@@ -509,6 +578,9 @@ export function useBulkUpdateLeadStatus() {
           result.failed += chunk.length;
           result.errors.push(error.message);
         }
+        
+        processed++;
+        onProgress?.(processed, total);
       }
 
       return result;
@@ -521,12 +593,18 @@ export function useBulkUpdateLeadStatus() {
   });
 }
 
-// NEW: Reopen conversations in bulk
+// Reopen conversations in bulk
 export function useBulkReopenConversations() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (conversationIds: string[]): Promise<BulkActionResult> => {
+    mutationFn: async ({
+      conversationIds,
+      onProgress,
+    }: {
+      conversationIds: string[];
+      onProgress?: (processed: number, total: number) => void;
+    }): Promise<BulkActionResult> => {
       const result: BulkActionResult = {
         success: 0,
         failed: 0,
@@ -536,52 +614,56 @@ export function useBulkReopenConversations() {
       const { data: { user } } = await supabase.auth.getUser();
       const now = new Date().toISOString();
 
-      const chunks = chunkArray(conversationIds, 10);
+      const total = conversationIds.length;
+      let processed = 0;
 
-      for (const chunk of chunks) {
-        const promises = chunk.map(async (convId) => {
-          try {
-            // First get current reopen_count
-            const { data: conv } = await supabase
-              .from('conversations')
-              .select('reopen_count')
-              .eq('id', convId)
-              .single();
+      // Process SEQUENTIALLY with delays
+      for (const convId of conversationIds) {
+        try {
+          // First get current reopen_count
+          const { data: conv } = await supabase
+            .from('conversations')
+            .select('reopen_count')
+            .eq('id', convId)
+            .single();
 
-            const currentCount = conv?.reopen_count || 0;
+          const currentCount = conv?.reopen_count || 0;
 
-            const { error } = await supabase
-              .from('conversations')
-              .update({
-                status: 'open',
-                reopened_at: now,
-                reopen_count: currentCount + 1,
-                closed_at: null,
-                closed_by: null,
-                close_reason: null,
-              })
-              .eq('id', convId);
+          const { error } = await supabase
+            .from('conversations')
+            .update({
+              status: 'open',
+              reopened_at: now,
+              reopen_count: currentCount + 1,
+              closed_at: null,
+              closed_by: null,
+              close_reason: null,
+            })
+            .eq('id', convId);
 
-            if (error) {
-              result.failed++;
-              result.errors.push(`${convId}: ${error.message}`);
-            } else {
-              // Insert reopen event
-              await supabase.from('conversation_events').insert({
-                conversation_id: convId,
-                event_type: 'reopened',
-                actor_id: user?.id,
-                data: { bulk: true },
-              });
-              result.success++;
-            }
-          } catch (error: any) {
+          if (error) {
             result.failed++;
             result.errors.push(`${convId}: ${error.message}`);
+          } else {
+            // Insert reopen event
+            await supabase.from('conversation_events').insert({
+              conversation_id: convId,
+              event_type: 'reopened',
+              actor_id: user?.id,
+              data: { bulk: true },
+            });
+            result.success++;
           }
-        });
+        } catch (error: any) {
+          result.failed++;
+          result.errors.push(`${convId}: ${error.message}`);
+        }
 
-        await Promise.all(promises);
+        processed++;
+        onProgress?.(processed, total);
+        
+        // Small delay between each item
+        await delay(100);
       }
 
       return result;

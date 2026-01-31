@@ -45,7 +45,7 @@ export function BulkTransferModal({
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [note, setNote] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState({ processed: 0, total: 0 });
 
   const { data: departments = [], isLoading: isDepartmentsLoading } = useDepartments();
   const { data: team = [], isLoading: isTeamLoading } = useTeam();
@@ -141,11 +141,7 @@ export function BulkTransferModal({
     const selectedUser = transferType === 'user' ? team.find(t => t.id === selectedUserId) : null;
 
     setIsTransferring(true);
-    setProgress(0);
-
-    const progressInterval = setInterval(() => {
-      setProgress(prev => Math.min(prev + 10, 90));
-    }, 200);
+    setProgress({ processed: 0, total: conversationIds.length });
 
     try {
       if (transferMode === 'single') {
@@ -154,10 +150,10 @@ export function BulkTransferModal({
           toDepartmentId: selectedDepartmentId,
           toUserId: transferType === 'user' ? selectedUserId : null,
           note: note.trim() || undefined,
+          onProgress: (processed, total) => {
+            setProgress({ processed, total });
+          },
         });
-
-        clearInterval(progressInterval);
-        setProgress(100);
 
         const destination = transferType === 'department' 
           ? `fila de ${selectedDepartment?.name || 'departamento'}`
@@ -183,10 +179,10 @@ export function BulkTransferModal({
           targetUserNames,
           departmentId: selectedDepartmentId,
           note: note.trim() || 'Distribuição em massa',
+          onProgress: (processed, total) => {
+            setProgress({ processed, total });
+          },
         });
-
-        clearInterval(progressInterval);
-        setProgress(100);
 
         if (result.success > 0 && result.failed === 0) {
           const distDetails = result.distributions
@@ -208,7 +204,6 @@ export function BulkTransferModal({
       
       handleClose();
     } catch (error: any) {
-      clearInterval(progressInterval);
       console.error('[BulkTransferModal] Error:', error);
       toast.error('Erro ao transferir conversas', {
         description: error?.message || 'Tente novamente.',
@@ -226,7 +221,7 @@ export function BulkTransferModal({
     setSelectedUserId('');
     setSelectedUserIds(new Set());
     setNote('');
-    setProgress(0);
+    setProgress({ processed: 0, total: 0 });
     onClose();
   };
 
@@ -257,11 +252,11 @@ export function BulkTransferModal({
                   {transferMode === 'distribute' ? 'Distribuindo conversas...' : 'Transferindo conversas...'}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Aguarde enquanto processamos
+                  Processando {progress.processed} de {progress.total}
                 </p>
               </div>
             </div>
-            <Progress value={progress} className="h-2" />
+            <Progress value={progress.total > 0 ? (progress.processed / progress.total) * 100 : 0} className="h-2" />
           </div>
         ) : (
           <ScrollArea className="flex-1 overflow-y-auto">
