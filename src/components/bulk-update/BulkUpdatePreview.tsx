@@ -95,6 +95,11 @@ export function BulkUpdatePreview({
         ? parseQuantity(row[columnMapping.qtdCamisas]) 
         : undefined,
       vendedor: columnMapping.vendedor ? row[columnMapping.vendedor] : undefined,
+      cpfCnpj: columnMapping.cpfCnpj ? row[columnMapping.cpfCnpj]?.trim() : undefined,
+      email: columnMapping.email ? row[columnMapping.email]?.trim() : undefined,
+      bairro: columnMapping.bairro ? row[columnMapping.bairro]?.trim() : undefined,
+      cidade: columnMapping.cidade ? row[columnMapping.cidade]?.trim() : undefined,
+      estado: columnMapping.estado ? row[columnMapping.estado]?.trim() : undefined,
       raw: row,
     })).filter(r => r.telefone);
 
@@ -135,6 +140,7 @@ export function BulkUpdatePreview({
   // Contar quantos campos serão atualizados
   const getUpdateCounts = () => {
     let name = 0, value = 0, quantity = 0, status = 0, assignee = 0;
+    let cpfCnpj = 0, email = 0, bairro = 0, cidade = 0, estado = 0;
     matchedRows.forEach((row, index) => {
       if (row.matchStatus !== 'found') return;
       const settings = rowFieldSettings.get(index) || row.updateFields;
@@ -143,10 +149,18 @@ export function BulkUpdatePreview({
       if (settings.quantity && row.qtdCamisas !== undefined) quantity++;
       if (settings.status) status++;
       if (settings.assignee && row.matchedAgentId) assignee++;
+      if (settings.cpfCnpj && row.cpfCnpj) cpfCnpj++;
+      if (settings.email && row.email) email++;
+      if (settings.bairro && row.bairro) bairro++;
+      if (settings.cidade && row.cidade) cidade++;
+      if (settings.estado && row.estado) estado++;
     });
-    return { name, value, quantity, status, assignee };
+    return { name, value, quantity, status, assignee, cpfCnpj, email, bairro, cidade, estado };
   };
-  const updateCounts = hasMatched ? getUpdateCounts() : { name: 0, value: 0, quantity: 0, status: 0, assignee: 0 };
+  const updateCounts = hasMatched ? getUpdateCounts() : { 
+    name: 0, value: 0, quantity: 0, status: 0, assignee: 0, 
+    cpfCnpj: 0, email: 0, bairro: 0, cidade: 0, estado: 0 
+  };
 
   const formatCurrency = (value?: number | null) => {
     if (value === null || value === undefined) return '-';
@@ -275,6 +289,102 @@ export function BulkUpdatePreview({
                 </div>
               </div>
 
+              {/* Campos Adicionais */}
+              <div className="border-t pt-4 mt-4">
+                <p className="text-sm font-medium mb-3 text-muted-foreground">Campos adicionais do contato</p>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="space-y-2">
+                    <Label>CPF/CNPJ</Label>
+                    <Select 
+                      value={columnMapping.cpfCnpj || 'none'} 
+                      onValueChange={(v) => handleColumnChange('cpfCnpj', v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Não mapear</SelectItem>
+                        {headers.map(h => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>E-mail</Label>
+                    <Select 
+                      value={columnMapping.email || 'none'} 
+                      onValueChange={(v) => handleColumnChange('email', v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Não mapear</SelectItem>
+                        {headers.map(h => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Bairro</Label>
+                    <Select 
+                      value={columnMapping.bairro || 'none'} 
+                      onValueChange={(v) => handleColumnChange('bairro', v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Não mapear</SelectItem>
+                        {headers.map(h => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Cidade</Label>
+                    <Select 
+                      value={columnMapping.cidade || 'none'} 
+                      onValueChange={(v) => handleColumnChange('cidade', v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Não mapear</SelectItem>
+                        {headers.map(h => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Estado/UF</Label>
+                    <Select 
+                      value={columnMapping.estado || 'none'} 
+                      onValueChange={(v) => handleColumnChange('estado', v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Não mapear</SelectItem>
+                        {headers.map(h => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex justify-end">
                 <Button 
                   onClick={handleMatchContacts}
@@ -313,6 +423,21 @@ export function BulkUpdatePreview({
               </Badge>
               <Badge variant={updateCounts.assignee > 0 ? 'default' : 'secondary'}>
                 Vendedor: {updateCounts.assignee} leads
+              </Badge>
+              <Badge variant={updateCounts.cpfCnpj > 0 ? 'default' : 'secondary'}>
+                CPF/CNPJ: {updateCounts.cpfCnpj} leads
+              </Badge>
+              <Badge variant={updateCounts.email > 0 ? 'default' : 'secondary'}>
+                E-mail: {updateCounts.email} leads
+              </Badge>
+              <Badge variant={updateCounts.bairro > 0 ? 'default' : 'secondary'}>
+                Bairro: {updateCounts.bairro} leads
+              </Badge>
+              <Badge variant={updateCounts.cidade > 0 ? 'default' : 'secondary'}>
+                Cidade: {updateCounts.cidade} leads
+              </Badge>
+              <Badge variant={updateCounts.estado > 0 ? 'default' : 'secondary'}>
+                Estado: {updateCounts.estado} leads
               </Badge>
             </div>
           </CardContent>
@@ -445,9 +570,9 @@ export function BulkUpdatePreview({
                       {isFound && (
                         <div className="p-3 bg-muted/10">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-medium">Atualizar:</span>
+                            <span className="text-xs font-medium">Atualizar campos principais:</span>
                           </div>
-                          <div className="grid grid-cols-5 gap-4">
+                          <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-3">
                             <div className="flex items-center gap-2">
                               <Checkbox
                                 id={`name-${index}`}
@@ -497,7 +622,7 @@ export function BulkUpdatePreview({
                                 htmlFor={`quantity-${index}`} 
                                 className={`text-xs cursor-pointer ${row.qtdCamisas === undefined ? 'text-muted-foreground' : ''}`}
                               >
-                                Quantidade
+                                Qtd
                               </Label>
                               {isDifferent(row.qtdCamisas, row.currentQuantity) && (
                                 <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
@@ -538,6 +663,110 @@ export function BulkUpdatePreview({
                                   diferente
                                 </Badge>
                               )}
+                            </div>
+                          </div>
+                          
+                          {/* Campos adicionais */}
+                          <div className="border-t pt-2 mt-2">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-xs text-muted-foreground">Campos adicionais:</span>
+                            </div>
+                            <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`cpfCnpj-${index}`}
+                                  checked={settings.cpfCnpj}
+                                  disabled={!row.cpfCnpj}
+                                  onCheckedChange={() => toggleRowField(index, 'cpfCnpj')}
+                                />
+                                <Label 
+                                  htmlFor={`cpfCnpj-${index}`} 
+                                  className={`text-xs cursor-pointer ${!row.cpfCnpj ? 'text-muted-foreground' : ''}`}
+                                >
+                                  CPF/CNPJ
+                                </Label>
+                                {row.cpfCnpj && row.cpfCnpj !== row.currentCpfCnpj && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                                    diferente
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`email-${index}`}
+                                  checked={settings.email}
+                                  disabled={!row.email}
+                                  onCheckedChange={() => toggleRowField(index, 'email')}
+                                />
+                                <Label 
+                                  htmlFor={`email-${index}`} 
+                                  className={`text-xs cursor-pointer ${!row.email ? 'text-muted-foreground' : ''}`}
+                                >
+                                  E-mail
+                                </Label>
+                                {row.email && row.email !== row.currentEmail && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                                    diferente
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`bairro-${index}`}
+                                  checked={settings.bairro}
+                                  disabled={!row.bairro}
+                                  onCheckedChange={() => toggleRowField(index, 'bairro')}
+                                />
+                                <Label 
+                                  htmlFor={`bairro-${index}`} 
+                                  className={`text-xs cursor-pointer ${!row.bairro ? 'text-muted-foreground' : ''}`}
+                                >
+                                  Bairro
+                                </Label>
+                                {row.bairro && row.bairro !== row.currentBairro && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                                    diferente
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`cidade-${index}`}
+                                  checked={settings.cidade}
+                                  disabled={!row.cidade}
+                                  onCheckedChange={() => toggleRowField(index, 'cidade')}
+                                />
+                                <Label 
+                                  htmlFor={`cidade-${index}`} 
+                                  className={`text-xs cursor-pointer ${!row.cidade ? 'text-muted-foreground' : ''}`}
+                                >
+                                  Cidade
+                                </Label>
+                                {row.cidade && row.cidade !== row.currentCidade && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                                    diferente
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`estado-${index}`}
+                                  checked={settings.estado}
+                                  disabled={!row.estado}
+                                  onCheckedChange={() => toggleRowField(index, 'estado')}
+                                />
+                                <Label 
+                                  htmlFor={`estado-${index}`} 
+                                  className={`text-xs cursor-pointer ${!row.estado ? 'text-muted-foreground' : ''}`}
+                                >
+                                  Estado
+                                </Label>
+                                {row.estado && row.estado !== row.currentEstado && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                                    diferente
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>

@@ -12,6 +12,12 @@ export interface BulkUpdateRow {
   valorNegociado?: number;
   qtdCamisas?: number;
   vendedor?: string;
+  // Campos adicionais do contato
+  cpfCnpj?: string;
+  email?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
   // Campos originais para exibição
   raw: Record<string, string>;
 }
@@ -37,12 +43,24 @@ export interface MatchedRow extends BulkUpdateRow {
   currentLeadStatus: string | null;
   currentAssigneeName: string | null;
   // Controle por campo
+  // Dados atuais adicionais
+  currentCpfCnpj: string | null;
+  currentEmail: string | null;
+  currentBairro: string | null;
+  currentCidade: string | null;
+  currentEstado: string | null;
+  // Controle por campo
   updateFields: {
     name: boolean;
     value: boolean;
     quantity: boolean;
     status: boolean;
     assignee: boolean;
+    cpfCnpj: boolean;
+    email: boolean;
+    bairro: boolean;
+    cidade: boolean;
+    estado: boolean;
   };
 }
 
@@ -159,7 +177,7 @@ export function useBulkLeadUpdate() {
     // Buscar contatos existentes COM dados adicionais para comparação
     const { data: contacts, error } = await supabase
       .from('contacts')
-      .select('id, phone, full_name, assigned_to, negotiated_value, shirt_quantity, lead_status')
+      .select('id, phone, full_name, assigned_to, negotiated_value, shirt_quantity, lead_status, cpf_cnpj, email, neighborhood, city, state')
       .eq('tenant_id', tenantId)
       .in('phone', [...new Set(phonesToSearch)]);
 
@@ -212,6 +230,11 @@ export function useBulkLeadUpdate() {
       const currentAssigneeName = foundContact?.assigned_to 
         ? assigneeMap.get(foundContact.assigned_to) ?? null 
         : null;
+      const currentCpfCnpj = foundContact?.cpf_cnpj ?? null;
+      const currentEmail = foundContact?.email ?? null;
+      const currentBairro = foundContact?.neighborhood ?? null;
+      const currentCidade = foundContact?.city ?? null;
+      const currentEstado = foundContact?.state ?? null;
 
       // Detectar diferenças para auto-marcar checkboxes
       const nameIsDifferent = row.nomeContato && foundContact?.full_name && 
@@ -219,6 +242,11 @@ export function useBulkLeadUpdate() {
       const valueIsDifferent = row.valorNegociado !== undefined && row.valorNegociado !== currentValue;
       const quantityIsDifferent = row.qtdCamisas !== undefined && row.qtdCamisas !== currentQuantity;
       const assigneeIsDifferent = matchedProfile && matchedProfile.id !== foundContact?.assigned_to;
+      const cpfCnpjIsDifferent = row.cpfCnpj && row.cpfCnpj !== currentCpfCnpj;
+      const emailIsDifferent = row.email && row.email !== currentEmail;
+      const bairroIsDifferent = row.bairro && row.bairro !== currentBairro;
+      const cidadeIsDifferent = row.cidade && row.cidade !== currentCidade;
+      const estadoIsDifferent = row.estado && row.estado !== currentEstado;
 
       return {
         ...row,
@@ -234,6 +262,11 @@ export function useBulkLeadUpdate() {
         currentQuantity,
         currentLeadStatus,
         currentAssigneeName,
+        currentCpfCnpj,
+        currentEmail,
+        currentBairro,
+        currentCidade,
+        currentEstado,
         // Campos a atualizar (auto-marcados se diferentes)
         updateFields: {
           name: !!nameIsDifferent,
@@ -241,6 +274,11 @@ export function useBulkLeadUpdate() {
           quantity: quantityIsDifferent,
           status: true, // Status sempre marcado por padrão
           assignee: !!assigneeIsDifferent,
+          cpfCnpj: !!cpfCnpjIsDifferent,
+          email: !!emailIsDifferent,
+          bairro: !!bairroIsDifferent,
+          cidade: !!cidadeIsDifferent,
+          estado: !!estadoIsDifferent,
         },
       };
     });
@@ -321,6 +359,36 @@ export function useBulkLeadUpdate() {
             // Contar por agente
             const agentName = row.matchedAgentName || 'Desconhecido';
             byAgent[agentName] = (byAgent[agentName] || 0) + 1;
+          }
+
+          // Atualizar CPF/CNPJ
+          if (fieldSettings.cpfCnpj && row.cpfCnpj) {
+            updateData.cpf_cnpj = row.cpfCnpj;
+            updatedFields.push('cpf_cnpj');
+          }
+
+          // Atualizar E-mail
+          if (fieldSettings.email && row.email) {
+            updateData.email = row.email;
+            updatedFields.push('email');
+          }
+
+          // Atualizar Bairro
+          if (fieldSettings.bairro && row.bairro) {
+            updateData.neighborhood = row.bairro;
+            updatedFields.push('bairro');
+          }
+
+          // Atualizar Cidade
+          if (fieldSettings.cidade && row.cidade) {
+            updateData.city = row.cidade;
+            updatedFields.push('cidade');
+          }
+
+          // Atualizar Estado
+          if (fieldSettings.estado && row.estado) {
+            updateData.state = row.estado;
+            updatedFields.push('estado');
           }
 
           // Atualizar contato
@@ -435,6 +503,32 @@ export function autoMapBlingColumns(headers: string[]): Record<string, string> {
     // Vendedor
     if (lower.includes('vendedor') || lower.includes('agente') || lower.includes('responsavel')) {
       mapping.vendedor = h;
+    }
+
+    // CPF/CNPJ
+    if (lower === 'cpf' || lower === 'cnpj' || lower === 'cpf/cnpj' || 
+        lower.includes('cpf') || lower.includes('cnpj') || lower === 'documento') {
+      mapping.cpfCnpj = h;
+    }
+
+    // E-mail
+    if (lower === 'email' || lower === 'e-mail' || lower.includes('email')) {
+      mapping.email = h;
+    }
+
+    // Bairro
+    if (lower === 'bairro' || lower.includes('bairro')) {
+      mapping.bairro = h;
+    }
+
+    // Cidade
+    if (lower === 'cidade' || lower === 'municipio' || lower.includes('cidade')) {
+      mapping.cidade = h;
+    }
+
+    // Estado/UF
+    if (lower === 'estado' || lower === 'uf' || lower.includes('estado')) {
+      mapping.estado = h;
     }
   });
   
