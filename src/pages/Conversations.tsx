@@ -5365,7 +5365,75 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   )}
                   
                   <div className="flex items-end gap-2 md:gap-3">
-                  {/* Emoji Picker */}
+                  {/* Mobile Actions Menu - Collapsible "+" button */}
+                  {isMobile && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button 
+                          className={cn(
+                            "p-2 hover:bg-muted rounded-lg transition-colors flex md:hidden",
+                            !isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0 && "opacity-50 pointer-events-none"
+                          )}
+                          title="Mais ações"
+                          disabled={!isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0}
+                        >
+                          <Plus size={22} className="text-muted-foreground" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="start" className="w-auto p-2">
+                        <div className="flex items-center gap-3">
+                          {/* Attachment */}
+                          <button 
+                            onClick={() => {
+                              handleAttachmentClick();
+                            }}
+                            className="flex flex-col items-center gap-1 p-2 hover:bg-muted rounded-lg transition-colors"
+                            title="Anexar arquivo"
+                          >
+                            <Paperclip size={20} className="text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">Anexar</span>
+                          </button>
+                          
+                          {/* Schedule */}
+                          <button 
+                            onClick={() => setShowScheduleModal(true)}
+                            className="flex flex-col items-center gap-1 p-2 hover:bg-muted rounded-lg transition-colors"
+                            title="Agendar mensagem"
+                          >
+                            <Calendar size={20} className="text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">Agendar</span>
+                          </button>
+                          
+                          {/* Internal Note */}
+                          <button
+                            onClick={() => setIsInternalNoteMode(!isInternalNoteMode)}
+                            className={cn(
+                              'flex flex-col items-center gap-1 p-2 rounded-lg transition-colors',
+                              isInternalNoteMode 
+                                ? 'bg-amber-500 text-white' 
+                                : 'hover:bg-muted text-muted-foreground'
+                            )}
+                            title="Criar nota interna"
+                          >
+                            <StickyNote size={20} />
+                            <span className="text-xs">Nota</span>
+                          </button>
+                          
+                          {/* Mic for Audio */}
+                          <button 
+                            onClick={startRecording}
+                            className="flex flex-col items-center gap-1 p-2 hover:bg-muted rounded-lg transition-colors"
+                            title="Gravar áudio"
+                          >
+                            <Mic size={20} className="text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">Áudio</span>
+                          </button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                  
+                  {/* Emoji Picker - Desktop only */}
                   <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
                     <PopoverTrigger asChild>
                       <button 
@@ -5391,11 +5459,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                     </PopoverContent>
                   </Popover>
 
-                  {/* Attachment Button */}
+                  {/* Attachment Button - Desktop only */}
                   <button 
                     onClick={handleAttachmentClick}
                     className={cn(
-                      "p-2 hover:bg-muted rounded-lg transition-colors",
+                      "p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex",
                       !isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0 && "opacity-50 pointer-events-none"
                     )}
                     title="Anexar arquivo"
@@ -5404,11 +5472,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                     <Paperclip size={22} className="text-muted-foreground" />
                   </button>
 
-                  {/* Schedule Message */}
+                  {/* Schedule Message - Desktop only */}
                   <button 
                     onClick={() => setShowScheduleModal(true)}
                     className={cn(
-                      "p-2 hover:bg-muted rounded-lg transition-colors",
+                      "p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex",
                       !isInternalNoteMode && !requiredFieldsValidation.isValid && requiredFieldsValidation.requiredFields.length > 0 && "opacity-50 pointer-events-none"
                     )}
                     title="Agendar mensagem"
@@ -5417,11 +5485,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                     <Calendar size={22} className="text-muted-foreground" />
                   </button>
 
-                  {/* Internal Note Button */}
+                  {/* Internal Note Button - Desktop only */}
                   <button
                     onClick={() => setIsInternalNoteMode(!isInternalNoteMode)}
                     className={cn(
-                      'p-2 rounded-lg transition-colors',
+                      'p-2 rounded-lg transition-colors hidden md:flex',
                       isInternalNoteMode 
                         ? 'bg-amber-500 text-white' 
                         : 'hover:bg-muted text-muted-foreground'
