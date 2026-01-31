@@ -325,7 +325,7 @@ export default function ConversationReportPage() {
 
     setIsReopening(true);
     try {
-      const result = await bulkReopen.mutateAsync(closedConversations.map((c: any) => c.id));
+      const result = await bulkReopen.mutateAsync({ conversationIds: closedConversations.map((c: any) => c.id) });
       
       if (result.success > 0 && result.failed === 0) {
         toast.success(`${result.success} conversa(s) reaberta(s) com sucesso`);

@@ -53,17 +53,15 @@ export function BulkCloseModal({
     setIsProcessing(true);
     setProgress(0);
 
-    const progressInterval = setInterval(() => {
-      setProgress(prev => Math.min(prev + 10, 90));
-    }, 200);
-
     try {
       const result = await bulkClose.mutateAsync({
         conversationIds,
         closeReason: selectedReason || undefined,
+        onProgress: (processed, total) => {
+          setProgress(total > 0 ? (processed / total) * 100 : 0);
+        },
       });
 
-      clearInterval(progressInterval);
       setProgress(100);
 
       if (result.success > 0 && result.failed === 0) {
@@ -77,7 +75,6 @@ export function BulkCloseModal({
       onSuccess?.();
       handleModalClose();
     } catch (error: any) {
-      clearInterval(progressInterval);
       console.error('[BulkCloseModal] Error:', error);
       toast.error('Erro ao fechar conversas', {
         description: error?.message || 'Tente novamente.',

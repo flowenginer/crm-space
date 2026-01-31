@@ -2558,7 +2558,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     setIsBulkReturning(true);
     
     try {
-      const result = await bulkReturnToOriginal.mutateAsync(ids);
+      const result = await bulkReturnToOriginal.mutateAsync({ conversationIds: ids });
       
       // Exit selection mode
       setSelectedConversationIds(new Set());
