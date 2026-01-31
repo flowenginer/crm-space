@@ -139,28 +139,46 @@ export function useBulkLeadUpdate() {
     if (!name) return null;
     
     const searchTerm = normalizeStr(removeNumericSuffix(name));
+    console.log('[BulkUpdate] Procurando perfil para:', name, '-> normalizado:', searchTerm);
+    console.log('[BulkUpdate] Perfis disponíveis:', profiles.map(p => ({ name: p.full_name, normalized: normalizeStr(p.full_name) })));
     
     for (const profile of profiles) {
       const profileName = normalizeStr(profile.full_name);
       
       // Exact match
       if (profileName === searchTerm) {
+        console.log('[BulkUpdate] Match exato encontrado:', profile.full_name);
         return profile;
       }
       
-      // Partial match
+      // Partial match - qualquer direção
       if (profileName.includes(searchTerm) || searchTerm.includes(profileName)) {
+        console.log('[BulkUpdate] Match parcial encontrado:', profile.full_name);
         return profile;
       }
       
-      // First name match
+      // First name match (com tamanho mínimo 3)
       const searchFirstName = searchTerm.split(/\s+/)[0];
       const profileFirstName = profileName.split(/\s+/)[0];
       if (searchFirstName === profileFirstName && searchFirstName.length >= 3) {
+        console.log('[BulkUpdate] Match por primeiro nome:', profile.full_name);
         return profile;
+      }
+      
+      // Match por qualquer palavra do nome (para casos como "YASMIM SANT'ANNA" vs "Yasmim")
+      const searchWords = searchTerm.split(/\s+/).filter(w => w.length >= 3);
+      const profileWords = profileName.split(/\s+/).filter(w => w.length >= 3);
+      for (const searchWord of searchWords) {
+        for (const profileWord of profileWords) {
+          if (searchWord === profileWord) {
+            console.log('[BulkUpdate] Match por palavra:', searchWord, '=', profileWord, '-> perfil:', profile.full_name);
+            return profile;
+          }
+        }
       }
     }
     
+    console.log('[BulkUpdate] Nenhum match encontrado para:', name);
     return null;
   };
 
