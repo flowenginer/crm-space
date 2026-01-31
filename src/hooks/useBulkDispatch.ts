@@ -490,6 +490,45 @@ export function useDeleteBulkDispatches() {
     },
   });
 }
+
+// Atualizar configurações do disparo (schedule_enabled, schedule_override, interval_seconds)
+export function useUpdateBulkDispatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      id: string;
+      schedule_enabled?: boolean;
+      schedule_override?: ScheduleOverride | null;
+      interval_seconds?: number;
+    }) => {
+      const updateData: Record<string, unknown> = {};
+      
+      if (typeof data.schedule_enabled === 'boolean') {
+        updateData.schedule_enabled = data.schedule_enabled;
+      }
+      if (data.schedule_override !== undefined) {
+        updateData.schedule_override = data.schedule_override;
+      }
+      if (typeof data.interval_seconds === 'number') {
+        updateData.interval_seconds = data.interval_seconds;
+      }
+      
+      const { error } = await supabase
+        .from('bulk_dispatches')
+        .update(updateData)
+        .eq('id', data.id);
+
+      if (error) throw error;
+      return data.id;
+    },
+    onSuccess: (dispatchId) => {
+      queryClient.invalidateQueries({ queryKey: ['bulk-dispatches'] });
+      queryClient.invalidateQueries({ queryKey: ['bulk-dispatch', dispatchId] });
+    },
+  });
+}
+
 // Excluir campanha única (apenas concluídas ou canceladas)
 export function useDeleteBulkDispatch() {
   const queryClient = useQueryClient();

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,9 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { 
   Clock, 
   Filter, 
@@ -21,11 +24,15 @@ import {
   Send,
   Ban,
   CheckCircle2,
+  Pencil,
+  Save,
+  X,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
 
-import { type BulkDispatch } from '@/hooks/useBulkDispatch';
+import { type BulkDispatch, useUpdateBulkDispatch } from '@/hooks/useBulkDispatch';
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
 import { useTags } from '@/hooks/useTags';
 import { useSegments } from '@/hooks/useSegments';
@@ -56,6 +63,20 @@ export function BulkDispatchDetailsDialog({
   const { data: channels = [] } = useChannels();
   const { data: templates = [] } = useRescueTemplates();
   const { data: marketingCampaigns = [] } = useMarketingCampaigns();
+  
+  const updateDispatch = useUpdateBulkDispatch();
+  
+  // Estado para modo de edição
+  const [isEditing, setIsEditing] = useState(false);
+  const [editScheduleEnabled, setEditScheduleEnabled] = useState(false);
+
+  // Resetar estado quando o dispatch mudar
+  useMemo(() => {
+    if (dispatch) {
+      setEditScheduleEnabled(dispatch.schedule_enabled ?? true);
+      setIsEditing(false);
+    }
+  }, [dispatch?.id]);
 
   const filters = useMemo(() => dispatch?.filters || {}, [dispatch?.filters]);
 
@@ -113,11 +134,13 @@ export function BulkDispatchDetailsDialog({
   }, [dispatch, templates, marketingCampaigns]);
 
   const scheduleInfo = useMemo(() => {
-    if (!dispatch?.schedule_enabled) {
+    const scheduleEnabled = isEditing ? editScheduleEnabled : dispatch?.schedule_enabled;
+    
+    if (!scheduleEnabled) {
       return 'Desabilitado (envia a qualquer hora)';
     }
     
-    if (dispatch.schedule_override) {
+    if (dispatch?.schedule_override) {
       const override = dispatch.schedule_override;
       const enabledDays = (override.days || [1, 2, 3, 4, 5])
         .sort((a: number, b: number) => a - b)
@@ -127,7 +150,7 @@ export function BulkDispatchDetailsDialog({
     }
     
     return 'Horário comercial da empresa';
-  }, [dispatch?.schedule_enabled, dispatch?.schedule_override]);
+  }, [dispatch?.schedule_enabled, dispatch?.schedule_override, isEditing, editScheduleEnabled]);
 
   const formatInterval = (seconds: number) => {
     if (seconds >= 60) {
@@ -136,6 +159,34 @@ export function BulkDispatchDetailsDialog({
       return secs > 0 ? `${mins}min ${secs}s` : `${mins}min`;
     }
     return `${seconds}s`;
+  };
+
+  // Pode editar apenas se o disparo estiver em andamento ou pausado
+  const canEdit = dispatch && (dispatch.status === 'running' || dispatch.status === 'paused');
+  
+  const hasChanges = dispatch && editScheduleEnabled !== dispatch.schedule_enabled;
+  
+  const handleSave = async () => {
+    if (!dispatch) return;
+    
+    try {
+      await updateDispatch.mutateAsync({
+        id: dispatch.id,
+        schedule_enabled: editScheduleEnabled,
+      });
+      toast.success('Configurações atualizadas com sucesso!');
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error updating dispatch:', error);
+      toast.error('Erro ao atualizar configurações');
+    }
+  };
+  
+  const handleCancelEdit = () => {
+    if (dispatch) {
+      setEditScheduleEnabled(dispatch.schedule_enabled ?? true);
+    }
+    setIsEditing(false);
   };
 
   if (!dispatch) return null;
@@ -207,18 +258,76 @@ export function BulkDispatchDetailsDialog({
 
             <Separator />
 
-            {/* Schedule Section */}
+            {/* Schedule Section - EDITABLE */}
             <div className="space-y-3">
-              <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Horário
-              </h4>
-              
-              <div className="text-sm">
-                <div className="flex items-start gap-2">
-                  <Calendar className="h-4 w-4 mt-0.5 text-muted-foreground" />
-                  <span>{scheduleInfo}</span>
-                </div>
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                  Horário
+                </h4>
+                {canEdit && !isEditing && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditing(true)}
+                    className="h-7 gap-1 text-xs"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Editar
+                  </Button>
+                )}
               </div>
+              
+              {isEditing ? (
+                <div className="space-y-4 p-3 rounded-lg border bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="schedule-enabled" className="flex items-center gap-2 cursor-pointer">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      Respeitar horário comercial
+                    </Label>
+                    <Switch
+                      id="schedule-enabled"
+                      checked={editScheduleEnabled}
+                      onCheckedChange={setEditScheduleEnabled}
+                    />
+                  </div>
+                  
+                  <p className="text-xs text-muted-foreground">
+                    {editScheduleEnabled 
+                      ? 'Mensagens serão enviadas apenas durante o horário comercial configurado'
+                      : 'Mensagens serão enviadas a qualquer hora, inclusive fora do horário comercial'
+                    }
+                  </p>
+                  
+                  <div className="flex items-center gap-2 pt-2">
+                    <Button
+                      size="sm"
+                      onClick={handleSave}
+                      disabled={!hasChanges || updateDispatch.isPending}
+                      className="gap-1"
+                    >
+                      <Save className="h-3 w-3" />
+                      Salvar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCancelEdit}
+                      disabled={updateDispatch.isPending}
+                      className="gap-1"
+                    >
+                      <X className="h-3 w-3" />
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm">
+                  <div className="flex items-start gap-2">
+                    <Calendar className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                    <span>{scheduleInfo}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <Separator />
