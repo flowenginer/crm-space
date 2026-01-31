@@ -74,6 +74,7 @@ import Redirect from "@/pages/Redirect";
 import RedirectLanding from "@/pages/RedirectLanding";
 import CallManagement from "@/pages/CallManagement";
 import WhatsAppCallback from "@/pages/WhatsAppCallback";
+import BulkLeadUpdate from "@/pages/BulkLeadUpdate";
 
 // Support pages
 import SupportPage from "@/pages/SupportPage";
@@ -198,6 +199,11 @@ const App = () => (
               <Route path="/crm/settings" element={
                 <ProtectedRoute permission="deals.view">
                   <CRMSettings />
+                </ProtectedRoute>
+              } />
+              <Route path="/leads/atualizacao" element={
+                <ProtectedRoute permission="deals.view">
+                  <BulkLeadUpdate />
                 </ProtectedRoute>
               } />
               <Route path="/shipping" element={
