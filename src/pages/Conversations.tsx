@@ -2386,6 +2386,16 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     ).length;
   }, [conversations, allSharedConversationIds, quickFilter, selectedConversationId]);
 
+  // Calculate unread count for "mine" conversations (for notification badge)
+  const mineUnreadCount = useMemo(() => {
+    return conversations.filter(conv => 
+      conv.assigned_to === user?.id && 
+      conv.is_unread && 
+      // Don't count the currently selected conversation if user is viewing it
+      !(quickFilter === 'mine' && selectedConversationId === conv.id)
+    ).length;
+  }, [conversations, user?.id, quickFilter, selectedConversationId]);
+
   // Calculate filter counts - USE REAL COUNTS FROM DATABASE
   const filterCounts = useMemo(() => {
     const pinnedCount = pinnedConversations.length;
@@ -4207,6 +4217,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                         {filter === 'shared' && quickFilter !== 'shared' && sharedUnreadCount > 0 && (
                           <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
                             {sharedUnreadCount > 9 ? '9+' : sharedUnreadCount}
+                          </span>
+                        )}
+                        {/* Badge de notificação para "meus" */}
+                        {filter === 'mine' && quickFilter !== 'mine' && mineUnreadCount > 0 && (
+                          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                            {mineUnreadCount > 9 ? '9+' : mineUnreadCount}
                           </span>
                         )}
                       </button>
