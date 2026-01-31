@@ -1,181 +1,120 @@
 
-# Adicionar Filtro de Motivo de Fechamento no Disparo em Massa
+# Melhoria da Visualização Mobile - Campo de Mensagem
 
-## Resumo
+## Situação Atual
 
-Você quer disparar mensagens para clientes cujas conversas foram fechadas por um **motivo específico** (ex: "Queria menos de 10" - quantidade não atingida). Atualmente esse filtro não existe na página de Disparo em Massa.
+No mobile, a área de input de mensagem tem 4 ícones de atalho (Anexo, Calendário, Nota Interna, Templates) alinhados horizontalmente **antes** do campo de texto. Isso faz com que o campo de texto fique estreito e curto (cerca de 40% da largura da tela), dificultando a digitação.
 
-A implementação será feita de forma **aditiva**, sem alterar nada do que já funciona.
+## Propostas de Solução
 
----
-
-## O Que Será Adicionado
-
-| Local | Alteração |
-|-------|-----------|
-| Interface de Filtros | Novo campo "Motivo de Fechamento" com multi-select |
-| Hook `useBulkDispatch.ts` | Novo campo `closeReasonIds` na interface de filtros |
-| Funções RPC no banco | Novo parâmetro `p_close_reason_ids` nas funções de preview |
-| Edge Function | Suporte ao novo filtro na geração de contatos |
+Aqui estão 3 ideias para melhorar essa experiência:
 
 ---
 
-## Detalhes da Implementação
+### **Opção 1: Menu "+" Colapsável (Recomendada)**
 
-### 1. Atualizar Interface de Filtros
+Agrupar todos os atalhos dentro de um único botão "+" que abre um menu pop-up.
 
+**Layout Mobile:**
 ```text
-Localização: src/hooks/useBulkDispatch.ts
-
-Adicionar à interface BulkDispatchFilters:
-  closeReasonIds?: string[];  // IDs dos motivos de fechamento
+┌──────────────────────────────────────────────┐
+│ [+]  [      Campo de texto grande       ] [▶] │
+└──────────────────────────────────────────────┘
+         ↓ Ao clicar no "+"
+┌──────────────────────────────────────────────┐
+│  📎 Anexar    📅 Agendar    📝 Nota    ✨ IA  │
+└──────────────────────────────────────────────┘
 ```
 
-### 2. Adicionar UI do Filtro
-
-```text
-Localização: src/pages/BulkDispatch.tsx
-
-Posição: Logo abaixo do filtro de Departamento (linha ~480)
-
-Novo bloco:
-  ┌──────────────────────────────────────────────┐
-  │ Motivo de Fechamento                         │
-  │ [▼ Selecione os motivos                    ] │
-  │   ☑ Queria menos de 10                       │
-  │   ☐ Achou caro                               │
-  │   ☐ Sem interesse                            │
-  │   ☐ Contato futuro                           │
-  │   ...                                        │
-  └──────────────────────────────────────────────┘
-```
-
-**Nota**: Este filtro só faz sentido quando combinado com `conversationStatus = closed`.
-
-### 3. Atualizar Mapeamento para RPC
-
-```text
-Localização: src/hooks/useBulkDispatch.ts - função prepareRpcParams()
-
-Adicionar:
-  p_close_reason_ids: filters.closeReasonIds?.length ? filters.closeReasonIds : null,
-```
-
-### 4. Atualizar Funções RPC no Banco
-
-Duas funções precisam ser alteradas para aceitar o novo parâmetro:
-
-```sql
--- get_bulk_dispatch_preview_count
--- get_bulk_dispatch_preview_contacts
-
--- Adicionar parâmetro:
-p_close_reason_ids UUID[] DEFAULT NULL
-
--- Adicionar filtro (a coluna close_reason armazena o NOME, 
--- então precisamos fazer JOIN com close_reasons):
-AND (p_close_reason_ids IS NULL OR EXISTS (
-  SELECT 1 FROM conversations conv
-  JOIN close_reasons cr ON cr.name = conv.close_reason AND cr.tenant_id = conv.tenant_id
-  WHERE conv.contact_id = c.id 
-    AND cr.id = ANY(p_close_reason_ids)
-))
-```
-
-### 5. Buscar Motivos de Fechamento
-
-```text
-Localização: src/pages/BulkDispatch.tsx
-
-Adicionar query para buscar close_reasons:
-  const { data: closeReasons = [] } = useQuery({
-    queryKey: ['close-reasons'],
-    queryFn: async () => {
-      const { data } = await supabase.from('close_reasons').select('id, name').order('name');
-      return data || [];
-    }
-  });
-
-Transformar em options:
-  const closeReasonOptions = closeReasons.map(cr => ({ value: cr.id, label: cr.name }));
-```
+**Vantagens:**
+- Campo de texto ocupa quase toda a largura da tela
+- Todos os atalhos continuam acessíveis com 1 toque extra
+- Interface limpa e moderna (padrão usado no WhatsApp/Telegram)
 
 ---
 
-## Fluxo Esperado
+### **Opção 2: Atalhos Acima do Campo**
 
+Mover os atalhos para uma linha separada acima do campo de texto.
+
+**Layout Mobile:**
 ```text
-1. Usuário acessa Disparo em Massa
-2. Seleciona "Motivo de Fechamento" → "Queria menos de 10"
-3. Sistema automaticamente assume que quer conversas fechadas
-4. Preview mostra apenas contatos com esse motivo
-5. Disparo é enviado para esse público específico
-
-Motivos disponíveis no tenant:
-• Achou caro
-• Contato futuro
-• Duplicado
-• Número errado
-• Outro motivo
-• Queria menos de 10  ← O que você quer usar agora
-• Sem interesse
-• Spam
-• Venda realizada
+┌──────────────────────────────────────────────┐
+│  📎      📅      📝      ✨                   │
+├──────────────────────────────────────────────┤
+│ [      Campo de texto largo          ] [▶]   │
+└──────────────────────────────────────────────┘
 ```
 
----
+**Vantagens:**
+- Atalhos sempre visíveis sem clique extra
+- Campo de texto mais largo
 
-## Arquivos a Modificar
-
-| Arquivo | Ação |
-|---------|------|
-| `src/hooks/useBulkDispatch.ts` | Adicionar campo `closeReasonIds` à interface + mapeamento RPC |
-| `src/pages/BulkDispatch.tsx` | Adicionar query de close_reasons + componente MultiSelect |
-| Migração SQL | Alterar 2 funções RPC para aceitar novo parâmetro |
-| `supabase/functions/process-bulk-dispatch/index.ts` | Suporte ao filtro na geração server-side |
+**Desvantagens:**
+- Ocupa mais espaço vertical (reduz área de mensagens)
 
 ---
 
-## Seção Técnica - SQL das Funções RPC
+### **Opção 3: Ocultar Atalhos Menos Usados no Mobile**
 
-```sql
--- Alteração em get_bulk_dispatch_preview_count
-CREATE OR REPLACE FUNCTION get_bulk_dispatch_preview_count(
-  p_tenant_id UUID,
-  p_lead_status_names TEXT[] DEFAULT NULL,
-  p_last_client_message_days_ago INT DEFAULT NULL,
-  p_tag_ids UUID[] DEFAULT NULL,
-  p_conversation_statuses TEXT[] DEFAULT NULL,
-  p_segment_id UUID DEFAULT NULL,
-  p_origin TEXT DEFAULT NULL,
-  p_assigned_to UUID[] DEFAULT NULL,
-  p_department_ids UUID[] DEFAULT NULL,
-  p_contact_type TEXT DEFAULT NULL,
-  p_include_blocked BOOLEAN DEFAULT FALSE,
-  p_first_contact_start TIMESTAMP DEFAULT NULL,
-  p_first_contact_end TIMESTAMP DEFAULT NULL,
-  p_close_reason_ids UUID[] DEFAULT NULL  -- NOVO
-)
-RETURNS BIGINT AS $$
-  SELECT COUNT(DISTINCT c.id)
-  FROM contacts c
-  WHERE c.tenant_id = p_tenant_id
-    -- ... filtros existentes ...
-    -- Filtro de motivo de fechamento (NOVO)
-    AND (p_close_reason_ids IS NULL OR EXISTS (
-      SELECT 1 FROM conversations conv
-      JOIN close_reasons cr ON cr.name = conv.close_reason AND cr.tenant_id = conv.tenant_id
-      WHERE conv.contact_id = c.id 
-        AND cr.id = ANY(p_close_reason_ids)
-    ))
-$$ LANGUAGE SQL STABLE;
+Manter apenas 1-2 ícones essenciais (como Anexo e Templates) e esconder os demais no mobile.
+
+**Layout Mobile:**
+```text
+┌──────────────────────────────────────────────┐
+│ [📎] [✨]  [   Campo de texto maior   ] [▶]  │
+└──────────────────────────────────────────────┘
 ```
 
+**Vantagens:**
+- Implementação simples (apenas adicionar `hidden md:flex`)
+- Campo de texto maior
+
+**Desvantagens:**
+- Funcionalidades de Calendário e Nota não acessíveis no mobile
+
 ---
 
-## Impacto Zero em Funcionalidades Existentes
+## Recomendação
 
-- Filtros existentes continuam funcionando normalmente
-- Novo parâmetro tem `DEFAULT NULL` (não afeta chamadas antigas)
-- UI adiciona campo sem remover nenhum outro
-- Edge function mantém lógica original, apenas adiciona verificação extra
+Sugiro a **Opção 1 (Menu "+" Colapsável)** por ser o padrão mais usado em apps de mensagem profissionais. Ela mantém todas as funcionalidades acessíveis enquanto maximiza o espaço para digitação.
+
+---
+
+## Detalhes Técnicos da Implementação (Opção 1)
+
+### Alterações no arquivo `src/pages/Conversations.tsx`:
+
+1. **Criar estado para controle do menu**:
+   - Adicionar `const [showMobileActions, setShowMobileActions] = useState(false)`
+
+2. **Estrutura condicional para mobile/desktop**:
+   - No mobile (`isMobile === true`): Mostrar apenas um botão "+" que abre um Popover/Sheet com os atalhos
+   - No desktop: Manter layout atual sem mudanças
+
+3. **Componente do botão "+"**:
+   ```tsx
+   {isMobile && (
+     <Popover open={showMobileActions} onOpenChange={setShowMobileActions}>
+       <PopoverTrigger asChild>
+         <button className="p-2 hover:bg-muted rounded-lg">
+           <Plus size={22} className="text-muted-foreground" />
+         </button>
+       </PopoverTrigger>
+       <PopoverContent side="top" className="w-auto p-2">
+         <div className="flex gap-4">
+           {/* Ícones de Anexo, Calendário, Nota, Templates */}
+         </div>
+       </PopoverContent>
+     </Popover>
+   )}
+   ```
+
+4. **Ocultar ícones individuais no mobile**:
+   - Adicionar `hidden md:flex` aos botões de Anexo, Calendário, Nota e Templates
+   - Eles só aparecem no desktop, enquanto o "+" aparece apenas no mobile
+
+### Resultado Final
+
+- **Mobile**: Um botão "+" + Campo de texto largo + Botão enviar
+- **Desktop**: Layout permanece inalterado (todos os ícones visíveis)
