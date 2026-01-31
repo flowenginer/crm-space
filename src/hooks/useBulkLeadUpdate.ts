@@ -297,11 +297,14 @@ export function useBulkLeadUpdate() {
       const currentAgentId = currentAgent?.agentId ?? null;
       const currentAgentName = currentAgent?.agentName ?? null;
 
-      // Detectar diferenças para auto-marcar checkboxes - TUDO marcado por padrão quando há dado
+      // Detectar diferenças - checkbox só marcado se DIFERENTE (laranja)
+      // Verde (igual) = desmarcado, Laranja (diferente) = marcado
       const nameIsDifferent = row.nomeContato && foundContact?.full_name && 
         row.nomeContato.toLowerCase() !== foundContact.full_name.toLowerCase();
       const valueIsDifferent = row.valorNegociado !== undefined && row.valorNegociado !== currentValue;
       const quantityIsDifferent = row.qtdCamisas !== undefined && row.qtdCamisas !== currentQuantity;
+      // Status será avaliado no Preview com base no DEFAULT_STATUS
+      const statusIsDifferent = false; // Inicialmente false, será re-calculado no Preview
       const assigneeIsDifferent = matchedProfile && matchedProfile.id !== foundContact?.assigned_to;
       const currentAgentIsDifferent = matchedProfile && matchedProfile.id !== currentAgentId;
       const cpfCnpjIsDifferent = row.cpfCnpj && row.cpfCnpj !== currentCpfCnpj;
@@ -331,19 +334,20 @@ export function useBulkLeadUpdate() {
         currentBairro,
         currentCidade,
         currentEstado,
-        // Campos a atualizar (TODOS marcados por padrão quando há dados - exceto currentAgent que é opcional)
+        // Campos a atualizar - APENAS marcados quando DIFERENTES (laranja)
+        // Verde (igual) = desmarcado, Laranja (diferente) = marcado
         updateFields: {
-          name: !!row.nomeContato,  // Marcado se tem dado na planilha
-          value: row.valorNegociado !== undefined,
-          quantity: row.qtdCamisas !== undefined,
-          status: true, // Status sempre marcado por padrão
-          assignee: !!matchedProfile, // Marcado se encontrou vendedor na planilha
-          currentAgent: false, // OPCIONAL - desmarcado por padrão
-          cpfCnpj: !!row.cpfCnpj,
-          email: !!row.email,
-          bairro: !!row.bairro,
-          cidade: !!row.cidade,
-          estado: !!row.estado,
+          name: !!nameIsDifferent,
+          value: !!valueIsDifferent,
+          quantity: !!quantityIsDifferent,
+          status: !!statusIsDifferent,
+          assignee: !!assigneeIsDifferent,
+          currentAgent: !!currentAgentIsDifferent,
+          cpfCnpj: !!cpfCnpjIsDifferent,
+          email: !!emailIsDifferent,
+          bairro: !!bairroIsDifferent,
+          cidade: !!cidadeIsDifferent,
+          estado: !!estadoIsDifferent,
         },
       };
     });

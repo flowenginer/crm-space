@@ -58,11 +58,17 @@ export function BulkUpdatePreview({
   });
 
   // Inicializar settings das linhas quando matchedRows mudar
+  // Recalcular status checkbox baseado no DEFAULT_STATUS
   useEffect(() => {
     if (matchedRows.length > 0) {
       const newSettings = new Map<number, MatchedRow['updateFields']>();
       matchedRows.forEach((row, index) => {
-        newSettings.set(index, { ...row.updateFields });
+        // Status: marcado apenas se diferente do DEFAULT_STATUS (laranja)
+        const statusIsDifferent = row.currentLeadStatus !== DEFAULT_STATUS;
+        newSettings.set(index, { 
+          ...row.updateFields,
+          status: statusIsDifferent, // Recalcular status aqui
+        });
       });
       setRowFieldSettings(newSettings);
     }
