@@ -82,6 +82,7 @@ import { useSegments } from '@/hooks/useSegments';
 import { useTeam } from '@/hooks/useTeam';
 import { useDepartments } from '@/hooks/useDepartments';
 import { useMarketingCampaigns } from '@/hooks/useMarketingCampaigns';
+import { useCloseReasons } from '@/hooks/useCloseReasons';
 import { BulkDispatchDetailsDialog } from '@/components/bulk-dispatch/BulkDispatchDetailsDialog';
 import { MetaTemplateSelector } from '@/components/meta-templates';
 import { type MetaMessageTemplate } from '@/hooks/useMetaTemplates';
@@ -152,6 +153,7 @@ export default function BulkDispatch() {
   const { data: segments = [] } = useSegments();
   const { data: team = [] } = useTeam();
   const { data: departments = [] } = useDepartments();
+  const { data: closeReasons = [] } = useCloseReasons(true);
   const { data: companySettings } = useCompanySettings();
   
   // Contagem exata via COUNT
@@ -216,6 +218,7 @@ export default function BulkDispatch() {
   const tagOptions = useMemo(() => tags.map(t => ({ value: t.id, label: t.name })), [tags]);
   const teamOptions = useMemo(() => team.map(t => ({ value: t.id, label: t.full_name })), [team]);
   const departmentOptions = useMemo(() => departments.map(d => ({ value: d.id, label: d.name })), [departments]);
+  const closeReasonOptions = useMemo(() => closeReasons.map(cr => ({ value: cr.id, label: cr.name })), [closeReasons]);
 
   // Scroll infinito - carregar mais ao chegar no final
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -477,6 +480,22 @@ export default function BulkDispatch() {
                 <div className="space-y-2">
                   <Label><Building className="h-3 w-3 inline mr-1" />Departamento</Label>
                   <MultiSelect options={departmentOptions} value={filters.departmentIds || []} onChange={(v) => setFilters(f => ({ ...f, departmentIds: v.length > 0 ? v : undefined }))} placeholder="Todos" />
+                </div>
+                <div className="space-y-2">
+                  <Label><XCircle className="h-3 w-3 inline mr-1" />Motivo de Fechamento</Label>
+                  <MultiSelect 
+                    options={closeReasonOptions} 
+                    value={filters.closeReasonIds || []} 
+                    onChange={(v) => setFilters(f => ({ ...f, closeReasonIds: v.length > 0 ? v : undefined }))} 
+                    placeholder="Todos os motivos"
+                    searchable
+                    searchPlaceholder="Buscar motivo..."
+                  />
+                  {filters.closeReasonIds && filters.closeReasonIds.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Filtra contatos com conversas fechadas pelo motivo selecionado
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <Label>Incluir Bloqueados</Label>

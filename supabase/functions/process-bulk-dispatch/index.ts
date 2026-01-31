@@ -647,6 +647,7 @@ async function generateContactsFromFilters(supabase: any, dispatch: any): Promis
       p_include_blocked: filters.includeBlocked || false,
       p_first_contact_start: filters.firstContactStart || null,
       p_first_contact_end: filters.firstContactEnd ? filters.firstContactEnd + 'T23:59:59' : null,
+      p_close_reason_ids: filters.closeReasonIds?.length ? filters.closeReasonIds : null,
       p_offset_val: offset,
       p_limit_val: PAGE_SIZE,
     });
