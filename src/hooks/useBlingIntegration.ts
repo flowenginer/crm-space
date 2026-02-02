@@ -172,10 +172,10 @@ export function useBlingConfigMutation() {
         if (error) throw error;
         return data;
       } else {
-        // Create new
+        // Create new - tenant_id is auto-assigned by trigger
         const { data, error } = await supabase
           .from('bling_integration_config')
-          .insert(configData)
+          .insert(configData as any)
           .select()
           .single();
 
@@ -211,9 +211,10 @@ export function useStartBlingOAuth() {
           .update({ client_id: clientId, client_secret: clientSecret })
           .eq('id', existing.id);
       } else {
+        // tenant_id is auto-assigned by trigger
         await supabase
           .from('bling_integration_config')
-          .insert({ client_id: clientId, client_secret: clientSecret });
+          .insert({ client_id: clientId, client_secret: clientSecret } as any);
       }
 
       // Get the OAuth URL from edge function
