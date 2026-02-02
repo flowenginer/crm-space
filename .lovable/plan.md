@@ -1,95 +1,75 @@
 
-# Plano de Correção: Criação de Contatos e Transferência na Conta Master
+# Plano: Permitir Vendedores da Master Visualizarem Todos os Contatos
 
 ## Diagnóstico
 
-Após análise dos logs e código, identifiquei **2 problemas distintos**:
+Após análise detalhada, identifiquei o problema:
+
+### Situação Atual
+
+| Componente | Status |
+|------------|--------|
+| RPC `search_contacts_paginated` | Retorna todos os contatos do tenant (SECURITY DEFINER) |
+| RPC `search_contacts_unaccent` | Retorna todos os contatos do tenant (SECURITY DEFINER) |
+| RLS SELECT na tabela `contacts` | Bloqueia contatos atribuídos a outros vendedores |
+| Vendedores Master | `can_view_all_conversations = false` |
+| Departamentos Master | `can_view_all_conversations = false` |
+
+### O que está causando o problema
+
+A RPC de busca retorna os contatos corretamente, mas as queries secundárias que buscam dados relacionados (assignee, department) passam pelo RLS e falham em trazer dados para contatos de outros vendedores.
+
+Além disso, várias partes do sistema fazem queries diretas na tabela `contacts` sem usar as RPCs, sendo bloqueadas pelo RLS.
 
 ---
 
-## Problema #1: Criação de Contatos - Erro de Duplicata
+## Solução Recomendada
 
-### O que está acontecendo:
+Existem duas abordagens possíveis:
 
-O erro principal é **telefone duplicado**, não um problema de permissão RLS:
+### Opção A: Habilitar flag no Departamento (RECOMENDADO)
 
-```
-duplicate key value violates unique constraint "contacts_phone_tenant_unique"
-```
+Ativar `can_view_all_conversations = true` para os departamentos da Master. Isso permite que todos os vendedores desses departamentos vejam todos os contatos automaticamente.
 
-### Por que acontece:
+**Vantagens:**
+- Não requer mudanças no código
+- Aplicado instantaneamente
+- Controle granular por departamento
 
-1. O vendedor tenta criar contato com telefone X
-2. Esse telefone já existe no sistema (atribuído a outro vendedor)
-3. Devido ao RLS, o vendedor não consegue "ver" o contato existente
-4. O INSERT falha por constraint de unicidade
-5. A mensagem de erro que implementamos na última correção deveria aparecer, mas pode não estar funcionando corretamente
+**Desvantagem:**
+- Afeta também visualização de conversas
 
-### Verificação necessária:
+### Opção B: Alterar política RLS para permitir visualização global
 
-Verificar se a mensagem de erro melhorada (`toast.error('Já existe um contato com este telefone no sistema...')`) está aparecendo corretamente.
+Modificar a política RLS de SELECT em `contacts` para permitir visualização tenant-wide para vendedores, mantendo a restrição apenas para UPDATES.
 
-### Políticas RLS atuais (corretas):
-
-| Política | Tipo | Condição |
-|----------|------|----------|
-| Authenticated users can create contacts | INSERT | `auth.uid() IS NOT NULL` |
-| Tenant isolation for contacts | ALL (RESTRICTIVE) | `tenant_id = get_user_tenant_id()` |
-
-As permissões de INSERT estão corretas. O problema real é a duplicata.
+**Arquivo afetado:** Nova migration SQL
 
 ---
 
-## Problema #2: Transferência de Conversas - Erro de RLS
+## Implementação Recomendada (Opção A + B combinadas)
 
-### Erro nos logs:
+### Correção 1: Habilitar visualização global nos departamentos Master
 
+Executar migration SQL para:
+```sql
+UPDATE departments
+SET can_view_all_conversations = true
+WHERE tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf';
 ```
-new row violates row-level security policy for table "conversations"
+
+### Correção 2: Adicionar política RLS para leitura tenant-wide de contatos
+
+Criar nova política para permitir que todos os usuários autenticados do mesmo tenant **visualizem** contatos (mas não editem os de outros):
+
+```sql
+-- Política de leitura tenant-wide para contatos
+CREATE POLICY "Users can view all tenant contacts"
+  ON contacts FOR SELECT
+  USING (tenant_id = get_user_tenant_id());
 ```
 
-### Causa:
-
-Existem **3 lugares no código** que fazem UPDATE direto em `conversations` (sem usar a RPC `transfer_conversation` que é SECURITY DEFINER):
-
-| Arquivo | Função | Linha |
-|---------|--------|-------|
-| `ConversationSidebar.tsx` | `updateAssignedUser` | 399-407 |
-| `ConversationSidebar.tsx` | `updateDepartment` | 468-474 |
-| `useConversationEvents.ts` | `useReturnConversation` | 96-106 |
-
-### Por que falha:
-
-A política de UPDATE em conversations só permite:
-- Admins/Supervisors: `is_admin_or_supervisor(auth.uid())`
-- Dono da conversa: `assigned_to = auth.uid()`
-- Conversa sem dono do mesmo departamento: `assigned_to IS NULL AND department_id IN (...)`
-
-Se a Beatriz (vendedora) tenta alterar uma conversa que não é dela, o RLS bloqueia.
-
-### Correção proposta:
-
-Modificar os locais que fazem UPDATE direto para usar a função RPC `transfer_conversation` ou criar novas RPCs SECURITY DEFINER para operações específicas.
-
----
-
-## Correções a Implementar
-
-### Correção 1: Migrar updates de conversa para RPC
-
-Criar uma nova função RPC `update_conversation_assignment` SECURITY DEFINER que permita:
-- Atualizar `assigned_to` e `department_id`
-- Incluir validações de permissão dentro da função
-- Registrar eventos de transferência
-
-**Arquivos afetados:**
-- Nova migration SQL com a função RPC
-- `src/components/conversations/ConversationSidebar.tsx` - usar nova RPC
-- `src/hooks/useConversationEvents.ts` - usar nova RPC
-
-### Correção 2: Melhorar feedback de duplicata
-
-Verificar e aprimorar o tratamento de erro no `useContacts.ts` para garantir que a mensagem correta seja exibida.
+Esta política será avaliada em conjunto com as outras políticas SELECT existentes (OR lógico), garantindo que qualquer usuário autenticado do tenant possa ver todos os contatos.
 
 ---
 
@@ -97,15 +77,23 @@ Verificar e aprimorar o tratamento de erro no `useContacts.ts` para garantir que
 
 | Arquivo | Mudança |
 |---------|---------|
-| `supabase/migrations/xxx.sql` | Nova função RPC `update_conversation_assignment` |
-| `src/components/conversations/ConversationSidebar.tsx` | Usar RPC em vez de UPDATE direto |
-| `src/hooks/useConversationEvents.ts` | Usar RPC no `useReturnConversation` |
-| `src/hooks/useContacts.ts` | Verificar/melhorar tratamento de erro de duplicata |
+| `supabase/migrations/xxx.sql` | Habilitar `can_view_all_conversations` nos departamentos Master E/OU criar política RLS de leitura tenant-wide |
 
 ---
 
-## Complexidade e Risco
+## Considerações de Segurança
 
-- **Complexidade:** Média
-- **Risco:** Baixo (função SECURITY DEFINER já existe como modelo)
-- **Arquivos afetados:** 3-4
+A mudança proposta mantém a segurança porque:
+
+1. **Isolamento de tenant** permanece intacto via `get_user_tenant_id()`
+2. Vendedores podem **ver** contatos de outros, mas **não editar** (políticas UPDATE continuam restritivas)
+3. Transferências e edições continuam exigindo propriedade ou permissão admin
+4. A funcionalidade de "pedir contato de volta" continua relevante para operações de UPDATE
+
+---
+
+## Complexidade
+
+- **Nível:** Baixa
+- **Risco:** Baixo (apenas amplia visualização, não altera permissões de escrita)
+- **Tempo estimado:** Imediato (apenas migration SQL)
