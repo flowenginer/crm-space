@@ -145,6 +145,7 @@ import { useTags, useAddTagToContact, useRemoveTagFromContact, useCreateTag, Tag
 import { useDepartments } from '@/hooks/useDepartments';
 import { useUserDepartments } from '@/hooks/useUserDepartments';
 import { useChannels } from '@/hooks/useChannels';
+import { useUserChannels } from '@/hooks/useUserChannels';
 import { usePinnedConversations, useTogglePinConversation } from '@/hooks/usePinnedConversations';
 import { useSharedConversations, useSharedConversationCounts, useSharedConversationIds, useAllSharedConversationIds, useMySharePermission } from '@/hooks/useSharedConversations';
 import { useSharedConversationsWithDetails } from '@/hooks/useSharedConversationsWithDetails';
@@ -1731,7 +1732,8 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const createTag = useCreateTag();
   const { data: departments = [] } = useDepartments();
   const { data: userDepartmentsData = [] } = useUserDepartments(profile?.id);
-  const { data: channels = [] } = useChannels();
+  const { data: allChannels = [] } = useChannels();
+  const userChannels = useUserChannels();
   const { data: pinnedConversations = [] } = usePinnedConversations();
   const { isPinned, togglePin } = useTogglePinConversation();
   const { data: sharedConversations = [] } = useSharedConversations();
@@ -3411,7 +3413,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     try {
       // Detect channel type
       const selectedConv = conversations?.find(c => c.id === selectedConversationId);
-      const channelData = channels?.find(c => c.id === selectedConv?.channel_id);
+      const channelData = allChannels?.find(c => c.id === selectedConv?.channel_id);
       const isOfficialChannel = (channelData as any)?.type === 'official';
       isOfficialRecordingRef.current = isOfficialChannel;
       
@@ -3717,18 +3719,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                         <MessageCircle 
                           size={18} 
                           className={cn(
-                            channels?.every(c => c.status === 'connected') 
+                            allChannels?.every(c => c.status === 'connected') 
                               ? "text-green-500" 
-                              : channels?.some(c => c.status === 'connected')
+                              : allChannels?.some(c => c.status === 'connected')
                                 ? "text-yellow-500"
                                 : "text-muted-foreground"
                           )} 
                         />
                         <span className={cn(
                           "absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background",
-                          channels?.every(c => c.status === 'connected') 
+                          allChannels?.every(c => c.status === 'connected') 
                             ? "bg-green-500" 
-                            : channels?.some(c => c.status === 'connected')
+                            : allChannels?.some(c => c.status === 'connected')
                               ? "bg-yellow-500"
                               : "bg-red-500"
                         )} />
@@ -3742,12 +3744,12 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                         </h4>
                       </div>
                       <div className="max-h-64 overflow-y-auto">
-                        {channels?.length === 0 ? (
+                        {allChannels?.length === 0 ? (
                           <div className="p-4 text-center text-sm text-muted-foreground">
                             Nenhum canal configurado
                           </div>
                         ) : (
-                          channels?.map(channel => (
+                          allChannels?.map(channel => (
                             <div 
                               key={channel.id} 
                               className="flex items-center justify-between p-3 hover:bg-muted/50 border-b border-border/50 last:border-b-0"
@@ -3776,7 +3778,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                       </div>
                       <div className="p-3 border-t border-border bg-muted/30">
                         <span className="text-xs text-muted-foreground">
-                          {channels?.filter(c => c.status === 'connected').length || 0} ativos · {channels?.filter(c => c.status !== 'connected').length || 0} inativos
+                          {allChannels?.filter(c => c.status === 'connected').length || 0} ativos · {allChannels?.filter(c => c.status !== 'connected').length || 0} inativos
                         </span>
                       </div>
                     </PopoverContent>
@@ -3980,7 +3982,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os canais</SelectItem>
-                {channels.map((channel) => (
+                {userChannels.map((channel) => (
                   <SelectItem key={channel.id} value={channel.id}>
                     {channel.name} ({channelFilterCounts[channel.id] || 0})
                   </SelectItem>
@@ -4149,7 +4151,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               {channelFilter !== 'all' && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 text-green-600 dark:text-green-400 text-xs rounded-full">
                   <MessageCircle size={12} />
-                  {channels.find(c => c.id === channelFilter)?.name || 'Sem canal'}
+                  {allChannels.find(c => c.id === channelFilter)?.name || 'Sem canal'}
                   <button onClick={() => setChannelFilter('all')} className="ml-1 hover:opacity-70">
                     <X size={12} />
                   </button>
@@ -4360,7 +4362,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                   isSelectionMode={isConversationSelectionMode}
                   isChecked={selectedConversationIds.has(conv.id)}
                   onToggleCheck={() => toggleConversationSelection(conv.id)}
-                  channels={channels}
+                  channels={allChannels}
                 />
               </div>
             ))}
@@ -4663,7 +4665,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                     <DropdownMenuTrigger asChild>
                       <button 
                         className="p-2 hover:bg-muted rounded-lg transition-colors hidden md:flex items-center gap-1"
-                        title={`Canal: ${channels?.find(c => c.id === selectedConversation?.channel_id)?.name || 'Não definido'}`}
+                        title={`Canal: ${allChannels?.find(c => c.id === selectedConversation?.channel_id)?.name || 'Não definido'}`}
                       >
                         <Smartphone size={18} className="text-muted-foreground" />
                         <ChevronDown size={12} className="text-muted-foreground" />
@@ -4671,11 +4673,11 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-72 bg-popover">
                       <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b">
-                        Canal atual: {channels?.find(c => c.id === selectedConversation?.channel_id)?.name || 'Não definido'}
+                        Canal atual: {allChannels?.find(c => c.id === selectedConversation?.channel_id)?.name || 'Não definido'}
                       </div>
-                      {channels?.filter(c => c.status === 'connected').map(channel => {
+                      {allChannels?.filter(c => c.status === 'connected').map(channel => {
                         const isOfficial = (channel as any)?.type === 'official';
-                        const currentChannelIsOfficial = (channels?.find(c => c.id === selectedConversation?.channel_id) as any)?.type === 'official';
+                        const currentChannelIsOfficial = (allChannels?.find(c => c.id === selectedConversation?.channel_id) as any)?.type === 'official';
                         const isChangingToOfficial = isOfficial && !currentChannelIsOfficial;
                         
                         return (
@@ -4749,7 +4751,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                           </DropdownMenuItem>
                         );
                       })}
-                      {(!channels || channels.filter(c => c.status === 'connected').length === 0) && (
+                      {(!allChannels || allChannels.filter(c => c.status === 'connected').length === 0) && (
                         <div className="px-3 py-2 text-sm text-muted-foreground">
                           Nenhum canal conectado
                         </div>
@@ -5267,7 +5269,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               const canSendMessages = isOwner || isAdmin || sharePermission.canEdit || !sharePermission.isShared;
 
               // Check 24h/72h window for official channels
-              const channelData = channels?.find(c => c.id === selectedConversation?.channel_id);
+              const channelData = allChannels?.find(c => c.id === selectedConversation?.channel_id);
               const isOfficialChannel = (channelData as any)?.type === 'official';
               const lastClientMessage = (selectedConversation as any)?.last_client_message_at;
               const isCTWA = (selectedConversation as any)?.referral_source === 'ctwa_ad';
