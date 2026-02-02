@@ -427,12 +427,45 @@ export function useImportContacts() {
             }
             
             if (options.createMissingContacts && row.nome) {
-              // Queue for batch creation
+              // FIX #1: Resolver vendedor da planilha ANTES de criar contato
+              let newContactAssigneeId: string | null = null;
+              if (options.defaultAssigneeId) {
+                newContactAssigneeId = options.defaultAssigneeId;
+              } else if (options.updateAssignee && row.vendedor && row.vendedor.trim()) {
+                const agent = findProfileByName(row.vendedor);
+                if (agent) {
+                  newContactAssigneeId = agent.id;
+                } else {
+                  importResult.log.push({
+                    type: 'warning',
+                    message: `Vendedor não encontrado para novo contato: "${row.vendedor}"`,
+                    row: rowNum,
+                  });
+                }
+              }
+
+              // FIX #2: Resolver status de lead ANTES de criar contato
+              let newContactLeadStatus: string | null = null;
+              if (options.updateLeadStatus && row.statusLead && row.statusLead.trim()) {
+                const status = await findOrCreateLeadStatus(row.statusLead);
+                if (status) {
+                  newContactLeadStatus = status.name;
+                } else {
+                  importResult.log.push({
+                    type: 'warning',
+                    message: `Não foi possível processar status para novo contato: "${row.statusLead}"`,
+                    row: rowNum,
+                  });
+                }
+              }
+
+              // Queue for batch creation - agora com assignee e lead_status corretos
               const newContactData = {
                 full_name: row.nome.trim(),
                 phone: normalizedPhone,
                 state: identifiedState || null,
-                assigned_to: options.defaultAssigneeId || null,
+                assigned_to: newContactAssigneeId,
+                lead_status: newContactLeadStatus,
               };
               
               contactsToCreate.push(newContactData);
@@ -444,7 +477,7 @@ export function useImportContacts() {
               
               importResult.log.push({
                 type: 'info',
-                message: `Contato a criar: ${row.nome}${identifiedState ? ` (${identifiedState})` : ''}`,
+                message: `Contato a criar: ${row.nome}${newContactAssigneeId ? ' (c/ agente)' : ''}${newContactLeadStatus ? ` [${newContactLeadStatus}]` : ''}${identifiedState ? ` (${identifiedState})` : ''}`,
                 row: rowNum,
               });
             } else {
@@ -652,14 +685,30 @@ export function useImportContacts() {
         const variations = getPhoneSearchVariations(normalizedPhone);
         
         let contactId: string | null = null;
-        for (const v of variations) {
-          if (contactsCache.has(v)) {
-            contactId = contactsCache.get(v)!.id;
-            break;
+        
+        // FIX #3: Primeiro tentar pelo phone normalizado EXATO no createdContactsMap
+        // Isso garante que novos contatos recebam suas tags corretamente
+        if (createdContactsMap.has(normalizedPhone)) {
+          contactId = createdContactsMap.get(normalizedPhone)!;
+        }
+        
+        // Se não encontrou, tentar pelas variações no contactsCache (contatos existentes)
+        if (!contactId) {
+          for (const v of variations) {
+            if (contactsCache.has(v)) {
+              contactId = contactsCache.get(v)!.id;
+              break;
+            }
           }
-          if (createdContactsMap.has(v)) {
-            contactId = createdContactsMap.get(v)!;
-            break;
+        }
+        
+        // Se ainda não encontrou, tentar variações no createdContactsMap como fallback
+        if (!contactId) {
+          for (const v of variations) {
+            if (createdContactsMap.has(v)) {
+              contactId = createdContactsMap.get(v)!;
+              break;
+            }
           }
         }
         
