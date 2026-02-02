@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 type WhatsAppProvider = "zapi" | "uazapi" | "evolution";
-type MessageType = "text" | "image" | "audio" | "video" | "document" | "sticker" | "location" | "contact";
+type MessageType = "text" | "image" | "audio" | "video" | "document" | "sticker" | "location" | "contact" | "contacts";
 
 // =====================================================
 // REFERRAL DATA - Meta Ads / Click-to-WhatsApp
@@ -4644,8 +4644,8 @@ function detectUAZAPIMessageTypeNew(msg: any): MessageType {
       return "location";
     }
     if (matchesType(messageType, "vcard", "contact")) {
-      console.log(`[Webhook UAZAPI] ✅ Detected CONTACT from messageType: ${messageType}`);
-      return "contact";
+      console.log(`[Webhook UAZAPI] 📇 Detected CONTACTS from messageType: ${messageType} - vcard: ${msg.vcard?.substring(0, 100) || 'none'}`);
+      return "contacts";
     }
   }
   
@@ -4676,8 +4676,8 @@ function detectUAZAPIMessageTypeNew(msg: any): MessageType {
       return "location";
     }
     if (matchesType(type, "vcard", "contact")) {
-      console.log(`[Webhook UAZAPI] ✅ Detected CONTACT from type: ${type}`);
-      return "contact";
+      console.log(`[Webhook UAZAPI] 📇 Detected CONTACTS from type: ${type} - vcard: ${msg.vcard?.substring(0, 100) || 'none'}`);
+      return "contacts";
     }
     // text/chat/extendedtextmessage = text
     if (matchesType(type, "text", "chat", "extended")) {
@@ -4710,8 +4710,40 @@ function extractUAZAPIContentNew(msg: any, type: MessageType): string {
       return "[Sticker]";
     case "location": 
       return "[Localização]";
-    case "contact": 
-      return "[Contato]";
+    case "contact":
+    case "contacts": {
+      // Tentar extrair dados do vCard
+      const vcard = msg.vcard || msg.content?.vcard || msg.contactMessage?.vcard || '';
+      const contacts = msg.contacts || msg.content?.contacts || [];
+      
+      // Se tiver array de contacts (formato CloudAPI-like)
+      if (contacts.length > 0) {
+        const c = contacts[0];
+        const name = c.name?.formatted_name || c.name?.first_name || c.displayName || 'Contato';
+        const phone = c.phones?.[0]?.phone || c.phones?.[0]?.wa_id || '';
+        console.log(`[Webhook UAZAPI] 📇 Extracted contact from array: ${name} (${phone})`);
+        return `📇 ${name}${phone ? ` (${phone})` : ''}`;
+      }
+      
+      // Se tiver vCard string, fazer parse
+      if (vcard) {
+        const nameMatch = vcard.match(/FN:(.+)/);
+        const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
+        const name = nameMatch?.[1]?.trim() || 'Contato';
+        const phone = phoneMatch?.[1]?.trim() || '';
+        console.log(`[Webhook UAZAPI] 📇 Extracted contact from vCard: ${name} (${phone})`);
+        return `📇 ${name}${phone ? ` (${phone})` : ''}`;
+      }
+      
+      // Se tiver displayName direto
+      if (msg.displayName || msg.content?.displayName) {
+        const displayName = msg.displayName || msg.content?.displayName;
+        console.log(`[Webhook UAZAPI] 📇 Extracted contact from displayName: ${displayName}`);
+        return `📇 ${displayName}`;
+      }
+      
+      return "[Contato]";  // Fallback
+    }
     default: 
       return "";
   }
@@ -5109,7 +5141,7 @@ function detectEvolutionMessageType(msg: any): MessageType {
   if (message.documentMessage) return "document";
   if (message.stickerMessage) return "sticker";
   if (message.locationMessage) return "location";
-  if (message.contactMessage) return "contact";
+  if (message.contactMessage || message.contactsArrayMessage) return "contacts";
   return "text";
 }
 
@@ -5123,7 +5155,31 @@ function extractEvolutionContent(msg: any, type: MessageType): string {
     case "document": return message?.documentMessage?.fileName || "[Documento]";
     case "sticker": return "[Sticker]";
     case "location": return "[Localização]";
-    case "contact": return "[Contato]";
+    case "contact":
+    case "contacts": {
+      const contactMsg = message?.contactMessage;
+      const contactsArray = message?.contactsArrayMessage?.contacts;
+      
+      // Se tiver array de contacts
+      if (contactsArray && contactsArray.length > 0) {
+        const c = contactsArray[0];
+        console.log(`[Webhook Evolution] 📇 Extracted contact from array: ${c.displayName}`);
+        return `📇 ${c.displayName || 'Contato'}`;
+      }
+      
+      // Se tiver contactMessage com vCard
+      if (contactMsg) {
+        const vcard = contactMsg.vcard || '';
+        const nameMatch = vcard.match(/FN:(.+)/);
+        const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
+        const name = nameMatch?.[1]?.trim() || contactMsg.displayName || 'Contato';
+        const phone = phoneMatch?.[1]?.trim() || '';
+        console.log(`[Webhook Evolution] 📇 Extracted contact: ${name} (${phone})`);
+        return `📇 ${name}${phone ? ` (${phone})` : ''}`;
+      }
+      
+      return "[Contato]";
+    }
     default: return "";
   }
 }

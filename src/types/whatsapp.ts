@@ -12,6 +12,7 @@ export type MessageType =
   | 'sticker' 
   | 'location'
   | 'contact'
+  | 'contacts'
   | 'button'
   | 'list';
 
