@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useWebRTCCall, WebRTCCallState } from '@/hooks/useWebRTCCall';
 import { useAuth } from '@/hooks/useAuth';
@@ -55,6 +55,10 @@ export function CallProvider({ children }: CallProviderProps) {
   const { user } = useAuth();
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   
+  // Track channel subscription status
+  const isEventsChannelReady = useRef(false);
+  const isIncomingChannelReady = useRef(false);
+  
   const {
     state: callState,
     answerCall,
@@ -72,11 +76,15 @@ export function CallProvider({ children }: CallProviderProps) {
 
     console.log('[CallProvider] Setting up incoming call listener');
 
+    // Reset channel status
+    isEventsChannelReady.current = false;
+    isIncomingChannelReady.current = false;
+
     // IMPORTANTE: Os nomes dos canais devem ser EXATAMENTE os mesmos do backend
     const channel = supabase
       .channel('incoming-calls')
       .on('broadcast', { event: 'incoming_call' }, (payload) => {
-        console.log('[CallProvider] Received incoming call:', payload);
+        console.log('[CallProvider] 📞 Received incoming call:', payload);
         
         const callData = payload.payload as IncomingCall;
         
@@ -101,13 +109,14 @@ export function CallProvider({ children }: CallProviderProps) {
       })
       .subscribe((status) => {
         console.log('[CallProvider] incoming-calls channel status:', status);
+        isIncomingChannelReady.current = status === 'SUBSCRIBED';
       });
 
     // Also listen for call state changes - nome IGUAL ao usado no webhook
     const eventsChannel = supabase
       .channel('call-events')
       .on('broadcast', { event: 'call_state_changed' }, async (payload) => {
-        console.log('[CallProvider] Call state changed:', payload);
+        console.log('[CallProvider] 📥 Call state changed:', payload);
         
         // Aceitar tanto callId quanto call_id (diferentes edge functions usam formatos diferentes)
         const data = payload.payload as { 
@@ -125,17 +134,19 @@ export function CallProvider({ children }: CallProviderProps) {
           receivedCallId, 
           status, 
           hasSdpAnswer: !!sdpAnswer,
+          sdpAnswerLength: sdpAnswer?.length || 0,
           sdpType,
           myCallId: callState.callId,
           myDirection: callState.direction,
+          willProcess: sdpAnswer && callState.callId === receivedCallId && callState.direction === 'outbound',
         });
         
         // If we received SDP answer for our outbound call, set it on the peer connection
         if (sdpAnswer && callState.callId === receivedCallId && callState.direction === 'outbound') {
-          console.log('[CallProvider] ✅ Received SDP answer for outbound call, setting remote description');
+          console.log('[CallProvider] ✅ Received SDP answer via Realtime for outbound call, setting remote description');
           try {
             await setSdpAnswer(sdpAnswer);
-            console.log('[CallProvider] ✅ SDP answer set successfully');
+            console.log('[CallProvider] ✅ SDP answer set successfully via Realtime');
           } catch (error) {
             console.error('[CallProvider] ❌ Error setting SDP answer:', error);
           }
@@ -150,10 +161,13 @@ export function CallProvider({ children }: CallProviderProps) {
       })
       .subscribe((status) => {
         console.log('[CallProvider] call-events channel status:', status);
+        isEventsChannelReady.current = status === 'SUBSCRIBED';
       });
 
     return () => {
       console.log('[CallProvider] Cleaning up call listeners');
+      isEventsChannelReady.current = false;
+      isIncomingChannelReady.current = false;
       supabase.removeChannel(channel);
       supabase.removeChannel(eventsChannel);
     };

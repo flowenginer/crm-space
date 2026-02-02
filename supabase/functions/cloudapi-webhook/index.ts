@@ -1001,7 +1001,27 @@ async function processCalls(supabase: any, value: any) {
     if ((status === 'ringing' || event === 'ringing') && direction === 'user_initiated') {
       console.log('[Calls] Broadcasting incoming call to agents');
       
-      await supabase.channel('incoming-calls').send({
+      // Subscribe to channel before sending to ensure reliable delivery
+      const incomingChannel = supabase.channel('incoming-calls');
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn('[Calls] incoming-calls channel subscription timeout');
+          resolve();
+        }, 3000);
+        
+        incomingChannel.subscribe((channelStatus: string) => {
+          clearTimeout(timeout);
+          if (channelStatus === 'SUBSCRIBED') {
+            console.log('[Calls] ✅ incoming-calls channel subscribed');
+            resolve();
+          } else if (channelStatus === 'CHANNEL_ERROR') {
+            console.error('[Calls] ❌ incoming-calls channel error');
+            resolve();
+          }
+        });
+      });
+      
+      await incomingChannel.send({
         type: 'broadcast',
         event: 'incoming_call',
         payload: {
@@ -1019,6 +1039,9 @@ async function processCalls(supabase: any, value: any) {
           timestamp: timestamp.toISOString(),
         },
       });
+      
+      console.log('[Calls] 📡 Incoming call broadcast sent');
+      await supabase.removeChannel(incomingChannel);
     }
     
     // Broadcast call state changes for active calls
@@ -1041,6 +1064,18 @@ async function processCalls(supabase: any, value: any) {
         
       if (isOutboundAccepted) {
         console.log('[Calls] ✅ Including SDP answer for outbound call, sdp length:', session.sdp.length);
+        
+        // PERSIST SDP to database for polling fallback
+        const { error: sdpSaveError } = await supabase
+          .from('call_logs')
+          .update({ sdp_answer: session.sdp })
+          .eq('whatsapp_call_id', callId);
+          
+        if (sdpSaveError) {
+          console.error('[Calls] ❌ Error saving SDP answer to database:', sdpSaveError.message);
+        } else {
+          console.log('[Calls] ✅ SDP answer persisted to call_logs');
+        }
       }
       
       // Mapear event para status se necessário (ex: connect -> accepted)
@@ -1048,11 +1083,39 @@ async function processCalls(supabase: any, value: any) {
                              event === 'terminate' ? 'terminated' : 
                              status;
       
-      await supabase.channel('call-events').send({
+      // Subscribe to channel before sending to ensure reliable delivery
+      const eventsChannel = supabase.channel('call-events');
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn('[Calls] call-events channel subscription timeout');
+          resolve();
+        }, 3000);
+        
+        eventsChannel.subscribe((subscribeStatus: string) => {
+          clearTimeout(timeout);
+          if (subscribeStatus === 'SUBSCRIBED') {
+            console.log('[Calls] ✅ call-events channel subscribed');
+            resolve();
+          } else if (subscribeStatus === 'CHANNEL_ERROR') {
+            console.error('[Calls] ❌ call-events channel error');
+            resolve();
+          }
+        });
+      });
+      
+      console.log('[Calls] 📡 Broadcasting SDP answer:', {
+        callId,
+        hasSdpAnswer: isOutboundAccepted,
+        sdpLength: isOutboundAccepted ? session.sdp.length : 0,
+        channelStatus: 'SUBSCRIBED'
+      });
+      
+      await eventsChannel.send({
         type: 'broadcast',
         event: 'call_state_changed',
         payload: {
           callId,
+          call_id: callId, // Include both for compatibility
           callLogId,
           status: broadcastStatus, // sempre em lowercase
           duration,
@@ -1062,6 +1125,9 @@ async function processCalls(supabase: any, value: any) {
           sdpType: isOutboundAccepted ? sdpType : undefined,
         },
       });
+      
+      console.log('[Calls] 📡 Call state broadcast sent');
+      await supabase.removeChannel(eventsChannel);
     }
   }
 }
