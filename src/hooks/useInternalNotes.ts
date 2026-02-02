@@ -98,3 +98,26 @@ export function useUpdateInternalNote() {
     },
   });
 }
+
+export function useDeleteInternalNote() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ noteId, conversationId }: { noteId: string; conversationId: string }) => {
+      const { error } = await supabase
+        .from('internal_notes')
+        .delete()
+        .eq('id', noteId);
+
+      if (error) throw error;
+      return { conversationId };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['internal-notes', result.conversationId] });
+      toast.success('Nota excluída');
+    },
+    onError: () => {
+      toast.error('Erro ao excluir nota');
+    },
+  });
+}
