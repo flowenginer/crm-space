@@ -12180,6 +12180,17 @@ export type Database = {
         Returns: Json
       }
       unaccent: { Args: { "": string }; Returns: string }
+      update_conversation_assignment: {
+        Args: {
+          p_assigned_to?: string
+          p_conversation_id: string
+          p_department_id?: string
+          p_is_new_transfer?: boolean
+          p_note?: string
+          p_status?: string
+        }
+        Returns: Json
+      }
       update_message_whatsapp_id: {
         Args: {
           p_content: string

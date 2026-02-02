@@ -390,37 +390,22 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
     }
   });
 
-  // Mutation: Update assigned user (current agent) - funciona como transferência real
+  // Mutation: Update assigned user (current agent) - usa RPC SECURITY DEFINER
   const updateAssignedUser = useMutation({
     mutationFn: async (userId: string | null) => {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      // Usar RPC SECURITY DEFINER para bypass de RLS
+      const { data, error } = await supabase.rpc('update_conversation_assignment', {
+        p_conversation_id: conversationId,
+        p_assigned_to: userId,
+        p_status: userId ? 'open' : 'pending',
+        p_is_new_transfer: !!userId,
+      });
       
-      // Atualizar conversa com novo atendente, status e flag de transferência
-      const { error: updateError } = await supabase
-        .from('conversations')
-        .update({ 
-          assigned_to: userId,
-          status: userId ? 'open' : 'pending', // Se tem atendente = open, senão = pending
-          is_new_transfer: !!userId, // Destacar como nova transferência
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', conversationId);
+      if (error) throw error;
       
-      if (updateError) throw updateError;
-      
-      // Se está atribuindo a alguém, criar evento de transferência
-      if (userId && currentUser?.id) {
-        const selectedMember = teamMembers.find(t => t.id === userId);
-        await supabase.from('conversation_events').insert({
-          conversation_id: conversationId,
-          event_type: 'transfer',
-          actor_id: currentUser.id,
-          data: {
-            to_user_id: userId,
-            to_user_name: selectedMember?.full_name || null,
-            note: 'Atribuição manual via painel',
-          }
-        });
+      const result = data as { success: boolean; message?: string } | null;
+      if (!result?.success) {
+        throw new Error(result?.message || 'Falha ao atualizar atendente');
       }
     },
     onSuccess: () => {
@@ -462,18 +447,21 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
     }
   });
 
-  // Mutation: Update department
+  // Mutation: Update department - usa RPC SECURITY DEFINER
   const updateDepartment = useMutation({
     mutationFn: async (departmentId: string | null) => {
-      const { error } = await supabase
-        .from('conversations')
-        .update({ 
-          department_id: departmentId,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', conversationId);
+      // Usar RPC SECURITY DEFINER para bypass de RLS
+      const { data, error } = await supabase.rpc('update_conversation_assignment', {
+        p_conversation_id: conversationId,
+        p_department_id: departmentId,
+      });
       
       if (error) throw error;
+      
+      const result = data as { success: boolean; message?: string } | null;
+      if (!result?.success) {
+        throw new Error(result?.message || 'Falha ao atualizar departamento');
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversation-details', conversationId] });
