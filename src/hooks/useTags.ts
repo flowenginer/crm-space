@@ -208,7 +208,7 @@ export function useAddTagToContact() {
     mutationFn: async ({ contactId, tagId }: { contactId: string; tagId: string }) => {
       const { error } = await supabase
         .from('contact_tags')
-        .upsert({ contact_id: contactId, tag_id: tagId }, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
+        .upsert({ contact_id: contactId, tag_id: tagId } as any, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
 
       if (error) throw error;
 

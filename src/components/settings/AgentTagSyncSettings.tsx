@@ -446,7 +446,7 @@ export function AgentTagSyncSettings() {
 
           const { error, data } = await supabase
             .from('contact_tags')
-            .upsert(tagsToInsert, { 
+            .upsert(tagsToInsert as any, { 
               onConflict: 'contact_id,tag_id',
               ignoreDuplicates: true 
             })
@@ -459,7 +459,7 @@ export function AgentTagSyncSettings() {
               const { error: singleError } = await supabase
                 .from('contact_tags')
                 .upsert(
-                  { contact_id: contact.contactId, tag_id: contact.tagId },
+                  { contact_id: contact.contactId, tag_id: contact.tagId } as any,
                   { onConflict: 'contact_id,tag_id', ignoreDuplicates: true }
                 );
 

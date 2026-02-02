@@ -776,7 +776,7 @@ export function useImportContacts() {
           const batch = contactTagsToInsert.slice(i, i + batchSize);
           await supabase
             .from('contact_tags')
-            .upsert(batch, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
+            .upsert(batch as any, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
         }
       }
 
