@@ -474,7 +474,7 @@ export type Database = {
           local_id: string
           sync_direction?: string | null
           sync_status?: string | null
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
@@ -544,7 +544,7 @@ export type Database = {
           sync_products?: boolean | null
           sync_quotes?: boolean | null
           sync_statuses?: boolean | null
-          tenant_id?: string
+          tenant_id: string
           token_expires_at?: string | null
           updated_at?: string | null
           webhook_secret?: string | null
@@ -663,7 +663,7 @@ export type Database = {
           started_at?: string | null
           status?: string | null
           sync_type: string
-          tenant_id?: string
+          tenant_id: string
           total_records?: number | null
           triggered_by?: string | null
           updated_count?: number | null
@@ -1882,7 +1882,7 @@ export type Database = {
           id?: string
           overall_score?: number | null
           scores: Json
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           analyzed_at?: string
@@ -5666,7 +5666,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           sync_type?: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           campaigns_synced?: number | null
@@ -8065,7 +8065,7 @@ export type Database = {
           is_active?: boolean | null
           percentage?: number | null
           position?: number | null
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           campaign_id?: string
@@ -8364,7 +8364,7 @@ export type Database = {
           ip_address?: string | null
           phone: string
           referrer?: string | null
-          tenant_id?: string
+          tenant_id: string
           user_agent?: string | null
           utm_campaign?: string | null
           utm_content?: string | null
@@ -8891,7 +8891,7 @@ export type Database = {
           message_nps?: string
           send_only_business_hours?: boolean
           survey_type?: string
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string
         }
         Update: {
@@ -8949,7 +8949,7 @@ export type Database = {
           status?: string | null
           survey_message_id?: string | null
           survey_type?: string
-          tenant_id?: string
+          tenant_id: string
           updated_at?: string | null
         }
         Update: {
