@@ -1663,7 +1663,7 @@ export type Database = {
           contact_id: string
           created_at?: string
           tag_id: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           contact_id?: string
