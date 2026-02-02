@@ -1,259 +1,141 @@
 
 
-# Plano: Correção da Transmissão SDP Answer para Chamadas Outbound
+# Plano: Corrigir Recebimento de Mensagens de Contato (vCard) na UAZAPI
 
 ## Resumo do Problema
 
-O áudio não está funcionando nas chamadas outbound porque o **SDP Answer enviado pela Meta via webhook não está chegando ao frontend**. A investigação revelou:
+O canal MASTER-LEADS usa a UAZAPI (não-oficial) e não está processando corretamente mensagens de contato (vCard). A investigação revelou:
 
-1. ✅ Meta envia corretamente o SDP Answer via webhook (evento `connect` com `sdp_type: answer`)
-2. ✅ O webhook processa e tenta fazer broadcast via Supabase Realtime
-3. ❌ O broadcast falha silenciosamente (log: "Realtime send() is automatically falling back to REST API")
-4. ❌ Sem o SDP Answer, o WebRTC não completa o handshake e não há áudio
-
-### Causa Raiz
-O `supabase.channel().send()` em Edge Functions requer que o canal esteja **subscrito** antes de enviar. Sem subscription prévia, o Supabase usa fallback REST que não é confiável para broadcasts em tempo real.
+1. **O webhook UAZAPI detecta** o tipo `"contact"` corretamente
+2. **Problema 1**: Salva `message_type = 'contact'` (singular) mas o frontend espera `'contacts'` (plural)
+3. **Problema 2**: Extrai conteúdo como apenas `"[Contato]"` sem extrair nome/telefone do vCard
+4. **O webhook CloudAPI** (API oficial) funciona porque extrai `📇 Nome (+55 99 9999-9999)` e usa tipo `'contacts'`
 
 ---
 
-## Solução Proposta
+## Solução
 
-### Estratégia Multi-Camada
+### Etapa 1: Corrigir o Tipo de Mensagem (contact → contacts)
 
-1. **Subscrição prévia no backend** - Garantir que o canal seja subscrito antes de enviar
-2. **Fallback via polling** - Se o broadcast falhar, buscar SDP via HTTP
-3. **Persistência do SDP** - Salvar o SDP Answer no banco para recuperação
-
----
-
-## Etapa 1: Melhorar o Broadcast no Webhook
-
-### Arquivo: `supabase/functions/cloudapi-webhook/index.ts`
-
-Modificar a lógica de broadcast para aguardar subscription antes de enviar:
+Modificar a função `detectUAZAPIMessageTypeNew` para retornar `'contacts'` (plural) em vez de `'contact'`:
 
 ```typescript
-// ANTES (problemático)
-await supabase.channel('call-events').send({...})
+// ANTES
+if (matchesType(messageType, "vcard", "contact")) {
+  return "contact";  // singular
+}
 
-// DEPOIS (com subscription)
-const channel = supabase.channel('call-events');
-
-// Aguardar subscription antes de enviar
-await new Promise<void>((resolve, reject) => {
-  const timeout = setTimeout(() => {
-    console.error('[Calls] Channel subscription timeout');
-    resolve(); // Continua mesmo com timeout
-  }, 3000);
-  
-  channel.subscribe((status) => {
-    clearTimeout(timeout);
-    if (status === 'SUBSCRIBED') {
-      resolve();
-    } else if (status === 'CHANNEL_ERROR') {
-      console.error('[Calls] Channel subscription error');
-      resolve();
-    }
-  });
-});
-
-// Agora enviar o broadcast
-await channel.send({
-  type: 'broadcast',
-  event: 'call_state_changed',
-  payload: { callId, sdpAnswer, ... }
-});
-
-// Cleanup
-await supabase.removeChannel(channel);
-```
-
----
-
-## Etapa 2: Persistir SDP Answer no Banco
-
-### Modificação na tabela `call_logs`
-
-Adicionar coluna para armazenar o SDP Answer como fallback:
-
-```sql
-ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS sdp_answer TEXT;
-```
-
-### No webhook, salvar o SDP:
-
-```typescript
-if (isOutboundAccepted && session?.sdp) {
-  await supabase
-    .from('call_logs')
-    .update({ sdp_answer: session.sdp })
-    .eq('whatsapp_call_id', callId);
+// DEPOIS  
+if (matchesType(messageType, "vcard", "contact")) {
+  return "contacts";  // plural - compatível com CloudAPI e frontend
 }
 ```
 
----
-
-## Etapa 3: Implementar Fallback via Polling no Frontend
-
-### Arquivo: `src/hooks/useWebRTCCall.ts`
-
-Adicionar função para buscar SDP do banco caso o broadcast não chegue:
+Também atualizar o TypeScript `MessageType` para incluir `'contacts'`:
 
 ```typescript
-const pollForSdpAnswer = useCallback(async (
-  callId: string, 
-  maxAttempts = 10
-): Promise<string | null> => {
-  for (let i = 0; i < maxAttempts; i++) {
-    const { data } = await supabase
-      .from('call_logs')
-      .select('sdp_answer')
-      .eq('whatsapp_call_id', callId)
-      .single();
-    
-    if (data?.sdp_answer) {
-      console.log('[WebRTC] ✅ Got SDP answer via polling');
-      return data.sdp_answer;
-    }
-    
-    await new Promise(r => setTimeout(r, 1000)); // Esperar 1s
-  }
-  return null;
-}, []);
+// ANTES
+type MessageType = "text" | "image" | "audio" | "video" | "document" | "sticker" | "location" | "contact";
+
+// DEPOIS
+type MessageType = "text" | "image" | "audio" | "video" | "document" | "sticker" | "location" | "contact" | "contacts";
 ```
 
 ---
 
-## Etapa 4: Integrar Polling no Fluxo de Chamada
+### Etapa 2: Extrair Dados do vCard na UAZAPI
 
-### Arquivo: `src/hooks/useWebRTCCall.ts`
-
-Na função `initiateCall`, após receber o `call_id`:
+Modificar a função `extractUAZAPIContentNew` para extrair nome e telefone do vCard:
 
 ```typescript
-// Após setState com callId e status 'ringing'
-// Iniciar polling em paralelo como fallback
-
-const pollPromise = pollForSdpAnswer(data.call_id);
-
-// Timeout: se não receber via Realtime em 5s, usar polling
-setTimeout(async () => {
-  if (peerConnectionRef.current?.signalingState !== 'stable') {
-    console.log('[WebRTC] No SDP via Realtime, trying polling...');
-    const sdp = await pollPromise;
-    if (sdp) {
-      await setSdpAnswer(sdp);
-    }
-  }
-}, 5000);
-```
-
----
-
-## Etapa 5: Garantir Subscription Prévia no CallProvider
-
-### Arquivo: `src/providers/CallProvider.tsx`
-
-Modificar para garantir que o canal esteja inscrito ANTES de iniciar chamadas:
-
-```typescript
-// Adicionar ref para controlar estado de subscription
-const isChannelReady = useRef(false);
-
-useEffect(() => {
-  if (!user) return;
-
-  const eventsChannel = supabase
-    .channel('call-events')
-    .on('broadcast', { event: 'call_state_changed' }, async (payload) => {
-      // ... handler existente
-    })
-    .subscribe((status) => {
-      console.log('[CallProvider] call-events channel status:', status);
-      isChannelReady.current = status === 'SUBSCRIBED';
-    });
-
-  // ... resto do código
-}, [user, ...]);
-
-// Na initiateCall, aguardar canal pronto
-const initiateCall = useCallback(async (...) => {
-  // Verificar se canal está pronto
-  if (!isChannelReady.current) {
-    console.warn('[CallProvider] Channel not ready, waiting...');
-    await new Promise(r => setTimeout(r, 500));
+case "contacts":
+  // Tentar extrair dados do vCard
+  const vcard = msg.vcard || msg.content?.vcard || msg.contactMessage?.vcard || '';
+  const contacts = msg.contacts || msg.content?.contacts || [];
+  
+  // Se tiver array de contacts (formato CloudAPI-like)
+  if (contacts.length > 0) {
+    const c = contacts[0];
+    const name = c.name?.formatted_name || c.name?.first_name || c.displayName || 'Contato';
+    const phone = c.phones?.[0]?.phone || c.phones?.[0]?.wa_id || '';
+    return `📇 ${name}${phone ? ` (${phone})` : ''}`;
   }
   
-  await initiate(toNumber, contactId, contactName);
-}, [...]);
+  // Se tiver vCard string, fazer parse
+  if (vcard) {
+    const nameMatch = vcard.match(/FN:(.+)/);
+    const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
+    const name = nameMatch?.[1]?.trim() || 'Contato';
+    const phone = phoneMatch?.[1]?.trim() || '';
+    return `📇 ${name}${phone ? ` (${phone})` : ''}`;
+  }
+  
+  // Se tiver displayName direto
+  if (msg.displayName || msg.content?.displayName) {
+    return `📇 ${msg.displayName || msg.content?.displayName}`;
+  }
+  
+  return "[Contato]";  // Fallback
 ```
 
 ---
 
-## Etapa 6: Adicionar Logs Detalhados
+### Etapa 3: Aplicar Mesmas Correções para Evolution API
 
-### Em ambos os lados, adicionar logs para diagnóstico:
+Atualizar `detectEvolutionMessageType` e `extractEvolutionContent`:
 
-**Backend (webhook):**
 ```typescript
-console.log('[Calls] 📡 Broadcasting SDP answer:', {
-  callId,
-  sdpLength: session.sdp.length,
-  channelStatus: 'SUBSCRIBED'
-});
-```
+// Em detectEvolutionMessageType
+if (message.contactMessage || message.contactsArrayMessage) return "contacts";
 
-**Frontend (CallProvider):**
-```typescript
-console.log('[CallProvider] 📥 Received call event:', {
-  callId: receivedCallId,
-  hasSdpAnswer: !!sdpAnswer,
-  myCallId: callState.callId,
-  willProcess: sdpAnswer && callState.callId === receivedCallId
-});
+// Em extractEvolutionContent
+case "contacts":
+  const contactMsg = message?.contactMessage;
+  const contactsArray = message?.contactsArrayMessage?.contacts;
+  
+  if (contactsArray && contactsArray.length > 0) {
+    const c = contactsArray[0];
+    return `📇 ${c.displayName || 'Contato'}`;
+  }
+  
+  if (contactMsg) {
+    const vcard = contactMsg.vcard || '';
+    const nameMatch = vcard.match(/FN:(.+)/);
+    const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
+    const name = nameMatch?.[1]?.trim() || contactMsg.displayName || 'Contato';
+    const phone = phoneMatch?.[1]?.trim() || '';
+    return `📇 ${name}${phone ? ` (${phone})` : ''}`;
+  }
+  
+  return "[Contato]";
 ```
 
 ---
 
-## Diagrama do Fluxo Corrigido
+### Etapa 4: Corrigir o Frontend para Aceitar Ambos os Tipos
 
-```text
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Frontend      │     │   Edge Function  │     │   Meta/WhatsApp │
-│  (CallProvider) │     │    (webhook)     │     │                 │
-└────────┬────────┘     └────────┬─────────┘     └────────┬────────┘
-         │                       │                        │
-         │ 1. Subscribe          │                        │
-         │  'call-events'        │                        │
-         ├───────────────────────┤                        │
-         │                       │                        │
-         │ 2. initiateCall()     │                        │
-         ├──────────────────────>│ 3. POST /calls         │
-         │                       ├───────────────────────>│
-         │                       │                        │
-         │                       │ 4. Webhook: connect    │
-         │                       │    + SDP Answer        │
-         │                       │<───────────────────────┤
-         │                       │                        │
-         │                       │ 5. Subscribe channel   │
-         │                       │    + broadcast         │
-         │                       │                        │
-         │ 6. Receive SDP        │                        │
-         │<──────────────────────┤                        │
-         │                       │                        │
-         │ 7. setRemoteDesc()    │                        │
-         │    WebRTC completo!   │                        │
-         │                       │                        │
-         │        OU (fallback)  │                        │
-         │                       │                        │
-         │ 8. Polling call_logs  │                        │
-         ├──────────────────────>│                        │
-         │<──────────────────────┤                        │
-         │ SDP from database     │                        │
-         │                       │                        │
-         │ 9. setRemoteDesc()    │                        │
-         │    WebRTC completo!   │                        │
-         └───────────────────────┴────────────────────────┘
+Modificar `Conversations.tsx` para aceitar tanto `'contact'` quanto `'contacts'`:
+
+```typescript
+{/* Contact (vCard) messages - styled card */}
+{(message.message_type === 'contacts' || message.message_type === 'contact') && message.content && (
+  <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg border border-border/50">
+    ...
+  </div>
+)}
+```
+
+---
+
+### Etapa 5: Adicionar Logs de Debug
+
+Adicionar logs quando mensagem de contato é detectada para facilitar debug:
+
+```typescript
+if (matchesType(messageType, "vcard", "contact")) {
+  console.log(`[Webhook UAZAPI] 📇 Detected CONTACT - vcard: ${msg.vcard?.substring(0, 100)}, contacts: ${JSON.stringify(msg.contacts)?.substring(0, 200)}`);
+  return "contacts";
+}
 ```
 
 ---
@@ -262,35 +144,37 @@ console.log('[CallProvider] 📥 Received call event:', {
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `supabase/functions/cloudapi-webhook/index.ts` | Subscription prévia + salvar SDP no banco |
-| `src/hooks/useWebRTCCall.ts` | Adicionar polling fallback |
-| `src/providers/CallProvider.tsx` | Garantir channel ready antes de chamar |
-| Nova migration SQL | Adicionar coluna `sdp_answer` em `call_logs` |
+| `supabase/functions/whatsapp-webhook/index.ts` | Corrigir tipo `contact` → `contacts`, extrair dados vCard |
+| `src/pages/Conversations.tsx` | Aceitar `message_type === 'contact'` também |
 
 ---
 
 ## Benefícios
 
-1. **Confiabilidade**: Fallback via polling garante que SDP sempre chegue
-2. **Diagnóstico**: Logs detalhados facilitam debug futuro
-3. **Persistência**: SDP salvo no banco permite recuperação mesmo após refresh
-4. **Compatibilidade**: Funciona mesmo se Realtime tiver problemas temporários
+1. **Compatibilidade**: Mensagens de contato funcionarão em todos os providers (CloudAPI, UAZAPI, Evolution)
+2. **Informação**: Exibirá nome e telefone do contato compartilhado, não apenas "[Contato]"
+3. **Consistência**: Todos os webhooks usarão o mesmo padrão de tipo e formatação
 
 ---
 
 ## Seção Técnica
 
-### Por que o broadcast falha?
+### Formato vCard no WhatsApp
 
-O Supabase Realtime em Edge Functions usa WebSocket quando o canal está subscrito, ou fallback HTTP quando não está. O fallback HTTP é "fire-and-forget" e não garante entrega, especialmente se:
-- O cliente não está inscrito no mesmo canal
-- Há latência na conexão
-- O canal usa nome dinâmico
+O WhatsApp envia vCards no formato padrão vCard 3.0:
 
-### Alternativa Considerada: Database Trigger
+```
+BEGIN:VCARD
+VERSION:3.0
+N:Sobrenome;Nome;;;
+FN:Nome Completo
+TEL;type=CELL;waid=5521999999999:+55 21 99999-9999
+END:VCARD
+```
 
-Poderia usar `realtime.broadcast_changes()` via trigger SQL, mas:
-- Requer configuração adicional de RLS
-- Menos flexível para payload customizado
-- O polling como fallback é mais simples e confiável
+A regex `FN:(.+)` extrai o nome formatado e `TEL[^:]*:([+\d\s\-()]+)` extrai o telefone.
+
+### Por que `contacts` (plural)?
+
+A Meta Cloud API usa `'contacts'` porque o WhatsApp suporta enviar múltiplos contatos de uma vez (`contactsArrayMessage`). Para manter compatibilidade, todos os providers devem usar o mesmo tipo.
 
