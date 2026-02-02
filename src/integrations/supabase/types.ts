@@ -1663,7 +1663,7 @@ export type Database = {
           contact_id: string
           created_at?: string
           tag_id: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           contact_id?: string
@@ -1981,7 +1981,7 @@ export type Database = {
           conversation_id: string
           created_at?: string | null
           tag_id: string
-          tenant_id?: string
+          tenant_id: string
         }
         Update: {
           conversation_id?: string
