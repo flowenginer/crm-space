@@ -483,7 +483,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
         .upsert({
           contact_id: conversation.contact.id,
           tag_id: tagId
-        }, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
+        } as any, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
       
       if (error) throw error;
     },

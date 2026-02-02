@@ -464,7 +464,7 @@ export function useBulkAddTag() {
         try {
           const { error } = await supabase
             .from('contact_tags')
-            .upsert(chunk, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
+            .upsert(chunk as any, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
 
           if (error) {
             result.failed += chunk.length;
