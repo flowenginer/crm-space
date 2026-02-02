@@ -941,6 +941,7 @@ export type Database = {
           recording_url: string | null
           result_id: string | null
           schedule_followup: boolean | null
+          sdp_answer: string | null
           sentiment_label: string | null
           sentiment_score: number | null
           start_time: string | null
@@ -975,6 +976,7 @@ export type Database = {
           recording_url?: string | null
           result_id?: string | null
           schedule_followup?: boolean | null
+          sdp_answer?: string | null
           sentiment_label?: string | null
           sentiment_score?: number | null
           start_time?: string | null
@@ -1009,6 +1011,7 @@ export type Database = {
           recording_url?: string | null
           result_id?: string | null
           schedule_followup?: boolean | null
+          sdp_answer?: string | null
           sentiment_label?: string | null
           sentiment_score?: number | null
           start_time?: string | null

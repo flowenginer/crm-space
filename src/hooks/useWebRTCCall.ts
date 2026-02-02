@@ -42,6 +42,10 @@ const iceServers: RTCIceServer[] = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
+// Polling interval for SDP fallback (ms)
+const SDP_POLL_INTERVAL = 1000;
+const SDP_POLL_MAX_ATTEMPTS = 15;
+
 export function useWebRTCCall() {
   const [state, setState] = useState<WebRTCCallState>(initialState);
   
@@ -392,11 +396,53 @@ export function useWebRTCCall() {
       return;
     }
 
-    console.log('[WebRTC] Setting SDP answer');
+    // Check if we already have a remote description set
+    if (peerConnectionRef.current.signalingState === 'stable') {
+      console.log('[WebRTC] Remote description already set, skipping');
+      return;
+    }
+
+    console.log('[WebRTC] Setting SDP answer, length:', sdpAnswer.length);
     await peerConnectionRef.current.setRemoteDescription({
       type: 'answer',
       sdp: sdpAnswer,
     });
+    console.log('[WebRTC] ✅ SDP answer set successfully, signalingState:', peerConnectionRef.current.signalingState);
+  }, []);
+
+  // Poll for SDP answer from database as fallback
+  const pollForSdpAnswer = useCallback(async (
+    whatsappCallId: string,
+    maxAttempts: number = SDP_POLL_MAX_ATTEMPTS
+  ): Promise<string | null> => {
+    console.log('[WebRTC] Starting SDP polling for call:', whatsappCallId);
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Check if we already have a stable connection (SDP arrived via Realtime)
+      if (peerConnectionRef.current?.signalingState === 'stable') {
+        console.log('[WebRTC] 🎉 Connection already stable, stopping poll');
+        return null;
+      }
+      
+      const { data, error } = await supabase
+        .from('call_logs')
+        .select('sdp_answer')
+        .eq('whatsapp_call_id', whatsappCallId)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('[WebRTC] Polling error:', error.message);
+      } else if (data?.sdp_answer) {
+        console.log('[WebRTC] ✅ Got SDP answer via polling, attempt:', attempt + 1);
+        return data.sdp_answer;
+      }
+      
+      console.log(`[WebRTC] Poll attempt ${attempt + 1}/${maxAttempts} - no SDP yet`);
+      await new Promise(resolve => setTimeout(resolve, SDP_POLL_INTERVAL));
+    }
+    
+    console.warn('[WebRTC] ⚠️ SDP polling exhausted after', maxAttempts, 'attempts');
+    return null;
   }, []);
 
   // Initiate outbound call via Cloud API (uses tenant's active config)
@@ -443,20 +489,37 @@ export function useWebRTCCall() {
         throw new Error(message);
       }
 
+      const callId = data.call_id;
+      
       setState(prev => ({
         ...prev,
-        callId: data.call_id,
+        callId: callId,
         callLogId: data.call_log_id,
         channelId: data.channel_id || null,
         status: 'ringing',
       }));
 
-      // If we got an SDP answer back, set it
+      // If we got an SDP answer back immediately, set it
       if (data.sdp_answer) {
+        console.log('[WebRTC] Got immediate SDP answer from initiate response');
         await setSdpAnswer(data.sdp_answer);
+      } else {
+        // Start polling as fallback - Realtime might not deliver the SDP
+        console.log('[WebRTC] No immediate SDP, starting fallback polling in 3s...');
+        
+        // Wait 3 seconds to give Realtime a chance, then poll
+        setTimeout(async () => {
+          if (peerConnectionRef.current?.signalingState !== 'stable') {
+            console.log('[WebRTC] Realtime SDP not received, polling database...');
+            const polledSdp = await pollForSdpAnswer(callId);
+            if (polledSdp) {
+              await setSdpAnswer(polledSdp);
+            }
+          }
+        }, 3000);
       }
 
-      console.log('[WebRTC] Call initiated:', data.call_id);
+      console.log('[WebRTC] Call initiated:', callId);
       toast.info('Ligando...');
 
     } catch (error) {
@@ -464,7 +527,7 @@ export function useWebRTCCall() {
       toast.error(error instanceof Error ? error.message : 'Erro ao iniciar chamada');
       cleanup();
     }
-  }, [getLocalStream, createSdpOffer, setSdpAnswer, cleanup]);
+  }, [getLocalStream, createSdpOffer, setSdpAnswer, pollForSdpAnswer, cleanup]);
 
   // Toggle mute
   const toggleMute = useCallback(() => {
