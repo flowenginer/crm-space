@@ -125,7 +125,7 @@ import { useConversationTotalCounts, useChannelCounts, useDateFilterCounts, useD
 import { useLeadStatuses } from '@/hooks/useLeadStatuses';
 import { usePaginatedMessages, getAllPaginatedMessages } from '@/hooks/usePaginatedMessages';
 import { supabase } from '@/integrations/supabase/client';
-import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
+import { useInternalNotes, useCreateInternalNote, useUpdateInternalNote, useDeleteInternalNote, type InternalNote } from '@/hooks/useInternalNotes';
 import { useConversationEvents, useReturnConversation, type ConversationEvent } from '@/hooks/useConversationEvents';
 import { TransferEventCard } from '@/components/conversations/TransferEventCard';
 import { ReopenEventCard } from '@/components/conversations/ReopenEventCard';
@@ -1282,9 +1282,10 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
 interface InternalNoteCardProps {
   note: InternalNote;
   onUpdate: (noteId: string, content: string) => void;
+  onDelete: (noteId: string) => void;
 }
 
-function InternalNoteCard({ note, onUpdate }: InternalNoteCardProps) {
+function InternalNoteCard({ note, onUpdate, onDelete }: InternalNoteCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(note.content);
 
@@ -1300,6 +1301,12 @@ function InternalNoteCard({ note, onUpdate }: InternalNoteCardProps) {
     setIsEditing(false);
   };
 
+  const handleDelete = () => {
+    if (window.confirm('Tem certeza que deseja excluir esta nota?')) {
+      onDelete(note.id);
+    }
+  };
+
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] bg-amber-400 dark:bg-amber-500 rounded-2xl rounded-tr-sm p-4 shadow-lg">
@@ -1312,13 +1319,22 @@ function InternalNoteCard({ note, onUpdate }: InternalNoteCardProps) {
             </span>
           </div>
           {!isEditing && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="p-1 hover:bg-amber-500/50 rounded transition-colors"
-              title="Editar nota"
-            >
-              <Pencil size={12} className="text-amber-800 dark:text-amber-900" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setIsEditing(true)}
+                className="p-1 hover:bg-amber-500/50 rounded transition-colors"
+                title="Editar nota"
+              >
+                <Pencil size={12} className="text-amber-800 dark:text-amber-900" />
+              </button>
+              <button
+                onClick={handleDelete}
+                className="p-1 hover:bg-red-500/50 rounded transition-colors"
+                title="Excluir nota"
+              >
+                <Trash2 size={12} className="text-red-700 dark:text-red-800" />
+              </button>
+            </div>
           )}
         </div>
 
@@ -1730,6 +1746,7 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
   const reactToMessage = useReactToMessage();
   const createInternalNote = useCreateInternalNote();
   const updateInternalNote = useUpdateInternalNote();
+  const deleteInternalNote = useDeleteInternalNote();
   const updateConversation = useUpdateConversation();
   const bulkReturnToOriginal = useBulkReturnToOriginalAgent();
 
@@ -5024,6 +5041,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                             onUpdate={(noteId, content) => updateInternalNote.mutate({ 
                               noteId, 
                               content, 
+                              conversationId: selectedConversationId! 
+                            })}
+                            onDelete={(noteId) => deleteInternalNote.mutate({ 
+                              noteId, 
                               conversationId: selectedConversationId! 
                             })}
                           />
