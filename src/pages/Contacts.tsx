@@ -61,6 +61,7 @@ import { useDepartments } from '@/hooks/useDepartments';
 import { useTeam } from '@/hooks/useTeam';
 import { useLeadStatuses } from '@/hooks/useLeadKanban';
 import { usePermissions } from '@/hooks/usePermissions';
+import { PermissionGate } from '@/components/PermissionGate';
 import { MessageSquareMore } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BlingIntegrationBanner } from '@/components/bling/BlingIntegrationBanner';
@@ -567,13 +568,15 @@ export default function Contacts() {
             Etiquetas
           </button>
 
-          <button
-            onClick={handleNewContact}
-            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-xl font-medium hover:shadow-lg transition-all"
-          >
-            <Plus size={18} />
-            Adicionar Contato
-          </button>
+          <PermissionGate permission="contacts.create">
+            <button
+              onClick={handleNewContact}
+              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-xl font-medium hover:shadow-lg transition-all"
+            >
+              <Plus size={18} />
+              Adicionar Contato
+            </button>
+          </PermissionGate>
         </div>
       </div>
 
@@ -811,13 +814,15 @@ export default function Contacts() {
                 <Upload size={18} />
                 Importar Contatos
               </button>
-              <button
-                onClick={handleNewContact}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-xl font-medium hover:shadow-lg transition-all"
-              >
-                <Plus size={18} />
-                Adicionar Contato
-              </button>
+              <PermissionGate permission="contacts.create">
+                <button
+                  onClick={handleNewContact}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-primary to-pink-500 text-primary-foreground rounded-xl font-medium hover:shadow-lg transition-all"
+                >
+                  <Plus size={18} />
+                  Adicionar Contato
+                </button>
+              </PermissionGate>
             </div>
           </div>
         </div>
