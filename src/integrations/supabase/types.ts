@@ -6465,7 +6465,7 @@ export type Database = {
           conversation_id: string
           id?: string
           pinned_at?: string
-          tenant_id?: string
+          tenant_id: string
           user_id: string
         }
         Update: {

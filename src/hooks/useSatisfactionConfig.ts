@@ -82,7 +82,7 @@ export function useUpdateSatisfactionConfig() {
         if (error) throw error;
         return data;
       } else {
-        // Create new
+        // Create new - tenant_id is auto-assigned by trigger
         const { data, error } = await supabase
           .from('satisfaction_config')
           .insert({
@@ -93,7 +93,7 @@ export function useUpdateSatisfactionConfig() {
             message_csat: config.message_csat ?? DEFAULT_CSAT_MESSAGE,
             send_only_business_hours: config.send_only_business_hours ?? false,
             auto_close_on_response: config.auto_close_on_response ?? true,
-          })
+          } as any)
           .select()
           .single();
 

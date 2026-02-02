@@ -73,12 +73,13 @@ export function usePinConversation() {
     mutationFn: async (conversationId: string) => {
       if (!currentUser?.id) throw new Error('Not authenticated');
 
+      // tenant_id is auto-assigned by trigger
       const { error } = await supabase
         .from('pinned_conversations')
         .insert({
           user_id: currentUser.id,
           conversation_id: conversationId,
-        });
+        } as any);
 
       if (error) throw error;
     },
