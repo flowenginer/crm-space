@@ -14,6 +14,10 @@ import { useMyWaitingCount, useMyWaitingConversations, type WaitingConversation 
 import { useResponseAlertSettings } from '@/hooks/useAgentMonitor';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 import { TransferModal } from '@/components/conversations/TransferModal';
+import { useUserStore } from '@/store/userStore';
+
+// Tenant Master - desativar animação de piscar para esta conta
+const MASTER_TENANT_ID = '664dfcb4-5432-4c14-9838-7db14360cabf';
 
 export function WaitingCard() {
   const navigate = useNavigate();
@@ -22,6 +26,10 @@ export function WaitingCard() {
   const [transferConversationId, setTransferConversationId] = useState<string | null>(null);
   const [transferCurrentAssignedTo, setTransferCurrentAssignedTo] = useState<string | null>(null);
   const [transferCurrentDepartmentId, setTransferCurrentDepartmentId] = useState<string | null>(null);
+  
+  // Verificar se é o tenant Master
+  const { tenantId } = useUserStore();
+  const isMasterTenant = tenantId === MASTER_TENANT_ID;
 
   const { data: waitingCount = 0, isLoading: countLoading } = useMyWaitingCount();
   const { data: conversations = [], isLoading: conversationsLoading, refetch } = useMyWaitingConversations(modalOpen);
@@ -73,8 +81,10 @@ export function WaitingCard() {
   };
 
   // Determina se há algum crítico para destacar o card
+  // Para tenant Master, desabilita animação de piscar
   const hasCritical = conversations.some(c => getAlertLevel(c.waiting_minutes) === 'critical');
   const hasWarning = conversations.some(c => getAlertLevel(c.waiting_minutes) === 'warning');
+  const shouldBlinkRed = hasCritical && !isMasterTenant; // Desativar blink para Master
 
   if (countLoading) {
     return (
@@ -90,11 +100,13 @@ export function WaitingCard() {
       <button
         onClick={() => setModalOpen(true)}
         className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all w-full text-left border ${
-          hasCritical 
+          shouldBlinkRed 
             ? 'animate-blink-red' 
-            : hasWarning 
-              ? 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20'
-              : 'bg-muted/50 hover:bg-muted border-transparent'
+            : hasCritical
+              ? 'bg-destructive/10 border-destructive/30 hover:bg-destructive/20' // Estilo estático para Master
+              : hasWarning 
+                ? 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20'
+                : 'bg-muted/50 hover:bg-muted border-transparent'
         }`}
       >
         <Clock 
