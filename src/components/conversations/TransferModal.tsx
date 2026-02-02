@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, Users, PinOff, Check, PauseCircle } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { ArrowRightLeft, Building2, User, Loader2, ShieldAlert, Users, PinOff, Check, PauseCircle, UserPlus } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
@@ -21,6 +21,7 @@ import { useTransferConversation } from '@/hooks/useConversationEvents';
 import { usePinnedConversations, useUnpinConversation } from '@/hooks/usePinnedConversations';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/hooks/useAuth';
+import { getUserPrimaryDepartment } from '@/hooks/useUserPrimaryDepartment';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -56,8 +57,14 @@ export function TransferModal({
   const { data: pinnedConversations = [] } = usePinnedConversations();
   const unpinConversation = useUnpinConversation();
   const transferConversation = useTransferConversation();
-  const { can } = usePermissions();
+  const { can, canTransferFreely } = usePermissions();
   const { user } = useAuth();
+  const [isClaimingForMe, setIsClaimingForMe] = useState(false);
+
+  // Buscar o nome do usuário atual na lista de equipe
+  const currentUserProfile = useMemo(() => {
+    return team.find(member => member.id === user?.id);
+  }, [team, user?.id]);
 
   // Mantém departamentos/atendentes/vínculos atualizados sem precisar dar refresh
   useTransferOptionsRealtime(open);
@@ -102,6 +109,40 @@ export function TransferModal({
   const canTransfer = (): boolean => {
     return can.transferConversations();
   };
+
+  // Handler para "Pra Mim" - assumir o atendimento
+  const handleClaimForMe = useCallback(async () => {
+    if (!user?.id) return;
+    
+    setIsClaimingForMe(true);
+    try {
+      // Buscar departamento primário do usuário
+      const userDeptId = await getUserPrimaryDepartment(user.id);
+      const userDeptName = departments.find(d => d.id === userDeptId)?.name || null;
+      
+      if (isConversationPinned && shouldUnpin) {
+        await unpinConversation.mutateAsync(conversationId);
+      }
+      
+      await transferConversation.mutateAsync({
+        conversationId,
+        toUserId: user.id,
+        toUserName: currentUserProfile?.full_name || 'Você',
+        toDepartmentId: userDeptId,
+        toDepartmentName: userDeptName,
+        note: 'Assumido pelo atendente',
+      });
+      
+      toast.success('Conversa assumida com sucesso!');
+      onTransferSuccess?.();
+      handleClose();
+    } catch (error: any) {
+      console.error('[TransferModal] Error claiming conversation:', error);
+      toast.error(error?.message || 'Erro ao assumir conversa');
+    } finally {
+      setIsClaimingForMe(false);
+    }
+  }, [user?.id, currentUserProfile?.full_name, departments, conversationId, isConversationPinned, shouldUnpin, unpinConversation, transferConversation, onTransferSuccess]);
 
   const handleTransfer = async () => {
     if (!canTransfer()) {
@@ -206,6 +247,28 @@ export function TransferModal({
         ) : (
           <ScrollArea className="flex-1 overflow-y-auto">
             <div className="p-6 space-y-5">
+            
+            {/* Opção rápida "Pra Mim" - só aparece para quem pode transferir livremente */}
+            {canTransferFreely && currentAssignedTo !== user?.id && (
+              <div className="mb-1">
+                <button
+                  onClick={handleClaimForMe}
+                  disabled={isClaimingForMe}
+                  className="w-full h-14 flex items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary/50 hover:border-primary hover:bg-primary/5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isClaimingForMe ? (
+                    <Loader2 size={20} className="text-primary animate-spin" />
+                  ) : (
+                    <UserPlus size={20} className="text-primary" />
+                  )}
+                  <div className="text-left">
+                    <p className="font-semibold text-primary">Pra Mim</p>
+                    <p className="text-xs text-muted-foreground">Assumir este atendimento</p>
+                  </div>
+                </button>
+              </div>
+            )}
+
             {/* Tipo de Transferência */}
             <div className="space-y-3">
               <Label className="text-sm font-semibold text-foreground">Tipo de transferência</Label>
