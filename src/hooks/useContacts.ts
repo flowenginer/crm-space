@@ -224,12 +224,17 @@ export function useCreateContact() {
         .single();
 
       if (error) {
-        // Se for erro de duplicata (constraint), tentar buscar o existente
+        // Se for erro de duplicata (constraint unique), melhorar mensagem
         if (error.code === '23505') {
+          // Tentar buscar o existente (pode falhar se estiver em outro vendedor por RLS)
           const existing = await findContactByPhone(normalizedPhone);
           if (existing) {
             toast.error(`Contato já existe: ${existing.full_name}`);
             throw new Error(`Contato duplicado: ${existing.full_name}`);
+          } else {
+            // Contato existe mas não é visível pelo RLS (atribuído a outro vendedor)
+            toast.error('Já existe um contato com este telefone no sistema. Ele pode estar atribuído a outro atendente.');
+            throw new Error('Contato com este telefone já existe no sistema');
           }
         }
         throw error;
