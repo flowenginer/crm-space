@@ -497,7 +497,7 @@ function ConversationItem({ conversation, isSelected, isPinned, isShared, isNewT
           : isSelected && !isSelectionMode
             ? 'bg-success/15 border-l-4 border-l-success'
             : isNewTransfer
-              ? 'bg-emerald-500/20 border-l-4 border-l-emerald-500 animate-pulse'
+              ? 'bg-emerald-500/20 border-l-4 border-l-emerald-500'
               : conversation.status === 'closed'
                 ? 'bg-red-500/10 border-l-4 border-l-red-400'
                 : isUnread 

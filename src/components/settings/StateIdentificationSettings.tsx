@@ -55,7 +55,7 @@ export function StateIdentificationSettings() {
   const addTagToContact = async (contactId: string, tagId: string) => {
     const { error } = await supabase
       .from('contact_tags')
-      .insert({ contact_id: contactId, tag_id: tagId });
+      .upsert({ contact_id: contactId, tag_id: tagId }, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
     
     if (error && !error.message.includes('duplicate')) {
       throw error;

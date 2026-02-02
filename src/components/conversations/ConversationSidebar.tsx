@@ -480,10 +480,10 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
       
       const { error } = await supabase
         .from('contact_tags')
-        .insert({
+        .upsert({
           contact_id: conversation.contact.id,
           tag_id: tagId
-        });
+        }, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
       
       if (error) throw error;
     },

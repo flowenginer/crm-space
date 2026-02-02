@@ -289,7 +289,7 @@ export class FlowEngine {
           await supabase.from('contact_tags').upsert({
             contact_id: execution.contact_id,
             tag_id: config.tag_id as string,
-          }, { onConflict: 'contact_id,tag_id' });
+          }, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
           await this.logExecution(execution.id, node.id, 'info', 'Tag adicionada');
         }
         break;
