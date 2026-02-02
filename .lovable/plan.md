@@ -1,150 +1,126 @@
 
-# Plano: Configurações de Visibilidade e Transferência por Tenant
+# Plano: Corrigir Erro de Nota Interna para Usuários Master
 
-## Resumo
+## Diagnóstico
 
-Sim! É totalmente possível fazer essa diferenciação entre os tenants:
+Identifiquei que o erro é **IDÊNTICO** ao problema das tags que corrigimos há pouco.
 
-| Tenant | Visualização | Transferência |
-|--------|--------------|---------------|
-| **Space Sports** | Apenas leads próprios | Apenas leads próprios |
-| **Master** | Todos os leads do tenant | Pode transferir qualquer lead + opção "Pra mim" |
+### Causa Raiz
 
-A arquitetura atual já suporta isso através das flags `can_view_all_conversations` e `can_transfer_freely` que podem ser configuradas por departamento ou por usuário.
+| Aspecto | `internal_notes` | `tags` (após correção) |
+|---------|-----------------|------------------------|
+| Política INSERT PERMISSIVE | ❌ `with_check = NULL` | ✅ `with_check = auth.uid() IS NOT NULL` |
+| Resultado | **Bloqueia INSERT da Master** | Funciona |
 
----
+### Por que funciona para Space Sports?
 
-## Diagnóstico Atual
+```text
+Space Sports (00000000-0000-0000-0000-000000000001):
+  - Coluna tenant_id DEFAULT = 00000000...
+  - get_user_tenant_id() = 00000000...
+  - Política RESTRICTIVE: tenant_id IS NULL OR tenant_id = 00000000... ✅
 
-### Master (tenant 664dfcb4...)
-- `can_view_all_conversations` = **true** em todos os departamentos ✅
-- `can_transfer_freely` = **false** em todos os departamentos ⚠️
+Master (664dfcb4-5432-4c14-9838-7db14360cabf):
+  - Coluna tenant_id DEFAULT = 00000000...
+  - get_user_tenant_id() = 664dfcb4...
+  - Código envia tenant_id = NULL
+  - PostgreSQL usa DEFAULT = 00000000...
+  - Política RESTRICTIVE: 00000000... = 664dfcb4... ❌ FALHA
+```
 
-### Space Sports (tenant 00000000...)
-- `can_view_all_conversations` = **false** na maioria dos departamentos ✅
-- `can_transfer_freely` = **false** na maioria ✅
+### Fluxo do Erro
+
+```text
+Usuário Master clica "Adicionar Nota"
+        │
+        ▼
+INSERT sem tenant_id (código envia NULL)
+        │
+        ▼
+Política PERMISSIVE "Authenticated access"
+  with_check: NULL (não define regra INSERT)
+        │
+        ▼
+Política RESTRICTIVE "Tenant isolation"
+  with_check: (tenant_id IS NULL) OR (tenant_id = get_user_tenant_id())
+        │
+        ├── tenant_id recebe DEFAULT = 00000000... (Space Sports)
+        ├── get_user_tenant_id() = 664dfcb4... (Master)
+        ▼
+  00000000... ≠ 664dfcb4... = ERRO RLS
+```
 
 ---
 
 ## Solução
 
-### Parte 1: Habilitar transferência livre para Master
+Criar política INSERT explícita para `internal_notes`, igual fizemos para `tags`:
 
-Migration SQL para ativar `can_transfer_freely` nos departamentos da Master:
-
-```sql
-UPDATE departments 
-SET can_transfer_freely = true 
-WHERE tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf';
-```
-
-### Parte 2: Adicionar opção "Pra Mim" no modal de transferência
-
-Modificar o `TransferModal.tsx` para:
-
-1. Detectar se o usuário atual pode transferir livremente (`canTransferFreely`)
-2. Adicionar um botão rápido "Pra Mim" que auto-seleciona o usuário logado
-3. O botão só aparece quando a conversa NÃO está atribuída ao usuário atual
-
----
-
-## Alterações nos Arquivos
-
-### Arquivo: `supabase/migrations/xxx.sql`
+### Migration SQL
 
 ```sql
--- Habilitar transferência livre para todos os departamentos da Master
-UPDATE departments 
-SET can_transfer_freely = true 
-WHERE tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf';
+-- Adicionar política de INSERT para internal_notes
+CREATE POLICY "Authenticated users can create internal_notes"
+  ON internal_notes FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() IS NOT NULL);
 
-COMMENT ON TABLE departments 
-IS 'can_transfer_freely=true permite que membros transfiram qualquer conversa, não apenas as atribuídas a eles';
+COMMENT ON POLICY "Authenticated users can create internal_notes" ON internal_notes 
+  IS 'Permite usuários autenticados criarem notas - tenant_id validado pela política RESTRICTIVE e trigger';
 ```
 
-### Arquivo: `src/components/conversations/TransferModal.tsx`
+### Por que funciona
 
-Adicionar:
-- Import do hook `usePermissions` para acessar `canTransferFreely`
-- Import do `useAuth` para obter o usuário atual
-- Novo botão "Pra Mim" que:
-  - Só aparece se `canTransferFreely === true`
-  - Só aparece se a conversa não é do usuário atual
-  - Auto-seleciona o departamento do usuário + o próprio usuário
-  - Executa a transferência com um clique
+1. Nova política PERMISSIVE permite INSERT quando usuário está autenticado
+2. O código envia `tenant_id = NULL`
+3. Política RESTRICTIVE aceita `(tenant_id IS NULL)` = **PASSA**
+4. Trigger `set_tenant_id_from_user` define `tenant_id = get_user_tenant_id()` do usuário
+5. Nota salva com tenant correto
 
-**Localização**: Antes da seção "Tipo de transferência", adicionar card destacado:
-
-```tsx
-{/* Opção rápida "Pra Mim" - só aparece para quem pode transferir livremente */}
-{canTransferFreely && currentAssignedTo !== user?.id && (
-  <div className="mb-4">
-    <Button
-      onClick={handleClaimForMe}
-      variant="outline"
-      className="w-full h-14 border-2 border-dashed border-primary/50 hover:border-primary hover:bg-primary/5 gap-3"
-    >
-      <UserPlus size={20} className="text-primary" />
-      <div className="text-left">
-        <p className="font-semibold text-primary">Pra Mim</p>
-        <p className="text-xs text-muted-foreground">Assumir este atendimento</p>
-      </div>
-    </Button>
-  </div>
-)}
-```
-
-**Lógica do `handleClaimForMe`**:
-```tsx
-const handleClaimForMe = async () => {
-  // Buscar departamento primário do usuário
-  const userDeptId = await getUserPrimaryDepartment(user.id);
-  
-  await transferConversation.mutateAsync({
-    conversationId,
-    toUserId: user.id,
-    toUserName: profile?.full_name || 'Você',
-    toDepartmentId: userDeptId,
-    toDepartmentName: null,
-    note: 'Assumido pelo atendente',
-  });
-  
-  toast.success('Conversa assumida com sucesso!');
-  onTransferSuccess?.();
-  handleClose();
-};
-```
-
----
-
-## Fluxo Visual
+### Fluxo Corrigido
 
 ```text
-Usuário Master clica em "Transferir"
-        |
-        v
-+------------------------------------------+
-|  [🙋 Pra Mim - Assumir este atendimento] |  <- NOVO BOTÃO
-+------------------------------------------+
-|                                          |
-|  Tipo de transferência:                  |
-|  [Para atendente] [Para fila]            |
-|                                          |
-|  Departamento: [...]                     |
-|  Atendente: [...]                        |
-+------------------------------------------+
+Usuário Master clica "Adicionar Nota"
+        │
+        ▼
+INSERT com tenant_id = NULL
+        │
+        ▼
+Política PERMISSIVE "Authenticated users can create internal_notes"
+  with_check: auth.uid() IS NOT NULL ✅
+        │
+        ▼
+Política RESTRICTIVE "Tenant isolation"
+  with_check: (tenant_id IS NULL) ✅ (código envia NULL)
+        │
+        ▼
+INSERT permitido
+        │
+        ▼
+Trigger set_tenant_id_from_user executa
+  NEW.tenant_id := get_user_tenant_id() = 664dfcb4...
+        │
+        ▼
+Nota salva com tenant_id = 664dfcb4... ✅
 ```
 
 ---
 
-## Segurança
+## Detalhes Técnicos
 
-- A verificação `canTransferFreely` usa a função SQL `can_transfer_freely()` que verifica:
-  1. Se o usuário é admin/supervisor (sempre pode)
-  2. Se o usuário tem `can_transfer_freely = true` no perfil
-  3. Se algum departamento do usuário tem `can_transfer_freely = true`
+### Arquivo a criar
 
-- A Space Sports continua com `can_transfer_freely = false`, então o botão "Pra Mim" não aparece para eles
+`supabase/migrations/xxx.sql`
+
+### Trigger já existe
+
+Verifiquei que o trigger `trigger_set_tenant_id_internal_notes` já está configurado e usa a função `set_tenant_id_from_user` que define corretamente o `tenant_id` baseado no usuário autenticado.
+
+### Segurança mantida
+
+- Isolamento de tenant permanece via política RESTRICTIVE
+- Apenas usuários autenticados podem criar notas
+- Trigger garante que `tenant_id` seja sempre correto
 
 ---
 
@@ -152,7 +128,7 @@ Usuário Master clica em "Transferir"
 
 | Aspecto | Avaliação |
 |---------|-----------|
-| Risco | Baixo - apenas adiciona funcionalidade |
-| Tempo | ~30 minutos |
-| Impacto | Nenhum para Space, melhoria UX para Master |
-
+| Nível | Baixa |
+| Risco | Baixo (padrão já testado com tags) |
+| Tempo | Imediato (apenas migration) |
+| Impacto | Corrige erro crítico para Master sem afetar outros tenants |
