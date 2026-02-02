@@ -1,142 +1,142 @@
 
-# Plano de Correção: Importação de Contatos
+# Plano de Correção: Vendedores Não Conseguem Adicionar Contatos
 
-## 📋 Resumo do Problema
+## Resumo do Problema
 
-A importação de 4.304 leads resultou em:
-- **3.568 contatos SEM atribuição de agente** (88%)
-- **0 tags associadas** aos contatos (embora as tags tenham sido criadas)
-- Status de lead funcionando parcialmente
-
-## 🔍 Causa Raiz
-
-Foram identificados **3 bugs críticos** no `useImportContacts.ts`:
-
-### Bug #1: Vendedor Ignorado para Novos Contatos
-**Localização:** Linhas 431-436
-
-Ao criar novos contatos, o código usa apenas `defaultAssigneeId` (vendedor fixo da interface). O vendedor mapeado da coluna da planilha (`Agente` = "Susana", "Bruna", etc.) é completamente ignorado para contatos que não existem no sistema.
-
-```typescript
-// CÓDIGO ATUAL (com bug)
-const newContactData = {
-  full_name: row.nome.trim(),
-  phone: normalizedPhone,
-  assigned_to: options.defaultAssigneeId || null,  // ❌ Ignora vendedor da planilha
-};
-```
-
-### Bug #2: Status de Lead Ignorado para Novos Contatos
-**Localização:** Linhas 431-436 e 488-500
-
-O `lead_status` só é processado para contatos existentes. Novos contatos são criados sem status, mesmo que a planilha contenha "(2) Abordagem", "(4) Cursos", etc.
-
-### Bug #3: Tags Não Associadas a Novos Contatos
-**Localização:** Linhas 656-664
-
-Quando processa tags (Fase 5), o código tenta encontrar o `contactId` no cache. Porém, novos contatos criados via batch insert são adicionados ao `createdContactsMap` com o `phone` exato, mas a busca usa `variations` que pode não coincidir, resultando em `contactId = null` e tags não associadas.
+Vendedores não conseguem criar contatos manualmente. O problema tem **duas causas principais**:
 
 ---
 
-## ✅ Correções Propostas
+## Causa #1: Verificação de Duplicata Bloqueada por RLS
 
-### Correção 1: Usar Vendedor da Planilha ao Criar Contatos
+**Localização:** `src/hooks/useContacts.ts` (linhas 144-158, 173-178, 228-234)
 
-**Arquivo:** `src/hooks/useImportContacts.ts`
+### O que acontece:
 
-Mover a lógica de resolução do `assigneeId` para **antes** da criação do contato, e usar esse valor:
+1. Vendedor tenta criar um contato com telefone X
+2. Função `findContactByPhone(X)` é chamada para verificar se já existe
+3. O RLS de SELECT só permite ver contatos atribuídos ao próprio vendedor
+4. Se o contato X existe mas está atribuído a **outro vendedor**, a função retorna `null`
+5. O código tenta inserir o contato
+6. INSERT falha com erro de constraint `contacts_phone_tenant_unique` (telefone duplicado)
+7. No tratamento de erro, tenta buscar novamente com `findContactByPhone`, mas continua sem encontrar
+8. Erro genérico é exibido: "duplicate key value violates unique constraint..."
 
-```typescript
-// ANTES de criar o contato, resolver o vendedor
-let assigneeId: string | null = null;
-if (options.defaultAssigneeId) {
-  assigneeId = options.defaultAssigneeId;
-} else if (options.updateAssignee && row.vendedor && row.vendedor.trim()) {
-  const agent = findProfileByName(row.vendedor);
-  if (agent) {
-    assigneeId = agent.id;
-  }
-}
+### Correção Proposta:
 
-// Ao criar contato, usar assigneeId resolvido
-const newContactData = {
-  full_name: row.nome.trim(),
-  phone: normalizedPhone,
-  state: identifiedState || null,
-  assigned_to: assigneeId,  // ✅ Usa vendedor da planilha
-};
-```
+Modificar a verificação de duplicata para usar uma **RPC no banco** que possa verificar a existência do contato **ignorando RLS** (via SECURITY DEFINER) ou melhorar a mensagem de erro.
 
-### Correção 2: Incluir Status de Lead ao Criar Contatos
+**Opção A (Recomendada):** Criar função RPC `check_contact_exists_by_phone(phone)` que retorna `{exists: boolean, contact_name: string | null, assigned_to_name: string | null}`
 
-Resolver o status **antes** de criar o contato e incluir na criação:
+**Opção B (Mais simples):** Melhorar a mensagem de erro quando ocorrer violação de constraint:
 
 ```typescript
-// Resolver status de lead
-let leadStatusName: string | null = null;
-if (options.updateLeadStatus && row.statusLead && row.statusLead.trim()) {
-  const status = await findOrCreateLeadStatus(row.statusLead);
-  if (status) {
-    leadStatusName = status.name;
-  }
-}
-
-// Ao criar contato, incluir lead_status
-const newContactData = {
-  full_name: row.nome.trim(),
-  phone: normalizedPhone,
-  state: identifiedState || null,
-  assigned_to: assigneeId,
-  lead_status: leadStatusName,  // ✅ Inclui status
-};
-```
-
-### Correção 3: Garantir Associação de Tags para Novos Contatos
-
-Na Fase 5, adicionar também busca no `createdContactsMap` pelo phone normalizado:
-
-```typescript
-let contactId: string | null = null;
-
-// Primeiro, tentar pelo phone normalizado exato no createdContactsMap
-if (createdContactsMap.has(normalizedPhone)) {
-  contactId = createdContactsMap.get(normalizedPhone)!;
-}
-
-// Se não encontrou, tentar pelas variações no contactsCache
-if (!contactId) {
-  for (const v of variations) {
-    if (contactsCache.has(v)) {
-      contactId = contactsCache.get(v)!.id;
-      break;
-    }
-  }
+if (error.code === '23505') {
+  toast.error('Já existe um contato com este telefone no sistema. Ele pode estar atribuído a outro atendente.');
+  throw new Error('Contato com este telefone já existe no sistema');
 }
 ```
 
 ---
 
-## 📁 Arquivos a Modificar
+## Causa #2: Falta Validação de Permissão na Interface
+
+**Localização:** `src/pages/Contacts.tsx` (linhas 570-576, 814-820)
+
+### O que acontece:
+
+O botão "Adicionar Contato" está visível para todos os usuários, mas:
+- Alguns tenants têm o role `vendedor` configurado **sem** a permissão `contacts.create`
+- A permissão `can.createContacts()` existe mas **não está sendo usada**
+
+### Correção Proposta:
+
+Envolver o botão com PermissionGate ou condicional:
+
+```tsx
+// Opção A: Com PermissionGate
+<PermissionGate permission="contacts.create">
+  <button onClick={handleNewContact} ...>
+    <Plus size={18} />
+    Adicionar Contato
+  </button>
+</PermissionGate>
+
+// Opção B: Com hook usePermissions
+const { can } = usePermissions();
+{can.createContacts() && (
+  <button onClick={handleNewContact} ...>
+    <Plus size={18} />
+    Adicionar Contato
+  </button>
+)}
+```
+
+---
+
+## Causa #3: Role Definitions Incompletas
+
+**Localização:** Banco de dados, tabela `role_definitions`
+
+### O que acontece:
+
+Alguns tenants têm a configuração de vendedor com permissões incompletas:
+
+| Tenant | Permissões de Contacts |
+|--------|------------------------|
+| `664dfcb4-...` | `{"view": true}` (falta create) |
+| `99ca7ab2-...` | `null` (sem permissões!) |
+| Outros | `{"create": true, "update": true, "view": true}` |
+
+### Correção Proposta:
+
+Executar SQL para corrigir as role_definitions dos vendedores:
+
+```sql
+UPDATE role_definitions
+SET permissions = jsonb_set(
+  COALESCE(permissions, '{}'::jsonb),
+  '{contacts}',
+  '{"view": true, "create": true, "update": true}'::jsonb
+)
+WHERE role_key = 'vendedor'
+  AND (
+    permissions->'contacts'->'create' IS NULL
+    OR permissions->'contacts'->'create' = 'false'::jsonb
+  );
+```
+
+---
+
+## Arquivos a Modificar
 
 | Arquivo | Tipo de Mudança |
 |---------|-----------------|
-| `src/hooks/useImportContacts.ts` | Refatorar lógica de criação de contatos |
+| `src/hooks/useContacts.ts` | Melhorar mensagem de erro para duplicatas |
+| `src/pages/Contacts.tsx` | Adicionar verificação de permissão no botão |
+| Banco de dados | Corrigir role_definitions |
 
 ---
 
-## 🧪 Validação
+## Ordem de Implementação
 
-Após implementação, testar com:
-1. Arquivo CSV com vendedores mapeados
-2. Verificar se contatos novos recebem `assigned_to` do vendedor da planilha
-3. Verificar se `lead_status` é atribuído corretamente
-4. Verificar se tags são associadas via `contact_tags`
+1. **Corrigir role_definitions no banco** - Isso resolve para a maioria dos casos
+2. **Melhorar tratamento de erro de duplicata** - Mensagem mais clara para o usuário
+3. **Adicionar verificação de permissão no botão** - Ocultar botão para quem não tem permissão
 
 ---
 
-## 📊 Estimativa
+## Validação
 
-- **Complexidade:** Média
-- **Risco:** Baixo (lógica incremental, não quebra fluxo existente)
-- **Arquivos afetados:** 1
+Após implementação:
+1. Verificar se vendedor consegue adicionar contato novo
+2. Verificar se aparece mensagem clara ao tentar adicionar contato duplicado
+3. Verificar se botão fica oculto para roles sem permissão `contacts.create`
 
+---
+
+## Complexidade e Risco
+
+- **Complexidade:** Baixa
+- **Risco:** Baixo (correções incrementais)
+- **Arquivos afetados:** 2 + SQL no banco
