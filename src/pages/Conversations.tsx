@@ -1050,7 +1050,7 @@ function MessageBubble({ message, onReply, onDelete, onEdit, onReact, onScrollTo
                 )}
                 
                 {/* Contact (vCard) messages - styled card */}
-                {message.message_type === 'contacts' && message.content && (
+                {(message.message_type === 'contacts' || message.message_type === 'contact') && message.content && (
                   <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg border border-border/50">
                     <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                       <User size={16} className="text-primary" />
