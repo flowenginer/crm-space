@@ -1,134 +1,147 @@
 
-# Plano: Corrigir Erro de Nota Interna para Usuários Master
+# Diagnóstico: Discrepância entre Atribuição de Conversa e Contato
 
-## Diagnóstico
+## Problema Identificado
 
-Identifiquei que o erro é **IDÊNTICO** ao problema das tags que corrigimos há pouco.
+A Susana vê um lead na aba "Minhas" mas o sistema mostra que está atribuído a Bruna. Esta situação ocorre devido a uma **dessincronização estrutural** entre dois campos diferentes:
 
-### Causa Raiz
-
-| Aspecto | `internal_notes` | `tags` (após correção) |
-|---------|-----------------|------------------------|
-| Política INSERT PERMISSIVE | ❌ `with_check = NULL` | ✅ `with_check = auth.uid() IS NOT NULL` |
-| Resultado | **Bloqueia INSERT da Master** | Funciona |
-
-### Por que funciona para Space Sports?
-
-```text
-Space Sports (00000000-0000-0000-0000-000000000001):
-  - Coluna tenant_id DEFAULT = 00000000...
-  - get_user_tenant_id() = 00000000...
-  - Política RESTRICTIVE: tenant_id IS NULL OR tenant_id = 00000000... ✅
-
-Master (664dfcb4-5432-4c14-9838-7db14360cabf):
-  - Coluna tenant_id DEFAULT = 00000000...
-  - get_user_tenant_id() = 664dfcb4...
-  - Código envia tenant_id = NULL
-  - PostgreSQL usa DEFAULT = 00000000...
-  - Política RESTRICTIVE: 00000000... = 664dfcb4... ❌ FALHA
-```
-
-### Fluxo do Erro
-
-```text
-Usuário Master clica "Adicionar Nota"
-        │
-        ▼
-INSERT sem tenant_id (código envia NULL)
-        │
-        ▼
-Política PERMISSIVE "Authenticated access"
-  with_check: NULL (não define regra INSERT)
-        │
-        ▼
-Política RESTRICTIVE "Tenant isolation"
-  with_check: (tenant_id IS NULL) OR (tenant_id = get_user_tenant_id())
-        │
-        ├── tenant_id recebe DEFAULT = 00000000... (Space Sports)
-        ├── get_user_tenant_id() = 664dfcb4... (Master)
-        ▼
-  00000000... ≠ 664dfcb4... = ERRO RLS
-```
+| Campo | Localização | Significado |
+|-------|-------------|-------------|
+| `conversations.assigned_to` | Tabela de conversas | Quem está atendendo a conversa atual |
+| `contacts.assigned_to` | Tabela de contatos | Quem é o "dono" permanente do contato |
 
 ---
 
-## Solução
+## Causa Raiz
 
-Criar política INSERT explícita para `internal_notes`, igual fizemos para `tags`:
-
-### Migration SQL
+A função `transfer_conversation` foi projetada para **preservar o responsável original do contato**:
 
 ```sql
--- Adicionar política de INSERT para internal_notes
-CREATE POLICY "Authenticated users can create internal_notes"
-  ON internal_notes FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() IS NOT NULL);
-
-COMMENT ON POLICY "Authenticated users can create internal_notes" ON internal_notes 
-  IS 'Permite usuários autenticados criarem notas - tenant_id validado pela política RESTRICTIVE e trigger';
+-- Código atual na função transfer_conversation
+assigned_to = CASE 
+  WHEN assigned_to IS NULL AND p_to_user_id IS NOT NULL THEN p_to_user_id 
+  ELSE assigned_to  -- NÃO MUDA se já tem dono
+END
 ```
 
-### Por que funciona
+Isso significa:
+- Quando uma conversa é transferida para Bruna, `conversations.assigned_to = Bruna` ✓
+- Mas se o contato já tinha Susana como responsável, `contacts.assigned_to` permanece Susana ✗
 
-1. Nova política PERMISSIVE permite INSERT quando usuário está autenticado
-2. O código envia `tenant_id = NULL`
-3. Política RESTRICTIVE aceita `(tenant_id IS NULL)` = **PASSA**
-4. Trigger `set_tenant_id_from_user` define `tenant_id = get_user_tenant_id()` do usuário
-5. Nota salva com tenant correto
-
-### Fluxo Corrigido
+### Cenário que cria o problema
 
 ```text
-Usuário Master clica "Adicionar Nota"
-        │
-        ▼
-INSERT com tenant_id = NULL
-        │
-        ▼
-Política PERMISSIVE "Authenticated users can create internal_notes"
-  with_check: auth.uid() IS NOT NULL ✅
-        │
-        ▼
-Política RESTRICTIVE "Tenant isolation"
-  with_check: (tenant_id IS NULL) ✅ (código envia NULL)
-        │
-        ▼
-INSERT permitido
-        │
-        ▼
-Trigger set_tenant_id_from_user executa
-  NEW.tenant_id := get_user_tenant_id() = 664dfcb4...
-        │
-        ▼
-Nota salva com tenant_id = 664dfcb4... ✅
+1. Contato "Sheila" atribuído a Susana (contacts.assigned_to = Susana)
+2. Admin faz "Distribuição em massa" para Bruna
+3. Conversa é transferida (conversations.assigned_to = Bruna)
+4. Contato NÃO é atualizado (contacts.assigned_to = Susana)
 ```
 
----
+### Dados Atuais
 
-## Detalhes Técnicos
-
-### Arquivo a criar
-
-`supabase/migrations/xxx.sql`
-
-### Trigger já existe
-
-Verifiquei que o trigger `trigger_set_tenant_id_internal_notes` já está configurado e usa a função `set_tenant_id_from_user` que define corretamente o `tenant_id` baseado no usuário autenticado.
-
-### Segurança mantida
-
-- Isolamento de tenant permanece via política RESTRICTIVE
-- Apenas usuários autenticados podem criar notas
-- Trigger garante que `tenant_id` seja sempre correto
+| Métrica | Valor |
+|---------|-------|
+| Total de conversas ativas (Master) | 1.536 |
+| Conversas com discrepância | 112 (7,3%) |
+| Conversas com agente mas contato sem | 25 |
+| Conversas sem agente mas contato com | 10 |
 
 ---
 
-## Complexidade
+## Por que Space Sports não tem este problema?
 
-| Aspecto | Avaliação |
+A Space Sports **não usa a funcionalidade de "Distribuição em massa"** e não transfere leads entre vendedores com frequência. Portanto, a dessincronização não ocorre.
+
+---
+
+## O que a UI mostra
+
+A interface exibe **ambos os campos** em lugares diferentes:
+
+| Local na UI | Campo usado | Significado |
+|-------------|-------------|-------------|
+| Aba "Minhas" (filtro) | `conversations.assigned_to` | Quem está atendendo |
+| Badge azul na lista | `conversations.assignee` | Quem está atendendo |
+| Sidebar "Atendente Responsável" | `contacts.assigned_to` | Dono permanente |
+
+**O problema visual**: O usuário vê a conversa na sua aba "Minhas", mas quando abre o sidebar vê outro nome como "Responsável".
+
+---
+
+## Soluções Propostas
+
+### Opção A: Sincronização Total (Recomendada)
+
+Modificar a função `transfer_conversation` para **sempre sincronizar** ambos os campos quando uma transferência é feita:
+
+```sql
+-- Nova lógica: sempre sincronizar contato com conversa
+UPDATE contacts
+SET 
+  assigned_to = p_to_user_id,  -- SEMPRE atualiza
+  department_id = COALESCE(v_final_department_id, department_id),
+  updated_at = NOW()
+WHERE id = v_contact_id;
+```
+
+**Vantagens:**
+- Consistência total entre conversa e contato
+- Usuário vê o mesmo nome em todos os lugares
+- Relatórios de performance ficam consistentes
+
+**Desvantagens:**
+- Perde o conceito de "dono original do contato"
+- Pode afetar métricas de primeiro atendente
+
+### Opção B: Manter Lógica Atual + Corrigir Dados Existentes
+
+1. **Não alterar a função** (manter comportamento atual)
+2. **Rodar script de sincronização** para corrigir os 112 casos existentes
+3. **Documentar** que "Atendente Responsável" é diferente de "Atendente Atual"
+
+```sql
+-- Script de sincronização
+UPDATE contacts con
+SET assigned_to = c.assigned_to, updated_at = now()
+FROM conversations c
+WHERE c.contact_id = con.id
+  AND c.status IN ('open', 'pending')
+  AND c.assigned_to IS NOT NULL
+  AND con.assigned_to != c.assigned_to
+  AND c.tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf';
+```
+
+### Opção C: Clarificar na UI
+
+Não alterar o backend, mas **melhorar os rótulos** na interface:
+
+- Mudar "Atendente Responsável" para "Dono do Contato"
+- Adicionar tooltip explicando a diferença
+- Mostrar ambos os campos claramente
+
+---
+
+## Recomendação
+
+**Opção A (Sincronização Total)** é a mais adequada para o modelo de negócio da Master, onde leads são redistribuídos frequentemente e o conceito de "dono original" não é relevante.
+
+Isso requer:
+1. Atualizar a função `transfer_conversation`
+2. Rodar script de correção nos dados existentes
+3. Atualizar a função `update_conversation_assignment`
+
+### Arquivos a Modificar
+
+| Arquivo | Alteração |
 |---------|-----------|
-| Nível | Baixa |
-| Risco | Baixo (padrão já testado com tags) |
-| Tempo | Imediato (apenas migration) |
-| Impacto | Corrige erro crítico para Master sem afetar outros tenants |
+| Nova migration SQL | Atualizar função `transfer_conversation` para sempre sincronizar |
+| Nova migration SQL | Atualizar função `update_conversation_assignment` para sempre sincronizar |
+| Script one-time | Corrigir os 112 registros dessincronizados |
+
+---
+
+## Qual opção você prefere?
+
+1. **Opção A** - Sincronização total (sempre atualizar contato junto com conversa)
+2. **Opção B** - Manter lógica atual + corrigir dados + documentar diferença
+3. **Opção C** - Apenas clarificar na UI sem alterar backend
