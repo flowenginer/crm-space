@@ -5614,7 +5614,10 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
                         // Template without content_blocks but with media
                         const fullMediaUrl = getFullMediaUrl(mediaUrl);
                         const messageType = getMessageType(mediaType);
-                        const hasText = content && content.trim();
+                        // For audio-only templates (category 'audio' or 'audios'), don't send the template title as text
+                        // The 'content' field for audio templates is just the title, not actual message text
+                        const isAudioOnlyTemplate = type === 'audio' && mediaUrl;
+                        const hasText = content && content.trim() && !isAudioOnlyTemplate;
                         
                         // Helper functions for sending
                         const sendTextMessage = async () => {
