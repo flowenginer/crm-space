@@ -2048,6 +2048,7 @@ export type Database = {
           reopened_at: string | null
           sla_status: string | null
           status: string | null
+          status_ia: string | null
           tenant_id: string
           total_active_time_seconds: number | null
           transfer_note: string | null
@@ -2087,6 +2088,7 @@ export type Database = {
           reopened_at?: string | null
           sla_status?: string | null
           status?: string | null
+          status_ia?: string | null
           tenant_id: string
           total_active_time_seconds?: number | null
           transfer_note?: string | null
@@ -2126,6 +2128,7 @@ export type Database = {
           reopened_at?: string | null
           sla_status?: string | null
           status?: string | null
+          status_ia?: string | null
           tenant_id?: string
           total_active_time_seconds?: number | null
           transfer_note?: string | null
