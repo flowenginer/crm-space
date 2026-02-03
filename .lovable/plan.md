@@ -1,96 +1,158 @@
 
-# Problema: Conexões Ausentes no Fluxo "EMPREGA MAIS - PROTOCOLO AGENDAMENTO"
+# Plano: Corrigir Blocos de Atualização de Status nas Automações da Master
 
 ## Diagnóstico
 
-Ao analisar o banco de dados, descobri que o fluxo **"EMPREGA MAIS - PROTOCOLO AGENDAMENTO"** perdeu todas as suas conexões:
+Identifiquei a **causa raiz** dos problemas nas automações da Master:
 
-| Fluxo | Total de Nós | Total de Conexões | Status |
-|-------|--------------|-------------------|--------|
-| EMPREGA MAIS - PALESTRA | 3 | 2 | ✅ OK |
-| EMPREGA MAIS - POS VISITA | 3 | 2 | ✅ OK |
-| **EMPREGA MAIS - PROTOCOLO AGENDAMENTO** | **3** | **0** | ❌ ERRO |
-| EMPREGA MAIS - TREINAMENTO | 3 | 2 | ✅ OK |
+### Problema: DEFAULT Incorreto em `flow_connections`
 
-### O que aconteceu
+A tabela `flow_connections` tem um `tenant_id` DEFAULT fixo que pertence ao tenant **Space Sports** (`00000000-0000-0000-0000-000000000001`), quando deveria usar o tenant do usuário autenticado.
 
-1. O fluxo tem 3 nós:
-   - `trigger (message_key)` - Palavra-chave: "Registro de Cadastramento"
-   - `action (add_tag)` - Adiciona tag
-   - `action (set_lead_status)` - Define status: "Agendado"
+**Evidência da Query:**
+```sql
+-- EMPREGA MAIS - PROTOCOLO AGENDAMENTO tem conexões com tenant ERRADO
+tenant_id: 00000000-0000-0000-0000-000000000001 (Space Sports)
 
-2. **Não existem conexões entre esses nós** - as "linhas" que ligam um bloco ao outro foram apagadas
+-- Outros fluxos da Master têm conexões CORRETAS  
+tenant_id: 664dfcb4-5432-4c14-9838-7db14360cabf (Master)
+```
 
-3. O fluxo funcionou até 31/01/2026 (há logs mostrando "Status alterado para: Agendado")
+### Impacto
 
-4. Após essa data, mesmo que o trigger seja acionado, nada acontece porque não há conexão para o próximo nó
+Quando conexões são criadas/editadas no Flow Editor:
+1. O código **NÃO** envia `tenant_id` explicitamente
+2. O banco usa o DEFAULT: `00000000-0000-0000-0000-000000000001`
+3. Políticas RLS podem bloquear operações ou causar vazamento de dados entre tenants
 
 ---
 
 ## Solução
 
-### Opção 1: Recriar as conexões via SQL (Rápido)
-
-Inserir as conexões diretamente no banco:
+### 1. Alterar DEFAULT da Coluna (Banco de Dados)
 
 ```sql
--- Conexão: trigger → add_tag
-INSERT INTO flow_connections (flow_id, source_node_id, target_node_id)
-VALUES (
-  'f2260719-fcf9-4b09-85ed-b13e733b29fd',  -- flow_id
-  '45d60eb4-2961-43cc-8f3c-62ae56c5d8d3',  -- trigger (message_key)
-  'df0ce31e-99c8-4dc4-ac1d-9f07be65c2dd'   -- add_tag
-);
-
--- Conexão: add_tag → set_lead_status  
-INSERT INTO flow_connections (flow_id, source_node_id, target_node_id)
-VALUES (
-  'f2260719-fcf9-4b09-85ed-b13e733b29fd',  -- flow_id
-  'df0ce31e-99c8-4dc4-ac1d-9f07be65c2dd',  -- add_tag
-  'ac22c650-48e7-4c09-828d-68e5464ad862'   -- set_lead_status
-);
+-- Mudar de UUID fixo para função dinâmica
+ALTER TABLE flow_connections 
+ALTER COLUMN tenant_id 
+SET DEFAULT get_user_tenant_id();
 ```
 
-### Opção 2: Reconectar no Flow Builder (Manual)
+### 2. Atualizar Flow Editor (Código)
 
-O usuário pode abrir o fluxo no Flow Builder e arrastar as conexões novamente.
+**Arquivo:** `src/pages/FlowEditor.tsx` (linhas ~418-424)
+
+**Modificação:** Incluir `tenant_id` explicitamente ao inserir conexões
+
+**De:**
+```typescript
+const connectionsToInsert = [...uniqueConnections.values()];
+
+if (connectionsToInsert.length > 0) {
+  const { error: connError } = await supabase
+    .from('flow_connections')
+    .insert(connectionsToInsert);
+```
+
+**Para:**
+```typescript
+// Buscar tenant_id do fluxo
+const { data: flowData } = await supabase
+  .from('chatbot_flows')
+  .select('tenant_id')
+  .eq('id', flowId)
+  .single();
+
+const connectionsWithTenant = connectionsToInsert.map(conn => ({
+  ...conn,
+  tenant_id: flowData?.tenant_id
+}));
+
+if (connectionsWithTenant.length > 0) {
+  const { error: connError } = await supabase
+    .from('flow_connections')
+    .insert(connectionsWithTenant);
+```
+
+### 3. Corrigir Conexões Existentes com Tenant Errado
+
+```sql
+-- Atualizar conexões do fluxo "EMPREGA MAIS - PROTOCOLO AGENDAMENTO"
+UPDATE flow_connections 
+SET tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf'
+WHERE flow_id = 'f2260719-fcf9-4b09-85ed-b13e733b29fd'
+  AND tenant_id = '00000000-0000-0000-0000-000000000001';
+
+-- Verificar se há outros fluxos afetados
+UPDATE flow_connections c
+SET tenant_id = f.tenant_id
+FROM chatbot_flows f
+WHERE c.flow_id = f.id
+  AND c.tenant_id != f.tenant_id;
+```
 
 ---
 
-## Ação Recomendada
+## Outras Tabelas Afetadas
 
-Executar a **Opção 1** (inserir conexões via SQL) para restaurar imediatamente o funcionamento do fluxo.
+Essas tabelas **também** usam o DEFAULT incorreto:
+
+| Tabela | DEFAULT Atual | Ação Necessária |
+|--------|---------------|-----------------|
+| `flow_executions` | `00000000-...001` | Alterar para `get_user_tenant_id()` |
+| `flow_execution_logs` | `00000000-...001` | Alterar para `get_user_tenant_id()` |
+| `scheduled_messages` | ✅ JÁ CORRIGIDO | Nenhuma |
+
+**Migração Completa:**
+```sql
+ALTER TABLE flow_executions 
+ALTER COLUMN tenant_id SET DEFAULT get_user_tenant_id();
+
+ALTER TABLE flow_execution_logs 
+ALTER COLUMN tenant_id SET DEFAULT get_user_tenant_id();
+
+ALTER TABLE flow_connections 
+ALTER COLUMN tenant_id SET DEFAULT get_user_tenant_id();
+```
+
+---
+
+## Arquivos a Modificar
+
+1. **Migração SQL** - Alterar DEFAULTs de 3 tabelas
+2. **src/pages/FlowEditor.tsx** - Enviar `tenant_id` ao criar conexões
+3. **supabase/functions/process-flow-triggers/index.ts** - Verificar se precisa enviar `tenant_id` ao criar execuções
+
+---
+
+## Por Que Isso Aconteceu?
+
+O tenant `00000000-0000-0000-0000-000000000001` foi provavelmente usado como:
+- Tenant padrão durante desenvolvimento
+- Valor de fallback em produção
+
+Para sistemas **multi-tenant**, o correto é **sempre** usar `get_user_tenant_id()` como DEFAULT para garantir isolamento automático.
 
 ---
 
 ## Seção Técnica
 
-### IDs dos Nós do Fluxo
+### Fluxos da Master Afetados
 
-| Nó | Subtipo | ID |
-|----|---------|----| 
-| Trigger | message_key | `45d60eb4-2961-43cc-8f3c-62ae56c5d8d3` |
-| Action 1 | add_tag | `df0ce31e-99c8-4dc4-ac1d-9f07be65c2dd` |
-| Action 2 | set_lead_status | `ac22c650-48e7-4c09-828d-68e5464ad862` |
+Apenas **"EMPREGA MAIS - PROTOCOLO AGENDAMENTO"** tem conexões com `tenant_id` errado. Os outros 5 fluxos ativos estão corretos.
 
-### Fluxo Esperado
+### Validação
 
-```text
-┌─────────────────────────────┐
-│  Trigger: "Registro de      │
-│  Cadastramento"             │
-│  (message_key)              │
-└──────────────┬──────────────┘
-               │
-               ▼
-┌─────────────────────────────┐
-│  Adicionar Tag              │
-│  (add_tag)                  │
-└──────────────┬──────────────┘
-               │
-               ▼
-┌─────────────────────────────┐
-│  Definir Status: "Agendado" │
-│  (set_lead_status)          │
-└─────────────────────────────┘
+Após aplicar as correções, executar:
+
+```sql
+-- Verificar se todas as conexões têm tenant_id correto
+SELECT f.name, c.tenant_id, count(*) 
+FROM chatbot_flows f
+JOIN flow_connections c ON c.flow_id = f.id
+WHERE f.tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf'
+GROUP BY f.name, c.tenant_id
+HAVING c.tenant_id != f.tenant_id;
+
+-- Resultado esperado: 0 linhas
 ```
