@@ -1,107 +1,150 @@
 
-## Diagnóstico (causa raiz confirmada)
-
-O problema **não é só do bloco “Alterar Status Lead”**: as automações da Master estão falhando antes mesmo de executar os nós, porque **a criação da execução do fluxo (flow_executions) está dando erro**.
-
-Nos logs do Edge Function `process-flow-triggers` apareceu este erro ao tentar criar execução:
-
-- `tenant_id é obrigatório e não foi possível determinar automaticamente` (code `P0001`)
-
-Isso acontece porque:
-
-1) As tabelas `flow_executions` e `flow_execution_logs` estão com:
-- `tenant_id` **NOT NULL**
-- `DEFAULT get_user_tenant_id()`
-- trigger `set_tenant_id_from_user()` **BEFORE INSERT**
-
-2) Edge Functions (`process-flow-triggers`, `execute-flow-node`, `process-flow-delays`) rodam com **Service Role**, então **não existe `auth.uid()`**.  
-Resultado: `get_user_tenant_id()` não consegue determinar tenant, e o trigger **lança exceção** quando `tenant_id` não é enviado explicitamente.
-
-3) Hoje o `process-flow-triggers` faz `.insert({...})` em `flow_executions` **sem enviar `tenant_id`**, então **nenhuma automação chega a executar o nó de status**.
-
-## Objetivo
-
-- Garantir que **toda inserção feita por Edge Functions** em:
-  - `flow_executions`
-  - `flow_execution_logs`
-  
-  seja feita com `tenant_id` explícito, para não depender de `get_user_tenant_id()` / `auth.uid()`.
-
-Assim as automações da Master voltam a rodar e, consequentemente, os blocos de atualização de status voltam a funcionar.
+## Objetivo (o que você pediu)
+1) Listar todas as automações (fluxos) do tenant **Master**.  
+2) “Entrar em cada automação”, olhar os **logs de execução** e validar se, para cada lead que passou, o resultado foi **efetivo** (principalmente atualização de status).  
+3) Corrigir o que estiver causando o problema (inclusive quando “parece que não atualizou”, mas na verdade atualizou e a UI não refletiu).
 
 ---
 
-## O que vou implementar (correções completas para Master e para qualquer tenant)
+## O que eu já consegui confirmar pelos dados (Master)
+### Automações (fluxos) existentes no Master (tenant_id = 664dfcb4-5432-4c14-9838-7db14360cabf)
+Ativas:
+- **EMPREGA MAIS - PROTOCOLO AGENDAMENTO** (3 nós, 2 conexões, trigger `message_key`)
+- **EMPREGA MAIS - TREINAMENTO / MATRICULA** (3 nós, 2 conexões, trigger `message_key`)
+- **EMPREGA MAIS - TREINAMENTO** (3 nós, 2 conexões, trigger `message_key`)
+- **EMPREGA MAIS SDR** (15 nós, 19 conexões, trigger `message_key`)
+- **EMPREGA MAIS - POS VISITA** (3 nós, 2 conexões, trigger `message_key`)
+- **EMPREGA MAIS - PALESTRA** (3 nós, 2 conexões, trigger `message_key`)
 
-### 1) Corrigir `process-flow-triggers` para criar execuções com `tenant_id`
-Arquivo: `supabase/functions/process-flow-triggers/index.ts`
+Inativa:
+- TESTE AUTOMACAO (sem nós)
 
-Mudanças:
-- No `.insert()` de `flow_executions`, incluir `tenant_id: tenant_id` (o tenant já vem no body e já é usado para filtrar os fluxos).
-- Melhorar observabilidade: ao invocar `execute-flow-node`, capturar `{ error }` do `supabase.functions.invoke(...)` e logar se houver falha (hoje não checa `error`, então pode falhar silenciosamente).
+### Evidência importante: pelo menos uma automação atualizou status “de verdade”
+No fluxo **EMPREGA MAIS - PROTOCOLO AGENDAMENTO** eu encontrei execução recente com logs:
+- “Executando nó: set_lead_status”
+- “Status alterado para: Agendado”
+E o `lead_status_history` registrou a mudança (changed_by = null, típico de automação/Service Role).
 
-Impacto esperado:
-- As execuções passam a ser criadas normalmente para a Master.
-- O fluxo passa a avançar para os nós (incluindo `set_lead_status`).
+### Então por que “parece que não atualizou” para você?
+Encontrei um indício forte de problema de **sincronização / exibição**:
+- A automação atualiza `contacts.lead_status`.
+- A lista de conversas e alguns pontos do app também usam `conversations.lead_status`.
+- Existem triggers no banco para sincronizar **conversa → contato**, mas não encontrei (pelo que foi possível ver) sincronização robusta de **contato → conversa** para `lead_status`.
+- Exemplo real que apareceu: o contato já teve status alterado por automação, mas `conversations.lead_status` continua “new”.
 
-### 2) Corrigir `execute-flow-node` para inserir logs com `tenant_id`
-Arquivo: `supabase/functions/execute-flow-node/index.ts`
+Resultado: o atendimento vê “não mudou” porque a tela está lendo/filtrando/mostrando o campo errado (ou não está recebendo evento de update), mesmo quando o status do contato mudou corretamente.
 
-Mudanças:
-- Atualizar `logExecution(...)` para aceitar `tenant_id` e incluir esse campo no insert em `flow_execution_logs`.
-- Passar `execution.tenant_id` nas chamadas de log (o execution já é buscado no início da função).
-
-Impacto esperado:
-- Logs deixam de falhar por `tenant_id NOT NULL`.
-- Diagnóstico futuro fica muito mais fácil (sem “silêncio” nos logs).
-
-### 3) Corrigir `process-flow-delays` (delays/timeouts) para inserir logs com `tenant_id`
-Arquivo: `supabase/functions/process-flow-delays/index.ts`
-
-Mudanças:
-- Alterar os selects de `flow_executions` para também trazer `tenant_id` (ex.: `select('id, current_node_id, tenant_id')`).
-- Incluir `tenant_id` nos objetos `delayLogs` e `timeoutLogs` antes do batch insert em `flow_execution_logs`.
-
-Impacto esperado:
-- Processamento de delays/timeouts volta a funcionar sem quebrar por erro de insert.
-- Fluxos com espera (delay / wait_reply) voltam a concluir corretamente.
+Além disso, encontrei outro cenário que confunde:
+- O status muda por automação, mas pode ser **alterado depois** manualmente por um atendente ou por outra rotina; aí, olhando “agora”, parece que a automação “não funcionou”, mas ela funcionou e foi sobrescrita mais tarde (o histórico mostra isso).
 
 ---
 
-## Sequência de entrega
+## Plano de correção e auditoria (detalhe por detalhe)
 
-1) Implementar mudanças nos 3 Edge Functions acima.
-2) Deploy das Edge Functions atualizadas.
-3) Validação rápida e objetiva com a Master:
-   - Enviar uma mensagem que deveria disparar uma automação `message_key`
-   - Confirmar nos logs:
-     - `process-flow-triggers` não tem mais erro de tenant
-     - execução criada com sucesso
-     - `execute-flow-node` é invocado
-   - Confirmar no banco:
-     - `flow_executions` criada com `tenant_id = 664dfcb4-...`
-     - `contacts.lead_status` atualizado
-4) Se necessário, validar também 1 fluxo de cada tipo (message_key e keyword) para garantir cobertura.
+### Entrega A — Auditoria completa “automação por automação” (com prova de efetividade)
+Vou criar um “modo auditoria” (tela interna) que:
+1) Lista todos os fluxos do Master (ativos/inativos) e mostra saúde:
+   - contagem de nós/conexões
+   - últimos disparos
+   - quantas execuções estão `completed`, `waiting_*`, `running`, `error`
+   - últimos erros por fluxo (se houver)
+2) Para cada automação, abre uma visão de “Execuções recentes”, com:
+   - dados do gatilho (trigger_type, mensagem_original, ultima_resposta)
+   - sequência de logs (flow_execution_logs)
+   - verificação automática do resultado do status (quando existir bloco `set_lead_status`):
+     - Status pretendido (do nó)
+     - Log “Status alterado para: X”
+     - Registro correspondente em `lead_status_history` (timestamp aproximado)
+     - `contacts.lead_status` atual
+     - `conversations.lead_status` atual (da conversa da execução e/ou conversas abertas do contato)
+3) Marca cada execução com um “veredito”:
+   - **Efetivo**: log + histórico + status atual coerente (ou coerente no momento e depois sobrescrito)
+   - **Efetivo mas sobrescrito**: automação alterou, mas depois alguém/outro fluxo alterou novamente (mostrando quem/quando pelo histórico)
+   - **Não efetivo**: não houve log de status / houve erro / execução não chegou no nó
+
+Isso resolve seu pedido “analítico, detalhe por detalhe”, sem depender de “achismos” e sem você precisar abrir manualmente cada log no Supabase.
+
+#### Observação de segurança/permissões
+Essa tela será restrita a usuários autorizados (ex.: admin/supervisor), e filtrada pelo tenant Master.
 
 ---
 
-## Critérios de sucesso (o que você vai ver)
+### Entrega B — Correção definitiva da inconsistência “status mudou mas a UI não reflete”
+Vou implementar sincronização explícita para garantir consistência e atualização em tempo real:
 
-- As automações da Master voltam a disparar normalmente.
-- O bloco **“Alterar Status Lead”** efetivamente atualiza o `lead_status` do contato.
-- Os logs de execução voltam a aparecer (não ficam falhando por tenant_id).
+1) **No Edge Function `execute-flow-node`**, no bloco `set_lead_status`:
+   - manter `contacts.lead_status = X`
+   - também atualizar `conversations.lead_status = X` (pelo menos a `execution.conversation_id`; opcionalmente todas as conversas `open/pending` daquele contato)
+   - adicionar log detalhado (antes/depois) para auditoria
+
+2) **No banco**, adicionar um trigger/função (via migration) para garantir que qualquer mudança em `contacts.lead_status` (seja manual ou por automação) sincronize `conversations.lead_status` das conversas abertas/pending do contato.
+   - Isso evita que o problema volte mesmo se outro ponto do sistema atualizar o contato.
+
+3) Garantir que a UI (lista `/conversations`) receba atualização:
+   - Atualizar `conversations` dispara Realtime/invalidations com mais consistência do que depender apenas de `contacts` (varia por tela e cache).
+   - Resultado: o atendente “vê na hora”.
 
 ---
 
-## Observações importantes
+### Entrega C — Auditoria e correção de “execuções presas / running demais”
+Eu vi que no Master existe um volume significativo de execuções do fluxo **EMPREGA MAIS SDR** em `running`.
 
-- A migração que colocou `DEFAULT get_user_tenant_id()` faz sentido para inserts vindos do frontend autenticado, mas **Edge Functions (Service Role) precisam sempre setar `tenant_id` explicitamente** para tabelas multi-tenant com `NOT NULL`.
-- Esta correção não é “só para Master”: elimina a causa raiz para qualquer tenant e previne recorrência.
+Vou:
+1) Criar um diagnóstico automático no painel:
+   - execuções `running` com `last_activity_at` antigo
+   - nó atual (`current_node_id`) e subtype
+   - últimas linhas de log (se houver)
+2) Ajustar robustez em pontos críticos:
+   - **`whatsapp-webhook` (retomada de waiting flows)**: se não encontrar conexão para o `source_handle` calculado, registrar log claro e finalizar execução (ou devolver para waiting com mensagem), evitando “running eterno”.
+   - adicionar logs e padronizar para ficar rastreável.
+3) Opcional (com sua aprovação): criar uma rotina segura de “limpeza”:
+   - marcar execuções “obviamente presas” como `completed`/`error` com `error_message` para não poluir o painel e não confundir operação.
 
-## Checklist técnico (para auditoria rápida)
+---
 
-- [ ] `process-flow-triggers`: insert `flow_executions` inclui `tenant_id`
-- [ ] `execute-flow-node`: insert `flow_execution_logs` inclui `tenant_id`
-- [ ] `process-flow-delays`: batch insert `flow_execution_logs` inclui `tenant_id`
-- [ ] Deploy realizado
-- [ ] Teste end-to-end em 1 conversa da Master com trigger `message_key`
+### Entrega D — “Prova de versão” nos Edge Functions (para não termos deploy “fantasma”)
+Para evitar a sensação de “você disse que corrigiu e não corrigiu”, vou aplicar o padrão de versionamento:
+- adicionar `const VERSION = "YYYY-MM-DD.HHMM"` em:
+  - `process-flow-triggers`
+  - `execute-flow-node`
+  - `process-flow-delays`
+  - (e onde mais for necessário)
+- logar `[VERSION]` no início de cada request
+- incluir `_version` no JSON de resposta quando aplicável
+
+Assim, você consegue olhar o log e saber exatamente qual código está rodando.
+
+---
+
+## Sequência de execução (rápida e segura)
+1) Implementar **sincronização status contato → conversa** (Edge Function + trigger no DB).  
+2) Implementar o **Painel de Auditoria** (listagem de fluxos + drilldown por execução).  
+3) Implementar **correções de execuções presas** + logs melhores.  
+4) Adicionar **versionamento** nos Edge Functions.  
+5) Validar end-to-end com 2 a 3 conversas reais do Master (gatilho → execução → status → UI).
+
+---
+
+## Critérios de sucesso (o que precisa acontecer para você “sentir” que resolveu)
+1) Ao disparar uma automação do Master que altera status, você vê:
+   - Status do contato atualizado
+   - Status na lista de conversas atualizado (sem precisar recarregar)
+2) No painel, cada execução mostra:
+   - quais nós rodaram
+   - se o status foi efetivo
+   - se foi sobrescrito depois (com evidência do histórico)
+3) Execuções presas viram exceção, não regra, e ficam claramente identificadas.
+
+---
+
+## Riscos e cuidados
+- Sincronizar `conversations.lead_status` precisa ser feito com critério (ex.: apenas conversas `open/pending`) para não “reescrever história” em conversas antigas/fechadas.
+- Mudanças no banco (trigger) exigem atenção para multi-tenant e performance; farei a função de forma objetiva e index-friendly.
+- O painel de auditoria deve evitar expor dados desnecessários para usuários sem permissão.
+
+---
+
+## O que eu preciso de você (para ficar 100% certeiro)
+Assim que eu sair do modo planejamento e começar a implementar, vou precisar de:
+- 2 exemplos de conversas/leads onde “era para ter mudado o status e não mudou” (IDs ou telefone/nome) para eu bater exatamente com o que você está vendo.
+
