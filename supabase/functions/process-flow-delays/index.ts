@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// VERSIONAMENTO: Alterações importantes devem atualizar esta versão
+const VERSION = '2026-02-03.1930';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -19,7 +22,7 @@ serve(async (req) => {
     const now = new Date().toISOString();
     let processedCount = 0;
 
-    console.log(`[process-flow-delays] Starting at ${now}`);
+    console.log(`[process-flow-delays v${VERSION}] Starting at ${now}`);
 
     // OTIMIZAÇÃO: Buscar ambos os tipos em paralelo - incluir tenant_id para logs
     const [timeDelaysResult, replyTimeoutsResult] = await Promise.all([
