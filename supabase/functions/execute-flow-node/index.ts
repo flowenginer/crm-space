@@ -109,7 +109,8 @@ async function logExecution(
   executionId: string,
   nodeId: string,
   logType: string,
-  message: string
+  message: string,
+  tenantId?: string
 ) {
   try {
     await supabase.from('flow_execution_logs').insert({
@@ -117,6 +118,7 @@ async function logExecution(
       node_id: nodeId,
       log_type: logType,
       message: message,
+      tenant_id: tenantId, // CRÍTICO: Edge Functions precisam enviar tenant_id explícito
     });
   } catch (e) {
     console.error('[logExecution] Erro:', e);
@@ -273,7 +275,7 @@ Deno.serve(async (req) => {
     const flowNode = node as unknown as FlowNode;
     const config = flowNode.config || {};
 
-    await logExecution(supabase, execution_id, node_id, 'info', `Executando nó: ${flowNode.node_subtype}`);
+    await logExecution(supabase, execution_id, node_id, 'info', `Executando nó: ${flowNode.node_subtype}`, execution.tenant_id);
 
     // Executar baseado no tipo
     switch (flowNode.node_type) {
@@ -338,7 +340,7 @@ Deno.serve(async (req) => {
         );
 
       case 'delay':
-        await executeDelay(supabase, execution_id, flowNode);
+        await executeDelay(supabase, execution_id, flowNode, execution.tenant_id);
         return new Response(
           JSON.stringify({ success: true, waiting: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -429,7 +431,7 @@ async function finishExecution(
       .eq('id', exec.flow_id);
   }
 
-  await logExecution(supabase, executionId, nodeId, 'info', 'Fluxo finalizado');
+  await logExecution(supabase, executionId, nodeId, 'info', 'Fluxo finalizado', exec?.tenant_id);
 }
 
 async function executeAction(
@@ -469,7 +471,7 @@ async function executeAction(
       
       if (!channelId) {
         await logExecution(supabase, execution.id, node.id, 'error',
-          'Nenhum canal WhatsApp disponível para enviar mensagem');
+          'Nenhum canal WhatsApp disponível para enviar mensagem', execution.tenant_id);
         break;
       }
 
@@ -500,16 +502,16 @@ async function executeAction(
         if (insertMsgError) {
           console.error('[execute-flow-node] ❌ Erro ao salvar mensagem no histórico:', insertMsgError);
           await logExecution(supabase, execution.id, node.id, 'warning',
-            `Mensagem enviada mas erro ao salvar histórico: ${insertMsgError.message}`);
+            `Mensagem enviada mas erro ao salvar histórico: ${insertMsgError.message}`, execution.tenant_id);
         } else {
           console.log('[execute-flow-node] ✅ Mensagem salva no histórico com sucesso');
         }
         
         await logExecution(supabase, execution.id, node.id, 'info',
-          `Mensagem enviada: ${message.substring(0, 50)}...`);
+          `Mensagem enviada: ${message.substring(0, 50)}...`, execution.tenant_id);
       } else {
         await logExecution(supabase, execution.id, node.id, 'error',
-          `Erro ao enviar mensagem: ${textResult.error}`);
+          `Erro ao enviar mensagem: ${textResult.error}`, execution.tenant_id);
       }
       break;
     }
@@ -546,7 +548,7 @@ async function executeAction(
       
       if (!channelId) {
         await logExecution(supabase, execution.id, node.id, 'error',
-          'Nenhum canal WhatsApp disponível para enviar mensagem');
+          'Nenhum canal WhatsApp disponível para enviar mensagem', execution.tenant_id);
         break;
       }
 
@@ -582,10 +584,10 @@ async function executeAction(
         }
         
         await logExecution(supabase, execution.id, node.id, 'info',
-          `Mensagem enviada: ${message.substring(0, 50)}...`);
+          `Mensagem enviada: ${message.substring(0, 50)}...`, execution.tenant_id);
       } else {
         await logExecution(supabase, execution.id, node.id, 'error',
-          `Erro ao enviar mensagem: ${sendResult.error}`);
+          `Erro ao enviar mensagem: ${sendResult.error}`, execution.tenant_id);
         break;
       }
 
@@ -613,7 +615,7 @@ async function executeAction(
 
       console.log(`[execute-flow-node] ⏸️ Fluxo pausado aguardando resposta com ${expectedResponses.length} respostas esperadas`);
       await logExecution(supabase, execution.id, node.id, 'info',
-        `Aguardando resposta (${expectedResponses.length} opções, timeout: ${timeoutMinutes} min)`);
+        `Aguardando resposta (${expectedResponses.length} opções, timeout: ${timeoutMinutes} min)`, execution.tenant_id);
       
       // Retornar sinalizando que o fluxo deve parar aqui (será retomado pelo webhook)
       return { shouldStop: true };
@@ -649,7 +651,7 @@ async function executeAction(
       
       if (!mediaChannelId) {
         await logExecution(supabase, execution.id, node.id, 'error',
-          'Nenhum canal WhatsApp disponível para enviar mídia');
+          'Nenhum canal WhatsApp disponível para enviar mídia', execution.tenant_id);
         break;
       }
 
@@ -681,10 +683,10 @@ async function executeAction(
           tenant_id: messageTenantId
         });
         await logExecution(supabase, execution.id, node.id, 'info',
-          `${mediaType} enviado com sucesso`);
+          `${mediaType} enviado com sucesso`, execution.tenant_id);
       } else {
         await logExecution(supabase, execution.id, node.id, 'error',
-          `Erro ao enviar ${mediaType}: ${mediaResult.error}`);
+          `Erro ao enviar ${mediaType}: ${mediaResult.error}`, execution.tenant_id);
       }
       break;
     }
@@ -696,7 +698,7 @@ async function executeAction(
           tag_id: config.tag_id as string,
           tenant_id: execution.tenant_id,
         }, { onConflict: 'contact_id,tag_id' });
-        await logExecution(supabase, execution.id, node.id, 'info', 'Tag adicionada');
+        await logExecution(supabase, execution.id, node.id, 'info', 'Tag adicionada', execution.tenant_id);
       }
       break;
 
@@ -706,7 +708,7 @@ async function executeAction(
           .delete()
           .eq('contact_id', execution.contact_id)
           .eq('tag_id', config.tag_id as string);
-        await logExecution(supabase, execution.id, node.id, 'info', 'Tag removida');
+        await logExecution(supabase, execution.id, node.id, 'info', 'Tag removida', execution.tenant_id);
       }
       break;
 
@@ -717,7 +719,7 @@ async function executeAction(
           .update({ lead_status: config.status as string })
           .eq('id', execution.contact_id);
         await logExecution(supabase, execution.id, node.id, 'info',
-          `Status alterado para: ${config.status}`);
+          `Status alterado para: ${config.status}`, execution.tenant_id);
       }
       break;
 
@@ -727,7 +729,7 @@ async function executeAction(
           .from('conversations')
           .update({ assigned_to: config.user_id as string })
           .eq('id', execution.conversation_id);
-        await logExecution(supabase, execution.id, node.id, 'info', 'Atendente atribuído');
+        await logExecution(supabase, execution.id, node.id, 'info', 'Atendente atribuído', execution.tenant_id);
       }
       break;
 
@@ -771,7 +773,7 @@ async function executeAction(
           }
         }
         
-        await logExecution(supabase, execution.id, node.id, 'info', 'Transferido para departamento com redistribuição');
+        await logExecution(supabase, execution.id, node.id, 'info', 'Transferido para departamento com redistribuição', execution.tenant_id);
       }
       break;
 
@@ -799,7 +801,7 @@ async function executeAction(
           });
         }
         
-        await logExecution(supabase, execution.id, node.id, 'info', 'Conversa transferida para usuário');
+        await logExecution(supabase, execution.id, node.id, 'info', 'Conversa transferida para usuário', execution.tenant_id);
       }
       break;
 
@@ -812,7 +814,7 @@ async function executeAction(
             closed_at: new Date().toISOString()
           })
           .eq('id', execution.conversation_id);
-        await logExecution(supabase, execution.id, node.id, 'info', 'Conversa fechada');
+        await logExecution(supabase, execution.id, node.id, 'info', 'Conversa fechada', execution.tenant_id);
       }
       break;
 
@@ -826,7 +828,7 @@ async function executeAction(
           content: noteContent,
           tenant_id: execution.tenant_id,
         });
-        await logExecution(supabase, execution.id, node.id, 'info', 'Nota adicionada');
+        await logExecution(supabase, execution.id, node.id, 'info', 'Nota adicionada', execution.tenant_id);
       }
       break;
 
@@ -861,11 +863,11 @@ async function executeAction(
         });
 
         await logExecution(supabase, execution.id, node.id, 'info',
-          `Webhook chamado: ${response.status}`);
+          `Webhook chamado: ${response.status}`, execution.tenant_id);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
         await logExecution(supabase, execution.id, node.id, 'error',
-          `Erro no webhook: ${errorMessage}`);
+          `Erro no webhook: ${errorMessage}`, execution.tenant_id);
       }
       break;
 
@@ -896,14 +898,14 @@ async function executeAction(
       
       if (!templateChannelId) {
         await logExecution(supabase, execution.id, node.id, 'error',
-          'Nenhum canal Cloud API disponível para enviar template Meta');
+          'Nenhum canal Cloud API disponível para enviar template Meta', execution.tenant_id);
         break;
       }
       
       const templateId = config.template_id as string;
       if (!templateId) {
         await logExecution(supabase, execution.id, node.id, 'error',
-          'Template não configurado no nó - edite o fluxo e selecione um template');
+          'Template não configurado no nó - edite o fluxo e selecione um template', execution.tenant_id);
         break;
       }
       
@@ -916,7 +918,7 @@ async function executeAction(
       
       if (templateError || !template) {
         await logExecution(supabase, execution.id, node.id, 'error',
-          `Template não encontrado: ${templateId}`);
+          `Template não encontrado: ${templateId}`, execution.tenant_id);
         break;
       }
       
@@ -957,7 +959,7 @@ async function executeAction(
       
       if (sendError || !sendResult?.success) {
         await logExecution(supabase, execution.id, node.id, 'error',
-          `Erro ao enviar template Meta: ${sendError?.message || sendResult?.error || 'Erro desconhecido'}`);
+          `Erro ao enviar template Meta: ${sendError?.message || sendResult?.error || 'Erro desconhecido'}`, execution.tenant_id);
         break;
       }
       
@@ -997,7 +999,7 @@ async function executeAction(
       });
       
       await logExecution(supabase, execution.id, node.id, 'info',
-        `Template Meta enviado: ${template.name}`);
+        `Template Meta enviado: ${template.name}`, execution.tenant_id);
       break;
     }
   }
@@ -1100,7 +1102,8 @@ function evaluateTimeCondition(node: FlowNode): string {
 async function executeDelay(
   supabase: any,
   executionId: string,
-  node: FlowNode
+  node: FlowNode,
+  tenantId?: string
 ) {
   const config = node.config;
 
@@ -1124,7 +1127,7 @@ async function executeDelay(
         .eq('id', executionId);
 
       await logExecution(supabase, executionId, node.id, 'info',
-        `Aguardando ${amount} ${unit}`);
+        `Aguardando ${amount} ${unit}`, tenantId);
       break;
 
     case 'wait_reply':
@@ -1141,7 +1144,7 @@ async function executeDelay(
         .eq('id', executionId);
 
       await logExecution(supabase, executionId, node.id, 'info',
-        `Aguardando resposta (timeout: ${timeoutMinutes} min)`);
+        `Aguardando resposta (timeout: ${timeoutMinutes} min)`, tenantId);
       break;
   }
 }
