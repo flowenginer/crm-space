@@ -1,142 +1,83 @@
 
+# Plano: Corrigir Agendamento de Mensagens para Usuários da Master
 
-# Plano: Corrigir Recebimento de Mensagens de Contato (vCard) na UAZAPI
+## Diagnóstico do Problema
 
-## Resumo do Problema
+Os logs do Supabase mostram claramente o erro:
 
-O canal MASTER-LEADS usa a UAZAPI (não-oficial) e não está processando corretamente mensagens de contato (vCard). A investigação revelou:
+```
+new row violates row-level security policy "Tenant isolation for scheduled_messages" 
+for table "scheduled_messages"
+```
 
-1. **O webhook UAZAPI detecta** o tipo `"contact"` corretamente
-2. **Problema 1**: Salva `message_type = 'contact'` (singular) mas o frontend espera `'contacts'` (plural)
-3. **Problema 2**: Extrai conteúdo como apenas `"[Contato]"` sem extrair nome/telefone do vCard
-4. **O webhook CloudAPI** (API oficial) funciona porque extrai `📇 Nome (+55 99 9999-9999)` e usa tipo `'contacts'`
+### Causa Raiz
+
+A tabela `scheduled_messages` tem um **DEFAULT incorreto** para `tenant_id`:
+
+| Configuração | Valor |
+|--------------|-------|
+| `tenant_id` DEFAULT | `'00000000-0000-0000-0000-000000000001'` (Space Sports) |
+| Tenant da Master | `'664dfcb4-5432-4c14-9838-7db14360cabf'` |
+
+### Fluxo do Erro
+
+1. Usuário da Master (tenant `664d...cabf`) tenta agendar mensagem
+2. O código NÃO envia `tenant_id` no INSERT
+3. O banco usa o DEFAULT: `'00000000-0000-0000-0000-000000000001'`
+4. Política RLS verifica: `tenant_id = get_user_tenant_id()`
+5. Comparação: `'00000000...' = '664d...'` → **FALSE** → Bloqueado
 
 ---
 
 ## Solução
 
-### Etapa 1: Corrigir o Tipo de Mensagem (contact → contacts)
+### Opção 1 (Recomendada): Alterar o DEFAULT da coluna
 
-Modificar a função `detectUAZAPIMessageTypeNew` para retornar `'contacts'` (plural) em vez de `'contact'`:
+Trocar o DEFAULT fixo por uma função que retorna o tenant_id do usuário autenticado:
 
-```typescript
-// ANTES
-if (matchesType(messageType, "vcard", "contact")) {
-  return "contact";  // singular
-}
-
-// DEPOIS  
-if (matchesType(messageType, "vcard", "contact")) {
-  return "contacts";  // plural - compatível com CloudAPI e frontend
-}
+```sql
+ALTER TABLE scheduled_messages 
+ALTER COLUMN tenant_id 
+SET DEFAULT get_user_tenant_id();
 ```
 
-Também atualizar o TypeScript `MessageType` para incluir `'contacts'`:
+### Opção 2 (Alternativa): Enviar tenant_id explicitamente no código
+
+Modificar o `ScheduleMessageModal.tsx` para buscar e enviar o `tenant_id` do usuário:
 
 ```typescript
-// ANTES
-type MessageType = "text" | "image" | "audio" | "video" | "document" | "sticker" | "location" | "contact";
+// Buscar tenant_id do usuário
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('tenant_id')
+  .eq('id', user?.id)
+  .single();
 
-// DEPOIS
-type MessageType = "text" | "image" | "audio" | "video" | "document" | "sticker" | "location" | "contact" | "contacts";
-```
-
----
-
-### Etapa 2: Extrair Dados do vCard na UAZAPI
-
-Modificar a função `extractUAZAPIContentNew` para extrair nome e telefone do vCard:
-
-```typescript
-case "contacts":
-  // Tentar extrair dados do vCard
-  const vcard = msg.vcard || msg.content?.vcard || msg.contactMessage?.vcard || '';
-  const contacts = msg.contacts || msg.content?.contacts || [];
-  
-  // Se tiver array de contacts (formato CloudAPI-like)
-  if (contacts.length > 0) {
-    const c = contacts[0];
-    const name = c.name?.formatted_name || c.name?.first_name || c.displayName || 'Contato';
-    const phone = c.phones?.[0]?.phone || c.phones?.[0]?.wa_id || '';
-    return `📇 ${name}${phone ? ` (${phone})` : ''}`;
-  }
-  
-  // Se tiver vCard string, fazer parse
-  if (vcard) {
-    const nameMatch = vcard.match(/FN:(.+)/);
-    const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
-    const name = nameMatch?.[1]?.trim() || 'Contato';
-    const phone = phoneMatch?.[1]?.trim() || '';
-    return `📇 ${name}${phone ? ` (${phone})` : ''}`;
-  }
-  
-  // Se tiver displayName direto
-  if (msg.displayName || msg.content?.displayName) {
-    return `📇 ${msg.displayName || msg.content?.displayName}`;
-  }
-  
-  return "[Contato]";  // Fallback
+// Incluir no INSERT
+const { error } = await supabase
+  .from('scheduled_messages')
+  .insert({
+    contact_id: contactId,
+    conversation_id: conversationId,
+    channel_id: finalChannelId,
+    content: finalMessage || '',
+    media_url: mediaUrl,
+    message_type: messageType,
+    scheduled_for: scheduledFor.toISOString(),
+    status: 'scheduled',
+    created_by: user?.id,
+    tenant_id: profile?.tenant_id  // ← ADICIONAR ISSO
+  });
 ```
 
 ---
 
-### Etapa 3: Aplicar Mesmas Correções para Evolution API
+## Recomendação
 
-Atualizar `detectEvolutionMessageType` e `extractEvolutionContent`:
+**Usar ambas as soluções** para garantir robustez:
 
-```typescript
-// Em detectEvolutionMessageType
-if (message.contactMessage || message.contactsArrayMessage) return "contacts";
-
-// Em extractEvolutionContent
-case "contacts":
-  const contactMsg = message?.contactMessage;
-  const contactsArray = message?.contactsArrayMessage?.contacts;
-  
-  if (contactsArray && contactsArray.length > 0) {
-    const c = contactsArray[0];
-    return `📇 ${c.displayName || 'Contato'}`;
-  }
-  
-  if (contactMsg) {
-    const vcard = contactMsg.vcard || '';
-    const nameMatch = vcard.match(/FN:(.+)/);
-    const phoneMatch = vcard.match(/TEL[^:]*:([+\d\s\-()]+)/);
-    const name = nameMatch?.[1]?.trim() || contactMsg.displayName || 'Contato';
-    const phone = phoneMatch?.[1]?.trim() || '';
-    return `📇 ${name}${phone ? ` (${phone})` : ''}`;
-  }
-  
-  return "[Contato]";
-```
-
----
-
-### Etapa 4: Corrigir o Frontend para Aceitar Ambos os Tipos
-
-Modificar `Conversations.tsx` para aceitar tanto `'contact'` quanto `'contacts'`:
-
-```typescript
-{/* Contact (vCard) messages - styled card */}
-{(message.message_type === 'contacts' || message.message_type === 'contact') && message.content && (
-  <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg border border-border/50">
-    ...
-  </div>
-)}
-```
-
----
-
-### Etapa 5: Adicionar Logs de Debug
-
-Adicionar logs quando mensagem de contato é detectada para facilitar debug:
-
-```typescript
-if (matchesType(messageType, "vcard", "contact")) {
-  console.log(`[Webhook UAZAPI] 📇 Detected CONTACT - vcard: ${msg.vcard?.substring(0, 100)}, contacts: ${JSON.stringify(msg.contacts)?.substring(0, 200)}`);
-  return "contacts";
-}
-```
+1. **Alterar o DEFAULT** no banco (para casos onde o frontend não envia)
+2. **Enviar tenant_id explicitamente** no código (mais explícito e previsível)
 
 ---
 
@@ -144,37 +85,30 @@ if (matchesType(messageType, "vcard", "contact")) {
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `supabase/functions/whatsapp-webhook/index.ts` | Corrigir tipo `contact` → `contacts`, extrair dados vCard |
-| `src/pages/Conversations.tsx` | Aceitar `message_type === 'contact'` também |
-
----
-
-## Benefícios
-
-1. **Compatibilidade**: Mensagens de contato funcionarão em todos os providers (CloudAPI, UAZAPI, Evolution)
-2. **Informação**: Exibirá nome e telefone do contato compartilhado, não apenas "[Contato]"
-3. **Consistência**: Todos os webhooks usarão o mesmo padrão de tipo e formatação
+| Migração SQL | Alterar DEFAULT de `tenant_id` |
+| `src/components/conversations/ScheduleMessageModal.tsx` | Incluir `tenant_id` no INSERT |
 
 ---
 
 ## Seção Técnica
 
-### Formato vCard no WhatsApp
+### Por que o DEFAULT está errado?
 
-O WhatsApp envia vCards no formato padrão vCard 3.0:
+O tenant `00000000-0000-0000-0000-000000000001` (Space Sports) foi provavelmente usado como valor de desenvolvimento. Para sistemas multi-tenant, o correto é:
 
-```
-BEGIN:VCARD
-VERSION:3.0
-N:Sobrenome;Nome;;;
-FN:Nome Completo
-TEL;type=CELL;waid=5521999999999:+55 21 99999-9999
-END:VCARD
+```sql
+tenant_id uuid DEFAULT get_user_tenant_id()
 ```
 
-A regex `FN:(.+)` extrai o nome formatado e `TEL[^:]*:([+\d\s\-()]+)` extrai o telefone.
+### Política RLS Atual
 
-### Por que `contacts` (plural)?
+```sql
+-- Política RESTRICTIVE (mais restritiva, combina com AND)
+CREATE POLICY "Tenant isolation for scheduled_messages" 
+ON scheduled_messages AS RESTRICTIVE
+FOR ALL TO authenticated
+USING (tenant_id = get_user_tenant_id())
+WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
+```
 
-A Meta Cloud API usa `'contacts'` porque o WhatsApp suporta enviar múltiplos contatos de uma vez (`contactsArrayMessage`). Para manter compatibilidade, todos os providers devem usar o mesmo tipo.
-
+O `WITH CHECK` permite `tenant_id IS NULL` ou igual ao do usuário, mas como tem DEFAULT, nunca é NULL.
