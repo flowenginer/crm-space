@@ -397,6 +397,13 @@ function FlowEditorInner() {
       
       // 4. Inserir conexões em lote (IDs já são estáveis) - com deduplicação
       if (edges.length > 0) {
+        // Buscar tenant_id do fluxo para garantir isolamento multi-tenant
+        const { data: flowData } = await supabase
+          .from('chatbot_flows')
+          .select('tenant_id')
+          .eq('id', flowId)
+          .single();
+
         // Deduplicar conexões antes de salvar
         const uniqueConnections = edges
           .filter(edge => edge.source && edge.target)
@@ -408,17 +415,18 @@ function FlowEditorInner() {
                 source_node_id: edge.source,
                 target_node_id: edge.target,
                 source_handle: edge.sourceHandle || 'default',
+                tenant_id: flowData?.tenant_id,
               });
             }
             return acc;
-          }, new Map<string, { flow_id: string; source_node_id: string; target_node_id: string; source_handle: string }>());
+          }, new Map<string, { flow_id: string; source_node_id: string; target_node_id: string; source_handle: string; tenant_id: string | undefined }>());
 
         const connectionsToInsert = [...uniqueConnections.values()];
         
         if (connectionsToInsert.length > 0) {
           const { error: connError } = await supabase
             .from('flow_connections')
-            .insert(connectionsToInsert);
+            .insert(connectionsToInsert as any);
           
           if (connError) throw connError;
         }
