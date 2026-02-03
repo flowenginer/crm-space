@@ -1,158 +1,107 @@
 
-# Plano: Corrigir Blocos de Atualização de Status nas Automações da Master
+## Diagnóstico (causa raiz confirmada)
 
-## Diagnóstico
+O problema **não é só do bloco “Alterar Status Lead”**: as automações da Master estão falhando antes mesmo de executar os nós, porque **a criação da execução do fluxo (flow_executions) está dando erro**.
 
-Identifiquei a **causa raiz** dos problemas nas automações da Master:
+Nos logs do Edge Function `process-flow-triggers` apareceu este erro ao tentar criar execução:
 
-### Problema: DEFAULT Incorreto em `flow_connections`
+- `tenant_id é obrigatório e não foi possível determinar automaticamente` (code `P0001`)
 
-A tabela `flow_connections` tem um `tenant_id` DEFAULT fixo que pertence ao tenant **Space Sports** (`00000000-0000-0000-0000-000000000001`), quando deveria usar o tenant do usuário autenticado.
+Isso acontece porque:
 
-**Evidência da Query:**
-```sql
--- EMPREGA MAIS - PROTOCOLO AGENDAMENTO tem conexões com tenant ERRADO
-tenant_id: 00000000-0000-0000-0000-000000000001 (Space Sports)
+1) As tabelas `flow_executions` e `flow_execution_logs` estão com:
+- `tenant_id` **NOT NULL**
+- `DEFAULT get_user_tenant_id()`
+- trigger `set_tenant_id_from_user()` **BEFORE INSERT**
 
--- Outros fluxos da Master têm conexões CORRETAS  
-tenant_id: 664dfcb4-5432-4c14-9838-7db14360cabf (Master)
-```
+2) Edge Functions (`process-flow-triggers`, `execute-flow-node`, `process-flow-delays`) rodam com **Service Role**, então **não existe `auth.uid()`**.  
+Resultado: `get_user_tenant_id()` não consegue determinar tenant, e o trigger **lança exceção** quando `tenant_id` não é enviado explicitamente.
 
-### Impacto
+3) Hoje o `process-flow-triggers` faz `.insert({...})` em `flow_executions` **sem enviar `tenant_id`**, então **nenhuma automação chega a executar o nó de status**.
 
-Quando conexões são criadas/editadas no Flow Editor:
-1. O código **NÃO** envia `tenant_id` explicitamente
-2. O banco usa o DEFAULT: `00000000-0000-0000-0000-000000000001`
-3. Políticas RLS podem bloquear operações ou causar vazamento de dados entre tenants
+## Objetivo
 
----
+- Garantir que **toda inserção feita por Edge Functions** em:
+  - `flow_executions`
+  - `flow_execution_logs`
+  
+  seja feita com `tenant_id` explícito, para não depender de `get_user_tenant_id()` / `auth.uid()`.
 
-## Solução
-
-### 1. Alterar DEFAULT da Coluna (Banco de Dados)
-
-```sql
--- Mudar de UUID fixo para função dinâmica
-ALTER TABLE flow_connections 
-ALTER COLUMN tenant_id 
-SET DEFAULT get_user_tenant_id();
-```
-
-### 2. Atualizar Flow Editor (Código)
-
-**Arquivo:** `src/pages/FlowEditor.tsx` (linhas ~418-424)
-
-**Modificação:** Incluir `tenant_id` explicitamente ao inserir conexões
-
-**De:**
-```typescript
-const connectionsToInsert = [...uniqueConnections.values()];
-
-if (connectionsToInsert.length > 0) {
-  const { error: connError } = await supabase
-    .from('flow_connections')
-    .insert(connectionsToInsert);
-```
-
-**Para:**
-```typescript
-// Buscar tenant_id do fluxo
-const { data: flowData } = await supabase
-  .from('chatbot_flows')
-  .select('tenant_id')
-  .eq('id', flowId)
-  .single();
-
-const connectionsWithTenant = connectionsToInsert.map(conn => ({
-  ...conn,
-  tenant_id: flowData?.tenant_id
-}));
-
-if (connectionsWithTenant.length > 0) {
-  const { error: connError } = await supabase
-    .from('flow_connections')
-    .insert(connectionsWithTenant);
-```
-
-### 3. Corrigir Conexões Existentes com Tenant Errado
-
-```sql
--- Atualizar conexões do fluxo "EMPREGA MAIS - PROTOCOLO AGENDAMENTO"
-UPDATE flow_connections 
-SET tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf'
-WHERE flow_id = 'f2260719-fcf9-4b09-85ed-b13e733b29fd'
-  AND tenant_id = '00000000-0000-0000-0000-000000000001';
-
--- Verificar se há outros fluxos afetados
-UPDATE flow_connections c
-SET tenant_id = f.tenant_id
-FROM chatbot_flows f
-WHERE c.flow_id = f.id
-  AND c.tenant_id != f.tenant_id;
-```
+Assim as automações da Master voltam a rodar e, consequentemente, os blocos de atualização de status voltam a funcionar.
 
 ---
 
-## Outras Tabelas Afetadas
+## O que vou implementar (correções completas para Master e para qualquer tenant)
 
-Essas tabelas **também** usam o DEFAULT incorreto:
+### 1) Corrigir `process-flow-triggers` para criar execuções com `tenant_id`
+Arquivo: `supabase/functions/process-flow-triggers/index.ts`
 
-| Tabela | DEFAULT Atual | Ação Necessária |
-|--------|---------------|-----------------|
-| `flow_executions` | `00000000-...001` | Alterar para `get_user_tenant_id()` |
-| `flow_execution_logs` | `00000000-...001` | Alterar para `get_user_tenant_id()` |
-| `scheduled_messages` | ✅ JÁ CORRIGIDO | Nenhuma |
+Mudanças:
+- No `.insert()` de `flow_executions`, incluir `tenant_id: tenant_id` (o tenant já vem no body e já é usado para filtrar os fluxos).
+- Melhorar observabilidade: ao invocar `execute-flow-node`, capturar `{ error }` do `supabase.functions.invoke(...)` e logar se houver falha (hoje não checa `error`, então pode falhar silenciosamente).
 
-**Migração Completa:**
-```sql
-ALTER TABLE flow_executions 
-ALTER COLUMN tenant_id SET DEFAULT get_user_tenant_id();
+Impacto esperado:
+- As execuções passam a ser criadas normalmente para a Master.
+- O fluxo passa a avançar para os nós (incluindo `set_lead_status`).
 
-ALTER TABLE flow_execution_logs 
-ALTER COLUMN tenant_id SET DEFAULT get_user_tenant_id();
+### 2) Corrigir `execute-flow-node` para inserir logs com `tenant_id`
+Arquivo: `supabase/functions/execute-flow-node/index.ts`
 
-ALTER TABLE flow_connections 
-ALTER COLUMN tenant_id SET DEFAULT get_user_tenant_id();
-```
+Mudanças:
+- Atualizar `logExecution(...)` para aceitar `tenant_id` e incluir esse campo no insert em `flow_execution_logs`.
+- Passar `execution.tenant_id` nas chamadas de log (o execution já é buscado no início da função).
 
----
+Impacto esperado:
+- Logs deixam de falhar por `tenant_id NOT NULL`.
+- Diagnóstico futuro fica muito mais fácil (sem “silêncio” nos logs).
 
-## Arquivos a Modificar
+### 3) Corrigir `process-flow-delays` (delays/timeouts) para inserir logs com `tenant_id`
+Arquivo: `supabase/functions/process-flow-delays/index.ts`
 
-1. **Migração SQL** - Alterar DEFAULTs de 3 tabelas
-2. **src/pages/FlowEditor.tsx** - Enviar `tenant_id` ao criar conexões
-3. **supabase/functions/process-flow-triggers/index.ts** - Verificar se precisa enviar `tenant_id` ao criar execuções
+Mudanças:
+- Alterar os selects de `flow_executions` para também trazer `tenant_id` (ex.: `select('id, current_node_id, tenant_id')`).
+- Incluir `tenant_id` nos objetos `delayLogs` e `timeoutLogs` antes do batch insert em `flow_execution_logs`.
 
----
-
-## Por Que Isso Aconteceu?
-
-O tenant `00000000-0000-0000-0000-000000000001` foi provavelmente usado como:
-- Tenant padrão durante desenvolvimento
-- Valor de fallback em produção
-
-Para sistemas **multi-tenant**, o correto é **sempre** usar `get_user_tenant_id()` como DEFAULT para garantir isolamento automático.
+Impacto esperado:
+- Processamento de delays/timeouts volta a funcionar sem quebrar por erro de insert.
+- Fluxos com espera (delay / wait_reply) voltam a concluir corretamente.
 
 ---
 
-## Seção Técnica
+## Sequência de entrega
 
-### Fluxos da Master Afetados
+1) Implementar mudanças nos 3 Edge Functions acima.
+2) Deploy das Edge Functions atualizadas.
+3) Validação rápida e objetiva com a Master:
+   - Enviar uma mensagem que deveria disparar uma automação `message_key`
+   - Confirmar nos logs:
+     - `process-flow-triggers` não tem mais erro de tenant
+     - execução criada com sucesso
+     - `execute-flow-node` é invocado
+   - Confirmar no banco:
+     - `flow_executions` criada com `tenant_id = 664dfcb4-...`
+     - `contacts.lead_status` atualizado
+4) Se necessário, validar também 1 fluxo de cada tipo (message_key e keyword) para garantir cobertura.
 
-Apenas **"EMPREGA MAIS - PROTOCOLO AGENDAMENTO"** tem conexões com `tenant_id` errado. Os outros 5 fluxos ativos estão corretos.
+---
 
-### Validação
+## Critérios de sucesso (o que você vai ver)
 
-Após aplicar as correções, executar:
+- As automações da Master voltam a disparar normalmente.
+- O bloco **“Alterar Status Lead”** efetivamente atualiza o `lead_status` do contato.
+- Os logs de execução voltam a aparecer (não ficam falhando por tenant_id).
 
-```sql
--- Verificar se todas as conexões têm tenant_id correto
-SELECT f.name, c.tenant_id, count(*) 
-FROM chatbot_flows f
-JOIN flow_connections c ON c.flow_id = f.id
-WHERE f.tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf'
-GROUP BY f.name, c.tenant_id
-HAVING c.tenant_id != f.tenant_id;
+---
 
--- Resultado esperado: 0 linhas
-```
+## Observações importantes
+
+- A migração que colocou `DEFAULT get_user_tenant_id()` faz sentido para inserts vindos do frontend autenticado, mas **Edge Functions (Service Role) precisam sempre setar `tenant_id` explicitamente** para tabelas multi-tenant com `NOT NULL`.
+- Esta correção não é “só para Master”: elimina a causa raiz para qualquer tenant e previne recorrência.
+
+## Checklist técnico (para auditoria rápida)
+
+- [ ] `process-flow-triggers`: insert `flow_executions` inclui `tenant_id`
+- [ ] `execute-flow-node`: insert `flow_execution_logs` inclui `tenant_id`
+- [ ] `process-flow-delays`: batch insert `flow_execution_logs` inclui `tenant_id`
+- [ ] Deploy realizado
+- [ ] Teste end-to-end em 1 conversa da Master com trigger `message_key`
