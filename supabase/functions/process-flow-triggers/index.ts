@@ -258,7 +258,7 @@ Deno.serve(async (req) => {
         console.log('[process-flow-triggers] ⚠️ Sem canal disponível, não foi possível criar conversa');
       }
 
-      // Criar execução do fluxo
+      // Criar execução do fluxo - INCLUIR tenant_id explícito para Edge Functions com Service Role
       const { data: execution, error: execError } = await supabase
         .from('flow_executions')
         .insert({
@@ -267,6 +267,7 @@ Deno.serve(async (req) => {
           contact_id,
           channel_id: actualChannelId,
           status: 'running',
+          tenant_id: tenant_id, // CRÍTICO: Edge Functions precisam enviar tenant_id explícito
           variables: {
             trigger_type,
             mensagem_original: message_content || '',
@@ -277,7 +278,7 @@ Deno.serve(async (req) => {
         .single();
 
       if (execError) {
-        console.error(`[process-flow-triggers] Erro ao criar execução para ${flow.flow_name}:`, execError);
+        console.error(`[process-flow-triggers] ❌ Erro ao criar execução para ${flow.flow_name}:`, execError);
         continue;
       }
 
@@ -308,14 +309,19 @@ Deno.serve(async (req) => {
         // Invocar próximo nó se houver conexão
         if (connection) {
           try {
-            await supabase.functions.invoke('execute-flow-node', {
+            const { error: invokeError } = await supabase.functions.invoke('execute-flow-node', {
               body: {
                 execution_id: execution.id,
                 node_id: connection.target_node_id,
               }
             });
+            if (invokeError) {
+              console.error('[process-flow-triggers] ❌ Erro ao invocar execute-flow-node:', invokeError);
+            } else {
+              console.log(`[process-flow-triggers] ✅ execute-flow-node invocado para execução ${execution.id}`);
+            }
           } catch (invokeError) {
-            console.error('[process-flow-triggers] Erro ao invocar execute-flow-node:', invokeError);
+            console.error('[process-flow-triggers] ❌ Exception ao invocar execute-flow-node:', invokeError);
           }
         }
       })());

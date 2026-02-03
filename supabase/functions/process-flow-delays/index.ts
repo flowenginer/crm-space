@@ -21,16 +21,16 @@ serve(async (req) => {
 
     console.log(`[process-flow-delays] Starting at ${now}`);
 
-    // OTIMIZAÇÃO: Buscar ambos os tipos em paralelo
+    // OTIMIZAÇÃO: Buscar ambos os tipos em paralelo - incluir tenant_id para logs
     const [timeDelaysResult, replyTimeoutsResult] = await Promise.all([
       supabase
         .from('flow_executions')
-        .select('id, current_node_id')
+        .select('id, current_node_id, tenant_id')
         .eq('status', 'waiting_delay')
         .lt('waiting_until', now),
       supabase
         .from('flow_executions')
-        .select('id, current_node_id')
+        .select('id, current_node_id, tenant_id')
         .eq('status', 'waiting_reply')
         .lt('waiting_until', now)
     ]);
@@ -66,17 +66,17 @@ serve(async (req) => {
       connectionsMap.get(conn.source_node_id)!.push(conn);
     });
 
-    // Preparar updates e logs em batch
+    // Preparar updates e logs em batch - incluir tenant_id para evitar erro de NOT NULL
     const delayUpdateIds: string[] = [];
-    const delayLogs: { execution_id: string; node_id: string; log_type: string; message: string }[] = [];
+    const delayLogs: { execution_id: string; node_id: string; log_type: string; message: string; tenant_id: string }[] = [];
     
     const timeoutUpdateRunning: string[] = [];
     const timeoutUpdateCompleted: string[] = [];
-    const timeoutLogs: { execution_id: string; node_id: string; log_type: string; message: string }[] = [];
+    const timeoutLogs: { execution_id: string; node_id: string; log_type: string; message: string; tenant_id: string }[] = [];
 
     // 1. Processar delays de tempo
     for (const exec of timeDelays) {
-      if (exec.current_node_id) {
+      if (exec.current_node_id && exec.tenant_id) {
         const connections = connectionsMap.get(exec.current_node_id) || [];
         if (connections.length > 0) {
           delayUpdateIds.push(exec.id);
@@ -84,7 +84,8 @@ serve(async (req) => {
             execution_id: exec.id, 
             node_id: exec.current_node_id, 
             log_type: 'info', 
-            message: 'Delay concluído' 
+            message: 'Delay concluído',
+            tenant_id: exec.tenant_id // CRÍTICO: incluir tenant_id
           });
           processedCount++;
         }
@@ -93,7 +94,7 @@ serve(async (req) => {
 
     // 2. Processar timeouts de wait_reply
     for (const exec of replyTimeouts) {
-      if (exec.current_node_id) {
+      if (exec.current_node_id && exec.tenant_id) {
         const connections = connectionsMap.get(exec.current_node_id) || [];
         const hasTimeoutPath = connections.some(c => c.source_handle === 'timeout');
         
@@ -103,7 +104,8 @@ serve(async (req) => {
             execution_id: exec.id, 
             node_id: exec.current_node_id, 
             log_type: 'info', 
-            message: 'Timeout - seguindo caminho' 
+            message: 'Timeout - seguindo caminho',
+            tenant_id: exec.tenant_id // CRÍTICO: incluir tenant_id
           });
         } else {
           timeoutUpdateCompleted.push(exec.id);
@@ -111,7 +113,8 @@ serve(async (req) => {
             execution_id: exec.id, 
             node_id: exec.current_node_id, 
             log_type: 'info', 
-            message: 'Timeout - fluxo finalizado' 
+            message: 'Timeout - fluxo finalizado',
+            tenant_id: exec.tenant_id // CRÍTICO: incluir tenant_id
           });
         }
         processedCount++;
