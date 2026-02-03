@@ -1,5 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// VERSIONAMENTO: Alterações importantes devem atualizar esta versão
+const VERSION = '2026-02-03.1930';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -38,7 +41,7 @@ Deno.serve(async (req) => {
     const body: TriggerRequest = await req.json();
     const { trigger_type, tenant_id, contact_id, channel_id, conversation_id, message_content, metadata } = body;
 
-    console.log('[process-flow-triggers] Recebido:', { trigger_type, tenant_id, contact_id: contact_id?.substring(0, 8) });
+    console.log(`[process-flow-triggers v${VERSION}] Recebido:`, { trigger_type, tenant_id, contact_id: contact_id?.substring(0, 8) });
 
     // OTIMIZAÇÃO: Buscar fluxos E trigger nodes em uma única query com JOIN
     const { data: flowsWithTriggers, error: flowsError } = await supabase

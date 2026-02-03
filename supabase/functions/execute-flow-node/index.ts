@@ -1,5 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// VERSIONAMENTO: Alterações importantes devem atualizar esta versão
+const VERSION = '2026-02-03.1930';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -213,7 +216,7 @@ Deno.serve(async (req) => {
     const body: ExecuteNodeRequest = await req.json();
     const { execution_id, node_id } = body;
 
-    console.log('[execute-flow-node] Executando nó:', { execution_id: execution_id?.substring(0, 8), node_id: node_id?.substring(0, 8) });
+    console.log(`[execute-flow-node v${VERSION}] Executando nó:`, { execution_id: execution_id?.substring(0, 8), node_id: node_id?.substring(0, 8) });
 
     // Buscar nó
     const { data: node, error: nodeError } = await supabase
@@ -714,12 +717,52 @@ async function executeAction(
 
     case 'set_lead_status':
       if (config.status) {
-        await supabase
+        const newStatus = config.status as string;
+        const oldStatus = execution.contact?.lead_status || null;
+        
+        console.log(`[execute-flow-node v${VERSION}] set_lead_status: ${oldStatus} → ${newStatus}`);
+        
+        // 1. Atualizar o contato
+        const { error: contactError } = await supabase
           .from('contacts')
-          .update({ lead_status: config.status as string })
+          .update({ lead_status: newStatus })
           .eq('id', execution.contact_id);
+        
+        if (contactError) {
+          console.error(`[execute-flow-node] Erro ao atualizar contacts.lead_status:`, contactError);
+          await logExecution(supabase, execution.id, node.id, 'error',
+            `Erro ao alterar status: ${contactError.message}`, execution.tenant_id);
+          break;
+        }
+        
+        // 2. Atualizar a conversa atual (se existir)
+        if (execution.conversation_id) {
+          const { error: convError } = await supabase
+            .from('conversations')
+            .update({ lead_status: newStatus })
+            .eq('id', execution.conversation_id);
+          
+          if (convError) {
+            console.error(`[execute-flow-node] Erro ao atualizar conversations.lead_status:`, convError);
+          } else {
+            console.log(`[execute-flow-node] ✅ conversations.lead_status atualizado para: ${newStatus}`);
+          }
+        }
+        
+        // 3. Também atualizar outras conversas abertas/pending do mesmo contato
+        const { error: otherConvsError } = await supabase
+          .from('conversations')
+          .update({ lead_status: newStatus })
+          .eq('contact_id', execution.contact_id)
+          .in('status', ['open', 'pending'])
+          .neq('id', execution.conversation_id || '');
+        
+        if (otherConvsError) {
+          console.warn(`[execute-flow-node] Aviso ao atualizar outras conversas:`, otherConvsError);
+        }
+        
         await logExecution(supabase, execution.id, node.id, 'info',
-          `Status alterado para: ${config.status}`, execution.tenant_id);
+          `Status alterado: ${oldStatus || 'null'} → ${newStatus} (contato + conversa)`, execution.tenant_id);
       }
       break;
 
