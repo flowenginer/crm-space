@@ -1,114 +1,96 @@
 
-# Plano: Corrigir Agendamento de Mensagens para Usuários da Master
+# Problema: Conexões Ausentes no Fluxo "EMPREGA MAIS - PROTOCOLO AGENDAMENTO"
 
-## Diagnóstico do Problema
+## Diagnóstico
 
-Os logs do Supabase mostram claramente o erro:
+Ao analisar o banco de dados, descobri que o fluxo **"EMPREGA MAIS - PROTOCOLO AGENDAMENTO"** perdeu todas as suas conexões:
 
-```
-new row violates row-level security policy "Tenant isolation for scheduled_messages" 
-for table "scheduled_messages"
-```
+| Fluxo | Total de Nós | Total de Conexões | Status |
+|-------|--------------|-------------------|--------|
+| EMPREGA MAIS - PALESTRA | 3 | 2 | ✅ OK |
+| EMPREGA MAIS - POS VISITA | 3 | 2 | ✅ OK |
+| **EMPREGA MAIS - PROTOCOLO AGENDAMENTO** | **3** | **0** | ❌ ERRO |
+| EMPREGA MAIS - TREINAMENTO | 3 | 2 | ✅ OK |
 
-### Causa Raiz
+### O que aconteceu
 
-A tabela `scheduled_messages` tem um **DEFAULT incorreto** para `tenant_id`:
+1. O fluxo tem 3 nós:
+   - `trigger (message_key)` - Palavra-chave: "Registro de Cadastramento"
+   - `action (add_tag)` - Adiciona tag
+   - `action (set_lead_status)` - Define status: "Agendado"
 
-| Configuração | Valor |
-|--------------|-------|
-| `tenant_id` DEFAULT | `'00000000-0000-0000-0000-000000000001'` (Space Sports) |
-| Tenant da Master | `'664dfcb4-5432-4c14-9838-7db14360cabf'` |
+2. **Não existem conexões entre esses nós** - as "linhas" que ligam um bloco ao outro foram apagadas
 
-### Fluxo do Erro
+3. O fluxo funcionou até 31/01/2026 (há logs mostrando "Status alterado para: Agendado")
 
-1. Usuário da Master (tenant `664d...cabf`) tenta agendar mensagem
-2. O código NÃO envia `tenant_id` no INSERT
-3. O banco usa o DEFAULT: `'00000000-0000-0000-0000-000000000001'`
-4. Política RLS verifica: `tenant_id = get_user_tenant_id()`
-5. Comparação: `'00000000...' = '664d...'` → **FALSE** → Bloqueado
+4. Após essa data, mesmo que o trigger seja acionado, nada acontece porque não há conexão para o próximo nó
 
 ---
 
 ## Solução
 
-### Opção 1 (Recomendada): Alterar o DEFAULT da coluna
+### Opção 1: Recriar as conexões via SQL (Rápido)
 
-Trocar o DEFAULT fixo por uma função que retorna o tenant_id do usuário autenticado:
+Inserir as conexões diretamente no banco:
 
 ```sql
-ALTER TABLE scheduled_messages 
-ALTER COLUMN tenant_id 
-SET DEFAULT get_user_tenant_id();
+-- Conexão: trigger → add_tag
+INSERT INTO flow_connections (flow_id, source_node_id, target_node_id)
+VALUES (
+  'f2260719-fcf9-4b09-85ed-b13e733b29fd',  -- flow_id
+  '45d60eb4-2961-43cc-8f3c-62ae56c5d8d3',  -- trigger (message_key)
+  'df0ce31e-99c8-4dc4-ac1d-9f07be65c2dd'   -- add_tag
+);
+
+-- Conexão: add_tag → set_lead_status  
+INSERT INTO flow_connections (flow_id, source_node_id, target_node_id)
+VALUES (
+  'f2260719-fcf9-4b09-85ed-b13e733b29fd',  -- flow_id
+  'df0ce31e-99c8-4dc4-ac1d-9f07be65c2dd',  -- add_tag
+  'ac22c650-48e7-4c09-828d-68e5464ad862'   -- set_lead_status
+);
 ```
 
-### Opção 2 (Alternativa): Enviar tenant_id explicitamente no código
+### Opção 2: Reconectar no Flow Builder (Manual)
 
-Modificar o `ScheduleMessageModal.tsx` para buscar e enviar o `tenant_id` do usuário:
-
-```typescript
-// Buscar tenant_id do usuário
-const { data: profile } = await supabase
-  .from('profiles')
-  .select('tenant_id')
-  .eq('id', user?.id)
-  .single();
-
-// Incluir no INSERT
-const { error } = await supabase
-  .from('scheduled_messages')
-  .insert({
-    contact_id: contactId,
-    conversation_id: conversationId,
-    channel_id: finalChannelId,
-    content: finalMessage || '',
-    media_url: mediaUrl,
-    message_type: messageType,
-    scheduled_for: scheduledFor.toISOString(),
-    status: 'scheduled',
-    created_by: user?.id,
-    tenant_id: profile?.tenant_id  // ← ADICIONAR ISSO
-  });
-```
+O usuário pode abrir o fluxo no Flow Builder e arrastar as conexões novamente.
 
 ---
 
-## Recomendação
+## Ação Recomendada
 
-**Usar ambas as soluções** para garantir robustez:
-
-1. **Alterar o DEFAULT** no banco (para casos onde o frontend não envia)
-2. **Enviar tenant_id explicitamente** no código (mais explícito e previsível)
-
----
-
-## Arquivos a Modificar
-
-| Arquivo | Alteração |
-|---------|-----------|
-| Migração SQL | Alterar DEFAULT de `tenant_id` |
-| `src/components/conversations/ScheduleMessageModal.tsx` | Incluir `tenant_id` no INSERT |
+Executar a **Opção 1** (inserir conexões via SQL) para restaurar imediatamente o funcionamento do fluxo.
 
 ---
 
 ## Seção Técnica
 
-### Por que o DEFAULT está errado?
+### IDs dos Nós do Fluxo
 
-O tenant `00000000-0000-0000-0000-000000000001` (Space Sports) foi provavelmente usado como valor de desenvolvimento. Para sistemas multi-tenant, o correto é:
+| Nó | Subtipo | ID |
+|----|---------|----| 
+| Trigger | message_key | `45d60eb4-2961-43cc-8f3c-62ae56c5d8d3` |
+| Action 1 | add_tag | `df0ce31e-99c8-4dc4-ac1d-9f07be65c2dd` |
+| Action 2 | set_lead_status | `ac22c650-48e7-4c09-828d-68e5464ad862` |
 
-```sql
-tenant_id uuid DEFAULT get_user_tenant_id()
+### Fluxo Esperado
+
+```text
+┌─────────────────────────────┐
+│  Trigger: "Registro de      │
+│  Cadastramento"             │
+│  (message_key)              │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│  Adicionar Tag              │
+│  (add_tag)                  │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│  Definir Status: "Agendado" │
+│  (set_lead_status)          │
+└─────────────────────────────┘
 ```
-
-### Política RLS Atual
-
-```sql
--- Política RESTRICTIVE (mais restritiva, combina com AND)
-CREATE POLICY "Tenant isolation for scheduled_messages" 
-ON scheduled_messages AS RESTRICTIVE
-FOR ALL TO authenticated
-USING (tenant_id = get_user_tenant_id())
-WITH CHECK ((tenant_id IS NULL) OR (tenant_id = get_user_tenant_id()));
-```
-
-O `WITH CHECK` permite `tenant_id IS NULL` ou igual ao do usuário, mas como tem DEFAULT, nunca é NULL.
