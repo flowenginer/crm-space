@@ -50,9 +50,20 @@ export function useCreateDepartment() {
 
   return useMutation({
     mutationFn: async (department: { name: string; description?: string | null; color?: string | null; icon?: string | null; is_active?: boolean | null }) => {
+      // Obter tenant_id do usuário logado
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user?.id)
+        .single();
+
       const { data, error } = await supabase
         .from('departments')
-        .insert(department as any)
+        .insert({
+          ...department,
+          tenant_id: profile?.tenant_id, // CRÍTICO: Incluir tenant_id
+        } as any)
         .select()
         .single();
 
