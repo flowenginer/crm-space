@@ -17,6 +17,7 @@ interface WebhookConfig {
   events: string[];
   filters: Record<string, string>;
   is_active: boolean;
+  tenant_id: string;
 }
 
 interface DispatchEvent {
@@ -99,6 +100,9 @@ async function handleDispatch(supabase: any, params: { event: DispatchEvent }) {
       tenant_id: (event.context as any)?.tenant_id,
     };
 
+    // Determinar tenant_id do contexto ou do webhook
+    const tenantId = (event.context as any)?.tenant_id || webhook.tenant_id;
+
     // Create delivery record
     const { data: delivery, error: deliveryError } = await supabase
       .from('webhook_deliveries')
@@ -107,6 +111,7 @@ async function handleDispatch(supabase: any, params: { event: DispatchEvent }) {
         event_type: event.type,
         payload,
         status: 'pending',
+        tenant_id: tenantId,
       })
       .select()
       .single();
