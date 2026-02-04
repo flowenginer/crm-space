@@ -138,7 +138,7 @@ export function useCreateWebhook() {
           filters: webhook.filters || {},
           is_active: webhook.is_active ?? true,
           created_by: userData.user?.id,
-        })
+        } as any)
         .select()
         .single();
 

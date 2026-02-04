@@ -72,7 +72,7 @@ export function useImportHistory() {
           status: params.status,
           log: (params.log || []) as Json,
           created_by: user?.user?.id,
-        }])
+        } as any])
         .select()
         .single();
 

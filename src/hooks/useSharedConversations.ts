@@ -244,7 +244,7 @@ export function useShareConversation() {
           department_id: params.departmentId || null,
           note: params.note || null,
           permission_level: params.permissionLevel || 'view',
-        });
+        } as any);
 
       if (error) throw error;
 

@@ -205,7 +205,7 @@ class WhatsAppService {
       event_type: String(payload.event || payload.type || 'unknown'),
       instance_id: this.extractInstanceId(provider, payload),
       payload: JSON.parse(JSON.stringify(payload)),
-    }]);
+    } as any]);
 
     const instanceId = this.extractInstanceId(provider, payload);
     if (!instanceId) {

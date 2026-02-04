@@ -32,7 +32,7 @@ export function useGamificationSettings() {
           setting_key: key,
           setting_value: value,
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'setting_key' });
+        } as any, { onConflict: 'setting_key' });
 
       if (error) throw error;
     },

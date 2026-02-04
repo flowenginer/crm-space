@@ -92,7 +92,7 @@ export function useUpsertEmailVisibilityRule() {
             target_role: rule.target_role || null,
             target_shared_box_id: rule.target_shared_box_id || null,
             is_allowed: rule.is_allowed
-          })
+          } as any)
           .select()
           .single();
 
@@ -168,7 +168,7 @@ export function useBulkSaveEmailVisibilityRules() {
               target_role: rule.target_role || null,
               target_shared_box_id: rule.target_shared_box_id || null,
               is_allowed: rule.is_allowed
-            });
+            } as any);
         }
       }
     },

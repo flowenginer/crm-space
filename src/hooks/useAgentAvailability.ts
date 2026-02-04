@@ -159,7 +159,7 @@ export function useRequestRelease() {
           agent_id: user.id,
           locked_by: profile?.availability_locked_by || null,
           reason: reason || 'Solicito liberação para receber leads',
-        });
+        } as any);
 
       if (error) throw error;
     },

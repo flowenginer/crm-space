@@ -44,7 +44,7 @@ export function useShippingConfig() {
       } else {
         const { error } = await supabase
           .from('company_settings')
-          .insert({ shipping_config: newConfig as any });
+          .insert({ shipping_config: newConfig } as any);
         if (error) throw error;
       }
 

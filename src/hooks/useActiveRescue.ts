@@ -169,7 +169,7 @@ export function useActivateRescue() {
           next_send_at: now.toISOString(),
           status: 'active',
           activated_by: user?.id,
-        })
+        } as any)
         .select()
         .single();
 
