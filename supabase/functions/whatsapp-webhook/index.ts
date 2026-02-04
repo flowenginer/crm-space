@@ -922,18 +922,30 @@ serve(async (req) => {
     const shouldLog = !shouldSkipLog && (isImportantMessageEvent || isImportantStatus);
     
     if (shouldLog) {
+      // CORREÇÃO: Buscar tenant_id do canal antes de logar
+      let logTenantId: string | null = null;
+      if (instanceId) {
+        const { data: channelForLog } = await supabase
+          .from("whatsapp_channels")
+          .select("tenant_id")
+          .eq("instance_id", instanceId)
+          .single();
+        logTenantId = channelForLog?.tenant_id || null;
+      }
+
       // Log webhook apenas para eventos importantes (reduz ~95% do volume)
       await supabase.from("webhook_logs").insert({
         provider,
         event_type: eventType,
         instance_id: instanceId,
-        payload: { 
+        payload: {
           // Resumir payload para economizar espaço
           event: eventType,
           from: payload.data?.[0]?.key?.remoteJid || payload.data?.key?.remoteJid,
           isFromMe: payload.data?.[0]?.key?.fromMe || payload.data?.key?.fromMe,
           type: payload.data?.[0]?.message ? Object.keys(payload.data[0].message)[0] : 'unknown'
         },
+        tenant_id: logTenantId, // CORREÇÃO: Adicionar tenant_id
       });
     }
 

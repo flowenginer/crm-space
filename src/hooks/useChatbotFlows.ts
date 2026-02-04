@@ -287,6 +287,7 @@ export function useDuplicateFlow() {
               position_x: node.position_x,
               position_y: node.position_y,
               config: node.config,
+              tenant_id: tenantId || original.tenant_id, // CORREÇÃO: Adicionar tenant_id
             })
             .select()
             .single();
@@ -308,8 +309,9 @@ export function useDuplicateFlow() {
             source_node_id: nodeIdMap[conn.source_node_id],
             target_node_id: nodeIdMap[conn.target_node_id],
             source_handle: conn.source_handle,
+            tenant_id: tenantId || original.tenant_id, // CORREÇÃO: Adicionar tenant_id
           })).filter(c => c.source_node_id && c.target_node_id);
-          
+
           if (newConnections.length > 0) {
             await supabase.from('flow_connections').insert(newConnections);
           }

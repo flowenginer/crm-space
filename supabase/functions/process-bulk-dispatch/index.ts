@@ -107,7 +107,8 @@ async function sendMessageDirectly(
   phone: string,
   content: string,
   audioUrl?: string | null,
-  attachmentUrl?: string | null
+  attachmentUrl?: string | null,
+  tenantId?: string | null // CORREÇÃO: Adicionar tenant_id como parâmetro
 ): Promise<void> {
   console.log(`[BulkDispatch] Sending message directly to ${phone}`);
   
@@ -123,6 +124,7 @@ async function sendMessageDirectly(
         is_from_me: true,
         message_type: 'text',
         status: 'pending',
+        tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
       })
       .select('id')
       .single();
@@ -178,6 +180,7 @@ async function sendMessageDirectly(
         message_type: 'audio',
         media_url: audioUrl,
         status: 'pending',
+        tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
       })
       .select('id')
       .single();
@@ -220,6 +223,7 @@ async function sendMessageDirectly(
         message_type: 'document',
         media_url: attachmentUrl,
         status: 'pending',
+        tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
       })
       .select('id')
       .single();
@@ -1104,7 +1108,8 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
             contact.phone,
             messageContent,
             firstStep.audio_url,
-            firstStep.attachment_url
+            firstStep.attachment_url,
+            dispatch.tenant_id // CORREÇÃO: Passar tenant_id
           );
 
           // Record as already sent in marketing_scheduled_messages
@@ -1165,7 +1170,8 @@ async function processDispatchBatch(supabase: any, dispatch: any, supabaseUrl: s
             contact.phone,
             messageContent,
             firstStep.audio_url,
-            firstStep.attachment_url
+            firstStep.attachment_url,
+            dispatch.tenant_id // CORREÇÃO: Passar tenant_id
           );
 
           // Record as already sent in rescue_scheduled_messages

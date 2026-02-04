@@ -190,11 +190,25 @@ serve(async (req) => {
           const field = change.field;
           const value = change.value;
 
-          // Log the webhook
+          // Log the webhook - tenant_id will be determined from phone_number_id
+          // First try to get tenant_id from the value.metadata.phone_number_id
+          let webhookTenantId: string | null = null;
+          const phoneNumberId = value?.metadata?.phone_number_id;
+          if (phoneNumberId) {
+            const { data: configForLog } = await supabase
+              .from('cloudapi_configs')
+              .select('tenant_id')
+              .eq('phone_number_id', phoneNumberId)
+              .eq('is_active', true)
+              .single();
+            webhookTenantId = configForLog?.tenant_id || null;
+          }
+
           await supabase.from('cloudapi_webhook_logs').insert({
             event_type: field,
             payload: change,
             processed: false,
+            tenant_id: webhookTenantId, // CORREÇÃO: Adicionar tenant_id
           });
 
           // A Meta envia status com field="messages" mas com array "statuses" no value

@@ -122,11 +122,15 @@ export function useCreateMenuItem() {
 
   return useMutation({
     mutationFn: async (input: MenuItemInput) => {
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
       // Buscar próxima posição se não fornecida
       if (input.position === undefined) {
         let query = supabase
           .from('menu_items')
           .select('position')
+          .eq('tenant_id', tenantId)
           .order('position', { ascending: false })
           .limit(1);
 
@@ -142,7 +146,10 @@ export function useCreateMenuItem() {
 
       const { data, error } = await supabase
         .from('menu_items')
-        .insert(input)
+        .insert({
+          ...input,
+          tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
+        })
         .select()
         .single();
 
