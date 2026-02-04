@@ -131,7 +131,14 @@ export function useCreateTag() {
   return useMutation({
     mutationFn: async (tag: CreateTagInput) => {
       const { data: { user } } = await supabase.auth.getUser();
-      
+
+      // Obter tenant_id do usuário logado
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user?.id)
+        .single();
+
       const { data, error } = await supabase
         .from('tags')
         .insert({
@@ -141,6 +148,7 @@ export function useCreateTag() {
           visibility: tag.visibility || 'public',
           department_id: tag.visibility === 'department' ? tag.department_id : null,
           created_by: user?.id,
+          tenant_id: profile?.tenant_id, // CRÍTICO: Incluir tenant_id
         } as any)
         .select()
         .single();
