@@ -237,7 +237,7 @@ export function InternalChatMessageItem({
         {!isFromMe && !showAvatar && <div className="w-8 shrink-0" />}
 
         <div className={cn(
-          'max-w-[70%] sm:max-w-[60%] lg:max-w-md xl:max-w-lg relative flex flex-col',
+          'max-w-[min(70%,_480px)] relative flex flex-col',
           isFromMe ? 'items-end' : 'items-start'
         )}>
           {/* Reply reference */}
