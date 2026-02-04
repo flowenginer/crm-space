@@ -1616,7 +1616,9 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
     // Permissões - para filtrar conversas quando assignment é 'all'
     canViewPending,
     canViewUnassigned,
-  }), [quickFilter, sortOrder, statusFiltersSelected, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter, leadStatusFilter, canViewPending, canViewUnassigned]);
+    // CRÍTICO: Controla se pode ver conversas de OUTROS usuários
+    canViewAllConversations,
+  }), [quickFilter, sortOrder, statusFiltersSelected, channelFilter, advancedFilters.departmentId, advancedFilters.agentId, advancedFilters.origin, advancedFilters.tagIds, dateFilter, customDateRange.from, customDateRange.to, debouncedSearchQuery, statusFilter, leadStatusFilter, canViewPending, canViewUnassigned, canViewAllConversations]);
 
   // Global search hook - for integrated search results
   const searchFilters = useMemo(() => ({

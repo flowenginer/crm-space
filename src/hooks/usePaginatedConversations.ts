@@ -75,6 +75,8 @@ export interface ConversationFilters {
   // Permissões - para filtrar conversas quando assignment é 'all'
   canViewPending?: boolean;
   canViewUnassigned?: boolean;
+  // CRÍTICO: Se false, usuário só vê suas conversas + pendentes do departamento (mesmo com outras permissões)
+  canViewAllConversations?: boolean;
 }
 
 // Helper para obter início/fim do dia no timezone local convertido para UTC
@@ -346,7 +348,9 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
         // When assignment is 'all', apply permission-based filtering
         const canSeePending = filters.canViewPending ?? true;
         const canSeeUnassigned = filters.canViewUnassigned ?? true;
-        
+        // CRÍTICO: canViewAllConversations determina se pode ver conversas de OUTROS usuários
+        const canSeeAll = filters.canViewAllConversations ?? false;
+
         if (!canSeePending && !canSeeUnassigned) {
           // User can only see their own conversations
           query = query.eq('assigned_to', user.id);
@@ -358,7 +362,7 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
           // Can see pending (has department) but not unassigned (no department)
           // Show: assigned to user OR (not assigned AND has department in user's departments)
           // OTIMIZAÇÃO: Usar dados do cache ao invés de fazer query
-          
+
           if (isAdminOrSupervisor) {
             // Admin/Supervisor: show assigned OR has department (not completely unassigned)
             query = query.or(`assigned_to.not.is.null,department_id.not.is.null`);
@@ -374,8 +378,22 @@ export function usePaginatedConversations(filters?: ConversationFilters) {
               query = query.eq('assigned_to', user.id);
             }
           }
+        } else if (canSeePending && canSeeUnassigned) {
+          // CORREÇÃO: Mesmo com permissões de ver pending e unassigned,
+          // se canViewAllConversations é FALSE, usuário NÃO pode ver conversas de OUTROS
+          if (!canSeeAll && !isAdminOrSupervisor) {
+            // Usuário sem permissão de ver todos: mostra apenas suas + pendentes do departamento
+            if (userDepartmentIds.length > 0) {
+              const deptFilter = userDepartmentIds.map(d => `department_id.eq.${d}`).join(',');
+              // Minhas conversas OU (não atribuídas E no meu departamento) OU (não atribuídas E sem departamento)
+              query = query.or(`assigned_to.eq.${user.id},and(assigned_to.is.null,or(${deptFilter})),and(assigned_to.is.null,department_id.is.null)`);
+            } else {
+              // Sem departamento: mostra minhas + não atribuídas sem departamento
+              query = query.or(`assigned_to.eq.${user.id},and(assigned_to.is.null,department_id.is.null)`);
+            }
+          }
+          // Se canSeeAll é TRUE ou é admin/supervisor, não aplica filtro (mostra tudo)
         }
-        // If both canSeePending and canSeeUnassigned are true, no additional filter needed (show all)
       }
 
       // Apply channel filter
