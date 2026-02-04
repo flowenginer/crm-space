@@ -5097,6 +5097,7 @@ export type Database = {
           tenant_id: string
           transcription: string | null
           transcription_status: string | null
+          trigger_processed: boolean | null
           whatsapp_message_id: string | null
         }
         Insert: {
@@ -5118,6 +5119,7 @@ export type Database = {
           tenant_id: string
           transcription?: string | null
           transcription_status?: string | null
+          trigger_processed?: boolean | null
           whatsapp_message_id?: string | null
         }
         Update: {
@@ -5139,6 +5141,7 @@ export type Database = {
           tenant_id?: string
           transcription?: string | null
           transcription_status?: string | null
+          trigger_processed?: boolean | null
           whatsapp_message_id?: string | null
         }
         Relationships: [
