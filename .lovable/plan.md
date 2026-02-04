@@ -1,193 +1,89 @@
 
 
-# Correção Urgente: Vendedores Vendo Leads de Outros na Master
+# Correção: Download do Relatório de Atendimentos Incompleto
 
-## Diagnóstico Confirmado
+## Problema Identificado
 
-### O Problema
-Os vendedores da Master estão vendo e podendo transferir leads atribuídos a outros vendedores, violando o isolamento de dados.
+O download do relatório de atendimentos está exportando uma planilha **incompleta**:
 
-### Causa Raiz
-As funções SQL `can_view_all_data()` e `can_transfer_freely()` **não estão aplicando a lógica de prioridade correta**.
+1. **Tags** - Estão sendo exportadas parcialmente (linha 364), mas precisamos verificar se funcionam corretamente
+2. **Status do Lead** - **NÃO ESTÁ SENDO EXPORTADO** - O campo existe nos dados (`contact_lead_status`) mas não aparece na planilha
 
-**Lógica atual (ERRADA):**
-```sql
-IF user_flag = TRUE THEN  -- Só verifica se é TRUE
-  RETURN TRUE;
-END IF;
--- Depois verifica departamento...
+## Análise do Código Atual
+
+### Dados disponíveis (linha 220):
+```typescript
+contact: {
+  full_name: row.contact_full_name,
+  phone: row.contact_phone,
+  lead_status: row.contact_lead_status  // ✅ EXISTE nos dados!
+}
 ```
 
-**Lógica correta (NÃO APLICADA):**
-```sql
-IF user_flag IS NOT NULL THEN  -- Verifica se foi definido
-  RETURN user_flag;            -- Retorna o valor (TRUE ou FALSE)
-END IF;
--- Só verifica departamento se user_flag = NULL
+### Exportação Excel atual (linhas 357-369):
+```typescript
+const excelData = dataToExport.map((conv: any) => ({
+  '#': conv.protocol_number,
+  'Nome': conv.contact?.full_name || '',
+  'Contato': conv.contact?.phone || '',
+  'Canal': conv.channel?.name || '',
+  'Agente': conv.assigned_user?.full_name || '',
+  'Departamento': conv.department?.name || '',
+  'Etiquetas': conv.tags?.map((t: any) => t.tag?.name).join(', ') || '',
+  'Data Abertura': format(...),
+  'Data Fechamento': conv.closed_at ? format(...) : '',
+  '1ª Mensagem': conv.first_message || '',
+  'Status': conv.status === 'open' ? 'Ativo' : ...
+  // ❌ FALTA: 'Status do Lead': conv.contact?.lead_status || ''
+}));
 ```
 
-### Dados no Banco
-| Vendedor | can_view_all (usuário) | can_view_all (departamento) | Resultado Atual | Esperado |
-|----------|------------------------|------------------------------|-----------------|----------|
-| Beatriz | FALSE | TRUE (Emprega Mais) | TRUE ❌ | FALSE ✅ |
-| Bruna | FALSE | TRUE (Master Leads) | TRUE ❌ | FALSE ✅ |
-| Nadia | FALSE | TRUE (Emprega Mais) | TRUE ❌ | FALSE ✅ |
-| Rainy | FALSE | TRUE (Emprega Mais) | TRUE ❌ | FALSE ✅ |
-| Susana | FALSE | TRUE (Master Leads) | TRUE ❌ | FALSE ✅ |
+## Campos Faltantes no Excel
 
-A migration `20260204170000_fix-permission-priority-logic.sql` existe no código mas **não foi aplicada ao banco de produção**.
-
----
+| Campo | Situação |
+|-------|----------|
+| Status do Lead | **Não está sendo exportado** (mas os dados existem) |
+| Motivo do Fechamento | Não está sendo exportado (dados disponíveis em `close_reason`) |
 
 ## Solução
 
-### 1. Aplicar correção nas funções SQL
+### Modificar função `handleExportExcel` no arquivo `src/pages/ConversationReport.tsx`
 
-Atualizar as duas funções para respeitar o bloqueio explícito do usuário:
+**Linha 357-369 - Adicionar campos faltantes:**
 
-**Arquivo: `supabase/migrations/[TIMESTAMP]_fix-permission-priority-urgent.sql`**
-
-```sql
--- =========================================================================
--- CORREÇÃO URGENTE: Funções de Acesso Especial
--- =========================================================================
--- PROBLEMA: Vendedores com can_view_all = FALSE estão vendo leads de outros
--- CAUSA: A função ignora FALSE e vai direto para o departamento
--- SOLUÇÃO: Se user_flag é NOT NULL, usar esse valor e ignorar departamento
--- =========================================================================
-
--- FUNÇÃO 1: can_transfer_freely
-CREATE OR REPLACE FUNCTION public.can_transfer_freely(_user_id uuid)
-RETURNS boolean
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-DECLARE
-  user_role text;
-  user_flag boolean;  -- Pode ser TRUE, FALSE ou NULL
-  user_tenant_id uuid;
-  dept_flag boolean;
-BEGIN
-  SELECT role, can_transfer_freely, tenant_id
-  INTO user_role, user_flag, user_tenant_id
-  FROM profiles WHERE id = _user_id;
-
-  IF user_tenant_id IS NULL THEN
-    RETURN FALSE;
-  END IF;
-
-  IF user_role IN ('admin', 'supervisor') THEN
-    RETURN TRUE;
-  END IF;
-
-  -- CORREÇÃO: Se user_flag foi definido (TRUE ou FALSE), usar esse valor
-  IF user_flag IS NOT NULL THEN
-    RETURN user_flag;
-  END IF;
-
-  -- Só verifica departamento se user_flag é NULL
-  SELECT EXISTS (
-    SELECT 1 FROM user_departments ud
-    INNER JOIN departments d ON d.id = ud.department_id
-    WHERE ud.user_id = _user_id
-    AND ud.tenant_id = user_tenant_id
-    AND d.tenant_id = user_tenant_id
-    AND d.can_transfer_freely = TRUE
-  ) INTO dept_flag;
-
-  RETURN COALESCE(dept_flag, FALSE);
-END;
-$function$;
-
--- FUNÇÃO 2: can_view_all_data
-CREATE OR REPLACE FUNCTION public.can_view_all_data(_user_id uuid)
-RETURNS boolean
-LANGUAGE plpgsql
-STABLE SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-DECLARE
-  user_role text;
-  user_flag boolean;  -- Pode ser TRUE, FALSE ou NULL
-  user_tenant_id uuid;
-  caller_tenant_id uuid;
-  dept_flag boolean;
-BEGIN
-  SELECT tenant_id INTO caller_tenant_id FROM profiles WHERE id = auth.uid();
-  
-  SELECT role, can_view_all_conversations, tenant_id 
-  INTO user_role, user_flag, user_tenant_id 
-  FROM profiles WHERE id = _user_id;
-  
-  IF user_tenant_id IS DISTINCT FROM caller_tenant_id THEN
-    RETURN FALSE;
-  END IF;
-  
-  IF user_role IN ('admin', 'supervisor') THEN
-    RETURN TRUE;
-  END IF;
-  
-  -- CORREÇÃO: Se user_flag foi definido (TRUE ou FALSE), usar esse valor
-  IF user_flag IS NOT NULL THEN
-    RETURN user_flag;
-  END IF;
-  
-  -- Só verifica departamento se user_flag é NULL
-  SELECT EXISTS (
-    SELECT 1 FROM user_departments ud
-    INNER JOIN departments d ON d.id = ud.department_id
-    WHERE ud.user_id = _user_id 
-    AND d.can_view_all_conversations = TRUE
-    AND d.tenant_id = caller_tenant_id
-  ) INTO dept_flag;
-  
-  RETURN COALESCE(dept_flag, FALSE);
-END;
-$function$;
+```typescript
+const excelData = dataToExport.map((conv: any) => ({
+  '#': conv.protocol_number,
+  'Nome': conv.contact?.full_name || '',
+  'Contato': conv.contact?.phone || '',
+  'Status do Lead': conv.contact?.lead_status || '',    // ← ADICIONAR
+  'Canal': conv.channel?.name || '',
+  'Agente': conv.assigned_user?.full_name || '',
+  'Departamento': conv.department?.name || '',
+  'Etiquetas': conv.tags?.map((t: any) => t.tag?.name).join(', ') || '',
+  'Status Conversa': conv.status === 'open' ? 'Ativo' : conv.status === 'pending' ? 'Pendente' : 'Fechado',
+  'Motivo Fechamento': conv.close_reason || '',         // ← ADICIONAR (opcional)
+  'Data Abertura': format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm'),
+  'Data Fechamento': conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '',
+  '1ª Mensagem': conv.first_message || ''
+}));
 ```
 
----
+## Arquivo a Modificar
 
-## Arquivos a Modificar
-
-| Arquivo | Ação |
-|---------|------|
-| `supabase/migrations/[TIMESTAMP]_fix-permission-priority-urgent.sql` | Criar nova migration |
-
----
+| Arquivo | Modificação |
+|---------|-------------|
+| `src/pages/ConversationReport.tsx` | Adicionar `Status do Lead` e `Motivo Fechamento` na função `handleExportExcel` (linhas 357-369) |
 
 ## Resultado Esperado
 
-Após a correção:
+A planilha Excel exportada terá as seguintes colunas:
 
-| Vendedor | Antes | Depois |
-|----------|-------|--------|
-| Beatriz | Vê todos os leads | Vê apenas seus leads |
-| Bruna | Vê todos e transfere qualquer | Vê apenas seus leads, transfere apenas seus |
-| Nadia | Vê todos e transfere qualquer | Vê apenas seus leads, transfere apenas seus |
-| Todos os outros | Idem | Bloqueio correto aplicado |
+| # | Nome | Contato | **Status do Lead** | Canal | Agente | Departamento | Etiquetas | Status Conversa | **Motivo Fechamento** | Data Abertura | Data Fechamento | 1ª Mensagem |
 
-### Lógica Final:
-1. **Admin/Supervisor** → sempre `TRUE`
-2. **Usuário com flag TRUE** → `TRUE` (liberado explicitamente)
-3. **Usuário com flag FALSE** → `FALSE` (bloqueado, ignora departamento)
-4. **Usuário com flag NULL** → verifica departamento
+## Notas Técnicas
 
----
-
-## Testes de Validação
-
-Após aplicar a migration, executar estas queries para confirmar:
-
-```sql
--- Deve retornar FALSE para vendedores com can_view_all = FALSE
-SELECT full_name, can_view_all_data(id) as result
-FROM profiles 
-WHERE tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf'
-AND role = 'vendedor';
-
--- Beatriz (can_transfer = FALSE) deve retornar FALSE
-SELECT can_transfer_freely('e7a9fd22-e3ff-40b9-b01c-93549db399d0');
-```
+- Os dados do `lead_status` já vêm da função SQL `search_conversations_report` como `contact_lead_status`
+- O campo `close_reason` já existe na resposta mas não estava sendo exportado
+- A coluna "Status" foi renomeada para "Status Conversa" para evitar confusão com "Status do Lead"
 
