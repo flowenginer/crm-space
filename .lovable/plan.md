@@ -1,89 +1,173 @@
 
+# Correção: Automações de Status de Lead Falhando para Usuários
 
-# Correção: Download do Relatório de Atendimentos Incompleto
+## 🎯 Diagnóstico Confirmado
 
-## Problema Identificado
+### O Problema
+Quando vendedores enviam mensagens rápidas com palavras-chave configuradas, o fluxo de automação é disparado corretamente MAS o nó `set_lead_status` **falha silenciosamente** com erro:
 
-O download do relatório de atendimentos está exportando uma planilha **incompleta**:
-
-1. **Tags** - Estão sendo exportadas parcialmente (linha 364), mas precisamos verificar se funcionam corretamente
-2. **Status do Lead** - **NÃO ESTÁ SENDO EXPORTADO** - O campo existe nos dados (`contact_lead_status`) mas não aparece na planilha
-
-## Análise do Código Atual
-
-### Dados disponíveis (linha 220):
-```typescript
-contact: {
-  full_name: row.contact_full_name,
-  phone: row.contact_phone,
-  lead_status: row.contact_lead_status  // ✅ EXISTE nos dados!
-}
+```
+Erro ao alterar status: tenant_id é obrigatório e não foi possível determinar automaticamente
 ```
 
-### Exportação Excel atual (linhas 357-369):
-```typescript
-const excelData = dataToExport.map((conv: any) => ({
-  '#': conv.protocol_number,
-  'Nome': conv.contact?.full_name || '',
-  'Contato': conv.contact?.phone || '',
-  'Canal': conv.channel?.name || '',
-  'Agente': conv.assigned_user?.full_name || '',
-  'Departamento': conv.department?.name || '',
-  'Etiquetas': conv.tags?.map((t: any) => t.tag?.name).join(', ') || '',
-  'Data Abertura': format(...),
-  'Data Fechamento': conv.closed_at ? format(...) : '',
-  '1ª Mensagem': conv.first_message || '',
-  'Status': conv.status === 'open' ? 'Ativo' : ...
-  // ❌ FALTA: 'Status do Lead': conv.contact?.lead_status || ''
-}));
+### Evidência nos Logs
+```
+19:03:24 - Executando nó: set_lead_status
+19:03:24 - Erro ao alterar status: tenant_id é obrigatório e não foi possível determinar automaticamente
 ```
 
-## Campos Faltantes no Excel
+### Causa Raiz
+A Edge Function `execute-flow-node` usa `SUPABASE_SERVICE_ROLE_KEY` (ignora RLS), mas quando atualiza `contacts.lead_status`:
 
-| Campo | Situação |
-|-------|----------|
-| Status do Lead | **Não está sendo exportado** (mas os dados existem) |
-| Motivo do Fechamento | Não está sendo exportado (dados disponíveis em `close_reason`) |
+1. O trigger `track_lead_status_change` é acionado
+2. Este trigger insere um registro em `lead_status_history`
+3. A tabela `lead_status_history` tem o trigger `set_tenant_id_from_user`
+4. Como não há usuário autenticado (apenas service role), `get_user_tenant_id()` retorna NULL
+5. A função lança exceção: **"tenant_id é obrigatório e não foi possível determinar automaticamente"**
+
+### Cascata do Erro
+```
+execute-flow-node (UPDATE contacts)
+    └─→ track_lead_status_change (INSERT lead_status_history)
+            └─→ set_tenant_id_from_user ❌ ERRO: tenant_id NULL
+```
+
+---
 
 ## Solução
 
-### Modificar função `handleExportExcel` no arquivo `src/pages/ConversationReport.tsx`
+### Opção 1: Modificar a função `track_lead_status_change` (RECOMENDADA)
 
-**Linha 357-369 - Adicionar campos faltantes:**
+Alterar a função para incluir explicitamente o `tenant_id` do contato ao inserir no histórico:
 
-```typescript
-const excelData = dataToExport.map((conv: any) => ({
-  '#': conv.protocol_number,
-  'Nome': conv.contact?.full_name || '',
-  'Contato': conv.contact?.phone || '',
-  'Status do Lead': conv.contact?.lead_status || '',    // ← ADICIONAR
-  'Canal': conv.channel?.name || '',
-  'Agente': conv.assigned_user?.full_name || '',
-  'Departamento': conv.department?.name || '',
-  'Etiquetas': conv.tags?.map((t: any) => t.tag?.name).join(', ') || '',
-  'Status Conversa': conv.status === 'open' ? 'Ativo' : conv.status === 'pending' ? 'Pendente' : 'Fechado',
-  'Motivo Fechamento': conv.close_reason || '',         // ← ADICIONAR (opcional)
-  'Data Abertura': format(new Date(conv.created_at), 'dd/MM/yyyy HH:mm'),
-  'Data Fechamento': conv.closed_at ? format(new Date(conv.closed_at), 'dd/MM/yyyy HH:mm') : '',
-  '1ª Mensagem': conv.first_message || ''
-}));
+```sql
+CREATE OR REPLACE FUNCTION track_lead_status_change()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_duration INTEGER;
+BEGIN
+  IF OLD.lead_status IS DISTINCT FROM NEW.lead_status THEN
+    v_duration := EXTRACT(EPOCH FROM (NOW() - COALESCE(OLD.updated_at, OLD.created_at)))::INTEGER;
+    
+    INSERT INTO lead_status_history (
+      contact_id, 
+      previous_status, 
+      new_status, 
+      changed_by,
+      duration_seconds,
+      tenant_id  -- ← ADICIONAR
+    )
+    VALUES (
+      NEW.id,
+      OLD.lead_status,
+      NEW.lead_status,
+      auth.uid(),
+      v_duration,
+      NEW.tenant_id  -- ← Usar tenant_id do contato
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 ```
 
-## Arquivo a Modificar
+---
 
-| Arquivo | Modificação |
-|---------|-------------|
-| `src/pages/ConversationReport.tsx` | Adicionar `Status do Lead` e `Motivo Fechamento` na função `handleExportExcel` (linhas 357-369) |
+## Arquivo a Criar
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `supabase/migrations/[TIMESTAMP]_fix-lead-status-history-tenant.sql` | Atualiza função para incluir tenant_id explícito |
+
+---
+
+## Conteúdo da Migration
+
+```sql
+-- =========================================================================
+-- CORREÇÃO: Automação set_lead_status falhando para Edge Functions
+-- =========================================================================
+-- PROBLEMA: Edge Functions com service_role não têm usuário autenticado,
+-- então o trigger set_tenant_id_from_user falha ao inserir em lead_status_history
+-- 
+-- SOLUÇÃO: A função track_lead_status_change deve incluir tenant_id explicitamente
+-- =========================================================================
+
+CREATE OR REPLACE FUNCTION track_lead_status_change()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_duration INTEGER;
+BEGIN
+  -- Só registra se o status realmente mudou
+  IF OLD.lead_status IS DISTINCT FROM NEW.lead_status THEN
+    -- Calcular duração no status anterior (em segundos)
+    v_duration := EXTRACT(EPOCH FROM (NOW() - COALESCE(OLD.updated_at, OLD.created_at)))::INTEGER;
+    
+    INSERT INTO lead_status_history (
+      contact_id, 
+      previous_status, 
+      new_status, 
+      changed_by,
+      duration_seconds,
+      tenant_id  -- CORREÇÃO: Incluir tenant_id explícito
+    )
+    VALUES (
+      NEW.id,
+      OLD.lead_status,
+      NEW.lead_status,
+      auth.uid(),  -- Pode ser NULL quando chamado por Edge Function
+      v_duration,
+      NEW.tenant_id  -- Pegar tenant_id do contato que está sendo atualizado
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+---
 
 ## Resultado Esperado
 
-A planilha Excel exportada terá as seguintes colunas:
+Após a correção:
 
-| # | Nome | Contato | **Status do Lead** | Canal | Agente | Departamento | Etiquetas | Status Conversa | **Motivo Fechamento** | Data Abertura | Data Fechamento | 1ª Mensagem |
+| Situação | Antes | Depois |
+|----------|-------|--------|
+| Admin envia mensagem rápida | ✅ Funciona | ✅ Funciona |
+| Vendedor envia mensagem rápida | ❌ Erro "tenant_id obrigatório" | ✅ Status atualizado |
+| `contacts.lead_status` | Não atualiza | ✅ Atualizado |
+| `conversations.lead_status` | Não atualiza | ✅ Atualizado |
+| `lead_status_history` | Não registra | ✅ Registrado |
 
-## Notas Técnicas
+---
 
-- Os dados do `lead_status` já vêm da função SQL `search_conversations_report` como `contact_lead_status`
-- O campo `close_reason` já existe na resposta mas não estava sendo exportado
-- A coluna "Status" foi renomeada para "Status Conversa" para evitar confusão com "Status do Lead"
+## Correção Adicional (Opcional)
 
+Para corrigir os registros dessincronizados existentes, executar:
+
+```sql
+-- Sincronizar conversations.lead_status com contacts.lead_status
+UPDATE conversations conv
+SET lead_status = c.lead_status
+FROM contacts c
+WHERE conv.contact_id = c.id
+  AND conv.status IN ('open', 'pending')
+  AND conv.lead_status != c.lead_status
+  AND c.tenant_id = '664dfcb4-5432-4c14-9838-7db14360cabf';
+```
+
+---
+
+## Por que o Admin funcionava e vendedores não?
+
+Quando o **Admin** envia mensagem:
+- O webhook processa e chama `process-flow-triggers`
+- A Edge Function usa service_role
+- MAS: O admin pode ter feito a atualização manualmente (não via automação)
+
+Quando **Vendedores** enviam:
+- Mesmo fluxo, mas 100% via automação
+- Service_role não tem `auth.uid()` → `get_user_tenant_id()` retorna NULL
+- Trigger falha ao inserir no histórico
+
+Com a correção, ambos funcionarão porque o `tenant_id` será obtido do próprio contato (`NEW.tenant_id`), não do usuário autenticado.
