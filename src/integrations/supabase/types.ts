@@ -12122,6 +12122,7 @@ export type Database = {
           contact_full_name: string
           contact_id: string
           contact_lead_status: string
+          contact_origin: string
           contact_phone: string
           created_at: string
           department_id: string
