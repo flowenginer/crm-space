@@ -284,6 +284,8 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
             {leadStatuses.map((status, index) => {
               const summary = summaryMap?.[status.name];
               const colorIndex = hasNoStatusContacts ? index + 1 : index;
+              // CORREÇÃO: Usar cor personalizada do status se existir, senão usar gradiente
+              const statusColor = status.color || gradientColors[colorIndex];
               return (
                 <LeadKanbanColumn
                   key={status.id}
@@ -297,7 +299,7 @@ export default function LeadKanban({ searchQuery: externalSearchQuery = '' }: Le
                   onStartConversation={handleStartConversation}
                   canDelete={true}
                   searchQuery={searchQuery}
-                  gradientColor={gradientColors[colorIndex]}
+                  gradientColor={statusColor}
                 />
               );
             })}
