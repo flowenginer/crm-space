@@ -75,7 +75,7 @@ import RedirectLanding from "@/pages/RedirectLanding";
 import CallManagement from "@/pages/CallManagement";
 import WhatsAppCallback from "@/pages/WhatsAppCallback";
 import BulkLeadUpdate from "@/pages/BulkLeadUpdate";
-
+import ReprocessTriggersPage from "@/pages/admin/ReprocessTriggersPage";
 // Support pages
 import SupportPage from "@/pages/SupportPage";
 import TicketDetailPage from "@/pages/TicketDetailPage";
@@ -391,6 +391,11 @@ const App = () => (
               <Route path="/admin/suporte/tecnicos" element={
                 <SuperAdminGuard>
                   <TechniciansManagement />
+                </SuperAdminGuard>
+              } />
+              <Route path="/admin/reprocess-triggers" element={
+                <SuperAdminGuard>
+                  <ReprocessTriggersPage />
                 </SuperAdminGuard>
               } />
             </Route>
