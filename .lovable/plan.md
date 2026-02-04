@@ -1,97 +1,67 @@
 
-# Plano: Corrigir Visualização de Imagens Enviadas no Chat Interno
+# Plano: Tornar o Chat Interno Responsivo para Telas Widescreen
 
 ## Problema Identificado
 
-Quando você envia uma imagem no chat interno:
-- **Quem recebe** consegue ver a imagem normalmente
-- **Você (quem enviou)** não consegue ver nem clicar para preview
+Em telas grandes/widescreen, as mensagens enviadas pelo remetente (você) desaparecem ou ficam fora da área visível. Isso acontece porque:
 
-## Diagnóstico
-
-Após analisar o código do `InternalChatMessageItem.tsx`, identifiquei os seguintes pontos que podem causar o problema:
-
-1. **A imagem está dentro da bolha colorida (`bg-primary`)** - isso pode fazer a imagem ficar "escondida" ou com contraste ruim
-
-2. **Falta de estilos essenciais na imagem:**
-   - Não tem `display: block` (pode causar espaço extra)
-   - Não tem `object-fit` (pode distorcer a imagem)
-   - Não tem tratamento especial para mensagens do próprio usuário
-
-3. **Possível problema de carregamento assíncrono:**
-   - A imagem pode não estar carregando corretamente para o próprio remetente
+1. A área de mensagens não tem largura máxima - em telas muito largas, ela se expande infinitamente
+2. As mensagens do remetente ficam alinhadas à direita com `justify-end`, mas o container é tão largo que elas "somem" do campo de visão
+3. Os botões de ação (responder/apagar) usam posicionamento absoluto que pode sair da área visível
 
 ## Solução Proposta
 
-### 1. Melhorar renderização de imagem para mensagens próprias
+### 1. Limitar a largura máxima da área de mensagens
 
-Vou ajustar o componente `InternalChatMessageItem.tsx` para:
+Adicionar um container centralizado com largura máxima para garantir que as mensagens fiquem sempre visíveis, independente do tamanho da tela.
 
+**Arquivo: `InternalChatArea.tsx`**
 ```tsx
-case 'image':
-  return (
-    <div className="space-y-2">
-      {message.media_url ? (
-        <img 
-          src={message.media_url} 
-          alt={message.media_name || 'Imagem'}
-          className={cn(
-            "max-w-[300px] max-h-[400px] rounded-lg cursor-pointer",
-            "hover:opacity-90 transition-opacity",
-            "object-contain block",
-            // Ajuste de borda para melhor visibilidade na bolha primária
-            isFromMe && "ring-1 ring-white/20"
-          )}
-          onClick={() => window.open(message.media_url!, '_blank')}
-          loading="lazy"
-          onError={(e) => {
-            console.error('[InternalChat] Image failed to load:', message.media_url);
-            e.currentTarget.style.display = 'none';
-          }}
-        />
-      ) : (
-        <div className="flex items-center justify-center w-32 h-32 bg-muted rounded-lg">
-          <Image className="h-8 w-8 text-muted-foreground animate-pulse" />
-        </div>
-      )}
-      {message.content && (
-        <p className={cn(
-          "text-sm",
-          isFromMe && "text-primary-foreground"
-        )}>{message.content}</p>
-      )}
-    </div>
-  );
+{/* Messages Area */}
+<ScrollArea className="flex-1 min-h-0">
+  <div className="p-4 max-w-4xl mx-auto">  {/* Adicionado max-w-4xl mx-auto */}
+    {/* conteúdo das mensagens */}
+  </div>
+</ScrollArea>
 ```
 
-### 2. Adicionar tratamento de erro e loading
+### 2. Ajustar o posicionamento das mensagens do remetente
 
-- **`loading="lazy"`**: Carregamento otimizado
-- **`onError`**: Logar erros de carregamento para debug
-- **Fallback visual**: Mostrar placeholder enquanto a imagem não tem URL
+Garantir que as mensagens fiquem contidas dentro da área visível com padding responsivo.
 
-### 3. Remover padding excessivo da bolha para mídias
-
-Para imagens, vídeos e documentos, remover o padding da bolha para evitar espaçamento feio:
-
+**Arquivo: `InternalChatMessageItem.tsx`**
 ```tsx
 <div className={cn(
-  'rounded-2xl overflow-hidden',
-  // Para mídias, usar menos padding
-  ['image', 'video'].includes(message.message_type) 
-    ? 'p-1' 
-    : 'px-4 py-2',
-  isFromMe 
-    ? 'bg-primary text-primary-foreground rounded-br-md' 
-    : 'bg-muted rounded-bl-md'
+  'flex gap-2 group',
+  isFromMe ? 'justify-end' : 'justify-start'  // Remover pr-4 e pl-2 fixos
 )}>
 ```
 
-### 4. Adicionar lightbox/preview modal (melhoria adicional)
+### 3. Limitar largura máxima das bolhas de mensagem
 
-Criar um preview inline ao invés de abrir em nova aba:
-- Dialog/modal para visualizar a imagem em tamanho maior
-- Mais intuitivo e não perde contexto da conversa
+Usar largura máxima absoluta além do percentual para evitar bolhas muito largas.
+
+**Arquivo: `InternalChatMessageItem.tsx`**
+```tsx
+<div className={cn(
+  'max-w-[70%] sm:max-w-[60%] lg:max-w-md xl:max-w-lg relative',
+  // max-w-md = 448px, max-w-lg = 512px (valores fixos para telas grandes)
+  isFromMe ? 'items-end' : 'items-start'
+)}>
+```
+
+### 4. Ajustar posição dos botões de ação
+
+Mover os botões para dentro do container da mensagem para não ficarem cortados.
+
+**Arquivo: `InternalChatMessageItem.tsx`**
+```tsx
+{/* Action buttons - dentro do container, não absoluto fora */}
+<div className={cn(
+  'flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity mt-1',
+  isFromMe ? 'justify-end' : 'justify-start'
+)}>
+```
 
 ---
 
@@ -99,23 +69,25 @@ Criar um preview inline ao invés de abrir em nova aba:
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/components/internal-chat/InternalChatMessageItem.tsx` | Melhorar renderização de imagens com tratamento de erro, fallback e estilos específicos para `isFromMe` |
+| `src/components/internal-chat/InternalChatArea.tsx` | Adicionar `max-w-4xl mx-auto` no container de mensagens |
+| `src/components/internal-chat/InternalChatMessageItem.tsx` | Ajustar larguras máximas responsivas e posicionamento dos botões de ação |
 
 ---
 
 ## Benefícios
 
-1. **Visibilidade garantida**: Imagens serão visíveis tanto para quem envia quanto para quem recebe
-2. **Feedback visual**: Placeholder enquanto a imagem carrega
-3. **Debug facilitado**: Logs de erro se a imagem falhar ao carregar
-4. **UX melhorada**: Melhor apresentação visual com bordas e overflow controlado
+1. **Visibilidade garantida**: Mensagens sempre visíveis em qualquer tamanho de tela
+2. **Experiência consistente**: Layout similar ao WhatsApp/Telegram em telas grandes
+3. **Botões acessíveis**: Ações de responder/apagar sempre dentro da área visível
+4. **Responsividade gradual**: Funciona bem desde mobile até ultrawide
 
 ---
 
 ## Validação
 
-Após implementar, teste:
-1. Enviar uma imagem no chat interno
-2. Verificar se você (remetente) consegue ver a imagem
-3. Clicar na imagem para abrir preview
-4. Confirmar que o destinatário também vê normalmente
+Após implementar, teste em:
+1. Tela normal (1920x1080)
+2. Tela widescreen/ultrawide (2560px+)
+3. Redimensionar a janela do navegador
+4. Verificar se as mensagens enviadas aparecem corretamente
+5. Confirmar que os botões de ação (responder/apagar) funcionam
