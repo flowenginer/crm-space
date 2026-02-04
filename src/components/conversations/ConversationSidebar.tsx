@@ -85,7 +85,7 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
   
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, canTransferFreely } = usePermissions();
 
   // Fetch dynamic lead statuses
   const { data: leadStatuses = [] } = useLeadStatuses();
@@ -1051,23 +1051,25 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
               </TooltipProvider>
             )}
             
-            {/* Transfer */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setShowTransferModal(true)}
-                  >
-                    <ArrowRightLeft size={16} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left">Transferir</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            
+            {/* Transfer - Somente se o usuário tem permissão */}
+            {canTransferFreely && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setShowTransferModal(true)}
+                    >
+                      <ArrowRightLeft size={16} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">Transferir</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
             {/* Close */}
             <TooltipProvider>
               <Tooltip>
@@ -1311,16 +1313,18 @@ export function ConversationSidebar({ conversationId, onClose, onNavigateAway, i
               </Button>
             )}
             
-            <Button
-              onClick={() => setShowTransferModal(true)}
-              variant="outline"
-              size="sm"
-              className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2"
-            >
-              <ArrowRightLeft size={14} className="shrink-0" />
-              <span className="truncate">Transferir</span>
-            </Button>
-            
+            {canTransferFreely && (
+              <Button
+                onClick={() => setShowTransferModal(true)}
+                variant="outline"
+                size="sm"
+                className="flex-1 min-w-0 gap-1.5 h-9 text-xs px-2"
+              >
+                <ArrowRightLeft size={14} className="shrink-0" />
+                <span className="truncate">Transferir</span>
+              </Button>
+            )}
+
             <Button
               onClick={() => setShowCloseModal(true)}
               variant="ghost"
