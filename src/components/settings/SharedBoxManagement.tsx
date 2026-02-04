@@ -76,7 +76,7 @@ export function SharedBoxManagement() {
           name,
           description: description || null,
           distribution_type: 'claim'
-        })
+        } as any)
         .select()
         .single();
       

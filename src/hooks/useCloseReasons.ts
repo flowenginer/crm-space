@@ -55,7 +55,7 @@ export function useCreateCloseReason() {
           value: data.value,
           color: data.color,
           order_position: nextPosition,
-        })
+        } as any)
         .select()
         .single();
       

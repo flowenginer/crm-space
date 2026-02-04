@@ -41,7 +41,7 @@ export function useCreateAdMessagePattern() {
     mutationFn: async (pattern: CreateAdMessagePattern) => {
       const { data, error } = await supabase
         .from('ad_message_patterns')
-        .insert(pattern)
+        .insert(pattern as any)
         .select()
         .single();
 

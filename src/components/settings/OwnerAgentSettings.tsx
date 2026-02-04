@@ -86,7 +86,7 @@ export function OwnerAgentSettings() {
             owner_agent_inactivity_days: newSettings.owner_agent_inactivity_days,
             owner_agent_on_reopen: newSettings.owner_agent_on_reopen,
             owner_agent_reopen_reasons: newSettings.owner_agent_reopen_reasons,
-          });
+          } as any);
         
         if (error) throw error;
       }

@@ -192,7 +192,7 @@ export function useCreateContactRequest() {
         .insert({
           ...request,
           requester_id: user.id,
-        })
+        } as any)
         .select()
         .single();
 

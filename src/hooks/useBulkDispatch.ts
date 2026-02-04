@@ -339,7 +339,7 @@ export function useCreateBulkDispatch() {
           marketing_campaign_id: data.campaign_type === 'marketing' ? data.marketing_campaign_id : null,
           meta_template_id: data.campaign_type === 'template_meta' ? data.meta_template_id : null,
           meta_template_variables: data.campaign_type === 'template_meta' ? data.meta_template_variables : null,
-        })
+        } as any)
         .select()
         .single();
 
