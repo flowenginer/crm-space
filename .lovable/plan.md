@@ -1,148 +1,128 @@
 
-# Plano: Correção em Massa de Triggers não Disparados
+# Plano: Corrigir Layout do Chat Interno para Funcionar em Qualquer Zoom
 
-## Diagnóstico da Situação
+## Problema Identificado
 
-Foram encontradas **muitas mensagens que podem ter perdido triggers**:
+Analisando a imagem com zoom 100% do Chrome, o Chat Interno apresenta os seguintes problemas:
 
-| Tenant | Trigger | Mensagens não processadas (7 dias) |
-|--------|---------|-----------------------------------|
-| Master (664dfcb4) | "Cadastramento", "Vi que iniciou", etc. | ~5.146 mensagens |
-| Space Sports (00000001) | "acaba de ser enviado para produção" | ~17.669 mensagens |
+1. **Área de mensagens não preenche o espaço disponível** - há muito espaço vazio à esquerda
+2. **As mensagens ficam deslocadas para a direita** - especialmente as mensagens enviadas (em roxo)
+3. **O layout não se adapta corretamente** quando o zoom do navegador muda
 
-**Importante**: Nem todas essas mensagens deveriam ter disparado automações - elas apenas não foram marcadas como `trigger_processed`. O sistema precisa verificar quais realmente correspondem aos triggers configurados.
+### Causa Raiz Técnica
 
----
+O problema está na combinação de:
 
-## Solução: Edge Function de Reprocessamento em Massa
+1. **`max-w-4xl` (896px) no container de mensagens** - limita muito a área em monitores grandes
+2. **Uso de porcentagens para largura máxima das mensagens** (`max-w-[70%]`) - funciona diferente com zoom
+3. **Flexbox com `justify-end`** - em containers muito largos, as mensagens vão para o extremo direito
 
-Criar uma nova Edge Function `reprocess-missed-triggers` que:
+## Solução Proposta
 
-1. **Busca mensagens não processadas** que correspondem às keywords dos fluxos ativos
-2. **Verifica se a automação já foi executada** para evitar duplicatas
-3. **Dispara o trigger** chamando `process-flow-triggers`
-4. **Marca como processada** após execução
-5. **Processa em lotes** para não sobrecarregar o sistema
+### 1. Remover limitação `max-w-4xl` do container de mensagens
 
-### Arquitetura
+O container de mensagens não precisa de largura máxima fixa - a área deve usar todo o espaço disponível.
 
-```
-reprocess-missed-triggers
-├── Recebe parâmetros (tenant_id, trigger_type, limit, days_back)
-├── Busca fluxos ativos com triggers keyword/message_key
-├── Para cada fluxo:
-│   ├── Extrai keywords do config
-│   ├── Busca mensagens que contêm essas keywords
-│   │   ├── is_from_me = true (para message_key) OU false (para keyword)
-│   │   ├── trigger_processed = false
-│   │   └── Período configurado (ex: últimos 7 dias)
-│   ├── Para cada mensagem:
-│   │   ├── Verifica se já existe execução para contact_id + flow_id
-│   │   ├── Se não existe → invoca process-flow-triggers
-│   │   └── Marca trigger_processed = true
-│   └── Retorna estatísticas
-└── Suporta processamento em lotes com delay entre chamadas
+**Arquivo: `InternalChatArea.tsx`**
+
+```text
+Antes:
+<div className="p-4 max-w-4xl mx-auto">
+
+Depois:
+<div className="p-4">
 ```
 
----
+### 2. Ajustar largura máxima das bolhas de mensagem
 
-## Código da Edge Function
+Usar largura fixa máxima em pixels para as bolhas, garantindo consistência em qualquer zoom.
 
-**Arquivo: `supabase/functions/reprocess-missed-triggers/index.ts`**
+**Arquivo: `InternalChatMessageItem.tsx`**
 
-```typescript
-interface ReprocessRequest {
-  tenant_id: string;          // Obrigatório: qual tenant processar
-  trigger_type?: 'message_key' | 'keyword' | 'all';  // Padrão: 'all'
-  days_back?: number;         // Padrão: 7
-  batch_size?: number;        // Padrão: 50
-  dry_run?: boolean;          // Padrão: false (apenas simular)
-}
+```text
+Antes:
+<div className="max-w-[70%] sm:max-w-[60%] lg:max-w-md xl:max-w-lg relative flex flex-col ...">
 
-// Fluxo de processamento:
-// 1. Buscar fluxos ativos com triggers relevantes
-// 2. Para cada fluxo, buscar mensagens correspondentes
-// 3. Filtrar mensagens que já tiveram execução
-// 4. Invocar process-flow-triggers para as novas
-// 5. Marcar como processadas
-// 6. Retornar estatísticas detalhadas
+Depois:
+<div className="max-w-[min(70%,_480px)] relative flex flex-col ...">
 ```
 
----
+A função CSS `min()` garante que a bolha seja no máximo 70% do container OU 480px, o que for menor.
 
-## Interface de Administração
+### 3. Adicionar padding lateral proporcional na área de mensagens
 
-Adicionar um botão na página de administração ou criar uma rota `/admin/reprocess-triggers` que permita:
+Para evitar que as mensagens fiquem coladas nas bordas em telas largas:
 
-1. **Selecionar tenant** (ou "todos")
-2. **Selecionar período** (últimos 1, 3, 7, 14, 30 dias)
-3. **Modo dry-run** para simular antes de executar
-4. **Visualizar progresso** em tempo real
-5. **Log de resultados** mostrando quantas automações foram disparadas
+**Arquivo: `InternalChatArea.tsx`**
 
----
+```text
+Antes:
+<div className="p-4">
 
-## Arquivos a Criar/Modificar
+Depois:
+<div className="p-4 px-4 md:px-6 lg:px-8">
+```
 
-| Arquivo | Ação |
-|---------|------|
-| `supabase/functions/reprocess-missed-triggers/index.ts` | Criar nova Edge Function |
-| `src/pages/admin/ReprocessTriggersPage.tsx` | Criar interface de administração |
-| `src/App.tsx` | Adicionar rota `/admin/reprocess-triggers` |
+### 4. Garantir que o container use altura dinâmica
 
----
+Usar `dvh` (dynamic viewport height) como fallback para melhor suporte a zoom:
 
-## Segurança
+**Arquivo: `InternalChatArea.tsx`**
 
-1. **Verificação de permissão**: Apenas admins podem executar
-2. **Rate limiting**: Máximo de 50 mensagens por lote com delay de 100ms
-3. **Deduplicação**: Verificar `flow_executions` antes de disparar
-4. **Logging**: Registrar todas as ações para auditoria
-
----
-
-## Exemplo de Uso
-
-```bash
-# Via curl (para teste)
-curl -X POST https://[project].supabase.co/functions/v1/reprocess-missed-triggers \
-  -H "Authorization: Bearer [token]" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tenant_id": "664dfcb4-5432-4c14-9838-7db14360cabf",
-    "trigger_type": "message_key",
-    "days_back": 7,
-    "dry_run": true
-  }'
-
-# Resposta esperada (dry_run):
-{
-  "success": true,
-  "dry_run": true,
-  "summary": {
-    "flows_checked": 6,
-    "messages_matched": 234,
-    "already_executed": 180,
-    "would_trigger": 54
-  },
-  "details": [
-    {
-      "flow_name": "EMPREGA MAIS - PROTOCOLO AGENDAMENTO",
-      "keyword": "Cadastramento",
-      "messages_found": 45,
-      "would_trigger": 12
-    }
-  ]
-}
+Adicionar fallback de altura:
+```css
+min-height: 0;
+height: 100%;
 ```
 
 ---
 
-## Benefícios
+## Arquivos a Modificar
 
-1. **Correção retroativa**: Todas as automações perdidas serão reprocessadas
-2. **Segurança**: Modo dry-run para validar antes de executar
-3. **Deduplicação**: Não cria execuções duplicadas
-4. **Escalabilidade**: Processamento em lotes para não sobrecarregar
-5. **Auditabilidade**: Logs detalhados de cada ação
-6. **Reutilizável**: Pode ser executado novamente a qualquer momento
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/components/internal-chat/InternalChatArea.tsx` | Remover `max-w-4xl mx-auto` e ajustar padding |
+| `src/components/internal-chat/InternalChatMessageItem.tsx` | Usar `max-w-[min(70%,_480px)]` para bolhas |
+
+---
+
+## Detalhes Técnicos
+
+### Por que o zoom afeta o layout?
+
+Quando o usuário altera o zoom do navegador:
+- O viewport em pixels "muda" - 100% zoom em 1920px = 1920px, 110% zoom = ~1745px
+- Unidades como `vh` são recalculadas
+- Breakpoints de Tailwind (`lg:`, `xl:`) podem mudar
+- A combinação de `max-w-4xl` (896px) + `mx-auto` faz o container flutuar no centro, deixando espaço vazio
+
+### Solução CSS com `min()`
+
+```css
+max-width: min(70%, 480px);
+```
+
+Isso garante:
+- Em telas pequenas: máximo de 70% da área
+- Em telas grandes: máximo de 480px (largura confortável para leitura)
+- Funciona independente do zoom
+
+---
+
+## Resultado Esperado
+
+Após a correção:
+1. As mensagens ocuparão toda a largura disponível
+2. As bolhas terão tamanho consistente em qualquer zoom
+3. O layout será responsivo e adaptável
+4. Sem espaços vazios desnecessários à esquerda ou direita
+
+---
+
+## Testes Recomendados
+
+Após implementar, testar em:
+1. Chrome zoom 100%, 110%, 125%, 150%
+2. Diferentes resoluções de tela (1366x768, 1920x1080, 2560x1440)
+3. Redimensionar janela do navegador
+4. Verificar no Firefox e Edge também
