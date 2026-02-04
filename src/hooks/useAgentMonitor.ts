@@ -163,10 +163,14 @@ export function useUpdateResponseAlertSettings() {
 
   return useMutation({
     mutationFn: async (minutes: number) => {
-      // Check if settings exist
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
+      // Check if settings exist for this tenant
       const { data: existing } = await supabase
         .from('company_settings')
         .select('id')
+        .eq('tenant_id', tenantId)
         .limit(1)
         .maybeSingle();
 
@@ -179,7 +183,10 @@ export function useUpdateResponseAlertSettings() {
       } else {
         const { error } = await supabase
           .from('company_settings')
-          .insert({ response_alert_minutes: minutes });
+          .insert({
+            response_alert_minutes: minutes,
+            tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
+          });
         if (error) throw error;
       }
     },

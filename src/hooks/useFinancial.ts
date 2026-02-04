@@ -112,6 +112,9 @@ export function useCreateFinancialAccount() {
       initial_balance?: number;
       color?: string;
     }) => {
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
       const { error } = await supabase
         .from('financial_accounts')
         .insert({
@@ -121,6 +124,7 @@ export function useCreateFinancialAccount() {
           initial_balance: data.initial_balance || 0,
           current_balance: data.initial_balance || 0,
           color: data.color,
+          tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
         } as any);
 
       if (error) throw error;
@@ -193,6 +197,9 @@ export function useCreateTransaction() {
       competence_date?: string;
       installments?: number;
     }) => {
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
       // Se tem parcelamento, criar múltiplas transações
       if (data.installments && data.installments > 1) {
         const transactions = [];
@@ -216,6 +223,7 @@ export function useCreateTransaction() {
             installment_number: i + 1,
             total_installments: data.installments,
             status: 'pending',
+            tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
           });
         }
 
@@ -238,6 +246,7 @@ export function useCreateTransaction() {
             notes: data.notes,
             competence_date: data.competence_date,
             status: 'pending',
+            tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
           } as any);
 
         if (error) throw error;
@@ -429,6 +438,9 @@ export function useTransferBetweenAccounts() {
 
       if (updateToError) throw updateToError;
 
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
       // Create transaction record for tracking
       const { error: transError } = await supabase
         .from('financial_transactions')
@@ -441,6 +453,7 @@ export function useTransferBetweenAccounts() {
           paid_at: new Date().toISOString(),
           paid_amount: data.amount,
           account_id: data.fromAccountId,
+          tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
         } as any);
 
       if (transError) console.warn('Could not create transfer record:', transError);

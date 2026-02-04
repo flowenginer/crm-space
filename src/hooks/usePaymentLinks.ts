@@ -145,10 +145,14 @@ export const useUpdatePaymentGatewayConfig = () => {
 
   return useMutation({
     mutationFn: async (config: PaymentGatewayConfig) => {
-      // Check if company_settings exists
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
+      // Check if company_settings exists for this tenant
       const { data: existing } = await supabase
         .from('company_settings')
         .select('id')
+        .eq('tenant_id', tenantId)
         .single();
 
       // Cast config to any to satisfy the Json type constraint
@@ -157,18 +161,21 @@ export const useUpdatePaymentGatewayConfig = () => {
       if (existing) {
         const { error } = await supabase
           .from('company_settings')
-          .update({ 
+          .update({
             payment_gateway_config: configJson,
             updated_at: new Date().toISOString(),
           } as any)
           .eq('id', existing.id);
-        
+
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('company_settings')
-          .insert({ payment_gateway_config: configJson } as any);
-        
+          .insert({
+            payment_gateway_config: configJson,
+            tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
+          } as any);
+
         if (error) throw error;
       }
 

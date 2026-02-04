@@ -808,6 +808,7 @@ export function useAddOrderItem() {
         .from('order_items')
         .insert({
           ...data,
+          tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
         } as any);
 
       if (error) throw error;

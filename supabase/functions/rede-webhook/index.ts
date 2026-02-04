@@ -143,6 +143,7 @@ serve(async (req) => {
           status: 'paid',
           paid_at: paidTime,
           gateway_reference: externalId,
+          tenant_id: paymentLink.tenant_id, // CORREÇÃO: Adicionar tenant_id
         });
 
       // Create financial transaction
@@ -165,6 +166,7 @@ serve(async (req) => {
             paid_amount: paidAmount,
             contact_id: order.contact_id,
             order_id: paymentLink.order_id,
+            tenant_id: paymentLink.tenant_id, // CORREÇÃO: Adicionar tenant_id
           });
       }
     }
@@ -185,6 +187,7 @@ serve(async (req) => {
             installments,
             order_id: paymentLink.order_id,
           },
+          tenant_id: paymentLink.tenant_id, // CORREÇÃO: Adicionar tenant_id
         });
     }
 

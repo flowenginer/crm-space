@@ -75,13 +75,17 @@ export function useUpdateCompanySettings() {
 
   return useMutation({
     mutationFn: async (updates: Partial<CompanySettings>) => {
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const dbUpdates: any = { ...updates };
-      
-      // First, get the current settings ID
+
+      // First, get the current settings ID for this tenant
       const { data: existing } = await supabase
         .from('company_settings')
         .select('id')
+        .eq('tenant_id', tenantId)
         .limit(1)
         .single();
 
@@ -97,10 +101,13 @@ export function useUpdateCompanySettings() {
         if (error) throw error;
         return data;
       } else {
-        // Create new record
+        // Create new record with tenant_id
         const { data, error } = await supabase
           .from('company_settings')
-          .insert(dbUpdates)
+          .insert({
+            ...dbUpdates,
+            tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
+          })
           .select()
           .single();
 

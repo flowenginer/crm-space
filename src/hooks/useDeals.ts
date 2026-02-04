@@ -135,6 +135,9 @@ export function useCreateDeal() {
       description?: string | null;
       expected_close_date?: string | null;
     }) => {
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
       const { data, error } = await supabase
         .from('deals')
         .insert({
@@ -147,6 +150,7 @@ export function useCreateDeal() {
           description: deal.description,
           expected_close_date: deal.expected_close_date,
           status: 'open',
+          tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
         } as any)
         .select()
         .single();
@@ -208,12 +212,16 @@ export function useCreatePipeline() {
 
   return useMutation({
     mutationFn: async (pipeline: { name: string; description?: string | null }) => {
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
       const { data, error } = await supabase
         .from('pipelines')
         .insert({
           name: pipeline.name,
           description: pipeline.description,
           is_active: true,
+          tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
         })
         .select()
         .single();
@@ -237,9 +245,15 @@ export function useCreatePipelineStage() {
       color?: string | null;
       order_position: number;
     }) => {
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
       const { data, error } = await supabase
         .from('pipeline_stages')
-        .insert(stage)
+        .insert({
+          ...stage,
+          tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
+        })
         .select()
         .single();
 

@@ -63,10 +63,14 @@ export function useUpdateLeadDistribution() {
 
   return useMutation({
     mutationFn: async (updates: Partial<LeadDistributionConfig>) => {
-      // First, get the current settings ID
+      // CORREÇÃO: Obter tenant_id do usuário
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id');
+
+      // First, get the current settings ID for this tenant
       const { data: existing } = await supabase
         .from('company_settings')
         .select('id')
+        .eq('tenant_id', tenantId)
         .limit(1)
         .single();
 
@@ -82,10 +86,13 @@ export function useUpdateLeadDistribution() {
         if (error) throw error;
         return data;
       } else {
-        // Create new record
+        // Create new record with tenant_id
         const { data, error } = await supabase
           .from('company_settings')
-          .insert(updates as any)
+          .insert({
+            ...(updates as any),
+            tenant_id: tenantId, // CORREÇÃO: Adicionar tenant_id
+          })
           .select()
           .single();
 
