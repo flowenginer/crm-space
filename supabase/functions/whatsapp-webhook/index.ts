@@ -1272,12 +1272,39 @@ serve(async (req) => {
       // Primeiro, verificar se já existe uma mensagem com esse whatsapp_message_id
       const { data: existingByWhatsappId } = await supabase
         .from("messages")
-        .select("id")
+        .select("id, created_at, trigger_processed, content")
         .eq("whatsapp_message_id", normalizedMessage.originalId)
         .maybeSingle();
 
       if (existingByWhatsappId) {
-        console.log(`[Webhook] FromMe message already has whatsapp_message_id, skipping: ${normalizedMessage.originalId}`);
+        console.log(`[Webhook] FromMe message already has whatsapp_message_id, checking trigger: ${normalizedMessage.originalId}`);
+        
+        // CORREÇÃO: Disparar trigger se a mensagem é recente e ainda não foi processada
+        const isRecent = existingByWhatsappId.created_at && 
+          (Date.now() - new Date(existingByWhatsappId.created_at).getTime()) < 60000;
+        
+        if (isRecent && !existingByWhatsappId.trigger_processed) {
+          try {
+            console.log(`[Webhook] 🔄 Triggering message_key for recently duplicate fromMe message...`);
+            await supabase.functions.invoke('process-flow-triggers', {
+              body: {
+                trigger_type: 'message_key',
+                tenant_id: channel.tenant_id,
+                contact_id: contact.id,
+                channel_id: channel.id,
+                conversation_id: conversation.id,
+                message_content: existingByWhatsappId.content || normalizedMessage.content,
+              }
+            });
+            
+            // Marcar como processado
+            await supabase.from("messages").update({ trigger_processed: true }).eq("id", existingByWhatsappId.id);
+            console.log(`[Webhook] ✅ Trigger processed for duplicate fromMe message`);
+          } catch (triggerErr) {
+            console.error(`[Webhook] Error processing trigger for duplicate:`, triggerErr);
+          }
+        }
+        
         return new Response(JSON.stringify({ success: true, message: "Message already exists" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -1492,7 +1519,38 @@ serve(async (req) => {
         .maybeSingle();
 
       if (existingNow) {
-        console.log(`[Webhook] Message was inserted while processing, skipping: ${normalizedMessage.originalId}`);
+        console.log(`[Webhook] Message was inserted while processing, checking trigger: ${normalizedMessage.originalId}`);
+        
+        // CORREÇÃO: Buscar dados completos para verificar trigger_processed
+        const { data: msgForTrigger } = await supabase
+          .from("messages")
+          .select("id, created_at, trigger_processed, content")
+          .eq("whatsapp_message_id", normalizedMessage.originalId)
+          .single();
+        
+        const isRecent = msgForTrigger?.created_at && 
+          (Date.now() - new Date(msgForTrigger.created_at).getTime()) < 60000;
+        
+        if (isRecent && msgForTrigger && !msgForTrigger.trigger_processed) {
+          try {
+            console.log(`[Webhook] 🔄 Triggering message_key for race-condition duplicate...`);
+            await supabase.functions.invoke('process-flow-triggers', {
+              body: {
+                trigger_type: 'message_key',
+                tenant_id: channel.tenant_id,
+                contact_id: contact.id,
+                channel_id: channel.id,
+                conversation_id: conversation.id,
+                message_content: msgForTrigger.content || normalizedMessage.content,
+              }
+            });
+            await supabase.from("messages").update({ trigger_processed: true }).eq("id", msgForTrigger.id);
+            console.log(`[Webhook] ✅ Trigger processed for race-condition message`);
+          } catch (triggerErr) {
+            console.error(`[Webhook] Error processing trigger:`, triggerErr);
+          }
+        }
+        
         return new Response(JSON.stringify({ success: true, message: "Message already exists" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -1619,9 +1677,40 @@ serve(async (req) => {
       });
 
       if (msgError) {
-        // Se for erro de duplicata, ignorar
+        // Se for erro de duplicata, tentar disparar trigger mesmo assim
         if (msgError.code === '23505') {
-          console.log(`[Webhook] Duplicate message (constraint), skipping`);
+          console.log(`[Webhook] Duplicate message (constraint), checking trigger...`);
+          
+          // Buscar a mensagem que existe para verificar trigger
+          const { data: duplicateMsg } = await supabase
+            .from("messages")
+            .select("id, created_at, trigger_processed, content")
+            .eq("whatsapp_message_id", normalizedMessage.originalId)
+            .single();
+          
+          const isRecent = duplicateMsg?.created_at && 
+            (Date.now() - new Date(duplicateMsg.created_at).getTime()) < 60000;
+          
+          if (isRecent && duplicateMsg && !duplicateMsg.trigger_processed) {
+            try {
+              console.log(`[Webhook] 🔄 Triggering message_key for constraint-duplicate...`);
+              await supabase.functions.invoke('process-flow-triggers', {
+                body: {
+                  trigger_type: 'message_key',
+                  tenant_id: channel.tenant_id,
+                  contact_id: contact.id,
+                  channel_id: channel.id,
+                  conversation_id: conversation.id,
+                  message_content: duplicateMsg.content || normalizedMessage.content,
+                }
+              });
+              await supabase.from("messages").update({ trigger_processed: true }).eq("id", duplicateMsg.id);
+              console.log(`[Webhook] ✅ Trigger processed for constraint-duplicate`);
+            } catch (triggerErr) {
+              console.error(`[Webhook] Error processing trigger:`, triggerErr);
+            }
+          }
+          
           return new Response(JSON.stringify({ success: true, message: "Duplicate avoided" }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
@@ -2610,7 +2699,7 @@ serve(async (req) => {
     // Check if message already exists (deduplicate webhooks OR update edited message)
     const { data: existingReceivedMsg } = await supabase
       .from("messages")
-      .select("id")
+      .select("id, created_at, trigger_processed, content")
       .eq("whatsapp_message_id", normalizedMessage.originalId)
       .maybeSingle();
 
@@ -2640,7 +2729,35 @@ serve(async (req) => {
     }
 
     if (existingReceivedMsg) {
-      console.log(`[Webhook] Received message already exists (id: ${existingReceivedMsg.id}), skipping duplicate`);
+      console.log(`[Webhook] Received message already exists (id: ${existingReceivedMsg.id}), checking trigger...`);
+      
+      // CORREÇÃO: Disparar trigger se a mensagem é recente e ainda não foi processada
+      // Isso resolve o problema de race-condition onde a mensagem foi inserida mas o trigger não foi disparado
+      const isRecent = existingReceivedMsg.created_at && 
+        (Date.now() - new Date(existingReceivedMsg.created_at).getTime()) < 60000;
+      
+      if (isRecent && !existingReceivedMsg.trigger_processed) {
+        try {
+          console.log(`[Webhook] 🔄 Triggering keyword automation for duplicate received message...`);
+          await supabase.functions.invoke('process-flow-triggers', {
+            body: {
+              trigger_type: 'keyword',
+              tenant_id: channel.tenant_id,
+              contact_id: contact.id,
+              channel_id: channel.id,
+              conversation_id: conversation.id,
+              message_content: existingReceivedMsg.content || normalizedMessage.content,
+            }
+          });
+          
+          // Marcar como processado para evitar disparos duplicados
+          await supabase.from("messages").update({ trigger_processed: true }).eq("id", existingReceivedMsg.id);
+          console.log(`[Webhook] ✅ Trigger processed for duplicate received message`);
+        } catch (triggerErr) {
+          console.error(`[Webhook] Error processing trigger for duplicate:`, triggerErr);
+        }
+      }
+      
       return new Response(JSON.stringify({ success: true, message: "Message already exists" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -3502,6 +3619,18 @@ serve(async (req) => {
             message_content: normalizedMessage.content,
           }
         });
+        
+        // Marcar mensagem como trigger processado para evitar re-processamento em webhooks duplicados
+        const { data: msgToMark } = await supabase
+          .from("messages")
+          .select("id")
+          .eq("whatsapp_message_id", normalizedMessage.originalId)
+          .single();
+        
+        if (msgToMark) {
+          await supabase.from("messages").update({ trigger_processed: true }).eq("id", msgToMark.id);
+          console.log(`[Webhook] ✅ Marked message as trigger_processed`);
+        }
         
         console.log(`[Webhook] ✅ Keyword trigger check completed for received message`);
       } catch (triggerError) {
