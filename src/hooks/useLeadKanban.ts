@@ -90,9 +90,23 @@ export function useCreateLeadStatus() {
 
   return useMutation({
     mutationFn: async (data: { name: string; color: string; order_position: number }) => {
+      // Obter tenant_id do usuário logado
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', (await supabase.auth.getUser()).data.user?.id)
+        .single();
+
+      if (!profile?.tenant_id) {
+        throw new Error('Tenant não encontrado');
+      }
+
       const { data: result, error } = await supabase
         .from('lead_statuses')
-        .insert(data)
+        .insert({
+          ...data,
+          tenant_id: profile.tenant_id, // CRÍTICO: Incluir tenant_id
+        })
         .select()
         .single();
 
