@@ -1513,7 +1513,7 @@ const [showHeaderTagPopover, setShowHeaderTagPopover] = useState(false);
   }, [messageInput, resizeTextarea]);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
-const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAllConversations } = usePermissions();
+const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAllConversations, canTransferFreely } = usePermissions();
   const { data: isSuperAdmin = false } = useCurrentUserIsSuperAdmin();
   const { profile: authProfile, user } = useAuth();
   const { setProfile } = useUserStore();
@@ -4405,16 +4405,18 @@ const { isAdmin, isSupervisor, profile, isFullyLoaded, hasPermission, canViewAll
               <Mail size={16} className="mr-1" />
               Não lidas
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleOpenBulkTransfer}
-              disabled={selectedConversationIds.size === 0}
-              className="h-8"
-            >
-              <ArrowRightLeft size={16} className="mr-1" />
-              Transferir
-            </Button>
+            {canTransferFreely && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleOpenBulkTransfer}
+                disabled={selectedConversationIds.size === 0}
+                className="h-8"
+              >
+                <ArrowRightLeft size={16} className="mr-1" />
+                Transferir
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"

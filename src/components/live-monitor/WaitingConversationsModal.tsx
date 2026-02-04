@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 import { TransferModal } from '@/components/conversations/TransferModal';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface WaitingConversation {
   conversation_id: string;
@@ -44,6 +45,7 @@ export function WaitingConversationsModal({
   alertMinutes,
 }: WaitingConversationsModalProps) {
   const navigate = useNavigate();
+  const { canTransferFreely } = usePermissions();
   const [previewConversationId, setPreviewConversationId] = useState<string | null>(null);
   const [transferConversationId, setTransferConversationId] = useState<string | null>(null);
   const [transferCurrentAssignedTo, setTransferCurrentAssignedTo] = useState<string | null>(null);
@@ -183,15 +185,17 @@ export function WaitingConversationsModal({
                         >
                           <Eye size={14} className="sm:w-4 sm:h-4" />
                         </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 sm:h-8 sm:w-8"
-                          onClick={() => handleTransfer(conv)}
-                          title="Transferir"
-                        >
-                          <ArrowRightLeft size={14} className="sm:w-4 sm:h-4" />
-                        </Button>
+                        {canTransferFreely && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 sm:h-8 sm:w-8"
+                            onClick={() => handleTransfer(conv)}
+                            title="Transferir"
+                          >
+                            <ArrowRightLeft size={14} className="sm:w-4 sm:h-4" />
+                          </Button>
+                        )}
                         <Button
                           size="icon"
                           variant="ghost"
