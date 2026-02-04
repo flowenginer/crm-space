@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import { Reply, Download, Play, Pause, File, Trash2 } from 'lucide-react';
+import { Reply, Download, Play, Pause, File, Trash2, Image as ImageIcon } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+} from '@/components/ui/dialog';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -29,6 +33,7 @@ export function InternalChatMessageItem({
   const [audioProgress, setAudioProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const deleteMessage = useDeleteInternalMessage();
   
   const isFromMe = message.sender_id === user?.id;
@@ -94,14 +99,42 @@ export function InternalChatMessageItem({
       case 'image':
         return (
           <div className="space-y-2">
-            <img 
-              src={message.media_url || ''} 
-              alt={message.media_name || 'Imagem'}
-              className="max-w-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-              onClick={() => window.open(message.media_url || '', '_blank')}
-            />
+            {message.media_url ? (
+              <>
+                <img 
+                  src={message.media_url} 
+                  alt={message.media_name || 'Imagem'}
+                  className={cn(
+                    "max-w-[300px] max-h-[400px] rounded-lg cursor-pointer block",
+                    "hover:opacity-90 transition-opacity object-contain",
+                    isFromMe && "ring-1 ring-white/20"
+                  )}
+                  onClick={() => setImagePreviewOpen(true)}
+                  loading="lazy"
+                  onError={(e) => {
+                    console.error('[InternalChat] Image failed to load:', message.media_url);
+                  }}
+                />
+                <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+                  <DialogContent className="max-w-4xl p-2 bg-background/95 backdrop-blur">
+                    <img 
+                      src={message.media_url} 
+                      alt={message.media_name || 'Imagem'}
+                      className="w-full h-auto max-h-[80vh] object-contain rounded-lg"
+                    />
+                  </DialogContent>
+                </Dialog>
+              </>
+            ) : (
+              <div className="flex items-center justify-center w-32 h-32 bg-muted rounded-lg">
+                <ImageIcon className="h-8 w-8 text-muted-foreground animate-pulse" />
+              </div>
+            )}
             {message.content && (
-              <p className="text-sm">{message.content}</p>
+              <p className={cn(
+                "text-sm",
+                isFromMe && "text-primary-foreground"
+              )}>{message.content}</p>
             )}
           </div>
         );
@@ -226,7 +259,10 @@ export function InternalChatMessageItem({
 
           {/* Message bubble */}
           <div className={cn(
-            'px-4 py-2 rounded-2xl',
+            'rounded-2xl overflow-hidden',
+            ['image', 'video'].includes(message.message_type) && !message.is_deleted
+              ? 'p-1' 
+              : 'px-4 py-2',
             isFromMe 
               ? 'bg-primary text-primary-foreground rounded-br-md' 
               : 'bg-muted rounded-bl-md'
