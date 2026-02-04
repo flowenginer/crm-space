@@ -28,6 +28,7 @@ interface BulkActionsBarProps {
   onChangeLeadStatus: () => void;
   onReopen: () => void;
   isLoading?: boolean;
+  canTransferFreely?: boolean;
 }
 
 export function BulkActionsBar({
@@ -40,6 +41,7 @@ export function BulkActionsBar({
   onChangeLeadStatus,
   onReopen,
   isLoading = false,
+  canTransferFreely = true,
 }: BulkActionsBarProps) {
   // Determine which actions are available based on conversation statuses
   const hasOpenConversations = selectedConversations.some(c => c.status === 'open' || c.status === 'pending');
@@ -72,16 +74,18 @@ export function BulkActionsBar({
 
             {/* Action buttons */}
             <div className="flex items-center gap-1.5">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onTransfer}
-                disabled={isLoading}
-                className="gap-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10"
-              >
-                <ArrowRightLeft size={14} />
-                <span className="hidden sm:inline">Transferir</span>
-              </Button>
+              {canTransferFreely && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onTransfer}
+                  disabled={isLoading}
+                  className="gap-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                >
+                  <ArrowRightLeft size={14} />
+                  <span className="hidden sm:inline">Transferir</span>
+                </Button>
+              )}
 
               {hasOpenConversations && (
                 <Button

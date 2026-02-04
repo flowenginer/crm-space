@@ -15,6 +15,7 @@ import { useResponseAlertSettings } from '@/hooks/useAgentMonitor';
 import { ConversationPreviewDialog } from '@/components/conversations/ConversationPreviewDialog';
 import { TransferModal } from '@/components/conversations/TransferModal';
 import { useUserStore } from '@/store/userStore';
+import { usePermissions } from '@/hooks/usePermissions';
 
 // Tenant Master - desativar animação de piscar para esta conta
 const MASTER_TENANT_ID = '664dfcb4-5432-4c14-9838-7db14360cabf';
@@ -30,6 +31,9 @@ export function WaitingCard() {
   // Verificar se é o tenant Master
   const { tenantId } = useUserStore();
   const isMasterTenant = tenantId === MASTER_TENANT_ID;
+
+  // Verificar permissão de transferência
+  const { canTransferFreely } = usePermissions();
 
   const { data: waitingCount = 0, isLoading: countLoading } = useMyWaitingCount();
   const { data: conversations = [], isLoading: conversationsLoading, refetch } = useMyWaitingConversations(modalOpen);
@@ -209,15 +213,17 @@ export function WaitingCard() {
                         >
                           <Eye size={14} className="sm:w-4 sm:h-4" />
                         </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 sm:h-8 sm:w-8"
-                          onClick={() => handleTransfer(conv)}
-                          title="Transferir"
-                        >
-                          <ArrowRightLeft size={14} className="sm:w-4 sm:h-4" />
-                        </Button>
+                        {canTransferFreely && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 sm:h-8 sm:w-8"
+                            onClick={() => handleTransfer(conv)}
+                            title="Transferir"
+                          >
+                            <ArrowRightLeft size={14} className="sm:w-4 sm:h-4" />
+                          </Button>
+                        )}
                         <Button
                           size="icon"
                           variant="ghost"
