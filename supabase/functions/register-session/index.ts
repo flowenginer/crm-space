@@ -107,6 +107,23 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Get user's tenant_id from profiles
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile?.tenant_id) {
+      console.error('Profile error:', profileError);
+      return new Response(
+        JSON.stringify({ error: 'User profile not found or missing tenant' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const tenantId = profile.tenant_id;
+
     // Parse request body
     const { userAgent }: SessionRequest = await req.json();
     
@@ -165,6 +182,7 @@ Deno.serve(async (req) => {
       .from('user_sessions')
       .insert({
         user_id: user.id,
+        tenant_id: tenantId,
         device_type: deviceType,
         browser,
         os,
