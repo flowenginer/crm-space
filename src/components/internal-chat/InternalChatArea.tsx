@@ -71,7 +71,7 @@ export function InternalChatArea({ threadId, otherUserId, onThreadCreated }: Int
 
       {/* Messages Area */}
       <ScrollArea className="flex-1 min-h-0">
-        <div className="p-4">
+        <div className="p-4 max-w-4xl mx-auto">
           {isLoading ? (
             <div className="space-y-4">
               {Array(5).fill(0).map((_, i) => (

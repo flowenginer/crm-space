@@ -223,21 +223,21 @@ export function InternalChatMessageItem({
 
       <div className={cn(
         'flex gap-2 group',
-        isFromMe ? 'justify-end pr-4' : 'justify-start pl-2'
+        isFromMe ? 'justify-end' : 'justify-start'
       )}>
         {/* Avatar (apenas para mensagens de outros) */}
         {!isFromMe && showAvatar && (
-          <Avatar className="h-8 w-8 mt-1">
+          <Avatar className="h-8 w-8 mt-1 shrink-0">
             <AvatarImage src={message.sender?.avatar_url || ''} />
             <AvatarFallback className="text-xs bg-primary/10 text-primary">
               {getInitials(message.sender?.full_name)}
             </AvatarFallback>
           </Avatar>
         )}
-        {!isFromMe && !showAvatar && <div className="w-8" />}
+        {!isFromMe && !showAvatar && <div className="w-8 shrink-0" />}
 
         <div className={cn(
-          'max-w-[70%] relative',
+          'max-w-[70%] sm:max-w-[60%] lg:max-w-md xl:max-w-lg relative flex flex-col',
           isFromMe ? 'items-end' : 'items-start'
         )}>
           {/* Reply reference */}
@@ -285,10 +285,10 @@ export function InternalChatMessageItem({
             </p>
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons - inline para não sair da área visível */}
           <div className={cn(
-            'absolute top-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity',
-            isFromMe ? '-left-16' : '-right-16'
+            'flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity mt-1',
+            isFromMe ? 'justify-end' : 'justify-start'
           )}>
             <Button
               variant="ghost"
