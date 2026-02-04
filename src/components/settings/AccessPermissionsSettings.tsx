@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -31,35 +32,40 @@ interface DepartmentWithAccess {
 
 export function AccessPermissionsSettings() {
   const queryClient = useQueryClient();
+  const { tenantId } = useAuth();
   const [usersOpen, setUsersOpen] = useState(true);
   const [deptsOpen, setDeptsOpen] = useState(true);
 
-  // Fetch users with access permissions
+  // Fetch users with access permissions - FILTRADO POR TENANT
   const { data: users = [], isLoading: loadingUsers } = useQuery({
-    queryKey: ['users-access-permissions'],
+    queryKey: ['users-access-permissions', tenantId],
+    enabled: !!tenantId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('id, full_name, avatar_url, role, can_view_all_conversations, can_transfer_freely')
+        .eq('tenant_id', tenantId!)
         .eq('is_active', true)
         .not('role', 'in', '("admin","supervisor")')
         .order('full_name');
-      
+
       if (error) throw error;
       return (data || []) as UserWithAccess[];
     },
   });
 
-  // Fetch departments with access permissions
+  // Fetch departments with access permissions - FILTRADO POR TENANT
   const { data: departments = [], isLoading: loadingDepartments } = useQuery({
-    queryKey: ['departments-access-permissions'],
+    queryKey: ['departments-access-permissions', tenantId],
+    enabled: !!tenantId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('departments')
         .select('id, name, color, can_view_all_conversations, can_transfer_freely')
+        .eq('tenant_id', tenantId!)
         .eq('is_active', true)
         .order('name');
-      
+
       if (error) throw error;
       return (data || []) as DepartmentWithAccess[];
     },
