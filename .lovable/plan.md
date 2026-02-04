@@ -1,151 +1,148 @@
 
-# Plano: Corrigir Automação não Disparada para Lead 988949116
+# Plano: Correção em Massa de Triggers não Disparados
 
-## Diagnóstico Completo
+## Diagnóstico da Situação
 
-Após investigação detalhada no banco de dados e logs, identifiquei a causa raiz:
+Foram encontradas **muitas mensagens que podem ter perdido triggers**:
 
-### O que aconteceu
+| Tenant | Trigger | Mensagens não processadas (7 dias) |
+|--------|---------|-----------------------------------|
+| Master (664dfcb4) | "Cadastramento", "Vi que iniciou", etc. | ~5.146 mensagens |
+| Space Sports (00000001) | "acaba de ser enviado para produção" | ~17.669 mensagens |
 
-1. **Lead 988949116**: A mensagem com "Registro de Cadastramento" foi enviada às 13:56:38
-2. **Fluxo esperado**: "EMPREGA MAIS - PROTOCOLO AGENDAMENTO" deveria ser disparado (trigger: message_key contendo "Cadastramento")
-3. **Problema**: O `process-flow-triggers` **não foi invocado** para esta mensagem
-
-### Comparação com lead 21992731918 (que funcionou)
-
-| Aspecto | 988949116 (falhou) | 21992731918 (funcionou) |
-|---------|-------------------|-------------------------|
-| Canal | ed6f2c8c (EMPREGA-MAIS) | ed6f2c8c (EMPREGA-MAIS) |
-| Tenant | 664dfcb4 (Master) | 664dfcb4 (Master) |
-| Trigger | message_key ("Cadastramento") | message_key ("Vi que iniciou") |
-| Execução criada | ❌ NÃO | ✅ SIM (12:42:19) |
-
-### Causa Raiz Identificada
-
-O webhook `whatsapp-webhook` tem múltiplos pontos de saída que **não invocam** o `process-flow-triggers`:
-
-1. **Linha 1280**: Se a mensagem já existe com `whatsapp_message_id` → retorna sem disparar
-2. **Linha 1623-1628**: Se ocorre erro de duplicata (constraint 23505) → retorna sem disparar
-3. **Linha 1494-1498**: Se a mensagem foi inserida enquanto processava → retorna sem disparar
-
-Provavelmente ocorreu um dos seguintes cenários:
-- A mensagem foi inserida em uma chamada anterior do webhook, e uma chamada subsequente (ACK/update) encontrou a duplicata e pulou
-- Houve uma condição de corrida entre duas chamadas de webhook
-
-### Prova de que o fluxo funciona
-
-Executei manualmente o `process-flow-triggers` para o contato 988949116 com a mensagem "Cadastramento" e:
-- ✅ Trigger foi disparado com sucesso
-- ✅ Execução criada: `71b54ccc-42c7-447f-a020-c165b067c542`
-- ✅ Status: completed
+**Importante**: Nem todas essas mensagens deveriam ter disparado automações - elas apenas não foram marcadas como `trigger_processed`. O sistema precisa verificar quais realmente correspondem aos triggers configurados.
 
 ---
 
-## Solução Proposta
+## Solução: Edge Function de Reprocessamento em Massa
 
-### 1. Ajustar webhook para disparar trigger mesmo em cenários de duplicata
+Criar uma nova Edge Function `reprocess-missed-triggers` que:
 
-Modificar o `whatsapp-webhook/index.ts` para invocar o `process-flow-triggers` mesmo quando a mensagem já existe, desde que seja uma mensagem recente (menos de 60 segundos).
+1. **Busca mensagens não processadas** que correspondem às keywords dos fluxos ativos
+2. **Verifica se a automação já foi executada** para evitar duplicatas
+3. **Dispara o trigger** chamando `process-flow-triggers`
+4. **Marca como processada** após execução
+5. **Processa em lotes** para não sobrecarregar o sistema
+
+### Arquitetura
+
+```
+reprocess-missed-triggers
+├── Recebe parâmetros (tenant_id, trigger_type, limit, days_back)
+├── Busca fluxos ativos com triggers keyword/message_key
+├── Para cada fluxo:
+│   ├── Extrai keywords do config
+│   ├── Busca mensagens que contêm essas keywords
+│   │   ├── is_from_me = true (para message_key) OU false (para keyword)
+│   │   ├── trigger_processed = false
+│   │   └── Período configurado (ex: últimos 7 dias)
+│   ├── Para cada mensagem:
+│   │   ├── Verifica se já existe execução para contact_id + flow_id
+│   │   ├── Se não existe → invoca process-flow-triggers
+│   │   └── Marca trigger_processed = true
+│   └── Retorna estatísticas
+└── Suporta processamento em lotes com delay entre chamadas
+```
+
+---
+
+## Código da Edge Function
+
+**Arquivo: `supabase/functions/reprocess-missed-triggers/index.ts`**
 
 ```typescript
-// Antes de retornar por duplicata, verificar se devemos disparar trigger
-if (existingByWhatsappId) {
-  // Verificar se a mensagem é recente e se o trigger ainda não foi invocado
-  const { data: existingMsg } = await supabase
-    .from("messages")
-    .select("id, created_at, trigger_processed")
-    .eq("id", existingByWhatsappId.id)
-    .single();
-  
-  const isRecent = existingMsg && 
-    (Date.now() - new Date(existingMsg.created_at).getTime()) < 60000;
-  
-  if (isRecent && !existingMsg.trigger_processed) {
-    // Disparar trigger e marcar como processado
-    await supabase.functions.invoke('process-flow-triggers', { ... });
-    await supabase.from("messages").update({ trigger_processed: true }).eq("id", existingMsg.id);
-  }
-  
-  return new Response(...);
+interface ReprocessRequest {
+  tenant_id: string;          // Obrigatório: qual tenant processar
+  trigger_type?: 'message_key' | 'keyword' | 'all';  // Padrão: 'all'
+  days_back?: number;         // Padrão: 7
+  batch_size?: number;        // Padrão: 50
+  dry_run?: boolean;          // Padrão: false (apenas simular)
 }
+
+// Fluxo de processamento:
+// 1. Buscar fluxos ativos com triggers relevantes
+// 2. Para cada fluxo, buscar mensagens correspondentes
+// 3. Filtrar mensagens que já tiveram execução
+// 4. Invocar process-flow-triggers para as novas
+// 5. Marcar como processadas
+// 6. Retornar estatísticas detalhadas
 ```
 
-### 2. Adicionar coluna de rastreamento de trigger
+---
 
-Adicionar coluna `trigger_processed` na tabela `messages` para garantir idempotência:
+## Interface de Administração
 
-```sql
-ALTER TABLE messages ADD COLUMN trigger_processed BOOLEAN DEFAULT FALSE;
-```
+Adicionar um botão na página de administração ou criar uma rota `/admin/reprocess-triggers` que permita:
 
-### 3. Centralizar invocação do trigger
+1. **Selecionar tenant** (ou "todos")
+2. **Selecionar período** (últimos 1, 3, 7, 14, 30 dias)
+3. **Modo dry-run** para simular antes de executar
+4. **Visualizar progresso** em tempo real
+5. **Log de resultados** mostrando quantas automações foram disparadas
 
-Criar uma função helper que garante a invocação do trigger em todos os cenários de mensagem enviada:
+---
 
-```typescript
-async function maybeInvokeMessageKeyTrigger(
-  supabase,
-  messageId: string,
-  tenantId: string,
-  contactId: string,
-  channelId: string,
-  conversationId: string,
-  messageContent: string
-) {
-  // Verificar se já foi processado
-  const { data: msg } = await supabase
-    .from("messages")
-    .select("trigger_processed")
-    .eq("id", messageId)
-    .single();
-  
-  if (msg?.trigger_processed) return;
-  
-  // Invocar trigger
-  await supabase.functions.invoke('process-flow-triggers', {
-    body: {
-      trigger_type: 'message_key',
-      tenant_id: tenantId,
-      contact_id: contactId,
-      channel_id: channelId,
-      conversation_id: conversationId,
-      message_content: messageContent,
+## Arquivos a Criar/Modificar
+
+| Arquivo | Ação |
+|---------|------|
+| `supabase/functions/reprocess-missed-triggers/index.ts` | Criar nova Edge Function |
+| `src/pages/admin/ReprocessTriggersPage.tsx` | Criar interface de administração |
+| `src/App.tsx` | Adicionar rota `/admin/reprocess-triggers` |
+
+---
+
+## Segurança
+
+1. **Verificação de permissão**: Apenas admins podem executar
+2. **Rate limiting**: Máximo de 50 mensagens por lote com delay de 100ms
+3. **Deduplicação**: Verificar `flow_executions` antes de disparar
+4. **Logging**: Registrar todas as ações para auditoria
+
+---
+
+## Exemplo de Uso
+
+```bash
+# Via curl (para teste)
+curl -X POST https://[project].supabase.co/functions/v1/reprocess-missed-triggers \
+  -H "Authorization: Bearer [token]" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "664dfcb4-5432-4c14-9838-7db14360cabf",
+    "trigger_type": "message_key",
+    "days_back": 7,
+    "dry_run": true
+  }'
+
+# Resposta esperada (dry_run):
+{
+  "success": true,
+  "dry_run": true,
+  "summary": {
+    "flows_checked": 6,
+    "messages_matched": 234,
+    "already_executed": 180,
+    "would_trigger": 54
+  },
+  "details": [
+    {
+      "flow_name": "EMPREGA MAIS - PROTOCOLO AGENDAMENTO",
+      "keyword": "Cadastramento",
+      "messages_found": 45,
+      "would_trigger": 12
     }
-  });
-  
-  // Marcar como processado
-  await supabase
-    .from("messages")
-    .update({ trigger_processed: true })
-    .eq("id", messageId);
+  ]
 }
 ```
 
 ---
 
-## Arquivos a Modificar
+## Benefícios
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `supabase/migrations/[timestamp].sql` | Adicionar coluna `trigger_processed` na tabela `messages` |
-| `supabase/functions/whatsapp-webhook/index.ts` | Refatorar lógica de duplicatas para disparar trigger se necessário |
-
----
-
-## Ação Imediata (já executada)
-
-Como prova de conceito, já invoquei manualmente o `process-flow-triggers` para o lead 988949116:
-- ✅ Execução criada: `71b54ccc-42c7-447f-a020-c165b067c542`
-- ✅ Fluxo "EMPREGA MAIS - PROTOCOLO AGENDAMENTO" executado
-- ✅ Status do lead deve ter sido atualizado
-
-Você pode verificar se o status do lead foi atualizado corretamente.
-
----
-
-## Benefícios da Correção
-
-1. **Garantia de disparo**: Toda mensagem enviada terá o trigger processado
-2. **Idempotência**: A coluna `trigger_processed` evita disparos duplicados
-3. **Observabilidade**: Facilita debug de mensagens que não tiveram automação
-4. **Robustez**: Funciona mesmo com condições de corrida no webhook
+1. **Correção retroativa**: Todas as automações perdidas serão reprocessadas
+2. **Segurança**: Modo dry-run para validar antes de executar
+3. **Deduplicação**: Não cria execuções duplicadas
+4. **Escalabilidade**: Processamento em lotes para não sobrecarregar
+5. **Auditabilidade**: Logs detalhados de cada ação
+6. **Reutilizável**: Pode ser executado novamente a qualquer momento
