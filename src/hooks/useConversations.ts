@@ -287,6 +287,11 @@ export function useSendMessage() {
       queryClient.invalidateQueries({ queryKey: ['messages-paginated', variables.conversation_id] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+      
+      // Invalidar contadores de "aguardando resposta" para atualização instantânea
+      // Real-time tem latência, então invalidamos diretamente após ações do próprio usuário
+      queryClient.invalidateQueries({ queryKey: ['my-waiting-count'] });
+      queryClient.invalidateQueries({ queryKey: ['my-waiting-conversations'] });
     },
   });
 }
