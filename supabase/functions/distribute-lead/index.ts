@@ -358,20 +358,40 @@ Deno.serve(async (req) => {
 
     // 5. Update active conversations for this contact
     const conversationStatus = assignAsPending ? 'pending' : 'open';
-    const { error: conversationError } = await supabase
+    
+    // First, get all conversations to update (for logging and verification)
+    const { data: conversationsToUpdate } = await supabase
       .from('conversations')
-      .update({
-        assigned_to: selectedAgent.id,
-        department_id: departmentId,
-        status: conversationStatus,
-        updated_at: new Date().toISOString()
-      })
+      .select('id, status, assigned_to')
       .eq('contact_id', contact_id)
       .in('status', ['open', 'pending']);
-
-    if (conversationError) {
-      console.error('[distribute-lead] Error updating conversations:', conversationError);
-      // Don't fail the whole operation, contact was already updated
+    
+    console.log(`[distribute-lead] Found ${conversationsToUpdate?.length || 0} conversations to update for contact ${contact_id}:`, 
+      conversationsToUpdate?.map(c => ({ id: c.id, status: c.status, current_assigned: c.assigned_to })));
+    
+    if (conversationsToUpdate && conversationsToUpdate.length > 0) {
+      // Update each conversation individually to ensure it works
+      for (const conv of conversationsToUpdate) {
+        const { data: updatedConv, error: updateError } = await supabase
+          .from('conversations')
+          .update({
+            assigned_to: selectedAgent.id,
+            department_id: departmentId,
+            status: conversationStatus,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', conv.id)
+          .select('id, assigned_to, status')
+          .single();
+        
+        if (updateError) {
+          console.error(`[distribute-lead] Error updating conversation ${conv.id}:`, updateError);
+        } else {
+          console.log(`[distribute-lead] ✅ Updated conversation ${conv.id}: assigned_to=${updatedConv?.assigned_to}, status=${updatedConv?.status}`);
+        }
+      }
+    } else {
+      console.log(`[distribute-lead] ⚠️ No open/pending conversations found for contact ${contact_id}`);
     }
 
     // 6. Record assignment history
