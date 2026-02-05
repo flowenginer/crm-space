@@ -1,118 +1,79 @@
 
-# Adicionar Origem do Lead no Relatório de Atendimentos
+# Plano: Corrigir Distribuição Automática de Leads para Todos os Tenants
 
-## Situação Atual
+## Problema Identificado
 
-A função `search_conversations_report` **não retorna** a origem do lead, por isso ela não aparece no Excel.
+A Edge Function `distribute-lead` falha silenciosamente ao registrar o histórico de atribuição (`lead_assignment_history`) porque:
 
-### Dados disponíveis no banco:
+1. A função usa `service_role` (sem usuário autenticado)
+2. O trigger `set_tenant_id_from_user` exige `tenant_id` explícito ou usuário logado
+3. O INSERT em `lead_assignment_history` (linha 380-386) não inclui `tenant_id`
 
-| Tabela | Coluna | Valores encontrados |
-|--------|--------|---------------------|
-| `contacts` | `origin` | `meta_ads` (1203), `whatsapp` (591), `manual` (1), NULL (4881) |
-| `conversations` | `referral_source` | Fonte de referência da conversa |
+**Impacto atual:**
+- `contacts.assigned_to` é atualizado ✅ (Atendente Responsável)
+- `conversations.assigned_to` é atualizado ✅ (Atendente Atual - via UPDATE que não aciona trigger de INSERT)
+- `lead_assignment_history` falha silenciosamente ⚠️ (histórico não registrado)
 
-## Solução
+## Solução Proposta
 
-### 1. Atualizar a função SQL `search_conversations_report`
+Adicionar o `tenant_id` explicitamente no INSERT do `lead_assignment_history`, seguindo o mesmo padrão já usado no `conversation_events` (linha 406).
 
-Adicionar o campo `ct.origin as contact_origin` no retorno da função:
+### Alteração na Edge Function
 
-```sql
--- No RETURNS TABLE, adicionar:
-contact_origin text,
+**Arquivo:** `supabase/functions/distribute-lead/index.ts`
 
--- No SELECT, adicionar:
-ct.origin as contact_origin,
-```
-
-### 2. Atualizar o mapeamento no Frontend
-
-No arquivo `src/pages/ConversationReport.tsx`, na função que processa os dados (linha ~217):
-
+**Antes (linhas 379-386):**
 ```typescript
-contact: {
-  full_name: row.contact_full_name,
-  phone: row.contact_phone,
-  lead_status: row.contact_lead_status,
-  origin: row.contact_origin  // ← ADICIONAR
-}
+const { error: historyError } = await supabase
+  .from('lead_assignment_history')
+  .insert({
+    contact_id: contact_id,
+    assigned_to: selectedAgent.id,
+    assignment_type: assignmentType,
+    assigned_at: new Date().toISOString()
+  });
 ```
 
-### 3. Adicionar ao Excel Export
-
-Na função `handleExportExcel` (linha ~357), adicionar a coluna com formatação amigável:
-
+**Depois:**
 ```typescript
-'Origem': formatOrigin(conv.contact?.origin),
+const { error: historyError } = await supabase
+  .from('lead_assignment_history')
+  .insert({
+    contact_id: contact_id,
+    assigned_to: selectedAgent.id,
+    assignment_type: assignmentType,
+    assigned_at: new Date().toISOString(),
+    tenant_id: tenantId  // Adicionado
+  });
 ```
 
-Com função auxiliar para traduzir os valores:
-```typescript
-const formatOrigin = (origin: string | null) => {
-  if (!origin) return 'Não identificado';
-  const origins: Record<string, string> = {
-    'meta_ads': 'Meta Ads',
-    'whatsapp': 'Orgânico (WhatsApp)',
-    'manual': 'Manual',
-    'import': 'Importação'
-  };
-  return origins[origin] || origin;
-};
-```
+## Por que isso NÃO afeta outros tenants?
 
----
+1. **O `tenantId` já existe na função** - É obtido do próprio contato na linha 66
+2. **Cada contato já pertence ao seu tenant** - O `tenant_id` vem do contato que está sendo distribuído
+3. **Não há lógica condicional por tenant** - A mesma mudança funciona para Space Sports, Master e qualquer outro tenant
+4. **O trigger já aceita `tenant_id` explícito** - A função `set_tenant_id_from_user` retorna imediatamente se `tenant_id IS NOT NULL`
 
-## Arquivos a Modificar
+## Compatibilidade
 
-| Arquivo | Modificação |
-|---------|-------------|
-| Migration SQL | Atualizar função `search_conversations_report` para retornar `ct.origin` |
-| `src/pages/ConversationReport.tsx` | 1. Mapear `contact_origin` nos dados<br>2. Adicionar coluna "Origem" no Excel export |
-
----
-
-## Resultado Esperado
-
-A planilha Excel terá a nova coluna:
-
-| # | Nome | Contato | **Origem** | Status do Lead | Canal | ... |
-|---|------|---------|------------|----------------|-------|-----|
-| ABC123 | João Silva | +55 11 99999-9999 | **Meta Ads** | Qualificação | WhatsApp Business | ... |
-| DEF456 | Maria Santos | +55 21 88888-8888 | **Orgânico (WhatsApp)** | Atendimento | WhatsApp Business | ... |
-| GHI789 | Pedro Oliveira | +55 31 77777-7777 | **Não identificado** | New | WhatsApp Business | ... |
-
----
+| Cenário | Antes | Depois |
+|---------|-------|--------|
+| Space Sports (seu tenant) | ✅ Funciona | ✅ Funciona |
+| Master (usuário cliente) | ⚠️ Falha no histórico | ✅ Funciona |
+| Novos tenants futuros | ⚠️ Falhariam | ✅ Funcionarão |
 
 ## Detalhes Técnicos
 
-### Migration SQL completa:
-
-```sql
-CREATE OR REPLACE FUNCTION public.search_conversations_report(
-  p_start_date timestamp with time zone DEFAULT NULL,
-  -- ... parâmetros existentes ...
-)
-RETURNS TABLE(
-  id uuid,
-  contact_id uuid,
-  -- ... campos existentes ...
-  contact_lead_status text,
-  contact_origin text,  -- NOVO CAMPO
-  channel_name text,
-  -- ... resto dos campos ...
-)
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
--- ... lógica existente ...
-  RETURN QUERY
-  SELECT DISTINCT ON (c.id)
-    c.id,
-    -- ... campos existentes ...
-    ct.lead_status as contact_lead_status,
-    ct.origin as contact_origin,  -- NOVO CAMPO
-    wc.name as channel_name,
-    -- ... resto da query ...
+A variável `tenantId` é definida na linha 66 a partir do contato:
+```typescript
+const tenantId = contact.tenant_id;
 ```
+
+Portanto, o histórico de atribuição sempre será registrado com o tenant correto do contato que está sendo distribuído, garantindo isolamento completo entre tenants.
+
+## Resumo
+
+- **1 arquivo alterado**: `supabase/functions/distribute-lead/index.ts`
+- **1 linha adicionada**: `tenant_id: tenantId` no INSERT de `lead_assignment_history`
+- **Risco**: Nenhum - a mudança é aditiva e usa dados já existentes na função
+- **Benefício**: Histórico de atribuição funcionará corretamente para TODOS os tenants
