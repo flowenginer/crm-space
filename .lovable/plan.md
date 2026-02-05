@@ -1,79 +1,110 @@
 
-# Plano: Corrigir Distribuição Automática de Leads para Todos os Tenants
+# Plano: Corrigir Mudança de Canal de API Não Oficial para API Oficial
 
 ## Problema Identificado
 
-A Edge Function `distribute-lead` falha silenciosamente ao registrar o histórico de atribuição (`lead_assignment_history`) porque:
+Ao tentar mudar o canal de uma conversa de API Não Oficial para API Oficial no tenant Space Sports, a operação não está funcionando. A análise do código revelou os seguintes pontos:
 
-1. A função usa `service_role` (sem usuário autenticado)
-2. O trigger `set_tenant_id_from_user` exige `tenant_id` explícito ou usuário logado
-3. O INSERT em `lead_assignment_history` (linha 380-386) não inclui `tenant_id`
+1. **Erro silencioso**: O catch block apenas exibe "Erro ao alterar canal" sem mostrar o erro real
+2. **Falta de validação**: O código assume que `selectedConversation?.contact_id` existe, mas não verifica
+3. **Falta de logging**: Não há logs de console para debugar o problema
 
-**Impacto atual:**
-- `contacts.assigned_to` é atualizado ✅ (Atendente Responsável)
-- `conversations.assigned_to` é atualizado ✅ (Atendente Atual - via UPDATE que não aciona trigger de INSERT)
-- `lead_assignment_history` falha silenciosamente ⚠️ (histórico não registrado)
+## Dados Verificados
+
+- O canal `API_Oficial` existe e está `connected` (ID: ee310180-2ead-49c2-bb8a-4d2e334a872f)
+- As políticas RLS de UPDATE para `conversations` parecem corretas (WITH CHECK: true)
+- Existem conversas com canais não oficiais que podem ser migradas
 
 ## Solução Proposta
 
-Adicionar o `tenant_id` explicitamente no INSERT do `lead_assignment_history`, seguindo o mesmo padrão já usado no `conversation_events` (linha 406).
+Melhorar o código de mudança de canal com:
 
-### Alteração na Edge Function
+1. **Logging detalhado** para diagnóstico
+2. **Validação de dados** antes de executar operações
+3. **Mensagens de erro mais claras** mostrando o erro real
+4. **Invalidação adicional de queries** para garantir atualização da UI
 
-**Arquivo:** `supabase/functions/distribute-lead/index.ts`
+### Alterações no Arquivo
 
-**Antes (linhas 379-386):**
-```typescript
-const { error: historyError } = await supabase
-  .from('lead_assignment_history')
-  .insert({
-    contact_id: contact_id,
-    assigned_to: selectedAgent.id,
-    assignment_type: assignmentType,
-    assigned_at: new Date().toISOString()
-  });
-```
+**Arquivo:** `src/pages/Conversations.tsx`
 
-**Depois:**
-```typescript
-const { error: historyError } = await supabase
-  .from('lead_assignment_history')
-  .insert({
-    contact_id: contact_id,
-    assigned_to: selectedAgent.id,
-    assignment_type: assignmentType,
-    assigned_at: new Date().toISOString(),
-    tenant_id: tenantId  // Adicionado
-  });
-```
+**Mudança 1 - Bloco de mudança para canais NÃO oficiais (linhas 4699-4731):**
 
-## Por que isso NÃO afeta outros tenants?
+Adicionar logging e melhorar tratamento de erros:
+- Log do canal atual e destino
+- Validação de `contact_id` antes de consultar duplicatas
+- Mostrar erro detalhado no toast e console
 
-1. **O `tenantId` já existe na função** - É obtido do próprio contato na linha 66
-2. **Cada contato já pertence ao seu tenant** - O `tenant_id` vem do contato que está sendo distribuído
-3. **Não há lógica condicional por tenant** - A mesma mudança funciona para Space Sports, Master e qualquer outro tenant
-4. **O trigger já aceita `tenant_id` explícito** - A função `set_tenant_id_from_user` retorna imediatamente se `tenant_id IS NOT NULL`
+**Mudança 2 - Bloco de mudança para canal OFICIAL (linhas 6469-6515):**
 
-## Compatibilidade
-
-| Cenário | Antes | Depois |
-|---------|-------|--------|
-| Space Sports (seu tenant) | ✅ Funciona | ✅ Funciona |
-| Master (usuário cliente) | ⚠️ Falha no histórico | ✅ Funciona |
-| Novos tenants futuros | ⚠️ Falhariam | ✅ Funcionarão |
+Adicionar as mesmas melhorias:
+- Log detalhado antes de cada operação
+- Validação de `contact_id`
+- Erro detalhado mostrando a mensagem do Supabase
 
 ## Detalhes Técnicos
 
-A variável `tenantId` é definida na linha 66 a partir do contato:
+### Código Atual (problema)
 ```typescript
-const tenantId = contact.tenant_id;
+try {
+  const { data: existingConv } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('contact_id', selectedConversation?.contact_id)  // Pode ser undefined!
+    .eq('channel_id', channelChangeDialog.channel.id)
+    ...
+} catch (error) {
+  toast.error('Erro ao alterar canal');  // Erro genérico
+}
 ```
 
-Portanto, o histórico de atribuição sempre será registrado com o tenant correto do contato que está sendo distribuído, garantindo isolamento completo entre tenants.
+### Código Corrigido
+```typescript
+try {
+  console.log('[ChannelChange] Iniciando mudança de canal:', {
+    conversationId: selectedConversationId,
+    contactId: selectedConversation?.contact_id,
+    fromChannel: selectedConversation?.channel_id,
+    toChannel: channelChangeDialog.channel.id,
+    toChannelName: channelChangeDialog.channel.name
+  });
+
+  // Validar contact_id antes de consultar
+  if (!selectedConversation?.contact_id) {
+    toast.error('Erro: Contato não encontrado para esta conversa');
+    console.error('[ChannelChange] contact_id missing from selectedConversation');
+    return;
+  }
+
+  const { data: existingConv, error: checkError } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('contact_id', selectedConversation.contact_id)
+    .eq('channel_id', channelChangeDialog.channel.id)
+    ...
+
+  if (checkError) {
+    console.error('[ChannelChange] Error checking existing conv:', checkError);
+    throw checkError;
+  }
+
+  // ... resto do código ...
+
+} catch (error: any) {
+  console.error('[ChannelChange] Erro ao alterar canal:', error);
+  toast.error(`Erro ao alterar canal: ${error?.message || 'Erro desconhecido'}`);
+}
+```
 
 ## Resumo
 
-- **1 arquivo alterado**: `supabase/functions/distribute-lead/index.ts`
-- **1 linha adicionada**: `tenant_id: tenantId` no INSERT de `lead_assignment_history`
-- **Risco**: Nenhum - a mudança é aditiva e usa dados já existentes na função
-- **Benefício**: Histórico de atribuição funcionará corretamente para TODOS os tenants
+- **1 arquivo alterado**: `src/pages/Conversations.tsx`
+- **2 blocos de código modificados**: Mudança para canais não-oficiais e mudança para canais oficiais
+- **Benefício principal**: Diagnóstico preciso do erro real
+- **Risco**: Nenhum - as mudanças são aditivas (logging e validação extra)
+
+## Próximos Passos Após Deploy
+
+1. Tentar novamente a mudança de canal
+2. Verificar o console do navegador para ver o log detalhado
+3. Se o erro persistir, os logs mostrarão exatamente o que está falhando (RLS, duplicata, ou outro problema)
