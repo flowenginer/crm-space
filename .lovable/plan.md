@@ -1,110 +1,98 @@
 
-# Plano: Corrigir Mudança de Canal de API Não Oficial para API Oficial
+# Plano: Atualização em Tempo Real do Contador "Aguardando Resposta"
 
 ## Problema Identificado
 
-Ao tentar mudar o canal de uma conversa de API Não Oficial para API Oficial no tenant Space Sports, a operação não está funcionando. A análise do código revelou os seguintes pontos:
+Quando o vendedor envia uma mensagem respondendo ao cliente, o contador "Aguardando resposta: (16)" não diminui imediatamente. O usuário precisa esperar até 30 segundos (refetchInterval) ou receber um evento real-time (que pode ter latência).
 
-1. **Erro silencioso**: O catch block apenas exibe "Erro ao alterar canal" sem mostrar o erro real
-2. **Falta de validação**: O código assume que `selectedConversation?.contact_id` existe, mas não verifica
-3. **Falta de logging**: Não há logs de console para debugar o problema
+## Causa Raiz
 
-## Dados Verificados
+O hook `useSendMessage` em `src/hooks/useConversations.ts` invalida apenas as queries:
+- `['messages', conversation_id]`
+- `['conversations']`
+- `['conversations-paginated']`
 
-- O canal `API_Oficial` existe e está `connected` (ID: ee310180-2ead-49c2-bb8a-4d2e334a872f)
-- As políticas RLS de UPDATE para `conversations` parecem corretas (WITH CHECK: true)
-- Existem conversas com canais não oficiais que podem ser migradas
+Mas **NÃO invalida** as queries:
+- `['my-waiting-count']`
+- `['my-waiting-conversations']`
+
+O real-time subscription existe, mas conforme documentado, não é confiável para ações do próprio usuário devido a latência de rede, carga do servidor, e políticas RLS complexas.
 
 ## Solução Proposta
 
-Melhorar o código de mudança de canal com:
+Adicionar invalidação direta das queries de "aguardando resposta" no hook `useSendMessage`, garantindo atualização instantânea quando o próprio vendedor envia uma mensagem.
 
-1. **Logging detalhado** para diagnóstico
-2. **Validação de dados** antes de executar operações
-3. **Mensagens de erro mais claras** mostrando o erro real
-4. **Invalidação adicional de queries** para garantir atualização da UI
+### Alteração no Arquivo
 
-### Alterações no Arquivo
+**Arquivo:** `src/hooks/useConversations.ts`
 
-**Arquivo:** `src/pages/Conversations.tsx`
+**Localização:** Bloco `onSettled` do hook `useSendMessage` (linhas 284-290)
 
-**Mudança 1 - Bloco de mudança para canais NÃO oficiais (linhas 4699-4731):**
-
-Adicionar logging e melhorar tratamento de erros:
-- Log do canal atual e destino
-- Validação de `contact_id` antes de consultar duplicatas
-- Mostrar erro detalhado no toast e console
-
-**Mudança 2 - Bloco de mudança para canal OFICIAL (linhas 6469-6515):**
-
-Adicionar as mesmas melhorias:
-- Log detalhado antes de cada operação
-- Validação de `contact_id`
-- Erro detalhado mostrando a mensagem do Supabase
-
-## Detalhes Técnicos
-
-### Código Atual (problema)
+**Antes:**
 ```typescript
-try {
-  const { data: existingConv } = await supabase
-    .from('conversations')
-    .select('id')
-    .eq('contact_id', selectedConversation?.contact_id)  // Pode ser undefined!
-    .eq('channel_id', channelChangeDialog.channel.id)
-    ...
-} catch (error) {
-  toast.error('Erro ao alterar canal');  // Erro genérico
-}
+onSettled: (_, __, variables) => {
+  // Always refetch after error or success to sync with server
+  queryClient.invalidateQueries({ queryKey: ['messages', variables.conversation_id] });
+  queryClient.invalidateQueries({ queryKey: ['messages-paginated', variables.conversation_id] });
+  queryClient.invalidateQueries({ queryKey: ['conversations'] });
+  queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+},
 ```
 
-### Código Corrigido
+**Depois:**
 ```typescript
-try {
-  console.log('[ChannelChange] Iniciando mudança de canal:', {
-    conversationId: selectedConversationId,
-    contactId: selectedConversation?.contact_id,
-    fromChannel: selectedConversation?.channel_id,
-    toChannel: channelChangeDialog.channel.id,
-    toChannelName: channelChangeDialog.channel.name
-  });
-
-  // Validar contact_id antes de consultar
-  if (!selectedConversation?.contact_id) {
-    toast.error('Erro: Contato não encontrado para esta conversa');
-    console.error('[ChannelChange] contact_id missing from selectedConversation');
-    return;
-  }
-
-  const { data: existingConv, error: checkError } = await supabase
-    .from('conversations')
-    .select('id')
-    .eq('contact_id', selectedConversation.contact_id)
-    .eq('channel_id', channelChangeDialog.channel.id)
-    ...
-
-  if (checkError) {
-    console.error('[ChannelChange] Error checking existing conv:', checkError);
-    throw checkError;
-  }
-
-  // ... resto do código ...
-
-} catch (error: any) {
-  console.error('[ChannelChange] Erro ao alterar canal:', error);
-  toast.error(`Erro ao alterar canal: ${error?.message || 'Erro desconhecido'}`);
-}
+onSettled: (_, __, variables) => {
+  // Always refetch after error or success to sync with server
+  queryClient.invalidateQueries({ queryKey: ['messages', variables.conversation_id] });
+  queryClient.invalidateQueries({ queryKey: ['messages-paginated', variables.conversation_id] });
+  queryClient.invalidateQueries({ queryKey: ['conversations'] });
+  queryClient.invalidateQueries({ queryKey: ['conversations-paginated'] });
+  
+  // Invalidar contadores de "aguardando resposta" para atualização instantânea
+  // Real-time tem latência, então invalidamos diretamente após ações do próprio usuário
+  queryClient.invalidateQueries({ queryKey: ['my-waiting-count'] });
+  queryClient.invalidateQueries({ queryKey: ['my-waiting-conversations'] });
+},
 ```
 
-## Resumo
+## Por que essa solução funciona?
 
-- **1 arquivo alterado**: `src/pages/Conversations.tsx`
-- **2 blocos de código modificados**: Mudança para canais não-oficiais e mudança para canais oficiais
-- **Benefício principal**: Diagnóstico preciso do erro real
-- **Risco**: Nenhum - as mudanças são aditivas (logging e validação extra)
+1. **Ação do próprio usuário**: Quando o vendedor envia uma mensagem, o banco atualiza `last_message_is_from_me = true` na conversa
+2. **RPC recalcula**: A função `get_agent_waiting_conversations` exclui conversas onde `last_message_is_from_me = true`
+3. **Invalidação direta**: Forçamos o React Query a refazer a consulta imediatamente, sem esperar o real-time
+4. **Resultado**: O contador diminui instantaneamente (2-3x mais rápido que esperar o real-time)
 
-## Próximos Passos Após Deploy
+## Fluxo Visual
 
-1. Tentar novamente a mudança de canal
-2. Verificar o console do navegador para ver o log detalhado
-3. Se o erro persistir, os logs mostrarão exatamente o que está falhando (RLS, duplicata, ou outro problema)
+```text
+Vendedor envia mensagem
+        ↓
+sendMessage.mutateAsync() salva no banco
+        ↓
+Trigger atualiza conversations.last_message_is_from_me = true
+        ↓
+onSettled invalida ['my-waiting-count']
+        ↓
+React Query refaz a RPC get_agent_waiting_conversations
+        ↓
+Conversa respondida não aparece mais (filtrada pelo is_from_me = false)
+        ↓
+Contador atualiza instantaneamente de (16) para (15)
+```
+
+## Impacto
+
+- **1 arquivo alterado**: `src/hooks/useConversations.ts`
+- **2 linhas adicionadas** no bloco `onSettled`
+- **Benefício**: Contador atualiza instantaneamente após o vendedor responder
+- **Risco**: Nenhum - apenas adiciona invalidação de cache (operação idempotente)
+- **Performance**: Mínimo impacto - a RPC é leve e já é chamada regularmente
+
+## Bônus: Real-time continua funcionando
+
+O real-time subscription em `useMyWaitingConversations` continua funcionando para:
+- Novas mensagens de clientes (aumentar o contador)
+- Ações de outros vendedores
+- Sincronização entre abas/dispositivos
+
+A invalidação direta é um **complemento**, não uma substituição do real-time.
